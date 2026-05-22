@@ -1,0 +1,36 @@
+[
+  {
+    "schema": "identity.v1",
+    "sid": "idp:agent:assistant",
+    "kind": "human",
+    "display_name": "assistant",
+    "aliases": [],
+    "roles_in_tenant": [
+      "member"
+    ],
+    "bindings": [
+      {
+        "channel": "web",
+        "native_user_id": "assistant"
+      }
+    ],
+    "updated_at": "2026-04-05T06:27:42.875Z"
+  },
+  {
+    "schema": "identity.v1",
+    "sid": "idp:user:shinjiyu",
+    "kind": "human",
+    "display_name": "shinjiyu",
+    "aliases": [],
+    "roles_in_tenant": [
+      "member"
+    ],
+    "bindings": [
+      {
+        "channel": "web",
+        "native_user_id": "shinjiyu"
+      }
+    ],
+    "updated_at": "2026-04-05T06:27:49.243Z"
+  }
+]

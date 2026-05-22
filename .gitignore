@@ -1,0 +1,33 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+data/workspaces/
+data/repository/
+data/identities.json
+data/chat/
+# 从 packages/server 目录启动 API 时的默认 DATA_ROOT
+packages/server/data/
+# agent2 数据目录（含运行时 workspace 数据）
+packages/server/data-shiro/
+# 任何 .env / .env.* 都视为本地敏感配置，但保留 .env.example 作为可入库模板
+.env
+.env.*
+!.env.example
+.sandbox-data/
+# 便携 Node（Windows 上无 npm/node 时手工下载的运行时，不应入库）
+.tools/
+# 本地 agent / 合并过程产生的运行日志与临时产物（落在仓库根目录）
+local-merge-log.md
+kuronekopackagesserverdata*workspaces*_m3out_*.txt
+# Cursor 调试会话 NDJSON（不入库）
+.cursor/debug-*.log
+# 本地 tsc 错误重定向 scratch（不入库）
+packages/server/m3-*.txt
+# local-dashboard 启停脚本记录的 PID
+scripts/local-dashboard/.pids/
+# 各包 / app 本地测试与运行产物
+.tool-outputs/
+**/.tool-outputs/
+# chat-server 运行时消息与上传（勿入库）
+apps/chat-server/data/

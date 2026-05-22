@@ -1,0 +1,31 @@
+{
+  "name": "@utlra/chat-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "独立类 Discord 聊天服务（Hono + WebSocket）：无认证、客户端自报身份；与 Kuroneko 通过 @utlra/webchat-bridge 对接。",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@hono/node-ws": "^1.0.5",
+    "@utlra/webchat-protocol": "*",
+    "hono": "^4.6.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.13",
+    "@utlra/chat-ir": "*",
+    "@utlra/webchat-bridge": "*",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@utlra/server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "dev:nowatch": "node --import tsx/esm src/index.ts",
+    "dev:agent2": "node --env-file=../../.env.agent2 --import tsx/esm src/index.ts",
+    "start": "node dist/index.js",
+    "inner-brain": "node --import tsx/esm src/pi-mono/inner-brain-worker.ts",
+    "test": "vitest run && vitest run --config vitest.integration.config.ts && vitest run --config vitest.prompt.config.ts",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:prompt": "vitest run --config vitest.prompt.config.ts",
+    "test:watch": "vitest",
+    "bench:mem9": "node --import tsx/esm src/mem9/mem9-latency.bench.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@utlra/chat-ir": "*",
+    "@utlra/discord-bridge": "*",
+    "zod": "^3.23.8",
+    "dotenv": "^16.4.5",
+    "hono": "^4.6.0",
+    "isomorphic-git": "^1.38.0",
+    "nodemailer": "^8.0.7",
+    "playwright": "^1.58.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.9"
+  }
+}

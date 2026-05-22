@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node"]
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "src/openkuroneko/scheduled-tasks/test-full-chain.ts",
+    "src/openkuroneko/scheduled-tasks/verify-full-chain.ts",
+    "src/openkuroneko/scheduled-tasks/integration-test-m3.ts",
+    "src/openkuroneko/scheduled-tasks/scheduled-task-integration.ts.bak"
+  ]
+}

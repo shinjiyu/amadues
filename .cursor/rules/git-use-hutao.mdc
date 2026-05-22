@@ -1,0 +1,41 @@
+---
+description: 本机 git push 被拦截，所有 git 命令统一使用 hutao 替代
+alwaysApply: true
+---
+
+# Git 命令统一用 hutao（Windows 本机限制）
+
+本机的 `git push` 被拦截（具体表现：fatal not a git repository，但 status/fetch/log
+等其他命令正常）。`hutao` 是 `D:\tools\Hutao\cmd\hutao.cmd` 提供的独立 git 二进制别名，
+命令格式与 git 完全相同，可以正常 push。
+
+## 规则
+
+为避免每次 push 失败再切换的反复试错，**在该工作站上所有 git 操作统一使用 `hutao`**。
+
+```bash
+# ❌ 不要用
+git push origin main
+git pull
+git fetch
+
+# ✅ 改用
+hutao push origin main
+hutao pull
+hutao fetch
+```
+
+读类命令（`git status` / `git log` / `git diff` / `git show`）虽然原生 git 也能跑，
+但为了**保持单一工作流、避免遗忘**，也一并改用 hutao：
+
+```bash
+hutao status
+hutao log --oneline -10
+hutao diff --stat HEAD
+```
+
+## 注意
+- `hutao` 仅在 PATH 里有效（`D:\tools\Hutao\cmd\` 已加入用户 PATH）。
+- 在 PowerShell 或 cmd.exe 中均可直接调用 `hutao <subcmd> <args>`。
+- 多行 commit message 用 `hutao commit -F <file>`，避免 PowerShell 不支持 bash heredoc。
+- `.env` 等敏感文件已在 `.gitignore`，不会被 `hutao add -A` 误带入。

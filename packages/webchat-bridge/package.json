@@ -1,0 +1,31 @@
+{
+  "name": "@utlra/webchat-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WebChat 渠道桥（ChatIRChannel 实现）：对接独立 chat-server，将 WS 事件翻译为 ChatIRInboundMessage，把 postMessage 翻译为 chat-server REST。",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@utlra/chat-ir": "*",
+    "@utlra/webchat-protocol": "*",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.0"
+  }
+}

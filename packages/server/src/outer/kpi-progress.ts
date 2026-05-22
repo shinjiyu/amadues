@@ -1,0 +1,156 @@
+/**
+ * KPI 进展推断 — 纯函数，供 burst onExit、view_kpi、场景 harness 共用。
+ */
+import type { ReflexionSummary, KpiRecord } from './kpi-registry.js';
+import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
+import { buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
+
+export type KpiSuggestedAction =
+  | 'achieved'       // 应 markAchieved（或已自动达成）
+  | 'follow_up'      // 有阻塞/等待，外脑应 send_directive 或催用户
+  | 'continue'       // 仍在推进，可等 timer / 勿重复 set_goal
+  | 'stuck_reflexion'// idle streak 高，已/将派反思 burst
+  | 'abandon_candidate';
+
+export interface KpiBurstLink {
+  instanceId: string;
+  registryStatus: string;
+  isPostComplete: boolean;
+  isAsyncWaiting: boolean;
+  deliverableCount: number;
+  lastReflexionVerdict: string | null;
+}
+
+/** burst 正常结束且目标已交付 → 可自动标 achieved */
+export function shouldAutoAchieveKpi(input: {
+  reflexion: ReflexionSummary | null;
+  deliverableCount: number;
+  isAwaiting: boolean;
+  exitedWithError: boolean;
+  isPostComplete: boolean;
+}): boolean {
+  if (input.exitedWithError || input.isAwaiting) return false;
+  if (!input.isPostComplete) return false;
+  if (input.deliverableCount < 1) return false;
+  const v = input.reflexion?.verdict;
+  if (v === 'success') return true;
+  if (v === 'partial') return true;
+  if (!input.reflexion) return true;
+  return false;
+}
+
+export function buildKpiBurstLinks(
+  kpi: KpiRecord,
+  innerRegistry: InnerBrainRegistry | undefined,
+): KpiBurstLink[] {
+  if (!innerRegistry) {
+    return kpi.bursts.map((id) => ({
+      instanceId: id,
+      registryStatus: 'unknown',
+      isPostComplete: false,
+      isAsyncWaiting: false,
+      deliverableCount: 0,
+      lastReflexionVerdict: null,
+    }));
+  }
+  return kpi.bursts.map((id) => {
+    const t = innerRegistry.get(id);
+    if (!t) {
+      return {
+        instanceId: id,
+        registryStatus: 'missing',
+        isPostComplete: false,
+        isAsyncWaiting: false,
+        deliverableCount: 0,
+        lastReflexionVerdict: null,
+      };
+    }
+    const snap = buildBrainAsyncSnapshot(t.workDir);
+    const trail = kpi.reflexionTrail.filter((r) => r.burstInstanceId === id);
+    const lastVerdict = trail[0]?.verdict ?? null;
+    return {
+      instanceId: id,
+      registryStatus: t.status,
+      isPostComplete: snap.is_post_complete,
+      isAsyncWaiting: snap.is_async_waiting,
+      deliverableCount: t.deliverableCount ?? 0,
+      lastReflexionVerdict: lastVerdict,
+    };
+  });
+}
+
+export function suggestKpiAction(
+  kpi: KpiRecord,
+  links: KpiBurstLink[],
+  stuckThreshold = 3,
+): { action: KpiSuggestedAction; reason: string } {
+  if (kpi.status === 'achieved' || kpi.status === 'abandoned') {
+    return { action: 'achieved', reason: `终态 ${kpi.status}` };
+  }
+  if (kpi.status === 'paused') {
+    return { action: 'continue', reason: '已暂停' };
+  }
+
+  const latest = links[links.length - 1];
+  const anyAwaiting = links.some((l) => l.isAsyncWaiting && !l.isPostComplete);
+  const anyBlocked = links.some((l) => l.registryStatus === 'BLOCKED' || l.registryStatus === 'AWAITING');
+  const latestDone = latest?.registryStatus === 'DONE' && latest.isPostComplete;
+
+  if (latestDone && latest.deliverableCount > 0) {
+    const v = latest.lastReflexionVerdict;
+    if (v === 'success' || v === 'partial' || v === null) {
+      return { action: 'achieved', reason: '最近 burst 已 DONE 且里程碑完成并有产出' };
+    }
+  }
+
+  if (anyAwaiting || (anyBlocked && !latestDone)) {
+    return { action: 'follow_up', reason: '有 burst 在等待外部输入或阻塞，需跟进而非再 set_goal' };
+  }
+
+  if (kpi.consecutiveIdleBursts >= stuckThreshold) {
+    return { action: 'stuck_reflexion', reason: `连续 ${kpi.consecutiveIdleBursts} 次 idle 无产出` };
+  }
+
+  const running = links.some((l) => l.registryStatus === 'RUNNING');
+  if (running) {
+    return { action: 'continue', reason: '仍有 burst 在跑' };
+  }
+
+  if (kpi.consecutiveIdleBursts > 0) {
+    return { action: 'stuck_reflexion', reason: `idle streak=${kpi.consecutiveIdleBursts}` };
+  }
+
+  return { action: 'continue', reason: '活跃推进中' };
+}
+
+export function formatKpiDigest(
+  kpi: KpiRecord,
+  innerRegistry: InnerBrainRegistry | undefined,
+  stuckThreshold = 3,
+): string {
+  const links = buildKpiBurstLinks(kpi, innerRegistry);
+  const { action, reason } = suggestKpiAction(kpi, links, stuckThreshold);
+  const lines: string[] = [
+    `KPI ${kpi.kpiId} [${kpi.status}]`,
+    `描述：${kpi.description}`,
+    `建议动作：${action}（${reason}）`,
+    `连续 idle：${kpi.consecutiveIdleBursts}`,
+    `bursts：${kpi.bursts.length}`,
+  ];
+  if (links.length > 0) {
+    lines.push('', '关联 burst：');
+    for (const l of links.slice(-6)) {
+      lines.push(
+        `- ${l.instanceId} status=${l.registryStatus}` +
+          ` post_complete=${l.isPostComplete}` +
+          ` async_wait=${l.isAsyncWaiting}` +
+          ` deliverables=${l.deliverableCount}` +
+          (l.lastReflexionVerdict ? ` verdict=${l.lastReflexionVerdict}` : ''),
+      );
+    }
+  }
+  if (action === 'achieved' && kpi.status === 'active') {
+    lines.push('', '⚠️ 系统判定已达成但 registry 仍为 active；应调用 achieve_kpi 或等待自动达成。');
+  }
+  return lines.join('\n');
+}

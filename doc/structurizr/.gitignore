@@ -1,0 +1,10 @@
+workspace.json
+diagrams/
+plantuml/
+mermaid/
+site/
+.structurizr/
+.tools/
+structurizr-*.puml
+structurizr-*.mmd
+generated/

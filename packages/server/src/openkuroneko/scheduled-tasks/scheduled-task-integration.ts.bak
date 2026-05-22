@@ -1,0 +1,120 @@
+/**
+ * Scheduled Task Integration Entry Point
+ *
+ * Bridges the kuroneko OuterHeartbeat system with the scheduled-tasks module.
+ * Provides a factory function `createScheduledTaskBridge()` that accepts
+ * HeartbeatDeps (from outer-heartbeat.ts) and returns a ready-to-use
+ * HeartbeatTaskBridge instance.
+ *
+ * Integration flow:
+ *   1. OuterHeartbeat constructor calls createScheduledTaskBridge(deps)
+ *   2. OuterHeartbeat.start() calls bridge.start()
+ *   3. OuterHeartbeat._tick() calls await bridge.onHeartbeat() after runHeartbeat()
+ *
+ * M3 Deliverable — Heartbeat Bridge Integration Layer
+ */
+
+import { HeartbeatTaskBridge } from './heartbeat-task-bridge.js';
+import type { HeartbeatTaskBridgeConfig, HeartbeatTaskBridgeDeps } from './heartbeat-task-bridge.js';
+
+/**
+ * Subset of HeartbeatDeps that we actually use for scheduled tasks.
+ * This avoids importing the full outer-heartbeat types.
+ */
+export interface ScheduledTaskIntegrationDeps {
+  /** Base data directory (e.g., dataRoot from HeartbeatDeps) */
+  dataRoot: string;
+  /** Execute a prompt action — maps to TaskSchedulerConfig.executePromptAction */
+  executePromptAction?: (taskId: string, prompt: string) => Promise<string>;
+  /** Execute a tool call — maps to TaskSchedulerConfig.executeToolCallAction */
+  executeToolCallAction?: (taskId: string, toolName: string, params: Record<string, unknown>) => Promise<string>;
+  /** Send a message — maps to TaskSchedulerConfig.executeSendMessageAction */
+  executeSendMessageAction?: (taskId: string, content: string, conversationId?: string) => Promise<void>;
+  /** Notify user — maps to TaskSchedulerConfig.notifyUser */
+  notifyUser?: (taskId: string, message: string) => Promise<void>;
+  /** Check if agent is busy — maps to TaskSchedulerConfig.isAgentBusy */
+  isAgentBusy?: () => boolean;
+}
+
+/**
+ * Options for creating the scheduled task bridge.
+ */
+export interface CreateBridgeOptions {
+  /** Override config options */
+  config?: Partial<HeartbeatTaskBridgeConfig>;
+  /** Event listener for bridge events */
+  onEvent?: (event: import('./heartbeat-task-bridge.js').BridgeEvent) => void;
+}
+
+/**
+ * Factory: create a HeartbeatTaskBridge from integration deps.
+ *
+ * Usage in outer-heartbeat.ts:
+ * ```typescript
+ * import { createScheduledTaskBridge } from './scheduled-tasks/scheduled-task-integration.js';
+ *
+ * // In constructor or init:
+ * const bridge = createScheduledTaskBridge({
+ *   dataRoot: this.deps.dataRoot,
+ *   notifyUser: async (taskId, message) => {
+ *     if (this.deps.imClient) {
+ *       await this.deps.imClient.postMessage(message);
+ *     }
+ *   },
+ *   isAgentBusy: () => this.running,
+ * });
+ * await bridge.start();
+ * ```
+ *
+ * @param deps - Integration dependencies
+ * @param options - Optional config overrides
+ * @returns HeartbeatTaskBridge instance (call start() before use)
+ */
+export function createScheduledTaskBridge(
+  deps: ScheduledTaskIntegrationDeps,
+  options?: CreateBridgeOptions,
+): HeartbeatTaskBridge {
+  const config: HeartbeatTaskBridgeConfig = {
+    dataRoot: deps.dataRoot,
+    maxExecutionsPerBeat: options?.config?.maxExecutionsPerBeat ?? 5,
+    defaultHeartbeatMs: options?.config?.defaultHeartbeatMs ?? 300_000,
+    alertConfig: options?.config?.alertConfig,
+  };
+
+  const bridgeDeps: HeartbeatTaskBridgeDeps = {
+    executePromptAction: deps.executePromptAction,
+    executeToolCallAction: deps.executeToolCallAction,
+    executeSendMessageAction: deps.executeSendMessageAction,
+    notifyUser: deps.notifyUser,
+    isAgentBusy: deps.isAgentBusy,
+  };
+
+  const bridge = new HeartbeatTaskBridge(config, bridgeDeps);
+
+  // Wire up event listener if provided
+  if (options?.onEvent) {
+    bridge.onEvent(options.onEvent);
+  }
+
+  return bridge;
+}
+
+/**
+ * Helper: build notifyUser callback that sends via IM if available.
+ * This is the standard wiring for kuroneko's OuterHeartbeat.
+ */
+export function buildImNotifier(
+  imClient: { postMessage: (message: string) => Promise<void> } | null,
+): (taskId: string, message: string) => Promise<void> {
+  return async (_taskId: string, message: string) => {
+    if (imClient) {
+      try {
+        await imClient.postMessage(message);
+      } catch (err) {
+        console.error('[scheduled-tasks][integration] IM notify failed:', err);
+      }
+    }
+    // Always log to console as fallback
+    console.log(`[scheduled-tasks][notify] task=${_taskId}: ${message}`);
+  };
+}

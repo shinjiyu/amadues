@@ -1,0 +1,26 @@
+{
+  "name": "@utlra/discord-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Discord 渠道桥（ChatIRChannel 实现）：直接对接 Discord Gateway 入站 + REST 出站，进程内落 chat IR store。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@utlra/chat-ir": "*",
+    "discord.js": "^14.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}

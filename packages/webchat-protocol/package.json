@@ -1,0 +1,27 @@
+{
+  "name": "@utlra/webchat-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WebChat 协议共享层：zod schema（REST + WS 事件）、thread_id 工具。chat-server / web-chat / webchat-bridge 三方共用。",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.0"
+  }
+}

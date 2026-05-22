@@ -1,0 +1,33 @@
+{
+  "name": "@utlra/chat-ir",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Chat IR — agent 通用聊天中间表示：身份、消息/线程 schema、ChatIRChannel 接口、本地存储 / 资产 / mention / 输出契约。可被任意渠道桥与 agent 实现复用。",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schemas": {
+      "types": "./dist/schemas/index.d.ts",
+      "import": "./dist/schemas/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "vitest": "^2.1.0"
+  }
+}

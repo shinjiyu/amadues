@@ -1,0 +1,86 @@
+{
+  "page": {
+    "id": "kuroneko",
+    "label": "依莉雅 Kuroneko",
+    "order": 8,
+    "description": "utlraKuroneko 本地开发栈（含 Ops 双 Agent 日志台 7779）"
+  },
+  "services": [
+    {
+      "id": "kuroneko-agent-kuroneko",
+      "label": "Agent: Kuroneko (8787)",
+      "page": "kuroneko",
+      "commands": {
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-agent-kuroneko.ps1",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-agent-kuroneko.ps1",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-agent-kuroneko.ps1"
+      },
+      "startTimeoutMs": 120000,
+      "healthTimeoutMs": 15000
+    },
+    {
+      "id": "kuroneko-agent-shiro",
+      "label": "Agent: Shiro (8788)",
+      "page": "kuroneko",
+      "commands": {
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-agent-shiro.ps1",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-agent-shiro.ps1",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-agent-shiro.ps1"
+      },
+      "startTimeoutMs": 120000,
+      "healthTimeoutMs": 15000
+    },
+    {
+      "id": "kuroneko-dashboard",
+      "label": "Dashboard (5173)",
+      "page": "kuroneko",
+      "kind": "h5",
+      "openUrl": "http://127.0.0.1:5173/",
+      "commands": {
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-dashboard.ps1",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-dashboard.ps1"
+      },
+      "startTimeoutMs": 60000
+    },
+    {
+      "id": "kuroneko-chat-server",
+      "label": "Chat Server (8790)",
+      "page": "kuroneko",
+      "commands": {
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-chat-server.ps1",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-chat-server.ps1",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-chat-server.ps1"
+      },
+      "startTimeoutMs": 90000,
+      "healthTimeoutMs": 15000
+    },
+    {
+      "id": "kuroneko-web-chat",
+      "label": "Web Chat H5 (5180)",
+      "page": "kuroneko",
+      "kind": "h5",
+      "openUrl": "http://127.0.0.1:5180/",
+      "commands": {
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-web-chat.ps1",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-web-chat.ps1",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-web-chat.ps1"
+      },
+      "startTimeoutMs": 180000,
+      "healthTimeoutMs": 15000
+    },
+    {
+      "id": "kuroneko-ops-console",
+      "label": "Ops Console (7779)",
+      "page": "kuroneko",
+      "kind": "h5",
+      "openUrl": "http://127.0.0.1:7779/",
+      "commands": {
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-ops-console.ps1",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-ops-console.ps1",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-ops-console.ps1"
+      },
+      "startTimeoutMs": 90000,
+      "healthTimeoutMs": 15000
+    }
+  ]
+}

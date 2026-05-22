@@ -1,0 +1,43 @@
+{
+  "name": "utlra-kuroneko",
+  "private": true,
+  "description": "Greenfield agent stack (data plane + chat IR + inner runtime) — see ../doc/",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run build -w @utlra/server && npm run build -w @utlra/dashboard && npm run build -w @utlra/ops-console",
+    "build:chat-server": "npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/chat-server",
+    "build:web-chat": "npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/web-chat",
+    "stop": "bash scripts/stop.sh",
+    "start": "bash scripts/start.sh",
+    "dev": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && concurrently -n server,dash -c blue,magenta \"npm run dev -w @utlra/server\" \"npm run dev -w @utlra/dashboard\"",
+    "dev:server": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run dev -w @utlra/server",
+    "dev:server:nowatch": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run dev:nowatch -w @utlra/server",
+    "dev:dashboard": "npm run dev -w @utlra/dashboard",
+    "dev:agent2": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run dev:agent2 -w @utlra/server",
+    "dev:ops": "npm run dev -w @utlra/ops-console",
+    "dev:chat-server": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/chat-server",
+    "dev:web-chat": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/web-chat",
+    "dev:webchat-all": "npm run build -w @utlra/webchat-protocol && concurrently -n chat-server,web-chat -c cyan,green \"npm run dev -w @utlra/chat-server\" \"npm run dev -w @utlra/web-chat\"",
+    "test": "npm run test -w @utlra/chat-ir && npm run test -w @utlra/webchat-protocol && npm run test -w @utlra/webchat-bridge && npm run test -w @utlra/chat-server && npm run test:unit -w @utlra/server",
+    "test:server": "npm run test -w @utlra/server",
+    "test:server:integration": "npm run test:integration -w @utlra/server",
+    "smoke:zhipu": "node scripts/zhipu-api-smoke.mjs",
+    "smoke:zhipu:vision": "node scripts/zhipu-api-smoke.mjs --vision",
+    "metrics:context": "node scripts/context-metrics.mjs",
+    "structurizr:generate": "node scripts/structurizr/code-to-dsl.mjs",
+    "structurizr:diff": "node scripts/structurizr/diff-workspace.mjs",
+    "structurizr:deps": "depcruise packages apps --config doc/structurizr/deps.rules.cjs --output-type err",
+    "structurizr:check": "node scripts/structurizr/check-all.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "dependency-cruiser": "^16.10.0",
+    "typescript": "^5.4.5"
+  }
+}
