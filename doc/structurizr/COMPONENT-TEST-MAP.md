@@ -32,7 +32,10 @@
 | outerMemory | ❌ | ✅ `outerMemory.component.integration.test.ts` | — | |
 | completionNotify | 🟡 `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 `inner-brain-deliverables.md` |
 | pushLoop | ❌ | ✅ `pushLoop.component.integration.test.ts` | — | BLOCK → IM |
-| changeWatcher | ✅ `change-watcher.test.ts` | ✅ `changeWatcher.component.integration.test.ts` | — | |
+| changeWatcher | ✅ `change-watcher.test.ts` | ✅ `changeWatcher.component.integration.test.ts` | — | 扩展 bootstrap 见 AWAITING 专篇 |
+| brainAsyncSnapshot | ✅ `brain-async-snapshot.test.ts` | — | — | |
+| registryLifecycleReconcile | ⏳ `registry-lifecycle-reconcile.test.ts` | ⏳ `registryLifecycleReconcile.component.integration.test.ts` | — | [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) |
+| awaitingInboundResolver | ⏳ `awaiting-inbound-resolver.test.ts` | ⏳ `awaitingInboundResolver.component.integration.test.ts` | — | 同上 |
 | innerBrainStartupResume | ✅ `inner-brain-startup-resume.test.ts` | ✅ `innerBrainStartupResume.component.integration.test.ts` | — | ADL [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md) |
 | llmGateway | ✅ `raw.test.ts` 等 | ✅ `llmGateway.component.integration.test.ts` | — | |
 

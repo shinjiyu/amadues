@@ -132,7 +132,44 @@
                     }
                 }
 
-                innerBrainStartupResume = component "Inner Brain Startup Resume" "【外脑重启恢复】启动时扫 registry 里 RUNNING→子进程已死→markStale→spawn 同一 instance；与 AWAITING 的 changeWatcher 互补" "TypeScript" {
+                brainAsyncSnapshot = component "Brain Async Snapshot" "【只读视图】workDir → is_async_waiting / is_post_complete / active_pendings / next_wake_at；registry 与 IM 解析共用" "TypeScript" {
+                    tags "Outer-Module" "Inner-Lifecycle"
+                    properties {
+                        "path" "packages/server/src/outer/brain-async-snapshot.ts"
+                        "horizon.intention" "双状态机对齐的单一真相来源（workDir 侧）"
+                        "horizon.in" "workDir"
+                        "horizon.out" "BrainAsyncSnapshot"
+                        "horizon.test.unit" "brain-async-snapshot.test.ts"
+                        "horizon.note" "权威规则见 INNER-BRAIN-AWAITING-LIFECYCLE.md §4"
+                    }
+                }
+
+                registryLifecycleReconcile = component "Registry Lifecycle Reconcile" "【registry↔workDir 对账】AWAITING/BLOCKED 假挂起→DONE；启动时 + changeWatcher.bootstrap" "TypeScript" {
+                    tags "Outer-Module" "Inner-Lifecycle"
+                    properties {
+                        "path" "packages/server/src/outer/registry-lifecycle-reconcile.ts（待实现）"
+                        "horizon.intention" "消除 is_post_complete 时 registry 仍为 AWAITING"
+                        "horizon.in" "innerBrainRegistry + brainAsyncSnapshot"
+                        "horizon.out" "registry.update(DONE|保持)"
+                        "horizon.test.unit" "registry-lifecycle-reconcile.test.ts（待实现）"
+                        "horizon.note" "实现状态：设计已定稿 2026-05-27，见 INNER-BRAIN-AWAITING-LIFECYCLE.md"
+                    }
+                }
+
+                awaitingInboundResolver = component "Awaiting Inbound Resolver" "【IM 必达】人消息 → 同 thread 的 ask_user pending → resolved；spawn 仍由 changeWatcher" "TypeScript" {
+                    tags "Outer-Module" "Inbound" "Inner-Lifecycle"
+                    properties {
+                        "path" "packages/server/src/outer/awaiting-inbound-resolver.ts（待实现）"
+                        "horizon.intention" "宪法 IMWatcher 的确定性实现；不依赖 LLM 调 send_directive"
+                        "horizon.in" "ChatIRInboundEvent(human) + innerBrainRegistry"
+                        "horizon.out" "resolvePending on workDir"
+                        "horizon.deps" "brainAsyncSnapshot; innerBrainRegistry"
+                        "horizon.test.unit" "awaiting-inbound-resolver.test.ts（待实现）"
+                        "horizon.note" "挂载于 outerBrainFacade，policy 之后、conversationLoop 之前"
+                    }
+                }
+
+                innerBrainStartupResume = component "Inner Brain Startup Resume" "【外脑重启恢复】启动时扫 registry 里 RUNNING→子进程已死→markStale→spawn 同一 instance；与 AWAITING 专篇互补" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
                         "path" "packages/server/src/outer/inner-brain-startup-resume.ts"
@@ -170,15 +207,16 @@
                     }
                 }
 
-                changeWatcher = component "Change Watcher" "【AWAITING 唤醒】轮询 pendings.json，到期/解封后 spawn 新 burst" "TypeScript" {
+                changeWatcher = component "Change Watcher" "【AWAITING 唤醒】bootstrap(reconcile+timer 补单) + 1s tick：unconsumed resolved → spawn；不负责 IM 入站" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
                         "path" "packages/server/src/pi-mono/change-watcher.ts"
-                        "horizon.intention" "数据驱动重跑（timer/deadline/resolved pending）"
-                        "horizon.in" "innerBrainRegistry AWAITING 列表"
+                        "horizon.intention" "pendings 到期/解封后 spawn；与 registryLifecycleReconcile / awaitingInboundResolver 分工"
+                        "horizon.in" "innerBrainRegistry AWAITING|BLOCKED 列表"
                         "horizon.out" "innerSpawner spawn"
                         "horizon.test.unit" "change-watcher.test.ts"
                         "horizon.test.integration" "changeWatcher.component.integration.test.ts; await-and-wake.integration.test.ts"
+                        "horizon.note" "v1 为 poll 非最小堆；见 INNER-BRAIN-AWAITING-LIFECYCLE.md §5.3"
                     }
                 }
 

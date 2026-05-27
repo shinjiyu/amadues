@@ -29,13 +29,16 @@
 | outerOrchestrator | M6 roundtrip | `outer/orchestrator.ts` | 入站 → reply + spawn |
 | innerBrainRegistry | 内脑任务表 | `outer/inner-brain-registry.ts` | spawn/stop → TaskRecord；`markStaleRunningAsStopped` |
 | innerBrainStartupResume | **外脑重启恢复 RUNNING** | `outer/inner-brain-startup-resume.ts` | 启动 → 同一 instance 再 spawn |
+| brainAsyncSnapshot | workDir 异步快照 | `outer/brain-async-snapshot.ts` | workDir → `is_post_complete` 等 |
+| registryLifecycleReconcile | **registry↔workDir 对账** | `outer/registry-lifecycle-reconcile.ts`（待实现） | 假 AWAITING → DONE |
+| awaitingInboundResolver | **IM 回复解 pending** | `outer/awaiting-inbound-resolver.ts`（待实现） | human IM → resolve → changeWatcher spawn |
 | innerSpawner | spawn 子进程 | `pi-mono/inner-brain-spawner.ts` | goal/workDir → child |
 | kpiRegistry | KPI 与反思 burst | `outer/kpi-registry.ts` | set_kpi → trail / idleStreak |
 | kpiBurstHooks | burst 退出 hook | `outer/kpi-burst-hooks.ts` | reflexion.json → trail；streak → meta；AUTO_NEXT → 下一 burst |
 | outerMemory | mem9 记忆 | `outer/outer-memory.ts` | chat/task → mem9 |
 | completionNotify | 完成通知（IM 精简） | `outer/completion-notify.ts` + `completion-report.ts` | DONE → `audience=im` 正文 + 附件 |
 | pushLoop | 消费 worker 输出 | `outer/push-loop.ts` | `.run` events → 渠道 |
-| changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | pendings 到期/解封 → spawn |
+| changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | bootstrap + pendings 到期/解封 → spawn |
 | llmGateway | LLM 调用 | `llm/` | messages → text/tools |
 
 **视图**（Structurizr，按路径拆开避免一张图过密）：
@@ -43,15 +46,17 @@
 | 视图 | 内容 |
 |------|------|
 | `06-L3-Outer-AllModules` | 全部外脑组件 + 所有 L3 边 |
-| `07-L3-Outer-Inbound-IM` | IM 入站：Facade → 检索/记忆/是否说话 → 对话环 → 工具 |
+| `07-L3-Outer-Inbound-IM` | IM 入站：Facade → **awaitingInboundResolver** → 检索/记忆/是否说话 → 对话环 → 工具 |
 | `07b-L3-Outer-Inbound-HTTP` | HTTP roundtrip：Orchestrator → policy → 直 spawn |
-| `08-L3-Outer-Inner-Lifecycle` | spawn、**startupResume**、registry、changeWatcher、pushLoop、completionNotify、KPI |
+| `08-L3-Outer-Inner-Lifecycle` | spawn、**startupResume**、**reconcile**、registry、changeWatcher、pushLoop、completionNotify、KPI |
 | `10-L2-KPI-Closed-Loop` | L2：agentServer ↔ innerWorker |
 | `10b-L3-Outer-KPI` / `10c-L3-Inner-Reflexion` | L3 外脑调度 / 内脑反思分图 |
 
 **KPI 闭环**（实现与 ADL）：见 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)。
 
 **外脑重启恢复内脑**（实现与 ADL）：见 [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md)。
+
+**AWAITING 生命周期**（对账 + IM 必达 + bootstrap）：见 [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)。
 
 **记忆/知识边界**（P3c）：见 [`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUNDARY.md)。
 

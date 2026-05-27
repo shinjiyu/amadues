@@ -11,7 +11,9 @@
 > - ✅ `ControllerMode.AWAITING` + tick 入口数据演进（`controller.ts`）
 > - ✅ 异步工具 `ask_user` / `wait_timer` / `wait_signal`（`tools/definitions/async-wait.ts`）
 > - ✅ BLOCKED / SLEEPING 自动迁移为 AWAITING + pending
-> - ✅ ChangeWatcher 服务（`pi-mono/change-watcher.ts`，1s 轮询 + IM 入站 resolve）
+> - ✅ ChangeWatcher 服务（`pi-mono/change-watcher.ts`，1s 轮询；timer 到期 resolve）
+> - ⏳ **IM 入站确定性 resolve**（宪法 §6.2 IMWatcher → ADL `awaitingInboundResolver`，见 [`structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md`](./structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md)）
+> - ⏳ **registry↔workDir 对账**（`is_post_complete` 时 registry 必须 DONE → `registryLifecycleReconcile`）
 > - ✅ `GitBackedBrainFS`（isomorphic-git，`brain/git-store.ts`），workspace 每 tick 自动 commit
 > - ✅ InnerBrainRegistry 加 `AWAITING` 状态；KPI hook 跳过 AWAITING 的 idle streak
 > - ✅ 外脑 `send_directive(feedback)` 数据驱动直接 resolve `ask_user` pending
@@ -421,15 +423,18 @@ ChangeWatcher 的全部职责：
 
 ### 6.2 多种触发源
 
-ChangeWatcher 在内部分成几个子模块，对应不同的事件源：
+**实现分工（2026-05-27 ADL，见 [`structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md`](./structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md)）**：
 
-| 子模块 | 监听啥 | 做啥 |
-|------|------|------|
-| **TimerWatcher** | 最小堆 + setTimeout，按 `pendings.execute_at` 排序 | 到点把对应 pending 改 resolved |
-| **IMWatcher** | IM 入站（已有 push-loop / DiscordChannel） | 解析用户回复 → 找匹配 pending（按 `ctxRef`）→ 改 resolved |
-| **SubtaskWatcher** | 子 workspace 的 `inner-status` 完成事件 | 找父 workspace 的对应 pending → 改 resolved |
-| **HTTPWatcher** | webhook 接收端 | 按 `signal_name` 查 pending → 改 resolved |
-| **PostMutationWatcher** | 任何写入 pendings.json 之后 | 检查是否有未消费的 resolved → spawn tick |
+| 子模块（概念） | ADL 组件 | v1 实现 | 做啥 |
+|------|----------|---------|------|
+| **RegistryReconcile** | `registryLifecycleReconcile` | ⏳ 待实现 | `is_post_complete` 或已无 async 等待 → registry **DONE** |
+| **TimerWatcher** | `changeWatcher`（tick 内） | ✅ 1s poll + `expireOverdue` | 到点把 timer pending 改 resolved |
+| **IMWatcher** | `awaitingInboundResolver` | ⏳ 待实现（兜底：`send_directive`） | 人 IM → 同 thread 的 `ask_user` → resolved |
+| **SpawnOrchestrator** | `changeWatcher` | ✅ `unconsumed resolved` → spawn | **不**在 IM 路径直接 spawn，避免双 spawn |
+| SubtaskWatcher | — | ⏳ P6 | 子 workspace 完成 → 父 pending resolved |
+| HTTPWatcher | — | ⏳ | webhook → pending resolved |
+
+> **注意**：TimerWatcher 在宪法初稿写「最小堆」；当前实现为 **轮询**，ADL 已标注 v1 poll，后续可优化。
 
 ### 6.3 并发与锁
 

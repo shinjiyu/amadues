@@ -83,6 +83,7 @@ import { WebChatChannel, loadWebChatBridgeConfig } from '@utlra/webchat-bridge';
 import { PerformanceGoalEngine } from './performance-goals/engine.js';
 import { renderPerformanceDashboard } from './performance-goals/dashboard.js';
 import { registerHealthRoute } from './api/health-route.js';
+import { registerParticipationLabRoutes } from './api/participation-lab-route.js';
 
 // repo root = packages/server/src → ../../..
 const REPO_ROOT = path.resolve(__serverDir, '..', '..', '..');
@@ -519,6 +520,7 @@ app.use(
 
 /** agent 进程存活。 */
 registerHealthRoute(app, DATA_ROOT);
+registerParticipationLabRoutes(app);
 
 app.get('/api/workspaces', (c) => {
   if (!fs.existsSync(WORKSPACES)) return c.json({ workspaces: [] });

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { InnerLiveDeck, type BrainInspector, type PiLogsResponse } from './inner-live.js';
 import { OuterPanel } from './outer-panel.js';
+import { ParticipationLabPanel } from './participation-lab.js';
 
-type Tab = 'data' | 'inner' | 'outer' | 'memory';
+type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation';
 
 const TENANT = 'default';
 
@@ -166,11 +167,15 @@ export function App() {
           <button type="button" className={tab === 'memory' ? 'active' : ''} onClick={() => setTab('memory')}>
             记忆
           </button>
+          <button type="button" className={tab === 'participation' ? 'active' : ''} onClick={() => setTab('participation')}>
+            参与策略
+          </button>
         </div>
         {tab === 'data' && <DataPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'inner' && <InnerBrainPoolPanel apiPrefix={apiPrefix} />}
         {tab === 'outer' && <OuterPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'memory' && <MemoryPanel apiPrefix={apiPrefix} />}
+        {tab === 'participation' && <ParticipationLabPanel apiPrefix={apiPrefix} />}
       </div>
     </div>
   );

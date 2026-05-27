@@ -309,6 +309,12 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.participationPolicy "decideOuterShouldReply" "in-process" {
             tags "import"
         }
+        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.awaitingInboundResolver "resolve ask_user on human IM (before loop)" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.awaitingInboundResolver -> kuroneko.agentServer.innerBrainRegistry "match AWAITING by originThread" "in-process" {
+            tags "import"
+        }
         kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.outerConversationLoop "runOuterConversationLoop" "in-process" {
             tags "import"
         }
@@ -359,6 +365,18 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
         kuroneko.agentServer.innerBrainStartupResume -> kuroneko.agentServer.innerSpawner "spawnAndAttachWorker(incrementResumeCount)" "child_process" {
             tags "spawn"
+        }
+        kuroneko.agentServer.registryLifecycleReconcile -> kuroneko.agentServer.innerBrainRegistry "list AWAITING|BLOCKED → update DONE" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.registryLifecycleReconcile -> kuroneko.agentServer.brainAsyncSnapshot "buildBrainAsyncSnapshot per workDir" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.changeWatcher -> kuroneko.agentServer.registryLifecycleReconcile "bootstrap: reconcile before first tick" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.changeWatcher -> kuroneko.agentServer.brainAsyncSnapshot "read pendings snapshot per workDir" "in-process" {
+            tags "import"
         }
         kuroneko.agentServer.kpiBurstHooks -> kuroneko.agentServer.kpiRegistry "更新 trail / idle" "in-process" {
             tags "import"
@@ -466,7 +484,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "07-L3-Outer-Inbound-IM" {
             title "L3 Outer — IM 入站（Facade 路径）"
-            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.outerToolExecutor
+            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.outerToolExecutor
             autolayout tb
         }
 
@@ -477,8 +495,8 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
 
         component kuroneko.agentServer "08-L3-Outer-Inner-Lifecycle" {
-            title "L3 Outer — 内脑 spawn / 重启恢复 / 通知 / KPI"
-            include kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.innerBrainStartupResume kuroneko.agentServer.innerSpawner kuroneko.agentServer.changeWatcher kuroneko.agentServer.completionNotify kuroneko.agentServer.pushLoop kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiBurstHooks kuroneko.innerWorker.workerHost
+            title "L3 Outer — 内脑 spawn / 重启恢复 / AWAITING 对账 / 通知 / KPI"
+            include kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.brainAsyncSnapshot kuroneko.agentServer.registryLifecycleReconcile kuroneko.agentServer.innerBrainStartupResume kuroneko.agentServer.innerSpawner kuroneko.agentServer.changeWatcher kuroneko.agentServer.completionNotify kuroneko.agentServer.pushLoop kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiBurstHooks kuroneko.innerWorker.workerHost
             autolayout tb
         }
 

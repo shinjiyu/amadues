@@ -49,6 +49,7 @@
 | [`modules-catalog.md`](./structurizr/modules-catalog.md) | L3 模块与 `horizon.*` |
 | [`COMPONENT-TEST-MAP.md`](./structurizr/COMPONENT-TEST-MAP.md) | L3 组件 ↔ 测试文件 |
 | [`INNER-BRAIN-RESUME.md`](./structurizr/INNER-BRAIN-RESUME.md) | 外脑重启恢复 RUNNING 内脑（ADL + 实现） |
+| [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md) | AWAITING：registry 对账、IM 必达、changeWatcher bootstrap（设计权威） |
 | [`COMPONENT-TESTING.md`](./structurizr/COMPONENT-TESTING.md) | 组件测试约定 |
 | [`REFACTOR-PLAN.md`](./structurizr/REFACTOR-PLAN.md) | P0–P4 架构对齐计划（进行中） |
 
@@ -120,7 +121,16 @@ node scripts/generate-test-report.mjs .tool-outputs/test-report-YYYYMMDD
 
 ---
 
-## 9. 包内文档 / Package-local docs
+## 9. 待办设计 / Design backlog
+
+| 文档 | 说明 |
+|------|------|
+| [`todo/`](./todo/) | 已定稿、尚未实现的架构/功能规格 |
+| [`todo/memory-belief-reconciliation.md`](./todo/memory-belief-reconciliation.md) | 外脑记忆降权修订（Belief / Episodic） |
+
+---
+
+## 10. 包内文档 / Package-local docs
 
 | 路径 | 说明 |
 |------|------|

@@ -10,6 +10,8 @@
 | **执行轨 Repository** | `FilesystemRepositoryStore` | `DATA_ROOT/repository/` 租户索引 | 晋升 `promote-from-workspace`、会话 commit | **外脑** `knowledgeRetrieval`（K/S/P 片段） |
 | **外脑记忆 mem9** | HTTPS | `mem9.ai` agentId `${sid}:chat` | `OuterMemoryStore`、内脑工具 `write_memo` | **外脑** `OuterMemoryStore.readMemoryContext` |
 | **技能/共享原文 drive9** | HTTPS | `drive9` `shared/skills` 等 | `SkillDrive9Store`、内脑 `write_skill` | 内脑 `query_available_skills`、外脑 AgentPool |
+| **研究简报 drive9**（计划） | HTTPS | `/research/shared/{id}/` | `publish_shared_research` | `seedRelevantResearchFromDrive9` |
+| **钥匙串 vault**（计划） | HTTPS / 本地 | `/vault/keychain/{agentSid}/{slot}.json` | 外脑 `keychain_*` | 内脑 `.brain/secrets/` 只读 |
 
 ## 分工原则
 

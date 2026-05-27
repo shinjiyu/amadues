@@ -26,3 +26,12 @@ export function recordProactiveSpeak(threadId: string): void {
   s.lastProactiveAt = now;
   s.proactiveCount5min++;
 }
+
+/** 开发/测试：清空频控状态（Participation Lab） */
+export function resetGroupParticipationState(threadId?: string): void {
+  if (threadId) {
+    stateByThread.delete(threadId);
+    return;
+  }
+  stateByThread.clear();
+}

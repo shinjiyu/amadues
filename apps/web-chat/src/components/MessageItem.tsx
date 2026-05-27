@@ -1,4 +1,5 @@
 import type { Message, MessagePart } from '@utlra/webchat-protocol';
+import { FileAttachmentCard } from './FileAttachmentCard.js';
 
 interface Props {
   message: Message;
@@ -75,11 +76,7 @@ function PartRenderer({ part, meUserId }: { part: MessagePart; meUserId: string 
     }
     return (
       <div className="msg-attachment">
-        <a className="file-card" href={a.url} target="_blank" rel="noreferrer" download={a.name}>
-          <span>📎</span>
-          <span>{a.name}</span>
-          <span style={{ color: '#6e7681', fontSize: 11 }}>{humanSize(a.size)}</span>
-        </a>
+        <FileAttachmentCard attachment={a} />
       </div>
     );
   }
@@ -105,8 +102,3 @@ function formatTime(iso: string): string {
   }
 }
 
-function humanSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
