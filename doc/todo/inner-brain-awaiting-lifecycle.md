@@ -16,7 +16,8 @@
 
 - [ ] 多 AWAITING 同 thread：正文带 `instance_id` 消歧
 - [ ] 周期 reconcile（可选 60s）+ 指标
-- [ ] 测试：`registry-lifecycle-reconcile.test.ts`、`awaiting-inbound-resolver.test.ts`、changeWatcher bootstrap 联动
+- [x] 测试用例（TDD，实现前）：`registry-lifecycle-reconcile.test.ts`、`awaiting-inbound-resolver.test.ts`、`change-watcher.bootstrap.test.ts`
+- [ ] 实现通过上述单测 + 组件测
 
 ## 杂项
 

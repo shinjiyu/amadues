@@ -50,6 +50,8 @@ export interface ChangeWatcherOptions {
    * 返回 { ok: true } 即可,失败时 ChangeWatcher 会清理 inFlight 标记。
    */
   spawnTask: (task: TaskRecord) => { ok: boolean; error?: string };
+  /** 启动 bootstrap 时调用（registryLifecycleReconcile）；P0 见 INNER-BRAIN-AWAITING-LIFECYCLE */
+  reconcileOnBootstrap?: () => void;
 }
 
 // ── ChangeWatcher 主类 ────────────────────────────────────────────────────────
@@ -60,8 +62,18 @@ export class ChangeWatcher {
 
   constructor(private readonly opts: ChangeWatcherOptions) {}
 
+  /**
+   * 启动时一次：reconcile + 扫 AWAITING 的 pendings（timer / resolved）。
+   * @see doc/structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md §5.3
+   */
+  async bootstrap(): Promise<void> {
+    this.opts.reconcileOnBootstrap?.();
+    await this.tick();
+  }
+
   start(): void {
     if (this.timer) return;
+    void this.bootstrap().catch((e) => console.error('[change-watcher] bootstrap error:', e));
     this.timer = setInterval(() => {
       this.tick().catch((e) => console.error('[change-watcher] tick error:', e));
     }, this.opts.pollMs ?? DEFAULT_POLL_MS);
