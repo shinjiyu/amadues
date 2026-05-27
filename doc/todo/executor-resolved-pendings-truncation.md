@@ -1,6 +1,6 @@
 # TODO：内脑 Executor 注入 resolved pending 时 600 字截断
 
-> **Status:** 待实现 · **Recorded:** 2026-05-27  
+> **Status:** 已实现 · **Recorded:** 2026-05-27 · **Landed:** 2026-05-28  
 > **English:** `ask_user` / IM answers land in `pendings.json` intact, but `runExecutor` previews `result` with `JSON.stringify(...).slice(0, 600)`, breaking cookies and other large payloads.
 
 **状态**：**已实现**（2026-05-28）
