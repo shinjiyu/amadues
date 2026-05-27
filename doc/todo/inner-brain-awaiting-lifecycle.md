@@ -2,7 +2,7 @@
 
 > **English:** Design in [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](../structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md). P0 landed 2026-05-28.
 
-**状态**：P0 **已实现**（2026-05-28）· P1+ 待做
+**状态**：P0+P1 **已实现**（2026-05-28）· 杂项待做
 
 ## P0
 
@@ -16,8 +16,8 @@
 ## P1+
 
 - [x] 多 AWAITING 同 thread：正文带 `instance_id` 消歧（MVP 已在 resolver 实现）
-- [ ] 周期 reconcile（可选 60s）+ 指标
-- [ ] 组件测：`registryLifecycleReconcile.component.integration.test.ts`、`awaitingInboundResolver.component.integration.test.ts`
+- [x] 周期 reconcile（默认 60s，`UTLRA_REGISTRY_RECONCILE_INTERVAL_MS`；0=关闭）+ `getRegistryReconcileMetrics()`
+- [x] 组件测：`registryLifecycleReconcile.component.integration.test.ts`、`awaitingInboundResolver.component.integration.test.ts`
 
 ## 杂项
 

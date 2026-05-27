@@ -5,7 +5,7 @@
 | 文档 | 状态 | 说明 |
 |------|------|------|
 | [`memory-belief-reconciliation.md`](./memory-belief-reconciliation.md) | **待实现** | 外脑记忆跨时间「降权修订」：Belief / Episodic 分离、取消与完成对账、检索 validity |
-| [`inner-brain-awaiting-lifecycle.md`](./inner-brain-awaiting-lifecycle.md) | **P0 已完成** | AWAITING：registry 对账、IM resolver、changeWatcher bootstrap |
+| [`inner-brain-awaiting-lifecycle.md`](./inner-brain-awaiting-lifecycle.md) | **P0+P1 已完成** | AWAITING：reconcile、IM resolver、bootstrap、周期对账、组件测 |
 | [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md) | **待实现** | 内脑 Executor 注入 resolved pending 时 `result` 被 `slice(0,600)` 截断（Gin Cookie 根因） |
 | [`cross-agent-research-and-keychain.md`](./cross-agent-research-and-keychain.md) | **待实现** | 研究共享：内脑 Attributor `write_skill` 蒸馏；钥匙串落地见下项 |
 | [`memory-blocks-framework.md`](./memory-blocks-framework.md) | **待实现** | Memory Block：动态分块 + 策略（`kv_secret` 钥匙串为首块）+ `memory_block_*` CRUD |

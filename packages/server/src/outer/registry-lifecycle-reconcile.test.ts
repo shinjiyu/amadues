@@ -5,12 +5,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { addPending } from '../openkuroneko/pendings/index.js';
 import { POST_COMPLETE_REASON } from './brain-async-snapshot.js';
 import { InnerBrainRegistry, type TaskRecord } from './inner-brain-registry.js';
-import { registryLifecycleReconcile } from './registry-lifecycle-reconcile.js';
+import { registryLifecycleReconcile, resetRegistryReconcileMetrics, startRegistryLifecycleReconcileInterval, getRegistryReconcileMetrics } from './registry-lifecycle-reconcile.js';
 
 function makeRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-'));
@@ -48,6 +48,7 @@ describe('registryLifecycleReconcile', () => {
   beforeEach(() => {
     root = makeRoot();
     reg = new InnerBrainRegistry(root);
+    resetRegistryReconcileMetrics();
   });
 
   it('AWAITING + is_post_complete (all-complete) → DONE', () => {
@@ -163,5 +164,37 @@ describe('registryLifecycleReconcile', () => {
     const changes = registryLifecycleReconcile(reg);
 
     expect(changes.some((c) => c.instanceId === 'ib-log-1' && c.to === 'DONE')).toBe(true);
+  });
+
+  it('startRegistryLifecycleReconcileInterval runs on timer', () => {
+    vi.useFakeTimers();
+    const workDir = mkWorkDir(root, 'periodic');
+    const brainDir = path.join(workDir, '.brain');
+    addPending(brainDir, {
+      kind: 'ask_user',
+      spec: { prompt: POST_COMPLETE_REASON },
+      source: 'all-complete',
+    });
+    fs.writeFileSync(
+      path.join(brainDir, 'controller-state.json'),
+      JSON.stringify({ mode: 'AWAITING', awaitingReason: POST_COMPLETE_REASON }),
+      'utf8',
+    );
+    reg.register(baseRecord(workDir, { instanceId: 'ib-periodic-1' }));
+
+    registryLifecycleReconcile(reg);
+    expect(reg.get('ib-periodic-1')?.status).toBe('DONE');
+
+    reg.update('ib-periodic-1', { status: 'AWAITING', finishedAt: undefined });
+    const onRun = vi.fn();
+    const stop = startRegistryLifecycleReconcileInterval(reg, { intervalMs: 60_000, onRun });
+
+    vi.advanceTimersByTime(60_000);
+    expect(onRun).toHaveBeenCalledTimes(1);
+    expect(reg.get('ib-periodic-1')?.status).toBe('DONE');
+    expect(getRegistryReconcileMetrics().runs).toBeGreaterThanOrEqual(2);
+
+    stop();
+    vi.useRealTimers();
   });
 });
