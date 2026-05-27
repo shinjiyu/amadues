@@ -32,9 +32,13 @@ const SKILLS_TOP_K     = 6;
  * LLM messages 里只放头尾摘要 + 文件路径引用。
  */
 const TOOL_OUTPUT_INLINE_MAX = 3000;
-/** 摘要头部保留字符数 */
+/** resolved pending result 内联阈值（与工具输出 spill 对齐） */
+const RESOLVED_RESULT_INLINE_MAX = TOOL_OUTPUT_INLINE_MAX;
+/** resolved pending 摘要头/尾（小于 tool output，避免 resolved 段过长） */
+const RESOLVED_RESULT_HEAD = 800;
+const RESOLVED_RESULT_TAIL = 400;
+/** 工具输出摘要头/尾 */
 const TOOL_OUTPUT_HEAD = 1500;
-/** 摘要尾部保留字符数 */
 const TOOL_OUTPUT_TAIL = 1000;
 
 let _outputSeq = 0;
@@ -69,6 +73,41 @@ function compressToolOutput(
     `--- 尾部（后 ${TOOL_OUTPUT_TAIL} 字符）---`,
     tail,
     `[如需完整内容，可调用 read_file 读取 .tool-outputs/${filename}]`,
+  ].join('\n');
+}
+
+/**
+ * 将 resolved pending 的 result 格式化为 Executor prompt 片段。
+ * 超长 payload spill 到 `.brain/inbound/pending-results/{pendingId}.json`。
+ */
+export function formatResolvedPendingResultForPrompt(
+  pendingId: string,
+  result: unknown,
+  workDir: string,
+): string {
+  const serialized = JSON.stringify(result ?? null);
+  if (serialized.length <= RESOLVED_RESULT_INLINE_MAX) {
+    return serialized;
+  }
+
+  const safeId = pendingId.replace(/[^a-z0-9_-]/gi, '_') || 'pending';
+  const relPath = path.posix.join('.brain/inbound/pending-results', `${safeId}.json`);
+  const absPath = path.join(workDir, '.brain', 'inbound', 'pending-results', `${safeId}.json`);
+  fs.mkdirSync(path.dirname(absPath), { recursive: true });
+  fs.writeFileSync(absPath, serialized, 'utf8');
+
+  const head = serialized.slice(0, RESOLVED_RESULT_HEAD);
+  const tail = serialized.slice(serialized.length - RESOLVED_RESULT_TAIL);
+  const omitted = serialized.length - RESOLVED_RESULT_HEAD - RESOLVED_RESULT_TAIL;
+
+  return [
+    `[result 过长（${serialized.length} 字符）。完整内容已写入：${relPath}；使用前请 read_file 读取全文，勿仅依赖下方摘要]`,
+    `--- 头部（前 ${RESOLVED_RESULT_HEAD} 字符）---`,
+    head,
+    `--- 省略中间 ${omitted} 字符 ---`,
+    `--- 尾部（后 ${RESOLVED_RESULT_TAIL} 字符）---`,
+    tail,
+    `[read_file 路径：${relPath}]`,
   ].join('\n');
 }
 
@@ -232,9 +271,10 @@ export async function runExecutor(
         `  2. 用 result 对照 intent.success_signal,判断期望是否达成`,
         `  3. 达成 → 按原计划推进；未达成 → 走 intent.fallback,或重新评估`,
         `  4. 把判断写进 knowledge / 下一步动作里,不要丢掉这段上下文`,
+        `  5. 若 result 提示已写入 .brain/inbound/pending-results/，必须先 read_file 读取全文再执行（Cookie/凭证等）`,
         '',
         ...resolvedPendings.map(r => {
-          const resPreview = JSON.stringify(r.result ?? null).slice(0, 600);
+          const resPreview = formatResolvedPendingResultForPrompt(r.id, r.result, workDir);
           const lines = [
             `### pending=${r.id} kind=${r.kind} status=${r.status}` +
               (r.source ? ` source=${r.source}` : ''),

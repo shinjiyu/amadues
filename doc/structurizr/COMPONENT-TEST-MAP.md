@@ -47,7 +47,7 @@
 | piMonoScheduler | ❌ | ✅ `piMonoScheduler.component.integration.test.ts` | — | stop 信号 + runtime 标签 |
 | controllerFsm | 🟡 completion-report | ✅ `controllerFsm.component.integration.test.ts` | ❌ E.1 run-burst | BrainFS state |
 | decomposer | ✅ `parse-milestones.test.ts` | ✅ `decomposer.component.integration.test.ts` | ✅ `decomposer.prompt.test.ts` | |
-| executor | 🟡 | ✅ `executor.component.integration.test.ts` | — | 里程碑 + SYSTEM 锚点 |
+| executor | 🟡 | ✅ `executor.component.integration.test.ts` | — | + `executor-resolved-pendings.test.ts` |
 | attributor | ✅ `attributor-parse.test.ts` | ✅ `attributor.component.integration.test.ts` | ✅ `attributor.prompt.test.ts` | |
 | reflexionModule | ✅ reflexion 解析 | ✅ `reflexionModule.component.integration.test.ts` | ✅ `reflexion.prompt.test.ts` | |
 | blockResolver | ❌ | ✅ `blockResolver.component.integration.test.ts` | — | FakeLLM |

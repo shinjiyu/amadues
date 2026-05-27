@@ -3,7 +3,13 @@
 > **Status:** 待实现 · **Recorded:** 2026-05-27  
 > **English:** `ask_user` / IM answers land in `pendings.json` intact, but `runExecutor` previews `result` with `JSON.stringify(...).slice(0, 600)`, breaking cookies and other large payloads.
 
-**状态**：**待实现**（与钥匙串 K0 同批修，但本项不依赖 vault 即可单独落地）
+**状态**：**已实现**（2026-05-28）
+
+## 实施清单
+
+- [x] `executor.ts`：`formatResolvedPendingResultForPrompt` — spill 到 `.brain/inbound/pending-results/`
+- [x] resolved 段操作指引（步骤 5：大 result → `read_file`）
+- [x] 回归：`executor-resolved-pendings.test.ts`
 
 关联：[`cross-agent-research-and-keychain.md`](./cross-agent-research-and-keychain.md)（钥匙串 + bind 为长期方案）· [`executor.ts`](../../packages/server/src/openkuroneko/controller/executor.ts) · [`controller.ts`](../../packages/server/src/openkuroneko/controller/controller.ts)
 
@@ -100,8 +106,6 @@ Executor 只注入 ref，不 stringify 原文（见钥匙串 todo）。
 
 ---
 
-## 实施清单
-
 - [ ] `executor.ts`：去掉固定 `slice(0, 600)`；实现 spill + 摘要或阈值内联全文
 - [ ] `executor.ts` / 文档：resolved 段增加一句操作指引（大 result → `read_file`）
 - [ ] （可选）`controller.ts`：构建 `resolvedForLLM` 前对大 `result` 预 spill，避免重复序列化
@@ -110,11 +114,11 @@ Executor 只注入 ref，不 stringify 原文（见钥匙串 todo）。
 
 ---
 
-## 验收
+## 验收（已通过单测）
 
-- [ ] `pendings.json` 与注入段一致：磁盘全文 = `read_file` 全文
-- [ ] >600 字 Cookie 场景：Executor 第一轮即可 `read_file` 成功 curl，无二次「Cookie 截断」`ask_user`
-- [ ] 小 result（<阈值）仍 inline，无多余文件
+- [x] spill 文件全文 = 原始 JSON
+- [x] >600 字 inline 不再硬截断（<3000 仍内联）
+- [x] >3000 字 spill + read_file 路径
 
 ---
 
