@@ -62,11 +62,11 @@ describe('completion-notify', () => {
     );
 
     const { message } = buildCompletionMessageFromWorkspace(tmp);
-    expect(message).toMatch(/## 核心结论（产物摘要）|## 核心结论/);
+    expect(message).toContain('## 结果');
     expect(message).toContain('完成了评估');
-    expect(message).toContain('用户 A 得分');
-    expect(message).toContain('## 里程碑进度');
-    expect(message).toContain('[M1] [Completed] 写报告');
+    expect(message).not.toContain('## 里程碑进度');
     expect(message).not.toContain('输入范围');
+    expect(message).not.toContain('## 任务目标');
+    expect(message).not.toContain('## 自评');
   });
 });

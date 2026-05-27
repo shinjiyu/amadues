@@ -109,13 +109,14 @@
                 }
 
                 // ── 内脑生命周期 ───────────────────────────────────────
-                innerBrainRegistry = component "Inner Brain Registry" "【任务表】instanceId、RUNNING/DONE/BLOCK/AWAITING、workDir、KPI 关联" "TypeScript" {
+                innerBrainRegistry = component "Inner Brain Registry" "【任务表】instanceId、RUNNING/DONE/BLOCK/AWAITING、workDir、KPI 关联；持久化 inner-brain-registry.json" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
                         "path" "packages/server/src/outer/inner-brain-registry.ts"
-                        "horizon.intention" "多 burst 实例状态机（磁盘 JSON）"
+                        "horizon.intention" "多 burst 实例状态机（磁盘 JSON）；外脑重启时识别 RUNNING 僵尸行"
                         "horizon.in" "register / update / list"
-                        "horizon.out" "TaskRecord"
+                        "horizon.out" "TaskRecord; markStaleRunningAsStopped()"
+                        "horizon.test.unit" "inner-brain-registry.test.ts"
                         "horizon.test.integration" "innerBrainRegistry.component.integration.test.ts"
                     }
                 }
@@ -131,13 +132,29 @@
                     }
                 }
 
-                completionNotify = component "Completion Notify" "【完成通知】burst DONE → 产物 ingest → 用户 IM 消息（与 pushLoop 分工）" "TypeScript" {
+                innerBrainStartupResume = component "Inner Brain Startup Resume" "【外脑重启恢复】启动时扫 registry 里 RUNNING→子进程已死→markStale→spawn 同一 instance；与 AWAITING 的 changeWatcher 互补" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
-                        "path" "packages/server/src/outer/completion-notify.ts"
-                        "horizon.intention" "onExit 主路径通知用户"
-                        "horizon.in" "TaskRecord + workerStatus"
-                        "horizon.out" "postMessage + deliverables"
+                        "path" "packages/server/src/outer/inner-brain-startup-resume.ts"
+                        "horizon.intention" "外脑进程重启不中断「执行中」的内脑 burst"
+                        "horizon.in" "inner-brain-registry.json 中 status=RUNNING"
+                        "horizon.out" "spawnAndAttachWorker(同一 workDir)"
+                        "horizon.env" "UTLRA_INNER_AUTO_RESUME(默认1); UTLRA_INNER_MAX_AUTO_RESUME(默认3)"
+                        "horizon.test.unit" "inner-brain-startup-resume.test.ts; inner-brain-registry.test.ts"
+                        "horizon.test.integration" "innerBrainStartupResume.component.integration.test.ts"
+                        "horizon.note" "手动恢复: POST /api/inner-brains/:id/restart 不占 resumeCount"
+                    }
+                }
+
+                completionNotify = component "Completion Notify" "【完成通知】burst DONE → buildCompletionReport(audience=im) → 附件 parts；与 pushLoop 分工（COMPLETE 不重复推）" "TypeScript" {
+                    tags "Outer-Module" "Inner-Lifecycle"
+                    properties {
+                        "path" "packages/server/src/outer/completion-notify.ts; openkuroneko/controller/completion-report.ts"
+                        "horizon.intention" "onExit 主路径：结果摘要 + 产出附件，不堆 milestones/reflexion 过程"
+                        "horizon.in" "TaskRecord + workDir(.brain + deliverables + output COMPLETE)"
+                        "horizon.out" "postMessage(text≤3.2k + attachment parts); outerMemory 用 audience=verbose"
+                        "horizon.protocol" "doc/protocols/inner-brain-deliverables.md §6.4"
+                        "horizon.test.unit" "completion-notify.test.ts; completion-report.test.ts"
                         "horizon.test.integration" "completionNotify.component.integration.test.ts"
                     }
                 }

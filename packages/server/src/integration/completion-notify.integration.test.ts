@@ -44,10 +44,12 @@ describe('integration: completion notify', () => {
       },
     );
 
-    const texts = fx.im.messagesMatching(/任务完成/, 'thread:test');
+    const texts = fx.im.messagesMatching(/✅|## 结果/, 'thread:test');
     expect(texts.length).toBeGreaterThan(0);
     const body = texts[0]!.body.text ?? '';
-    expect(body).toMatch(/核心结论|关键结果|产出文件/);
+    expect(body).toMatch(/## 结果|## 产出文件|任务完成/);
+    expect(body).not.toContain('## 里程碑进度');
+    expect(body).not.toContain('## 自评');
     expect(body).not.toContain('输入范围');
     expect(body).not.toContain('禁止或尽量减少');
   });

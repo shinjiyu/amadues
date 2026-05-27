@@ -129,6 +129,16 @@
 
 附件 `uri` 默认是 chat-server 外链 URL；若 env `WEBCHAT_MIRROR_ASSETS=1`，适配器入站时下载并 `assetStore.save(...)` 拿到 `asset:<uuid>` URI。
 
+**出站（agent → chat-server）**：
+
+| IR `asset_ref.uri` | 行为 |
+|--------------------|------|
+| `asset:<uuid>` | 从共享 `ChatAssetStore` 读二进制 → `POST /uploads` → `attachment_ids` |
+| `http(s)://...` | 下载后同上传（失败则在正文保留 `[文件名]` 占位并打日志） |
+| 已在 `uploadedAssetByUri` 缓存 | 直接复用 `asset_id` |
+
+实现：`packages/webchat-bridge/src/asset-upload.ts`、`WebChatRestClient.uploadFile`。
+
 ## 5. 配置（chat-server 端）
 
 | env | 默认 | 说明 |
@@ -157,3 +167,4 @@
 | 日期 | 说明 |
 |------|------|
 | 2026-05-14 | 初稿（M1） |
+| 2026-05-19 | §4 出站附件：`asset:` → `/uploads`（修复 bridge 丢弃附件） |

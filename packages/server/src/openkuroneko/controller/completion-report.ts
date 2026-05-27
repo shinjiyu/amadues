@@ -7,9 +7,17 @@ import path from 'node:path';
 import { BrainFS } from '../brain/brain-fs.js';
 
 const REPORT_DELIVERABLE_EXCERPT_MAX = 2800;
+const REPORT_DELIVERABLE_EXCERPT_IM_MAX = 2200;
 const REPORT_KNOWLEDGE_MAX = 2000;
+const REPORT_KNOWLEDGE_IM_MAX = 900;
 const REPORT_LAST_CONTENT_MAX = 600;
+const REPORT_LAST_CONTENT_IM_MAX = 450;
 const REPORT_GOAL_MAX = 400;
+const REPORT_IM_MAX_TOTAL = 3200;
+const REPORT_IM_MAX_DELIVERABLE_LINES = 8;
+
+/** `im` = 用户 IM 通知（结果优先、去过程噪音）；`verbose` = 外脑记忆/排障（保留完整章节） */
+export type CompletionReportAudience = 'im' | 'verbose';
 
 /** 里程碑只保留一行标题，去掉「输入范围/必交付物」等过程约束 */
 export function shortenMilestonesForReport(milestonesMd: string): string {
@@ -62,7 +70,31 @@ export function pickDeliverableExcerpt(workDir: string, deliverablePaths: string
   return null;
 }
 
-export function buildCompletionReport(input: {
+export function buildCompletionReport(
+  input: {
+    goal: string;
+    milestones: string;
+    knowledge: string | null;
+    lastExecLog: import('../brain/index.js').ExecutionEntry[] | null;
+    reflexion: {
+      verdict: string;
+      hardFailures: string[];
+      softFailures: string[];
+      nextStrategy: string;
+    } | null;
+    deliverables: string[];
+    /** 主产物文件摘要（报告类 .md） */
+    resultExcerpt?: string | null;
+  },
+  options?: { audience?: CompletionReportAudience },
+): string {
+  if ((options?.audience ?? 'im') === 'im') {
+    return buildImCompletionReport(input);
+  }
+  return buildVerboseCompletionReport(input);
+}
+
+function buildVerboseCompletionReport(input: {
   goal: string;
   milestones: string;
   knowledge: string | null;
@@ -74,7 +106,6 @@ export function buildCompletionReport(input: {
     nextStrategy: string;
   } | null;
   deliverables: string[];
-  /** 主产物文件摘要（报告类 .md） */
   resultExcerpt?: string | null;
 }): string {
   const sections: string[] = [];
@@ -153,6 +184,90 @@ export function buildCompletionReport(input: {
   sections.push(input.milestones.trim() || '（无）');
 
   return sections.join('\n');
+}
+
+/** 用户 IM：只保留结论 + 产出列表 + 硬失败；不重复 milestones / reflexion 软噪音 */
+function buildImCompletionReport(input: {
+  goal: string;
+  milestones: string;
+  knowledge: string | null;
+  lastExecLog: import('../brain/index.js').ExecutionEntry[] | null;
+  reflexion: {
+    verdict: string;
+    hardFailures: string[];
+    softFailures: string[];
+    nextStrategy: string;
+  } | null;
+  deliverables: string[];
+  resultExcerpt?: string | null;
+}): string {
+  const sections: string[] = [];
+  const excerpt = (input.resultExcerpt ?? '').trim();
+  const knowledgeText = (input.knowledge ?? '').trim();
+  const lastContent = pickLastAssistantContent(input.lastExecLog);
+
+  if (excerpt) {
+    sections.push('## 结果');
+    sections.push(stripExcerptPreamble(excerpt, REPORT_DELIVERABLE_EXCERPT_IM_MAX));
+  } else if (knowledgeText) {
+    sections.push('## 结果');
+    sections.push(BrainFS.tail(knowledgeText, REPORT_KNOWLEDGE_IM_MAX));
+  } else if (lastContent) {
+    sections.push('## 结果');
+    const clip =
+      lastContent.length > REPORT_LAST_CONTENT_IM_MAX
+        ? lastContent.slice(0, REPORT_LAST_CONTENT_IM_MAX) + '…'
+        : lastContent;
+    sections.push(clip);
+  } else {
+    sections.push('内脑已完成全部里程碑，详见产出文件或工作区。');
+  }
+
+  if (input.deliverables.length > 0) {
+    sections.push('');
+    sections.push('## 产出文件');
+    const shown = input.deliverables.slice(0, REPORT_IM_MAX_DELIVERABLE_LINES);
+    for (const p of shown) sections.push(`- \`${p}\``);
+    if (input.deliverables.length > shown.length) {
+      sections.push(`- …另有 ${input.deliverables.length - shown.length} 个文件`);
+    }
+  }
+
+  const hard = input.reflexion?.hardFailures.filter((s) => s.trim()) ?? [];
+  if (hard.length > 0) {
+    sections.push('');
+    sections.push('## 需注意');
+    for (const h of hard.slice(0, 5)) sections.push(`- ${h.trim()}`);
+    if (hard.length > 5) sections.push(`- …另有 ${hard.length - 5} 条`);
+  }
+
+  let text = sections.join('\n').trim();
+  if (text.length > REPORT_IM_MAX_TOTAL) {
+    text = text.slice(0, REPORT_IM_MAX_TOTAL) + '\n\n…（内容已截断，完整报告见附件或工作区文件）';
+  }
+  return text;
+}
+
+/** 去掉「（摘自 `path`）」行，IM 里附件已单独发送 */
+function stripExcerptPreamble(excerpt: string, maxLen: number): string {
+  const lines = excerpt.split('\n');
+  const body =
+    lines[0]?.startsWith('（摘自') && lines.length > 1
+      ? lines.slice(1).join('\n').trim()
+      : excerpt.trim();
+  if (body.length <= maxLen) return body;
+  return body.slice(0, maxLen) + '\n\n…（全文见附件）';
+}
+
+/** IM 通知首行摘要（列表预览用） */
+export function pickImSummary(reportBody: string): string {
+  const lines = reportBody
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('#') && !l.startsWith('- ') && !l.startsWith('…'));
+  const first = lines.find((l) => l.length > 8) ?? '内脑任务已完成';
+  const one = first.replace(/\s+/g, ' ').slice(0, 120);
+  return one.length < first.length ? `${one}…` : one;
 }
 
 function pickLastAssistantContent(

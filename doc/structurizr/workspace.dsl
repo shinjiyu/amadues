@@ -112,12 +112,14 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
                 }
             }
 
-            webchatBridge = container "WebChat Bridge" "chat-server ↔ agent 映射" "Node.js @utlra/webchat-bridge" {
+            webchatBridge = container "WebChat Bridge" "chat-server ↔ agent；出站 asset: → POST /uploads" "Node.js @utlra/webchat-bridge" {
                 properties {
                     "path" "packages/webchat-bridge"
-                    "horizon.intention" "WebChat 渠道适配"
-                    "horizon.in" "chat-server 事件"
-                    "horizon.out" "ChatIR 映射"
+                    "horizon.intention" "入站 WS→IR；出站 IR→REST（含 ChatAssetStore 附件上传）"
+                    "horizon.in" "chat-server 事件; agent postMessage(parts)"
+                    "horizon.out" "ChatIR 映射; attachment_ids"
+                    "horizon.protocol" "doc/protocols/webchat-wire.md §4"
+                    "horizon.test.unit" "asset-upload.test.ts; reply-render.test.ts"
                     "horizon.deps" "chat-ir, webchat-protocol"
                 }
             }
@@ -351,6 +353,13 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.innerBrainRegistry -> kuroneko.agentServer.innerSpawner "spawnAndAttachWorker" "child_process" {
             tags "spawn"
         }
+        // 外脑 agentServer 进程启动：恢复中断的 RUNNING burst（实现 index.ts autoResumeStaleTasks）
+        kuroneko.agentServer.innerBrainStartupResume -> kuroneko.agentServer.innerBrainRegistry "markStaleRunningAsStopped → 待恢复列表" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.innerBrainStartupResume -> kuroneko.agentServer.innerSpawner "spawnAndAttachWorker(incrementResumeCount)" "child_process" {
+            tags "spawn"
+        }
         kuroneko.agentServer.kpiBurstHooks -> kuroneko.agentServer.kpiRegistry "更新 trail / idle" "in-process" {
             tags "import"
         }
@@ -468,8 +477,8 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
 
         component kuroneko.agentServer "08-L3-Outer-Inner-Lifecycle" {
-            title "L3 Outer — 内脑 spawn / 通知 / KPI"
-            include kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.innerSpawner kuroneko.agentServer.changeWatcher kuroneko.agentServer.completionNotify kuroneko.agentServer.pushLoop kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiBurstHooks kuroneko.innerWorker.workerHost
+            title "L3 Outer — 内脑 spawn / 重启恢复 / 通知 / KPI"
+            include kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.innerBrainStartupResume kuroneko.agentServer.innerSpawner kuroneko.agentServer.changeWatcher kuroneko.agentServer.completionNotify kuroneko.agentServer.pushLoop kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiBurstHooks kuroneko.innerWorker.workerHost
             autolayout tb
         }
 

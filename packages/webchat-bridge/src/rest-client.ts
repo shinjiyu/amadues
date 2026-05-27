@@ -59,6 +59,38 @@ export class WebChatRestClient {
     return (await this.checkOk(res)).json();
   }
 
+  /** 上传二进制到 chat-server，供出站 `attachment_ids` 使用。 */
+  async uploadFile(
+    bytes: Buffer,
+    mime: string,
+    name: string,
+  ): Promise<Attachment> {
+    const form = new FormData();
+    const blob = new Blob([Uint8Array.from(bytes)], {
+      type: mime || 'application/octet-stream',
+    });
+    form.append('file', blob, name || 'file');
+    const res = await this.fetchFn(this.url('/uploads'), {
+      method: 'POST',
+      headers: this.headers(),
+      body: form,
+    });
+    const body = (await (await this.checkOk(res)).json()) as {
+      asset_id: string;
+      url: string;
+      mime: string;
+      name: string;
+      size: number;
+    };
+    return {
+      asset_id: body.asset_id,
+      url: body.url,
+      mime: body.mime,
+      name: body.name,
+      size: body.size,
+    };
+  }
+
   async postMessage(threadId: string, body: PostMessageRequest): Promise<{ message: Message }> {
     const res = await this.fetchFn(this.url(`/threads/${encodeURIComponent(threadId)}/messages`), {
       method: 'POST',

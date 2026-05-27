@@ -1,9 +1,9 @@
 # 文档索引 / Documentation Index
 
-> **语言**：正文以中文为主；各节标题附英文。  
-> **Language**: Chinese-first; section titles include English where helpful.
+> **语言 / Language:** 中文（本页）· 根目录 [English README](../README.en.md)  
+> **Language policy:** 入门与索引类文档提供 **中/英两个文件**（如 `README.md` + `README.en.md`）；长文设计稿以中文为主，文首附 **English summary**（见 [`intro.md`](./intro.md)）。
 
-本目录是 **utlraKuroneko（依莉雅）** 的设计与操作文档。代码入口见仓库根目录 [`README.md`](../README.md)。
+本目录是 **Kuroneko / 依莉雅** 的设计与操作文档。代码入口：[中文 README](../README.md) · [English README](../README.en.md)。
 
 ---
 
@@ -11,8 +11,8 @@
 
 | 你想… / You want to… | 文档 / Doc |
 |----------------------|------------|
-| 了解产品定位 | [`intro.md`](./intro.md) |
-| 跑起来、配环境 | [根 README §安装](../README.md#安装与开发) · [`.env.example`](../.env.example) |
+| 了解产品定位 | [`intro.md`](./intro.md)（中英摘要） |
+| 跑起来、配环境 | [README 中文](../README.md#安装与开发) · [README EN](../README.en.md#install--develop) · [`.env.example`](../.env.example) |
 | 看系统怎么连起来 | [`architecture.md`](./architecture.md) · [`structurizr/docs/overview.md`](./structurizr/docs/overview.md) |
 | 外脑↔内脑、roundtrip | [`inner-outer-protocol.md`](./inner-outer-protocol.md) |
 | 接 Discord / WebChat | [`channel-bridge-guide.md`](./channel-bridge-guide.md) |
@@ -134,4 +134,7 @@ node scripts/generate-test-report.mjs .tool-outputs/test-report-YYYYMMDD
 1. **新增文档**：优先放入上表对应分类；在本文增加一行链接。  
 2. **一次性交接稿**（含固定 commit SHA 的 push 说明）不要放在仓库根目录——用 [`ops/git-workflow.md`](./ops/git-workflow.md)。  
 3. **ADL 变更**：先改 `structurizr/workspace.dsl`，再跑 `npm run structurizr:check`。  
-4. **双语**：索引与入门类文档保持「中文正文 + 英文小节标题/表头」即可；长文可在文首加 3–5 行 English summary。
+4. **双语 / Bilingual**  
+   - **双文件**：仓库根 `README.md`（中文）+ `README.en.md`（英文）；更新时两文件同步改。  
+   - **单文件长文**：中文正文 + 节标题双语；文首 3–5 行 English summary（如 `intro.md`、`doc/ops/local-dashboard.md`）。  
+   - **尚未拆英文化** 的架构/协议长文仍以中文为准；需要时可后续加 `*.en.md` 或 summary 块。

@@ -3,6 +3,7 @@ import type { Message, UserPresence } from '@utlra/webchat-protocol';
 import { MessageItem } from './MessageItem.js';
 
 interface Props {
+  threadId: string;
   messages: Message[];
   hasMore: boolean;
   meUserId: string;
@@ -11,11 +12,24 @@ interface Props {
   onReply: (m: Message) => void;
 }
 
-export function MessageTimeline({ messages, hasMore, meUserId, usersById, onLoadMore, onReply }: Props) {
+export function MessageTimeline({
+  threadId,
+  messages,
+  hasMore,
+  meUserId,
+  usersById,
+  onLoadMore,
+  onReply,
+}: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastLengthRef = useRef(0);
+  const lastThreadRef = useRef(threadId);
 
   useEffect(() => {
+    if (lastThreadRef.current !== threadId) {
+      lastThreadRef.current = threadId;
+      lastLengthRef.current = 0;
+    }
     const el = scrollRef.current;
     if (!el) return;
     // Only auto-scroll on append (length grew by < 5 messages = streaming arrival)
@@ -23,11 +37,11 @@ export function MessageTimeline({ messages, hasMore, meUserId, usersById, onLoad
     if (delta > 0 && delta < 5) {
       el.scrollTop = el.scrollHeight;
     } else if (lastLengthRef.current === 0 && messages.length > 0) {
-      // Initial load
+      // Initial load or switched thread
       el.scrollTop = el.scrollHeight;
     }
     lastLengthRef.current = messages.length;
-  }, [messages]);
+  }, [threadId, messages]);
 
   const messagesById = new Map<string, Message>();
   for (const m of messages) messagesById.set(m.id, m);

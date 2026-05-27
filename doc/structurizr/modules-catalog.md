@@ -27,12 +27,13 @@
 | outerConversationLoop | 外脑多轮 LLM | `outer/outer-conversation-loop.ts` | context → tool_calls |
 | outerToolExecutor | 外脑工具执行 | `outer/outer-tools.ts` | tool_call → reply/spawn |
 | outerOrchestrator | M6 roundtrip | `outer/orchestrator.ts` | 入站 → reply + spawn |
-| innerBrainRegistry | 内脑任务表 | `outer/inner-brain-registry.ts` | spawn/stop → TaskRecord |
+| innerBrainRegistry | 内脑任务表 | `outer/inner-brain-registry.ts` | spawn/stop → TaskRecord；`markStaleRunningAsStopped` |
+| innerBrainStartupResume | **外脑重启恢复 RUNNING** | `outer/inner-brain-startup-resume.ts` | 启动 → 同一 instance 再 spawn |
 | innerSpawner | spawn 子进程 | `pi-mono/inner-brain-spawner.ts` | goal/workDir → child |
 | kpiRegistry | KPI 与反思 burst | `outer/kpi-registry.ts` | set_kpi → trail / idleStreak |
 | kpiBurstHooks | burst 退出 hook | `outer/kpi-burst-hooks.ts` | reflexion.json → trail；streak → meta；AUTO_NEXT → 下一 burst |
 | outerMemory | mem9 记忆 | `outer/outer-memory.ts` | chat/task → mem9 |
-| completionNotify | 完成通知 | `outer/completion-notify.ts` | DONE → 用户消息 |
+| completionNotify | 完成通知（IM 精简） | `outer/completion-notify.ts` + `completion-report.ts` | DONE → `audience=im` 正文 + 附件 |
 | pushLoop | 消费 worker 输出 | `outer/push-loop.ts` | `.run` events → 渠道 |
 | changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | pendings 到期/解封 → spawn |
 | llmGateway | LLM 调用 | `llm/` | messages → text/tools |
@@ -44,11 +45,13 @@
 | `06-L3-Outer-AllModules` | 全部外脑组件 + 所有 L3 边 |
 | `07-L3-Outer-Inbound-IM` | IM 入站：Facade → 检索/记忆/是否说话 → 对话环 → 工具 |
 | `07b-L3-Outer-Inbound-HTTP` | HTTP roundtrip：Orchestrator → policy → 直 spawn |
-| `08-L3-Outer-Inner-Lifecycle` | spawn、registry、pushLoop、completionNotify、KPI |
+| `08-L3-Outer-Inner-Lifecycle` | spawn、**startupResume**、registry、changeWatcher、pushLoop、completionNotify、KPI |
 | `10-L2-KPI-Closed-Loop` | L2：agentServer ↔ innerWorker |
 | `10b-L3-Outer-KPI` / `10c-L3-Inner-Reflexion` | L3 外脑调度 / 内脑反思分图 |
 
 **KPI 闭环**（实现与 ADL）：见 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)。
+
+**外脑重启恢复内脑**（实现与 ADL）：见 [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md)。
 
 **记忆/知识边界**（P3c）：见 [`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUNDARY.md)。
 
@@ -91,6 +94,7 @@ DECOMPOSE → EXECUTE → ATTRIBUTE → (CONTINUE|下一里程碑|REPLAN|BLOCK)
 | chatIrLib | `packages/chat-ir` |
 | **workspaceKit** | `packages/server/src/workspace-kit` — **外脑专用**（P3a 内联，原 `@utlra/core`）。内脑经 **file** 共享 `workDir`，不 import |
 | webchatProtocolLib | `packages/webchat-protocol` |
+| webchatBridge | `packages/webchat-bridge` — 出站 `asset:` → chat-server `/uploads` |
 
 ---
 

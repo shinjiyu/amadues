@@ -54,7 +54,8 @@ export class WebChatWs {
     this.subscriptions.set(threadId, lastSeen);
     if (this.isReady) {
       this.sendRaw({ type: 'subscribe', thread_id: threadId });
-      if (lastSeen !== undefined) {
+      // cursor 为 null 时不发 since，避免重放整段历史（切回大群时会导致列表滚动错位）
+      if (lastSeen) {
         this.sendRaw({ type: 'since', thread_id: threadId, cursor: lastSeen });
       }
     }

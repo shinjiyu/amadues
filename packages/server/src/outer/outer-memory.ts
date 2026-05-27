@@ -168,7 +168,9 @@ export class OuterMemoryStore {
 
       // 1. 完成报告正文（结果优先，避免把整份 output/日志过程灌进 mem9）
       const { buildCompletionMessageFromWorkspace } = await import('./completion-notify.js');
-      const { message: completionBody } = buildCompletionMessageFromWorkspace(workDir);
+      const { message: completionBody } = buildCompletionMessageFromWorkspace(workDir, {
+        audience: 'verbose',
+      });
       if (completionBody.trim()) {
         messages.push({ role: 'assistant', content: `[内脑任务完成报告]\n${completionBody}` });
       }

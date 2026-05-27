@@ -3,7 +3,7 @@
     "id": "kuroneko",
     "label": "依莉雅 Kuroneko",
     "order": 8,
-    "description": "utlraKuroneko 本地开发栈（含 Ops 双 Agent 日志台 7779）"
+    "description": "utlraKuroneko 本地开发栈：三 Agent + Dashboard + WebChat + Ops 日志台"
   },
   "services": [
     {
@@ -26,6 +26,18 @@
         "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-agent-shiro.ps1",
         "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-agent-shiro.ps1",
         "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-agent-shiro.ps1"
+      },
+      "startTimeoutMs": 120000,
+      "healthTimeoutMs": 15000
+    },
+    {
+      "id": "kuroneko-agent-gin",
+      "label": "Agent: Gin (8789)",
+      "page": "kuroneko",
+      "commands": {
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-agent-gin.ps1",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-agent-gin.ps1",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-agent-gin.ps1"
       },
       "startTimeoutMs": 120000,
       "healthTimeoutMs": 15000

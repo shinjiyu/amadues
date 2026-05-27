@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Attachment, Message, UserPresence } from '@utlra/webchat-protocol';
+import { filterMentionCandidates } from '../mention-users.js';
 
 interface Props {
   users: UserPresence[];
@@ -39,11 +40,7 @@ export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSen
   }, [text]);
 
   const mentionCandidates = mentionPopup
-    ? users.filter((u) =>
-        u.user_id !== meUserId
-        && (u.display_name.toLowerCase().includes(mentionPopup.query.toLowerCase())
-          || u.user_id.toLowerCase().includes(mentionPopup.query.toLowerCase())),
-      ).slice(0, 8)
+    ? filterMentionCandidates(users, meUserId, mentionPopup.query)
     : [];
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {

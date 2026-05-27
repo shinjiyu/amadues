@@ -1,4 +1,5 @@
 import type { UserPresence } from '@utlra/webchat-protocol';
+import { sortSidebarUsers } from '../mention-users.js';
 
 interface Props {
   users: UserPresence[];
@@ -7,9 +8,7 @@ interface Props {
 }
 
 export function OnlineSidebar({ users, meUserId, onClickUser }: Props) {
-  const online = users
-    .filter((u) => u.online)
-    .sort((a, b) => a.display_name.localeCompare(b.display_name, 'zh-Hans'));
+  const online = sortSidebarUsers(users, meUserId).filter((u) => u.online);
 
   return (
     <div className="col-body">

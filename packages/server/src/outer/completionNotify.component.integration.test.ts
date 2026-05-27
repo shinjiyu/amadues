@@ -35,7 +35,7 @@ describe('component: completionNotify', () => {
     expect(ev?.deliverables).toEqual(['r.md']);
   });
 
-  it('buildCompletionMessageFromWorkspace 含结论、不含过程字段', () => {
+  it('buildCompletionMessageFromWorkspace IM 正文：结果优先、不含里程碑过程', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'comp-comp-'));
     const brain = path.join(tmp, '.brain');
     fs.mkdirSync(brain, { recursive: true });
@@ -47,7 +47,9 @@ describe('component: completionNotify', () => {
     );
     fs.writeFileSync(path.join(brain, 'knowledge.md'), '[事实] 结论 9 分', 'utf8');
     const { message } = buildCompletionMessageFromWorkspace(tmp);
-    expect(message).toMatch(/结论|关键结果|产出|目标/);
+    expect(message).toMatch(/## 结果|## 产出文件/);
+    expect(message).toContain('结论 9 分');
     expect(message).not.toContain('输入范围');
+    expect(message).not.toContain('## 里程碑进度');
   });
 });

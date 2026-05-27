@@ -40,7 +40,7 @@ hutao push origin main
 在 **本机终端**执行（勿把 token 提交进仓库或贴进工单）：
 
 ```powershell
-hutao push "https://<GITHUB_USER>:<GITHUB_PAT>@github.com/shinjiyu/utlraKuroneko.git" main
+hutao push "https://<GITHUB_USER>:<GITHUB_PAT>@github.com/<OWNER>/<REPO>.git" main
 ```
 
 推送成功后建议在 GitHub → **Settings → Developer settings → Personal access tokens** 轮换 token。
@@ -50,7 +50,7 @@ hutao push "https://<GITHUB_USER>:<GITHUB_PAT>@github.com/shinjiyu/utlraKuroneko
 推送后若 `hutao status` 仍显示 `ahead`，可显式更新跟踪分支：
 
 ```powershell
-hutao fetch "https://<GITHUB_USER>:<GITHUB_PAT>@github.com/shinjiyu/utlraKuroneko.git" main:refs/remotes/origin/main
+hutao fetch "https://<GITHUB_USER>:<GITHUB_PAT>@github.com/<OWNER>/<REPO>.git" main:refs/remotes/origin/main
 ```
 
 ---
@@ -67,5 +67,4 @@ hutao fetch "https://<GITHUB_USER>:<GITHUB_PAT>@github.com/shinjiyu/utlraKuronek
 ## 相关 / Related
 
 - 仓库规则：`.cursor/rules/git-use-hutao.mdc`
-- 远程：<https://github.com/shinjiyu/utlraKuroneko>
 - 本机总运维页：**local-dashboard**（`D:\UGit\-local_dashborad`，见 [`local-dashboard.md`](./local-dashboard.md)）

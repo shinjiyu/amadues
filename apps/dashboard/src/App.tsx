@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { InnerLiveDeck, type BrainInspector, type PiLogsResponse } from './inner-live.js';
 import { OuterPanel } from './outer-panel.js';
-import { ArchitectureGraph } from './ArchitectureGraph.js';
 
-type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'models' | 'arch';
+type Tab = 'data' | 'inner' | 'outer' | 'memory';
 
 const TENANT = 'default';
 
 /** 已知 Agent 配置（与 vite.config.ts 代理路由对应，label 用 UTLRA_AGENT_NAME 显示名） */
 const AGENTS = [
   { label: 'Kuroneko（8787）', apiPrefix: '/api' },
-  { label: 'Shiro（8788）',    apiPrefix: '/api2' },
+  { label: 'Shiro（8788）', apiPrefix: '/api2' },
+  { label: 'Gin（8789）', apiPrefix: '/api3' },
 ] as const;
 type AgentConfig = typeof AGENTS[number];
 
@@ -112,7 +112,7 @@ export function App() {
           background: '#12151c',
         }}
       >
-        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>utlraKuroneko 控制台</h1>
+        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>Kuroneko 控制台</h1>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: '#8b92a8' }}>Agent：</span>
           {AGENTS.map((a, i) => (
@@ -149,7 +149,7 @@ export function App() {
           )}
         </div>
         <p style={{ margin: '0.35rem 0 0', fontSize: 12, color: '#5a6180' }}>
-          Agent 启动：<code>npm run dev:server</code>（Kuroneko 8787） / <code>npm run dev:agent2</code>（Shiro 8788）
+          只读监控 · 数据自动刷新
         </p>
       </header>
       <div className="panel">
@@ -166,23 +166,11 @@ export function App() {
           <button type="button" className={tab === 'memory' ? 'active' : ''} onClick={() => setTab('memory')}>
             记忆
           </button>
-          <button type="button" className={tab === 'arch' ? 'active' : ''} onClick={() => setTab('arch')}>
-            架构图
-          </button>
-          <button type="button" className={tab === 'models' ? 'active' : ''} onClick={() => setTab('models')}>
-            模型测速
-          </button>
         </div>
         {tab === 'data' && <DataPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'inner' && <InnerBrainPoolPanel apiPrefix={apiPrefix} />}
         {tab === 'outer' && <OuterPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'memory' && <MemoryPanel apiPrefix={apiPrefix} />}
-        {tab === 'models' && <ModelBenchPanel apiPrefix={apiPrefix} />}
-        {tab === 'arch' && (
-          <div style={{ height: 'calc(100vh - 120px)', padding: 0 }}>
-            <ArchitectureGraph />
-          </div>
-        )}
       </div>
     </div>
   );
@@ -193,54 +181,24 @@ export function App() {
 function MemoryPanel({ apiPrefix }: { apiPrefix: string }) {
   const [dailyLog, setDailyLog] = useState<string>('');
   const [tasks, setTasks] = useState<string>('');
-  const [tasksEdit, setTasksEdit] = useState<string>('');
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
       const r = await fetch(`${apiPrefix}/outer/memory`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) return;
       const j = (await r.json()) as { dailyLog?: string; tasks?: string };
       setDailyLog(j.dailyLog ?? '');
       setTasks(j.tasks ?? '');
-      if (!editing) setTasksEdit(j.tasks ?? '');
     } catch {
       // ignore
-    } finally {
-      setLoading(false);
     }
-  }, [apiPrefix, editing]);
+  }, [apiPrefix]);
 
   useEffect(() => {
     void refresh();
     const t = setInterval(() => { void refresh(); }, 10_000);
     return () => clearInterval(t);
   }, [refresh]);
-
-  const handleSaveTasks = async () => {
-    setSaving(true);
-    setSaveMsg(null);
-    try {
-      const r = await fetch(`${apiPrefix}/outer/memory/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tasks_markdown: tasksEdit }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setTasks(tasksEdit);
-      setEditing(false);
-      setSaveMsg('已保存');
-      setTimeout(() => setSaveMsg(null), 2000);
-    } catch (e) {
-      setSaveMsg(`保存失败：${String(e)}`);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const pre: React.CSSProperties = {
     background: '#0d1117',
@@ -765,7 +723,17 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
   const refresh = useCallback(async () => {
     try {
       const r = await fetch(`${apiPrefix}/inner-brains`);
-      const j = (await r.json()) as { instances?: InstanceRow[] };
+      if (!r.ok) {
+        const hint = r.status === 502 || r.status === 503
+          ? '（Agent 可能未启动：对应端口无进程）'
+          : '';
+        throw new Error(`HTTP ${r.status} ${r.statusText}${hint}`);
+      }
+      const text = await r.text();
+      if (!text.trim()) {
+        throw new Error('空响应（Agent 未启动或 Vite 代理失败）');
+      }
+      const j = JSON.parse(text) as { instances?: InstanceRow[] };
       setInstances(j.instances ?? []);
       setErr(null);
     } catch (e) {

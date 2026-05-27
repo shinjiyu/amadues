@@ -750,18 +750,21 @@ async function handleAllCompleted(
   } catch { /* ignore */ }
 
   const deliverableList = deliverables ?? [];
-  const reportText = buildCompletionReport({
-    goal,
-    milestones: shortenMilestonesForReport(milestones),
-    knowledge: safeRead(() => brain.readKnowledge()),
-    lastExecLog: safeRead(() => {
-      const ctx = brain.readExecutionContext();
-      return ctx?.executionLog ?? null;
-    }),
-    reflexion: safeRead(() => readReflexionJson(workDir)),
-    deliverables: deliverableList,
-    resultExcerpt: workDir ? pickDeliverableExcerpt(workDir, deliverableList) : null,
-  });
+  const reportText = buildCompletionReport(
+    {
+      goal,
+      milestones: shortenMilestonesForReport(milestones),
+      knowledge: safeRead(() => brain.readKnowledge()),
+      lastExecLog: safeRead(() => {
+        const ctx = brain.readExecutionContext();
+        return ctx?.executionLog ?? null;
+      }),
+      reflexion: safeRead(() => readReflexionJson(workDir)),
+      deliverables: deliverableList,
+      resultExcerpt: workDir ? pickDeliverableExcerpt(workDir, deliverableList) : null,
+    },
+    { audience: 'im' },
+  );
 
   await writeCompleteOutput(ioRegistry, reportText, goalOriginUser, logger, deliverables);
   memory.appendDailyLog(`[完成] 目标达成，输出报告`);

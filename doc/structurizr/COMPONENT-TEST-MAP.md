@@ -30,9 +30,10 @@
 | kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | |
 | kpiBurstHooks | ✅ `kpi-burst-hooks.test.ts` | ✅ `kpiBurstHooks.component.integration.test.ts` | — | 与 `kpi-lifecycle.integration` 互补 |
 | outerMemory | ❌ | ✅ `outerMemory.component.integration.test.ts` | — | |
-| completionNotify | 🟡 `completion-notify.test.ts` | ✅ `completionNotify.component.integration.test.ts` | — | + `integration/completion-notify` |
+| completionNotify | 🟡 `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 `inner-brain-deliverables.md` |
 | pushLoop | ❌ | ✅ `pushLoop.component.integration.test.ts` | — | BLOCK → IM |
 | changeWatcher | ✅ `change-watcher.test.ts` | ✅ `changeWatcher.component.integration.test.ts` | — | |
+| innerBrainStartupResume | ✅ `inner-brain-startup-resume.test.ts` | ✅ `innerBrainStartupResume.component.integration.test.ts` | — | ADL [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md) |
 | llmGateway | ✅ `raw.test.ts` 等 | ✅ `llmGateway.component.integration.test.ts` | — | |
 
 ## 内脑 L3（`innerWorker`）

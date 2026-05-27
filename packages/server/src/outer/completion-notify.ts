@@ -10,7 +10,9 @@ import type { InnerBrainEngine } from '../workspace-kit/index.js';
 
 import {
   buildCompletionReport,
+  type CompletionReportAudience,
   pickDeliverableExcerpt,
+  pickImSummary,
   shortenMilestonesForReport,
 } from '../openkuroneko/controller/completion-report.js';
 import { ingestDeliverables } from './deliverables-ingest.js';
@@ -117,8 +119,11 @@ function collectDeliverablePaths(workDir: string, fromEvent?: string[]): string[
   }
 }
 
-/** 通知时用最新磁盘状态重建完成报告（结果章节优先） */
-export function buildCompletionMessageFromWorkspace(workDir: string): {
+/** 通知时用最新磁盘状态重建完成报告（默认 `im`：结果优先；`verbose` 供外脑记忆） */
+export function buildCompletionMessageFromWorkspace(
+  workDir: string,
+  options?: { audience?: CompletionReportAudience },
+): {
   message: string;
   deliverables: string[];
 } {
@@ -129,15 +134,19 @@ export function buildCompletionMessageFromWorkspace(workDir: string): {
   const knowledge = safeReadFile(path.join(workDir, '.brain', 'knowledge.md'));
   const resultExcerpt = pickDeliverableExcerpt(workDir, deliverables);
 
-  const rebuilt = buildCompletionReport({
-    goal,
-    milestones: shortenMilestonesForReport(milestonesRaw),
-    knowledge,
-    lastExecLog: readExecutionLog(workDir),
-    reflexion: readReflexionFromWorkDir(workDir),
-    deliverables,
-    resultExcerpt,
-  });
+  const audience = options?.audience ?? 'im';
+  const rebuilt = buildCompletionReport(
+    {
+      goal,
+      milestones: shortenMilestonesForReport(milestonesRaw),
+      knowledge,
+      lastExecLog: readExecutionLog(workDir),
+      reflexion: readReflexionFromWorkDir(workDir),
+      deliverables,
+      resultExcerpt,
+    },
+    { audience },
+  );
 
   return { message: rebuilt, deliverables };
 }
@@ -163,15 +172,15 @@ export async function notifyInnerBrainTaskComplete(
 
   const successCount = ingest.assets.length;
   const requested = deliverables.length;
-  const fileSection =
+  const summary = pickImSummary(message);
+  const fileNote =
     successCount > 0
-      ? `\n\n📎 产出文件已作为附件附上（${successCount} 个）。`
+      ? `\n\n📎 已附上 ${successCount} 个产出文件，请直接查看附件。`
       : requested > 0
-        ? `\n\n⚠️ 内脑登记了 ${requested} 个产物，但附件吸收失败（详见 .run/deliverables.log）。`
+        ? `\n\n⚠️ 登记了 ${requested} 个产物但附件吸收失败（见 .run/deliverables.log）。`
         : '';
 
-  const completionText =
-    `✅ 任务完成！\n\n${message}${fileSection}\n\n任务 ID：\`${opts.instanceId}\``;
+  const completionText = `✅ ${summary}\n\n${message.trim()}${fileNote}\n\n— \`${opts.instanceId}\``;
 
   const attachmentParts: AttachmentPart[] = ingest.assets.map((d) => ({
     type: 'attachment',

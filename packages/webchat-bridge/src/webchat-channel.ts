@@ -39,6 +39,7 @@ import {
   webChatMessageIdToIr,
   webChatThreadToIr,
 } from './thread-mapper.js';
+import { ensureWebChatAttachmentUploads } from './asset-upload.js';
 import { renderForWebChat } from './reply-render.js';
 
 export interface WebChatChannelOptions {
@@ -119,17 +120,24 @@ export class WebChatChannel implements ChatIRChannel {
       return;
     }
 
+    const uploadFailed = await ensureWebChatAttachmentUploads(parts, {
+      assetStore: this.opts.assetStore,
+      rest: this.rest,
+      uploadedAssetByUri: this.uploadedAssetByUri,
+      ...(this.opts.fetchImpl ? { fetchImpl: this.opts.fetchImpl } : {}),
+    });
+
     const rendered = renderForWebChat({
       parts,
       registry: this.opts.registry,
       uploadedAssetByUri: this.uploadedAssetByUri,
     });
 
-    if (rendered.pendingAssetUris.length > 0) {
+    if (uploadFailed.length > 0 || rendered.pendingAssetUris.length > 0) {
+      const pending = [...new Set([...uploadFailed, ...rendered.pendingAssetUris])];
       console.warn(
-        `[webchat-channel] postMessage: ${rendered.pendingAssetUris.length} attachment(s) cannot be auto-uploaded; dropping them. uris=${rendered.pendingAssetUris.join(', ')}`,
+        `[webchat-channel] postMessage: ${pending.length} attachment(s) not delivered to chat-server: ${pending.join(', ')}`,
       );
-      // 第一版策略：未上传的附件丢弃；后续可在此处调用 /uploads 上传 ChatAssetStore 资源。
     }
 
     try {

@@ -19,6 +19,14 @@ $script:KuronekoServices = @{
     OpenUrl        = $null
     StartupWaitSec = 120
   }
+  'agent-gin' = @{
+    Label          = 'Agent: Gin'
+    NpmScript      = 'dev:gin'
+    Port           = 8789
+    HealthUrl      = 'http://127.0.0.1:8789/api/health'
+    OpenUrl        = $null
+    StartupWaitSec = 120
+  }
   'dashboard' = @{
     Label          = 'Dashboard'
     NpmScript      = 'dev:dashboard'

@@ -174,13 +174,13 @@ export function InnerLiveDeck({
       </div>
       {insightLoading && <div className="inner-live-loading">正在拉取状态…</div>}
       <p className="inner-live-hint inner-live-hint-short">
-        核心看下面几块；完整 Pi 事件流在底部折叠。仅设 Goal 未跑 Pi-mono 时会长期 <code>planning</code>。
+        模式、归因、里程碑与 Goal 概览；原始日志在底部折叠区。
       </p>
 
       <div className="inner-live-toolbar">
         {piBusy && <span className="inner-live-pulse">Pi-mono 运行中</span>}
         {!brain?.paths.brainDir && (
-          <span className="inner-live-warn">尚无 .brain（先 Goal + Pi-mono）</span>
+          <span className="inner-live-warn">尚无 .brain 数据</span>
         )}
       </div>
 

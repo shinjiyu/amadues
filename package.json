@@ -17,6 +17,7 @@
     "dev:server:nowatch": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run dev:nowatch -w @utlra/server",
     "dev:dashboard": "npm run dev -w @utlra/dashboard",
     "dev:agent2": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run dev:agent2 -w @utlra/server",
+    "dev:gin": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run dev:gin -w @utlra/server",
     "dev:ops": "npm run dev -w @utlra/ops-console",
     "dev:chat-server": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/chat-server",
     "dev:web-chat": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/web-chat",
@@ -30,7 +31,8 @@
     "structurizr:generate": "node scripts/structurizr/code-to-dsl.mjs",
     "structurizr:diff": "node scripts/structurizr/diff-workspace.mjs",
     "structurizr:deps": "depcruise packages apps --config doc/structurizr/deps.rules.cjs --output-type err",
-    "structurizr:check": "node scripts/structurizr/check-all.mjs"
+    "structurizr:check": "node scripts/structurizr/check-all.mjs",
+    "sync:local-dashboard": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-local-dashboard.ps1"
   },
   "engines": {
     "node": ">=20"

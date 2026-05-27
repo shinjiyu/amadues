@@ -164,7 +164,10 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
         setError((e as Error).message);
       }
     } else {
-      wsRef.current?.subscribe(threadId, null);
+      const cached = messagesByThread[threadId];
+      const cursor =
+        cached && cached.length > 0 ? cached[cached.length - 1]!.id : null;
+      wsRef.current?.subscribe(threadId, cursor);
     }
   }, [identity, messagesByThread]);
 
@@ -317,6 +320,7 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
         <div className="timeline-container">
           {activeThread ? (
             <MessageTimeline
+              threadId={activeThreadId}
               messages={messagesByThread[activeThreadId] ?? []}
               hasMore={hasMoreByThread[activeThreadId] ?? false}
               meUserId={identity.user_id}

@@ -6,7 +6,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildCompletionReport } from './completion-report.js';
+import { buildCompletionReport, pickImSummary } from './completion-report.js';
+
+const verbose = { audience: 'verbose' as const };
+const im = { audience: 'im' as const };
 
 describe('buildCompletionReport', () => {
   it('includes goal + milestones + knowledge + deliverables + reflexion', () => {
@@ -22,7 +25,7 @@ describe('buildCompletionReport', () => {
         nextStrategy: '后续可加入 SBOM 列表',
       },
       deliverables: ['report.md', 'docs/structure.md'],
-    });
+    }, verbose);
     expect(text).toContain('## 任务目标（摘要）');
     expect(text).toContain('调研 Kuroneko 项目结构');
     expect(text).toContain('## 里程碑进度');
@@ -47,7 +50,7 @@ describe('buildCompletionReport', () => {
       ],
       reflexion: null,
       deliverables: [],
-    });
+    }, verbose);
     expect(text).toContain('## 核心结论');
     expect(text).toContain('A B C');
     expect(text).toContain('## 执行器末轮总结');
@@ -64,7 +67,7 @@ describe('buildCompletionReport', () => {
       lastExecLog: null,
       reflexion: null,
       deliverables: [],
-    });
+    }, verbose);
     expect(text).toContain('所有里程碑已完成');
     expect(text).toContain('## 里程碑进度');
     expect(text).toContain('（无）');
@@ -80,7 +83,7 @@ describe('buildCompletionReport', () => {
       lastExecLog: null,
       reflexion: null,
       deliverables: [],
-    });
+    }, verbose);
     expect(text.length).toBeLessThan(3500);
     expect(text).toContain('## 关键结果(knowledge.md)');
   });
@@ -95,7 +98,7 @@ describe('buildCompletionReport', () => {
       ],
       reflexion: null,
       deliverables: [],
-    });
+    }, verbose);
     expect(text).toContain('关键事实写到这里');
     expect(text).toContain('## 执行器末轮总结');
     expect(text).toContain('执行器补充一句');
@@ -110,8 +113,64 @@ describe('buildCompletionReport', () => {
       reflexion: null,
       deliverables: ['report.md'],
       resultExcerpt: '（摘自 `report.md`）\n\n## 结论\n完成了。',
-    });
+    }, verbose);
     expect(text).toContain('## 核心结论（产物摘要）');
     expect(text.indexOf('完成了')).toBeLessThan(text.indexOf('## 里程碑进度'));
+  });
+
+  describe('audience: im', () => {
+    it('prioritizes excerpt, omits milestones/goal/reflexion soft noise', () => {
+      const text = buildCompletionReport(
+        {
+          goal: '调研 Kuroneko',
+          milestones: '- [m1] [Completed] 扫描\n> 输入范围：不应出现',
+          knowledge: '[事实] 冗余 knowledge',
+          lastExecLog: null,
+          reflexion: {
+            verdict: 'success',
+            hardFailures: [],
+            softFailures: ['略宽'],
+            nextStrategy: '下次加 SBOM',
+          },
+          deliverables: ['report.md'],
+          resultExcerpt: '（摘自 `report.md`）\n\n## 结论\n用户 A 得分 9 分。',
+        },
+        im,
+      );
+      expect(text).toContain('## 结果');
+      expect(text).toContain('用户 A 得分 9 分');
+      expect(text).toContain('## 产出文件');
+      expect(text).toContain('`report.md`');
+      expect(text).not.toContain('里程碑');
+      expect(text).not.toContain('输入范围');
+      expect(text).not.toContain('略宽');
+      expect(text).not.toContain('冗余 knowledge');
+    });
+
+    it('shows hardFailures only when present', () => {
+      const text = buildCompletionReport(
+        {
+          goal: 'g',
+          milestones: 'm',
+          knowledge: null,
+          lastExecLog: null,
+          reflexion: {
+            verdict: 'partial',
+            hardFailures: ['产物缺失 final_report.md'],
+            softFailures: [],
+            nextStrategy: '',
+          },
+          deliverables: [],
+        },
+        im,
+      );
+      expect(text).toContain('## 需注意');
+      expect(text).toContain('产物缺失');
+    });
+
+    it('pickImSummary extracts first substantive line', () => {
+      const body = '## 结果\n\n完成了评估与打分。';
+      expect(pickImSummary(body)).toContain('完成了评估');
+    });
   });
 });
