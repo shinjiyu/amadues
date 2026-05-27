@@ -23,6 +23,10 @@ import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import { loadInnerLlmEnvFromProcess } from '../llm/inner-llm-step.js';
 import {
+  isHumanSender,
+  resolveAwaitingInboundFromIm,
+} from './awaiting-inbound-resolver.js';
+import {
   decideOuterShouldReply,
   isDmEmptyOrPlaceholderContent,
   participationSpeakLlm,
@@ -350,6 +354,17 @@ export class OuterBrain {
     if (meta.threadKind === 'dm' && isDmEmptyOrPlaceholderContent(content)) {
       console.log(`[utlra][outer-brain] skip: dm_empty_or_placeholder`);
       return;
+    }
+
+    // ── Step 0.6: AWAITING 人消息 → resolve ask_user（changeWatcher 后续 spawn）──
+    if (innerBrainRegistry && isHumanSender(senderSid)) {
+      const awaitingResolve = resolveAwaitingInboundFromIm(innerBrainRegistry, ev);
+      if (awaitingResolve.resolved) {
+        console.log(
+          `[utlra][awaiting-resolver] resolved instance=${awaitingResolve.instanceId} ` +
+            `pending=${awaitingResolve.pendingId} thread=${threadId}`,
+        );
+      }
     }
 
     // ── IP-03: 写入 respond 事件（入站消息触发） ──────────────────────────

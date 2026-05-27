@@ -61,6 +61,7 @@ import { processBurstExitForKpi } from './outer/kpi-burst-hooks.js';
 import { writeStopSignal } from './pi-mono/run-tick.js';
 import { readWorkerStatus, isPidAlive, spawnInnerBrainWorker } from './pi-mono/inner-brain-spawner.js';
 import { createChangeWatcher, type ChangeWatcher } from './pi-mono/change-watcher.js';
+import { registryLifecycleReconcile } from './outer/registry-lifecycle-reconcile.js';
 import { isBrainAwaitingAsync } from './outer/brain-async-snapshot.js';
 import { notifyInnerBrainTaskComplete, type CompletionNotifyDeps } from './outer/completion-notify.js';
 import { PushLoop } from './outer/push-loop.js';
@@ -1659,9 +1660,13 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
 
   // ChangeWatcher：数据驱动的 agent 引擎——
   // 监听 AWAITING 任务的 pendings.json,触发 timer / deadline / IM 信号 → spawn 新 burst
+  registryLifecycleReconcile(innerBrainRegistry);
   const changeWatcher = createChangeWatcher({
     registry: innerBrainRegistry,
     spawnTask: (task) => spawnAndAttachWorker(task, { incrementResumeCount: false }),
+    reconcileOnBootstrap: () => {
+      registryLifecycleReconcile(innerBrainRegistry);
+    },
   });
   changeWatcher.start();
 
