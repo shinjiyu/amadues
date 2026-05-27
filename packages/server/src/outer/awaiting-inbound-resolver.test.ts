@@ -15,6 +15,8 @@ import {
   isHumanSender,
   resolveAwaitingInboundFromIm,
 } from './awaiting-inbound-resolver.js';
+import { createMemoryBlockStore } from './memory-block-store.js';
+import { isCredentialRefResult } from './credential-ref.js';
 
 const THREAD = 'thread:awaiting-lab';
 
@@ -87,7 +89,7 @@ describe('resolveAwaitingInboundFromIm', () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it('single AWAITING on thread: human reply resolves latest pending ask_user', () => {
+  it('single AWAITING on thread: human reply resolves latest pending ask_user', async () => {
     const workDir = mkWorkDir(root, 'one');
     const brainDir = path.join(workDir, '.brain');
     const older = addPending(brainDir, {
@@ -102,7 +104,7 @@ describe('resolveAwaitingInboundFromIm', () => {
     });
     registerAwaiting(reg, workDir, 'ib-single-1');
 
-    const out = resolveAwaitingInboundFromIm(reg, humanInbound('SUB=abc'));
+    const out = await resolveAwaitingInboundFromIm(reg, humanInbound('SUB=abc'));
 
     expect(out.resolved).toBe(true);
     expect(out.instanceId).toBe('ib-single-1');
@@ -112,7 +114,7 @@ describe('resolveAwaitingInboundFromIm', () => {
     expect((latest?.result as { reply?: string })?.reply).toBe('SUB=abc');
   });
 
-  it('agent sender → no resolve', () => {
+  it('agent sender → no resolve', async () => {
     const workDir = mkWorkDir(root, 'agent-no');
     addPending(path.join(workDir, '.brain'), {
       kind: 'ask_user',
@@ -120,7 +122,7 @@ describe('resolveAwaitingInboundFromIm', () => {
     });
     registerAwaiting(reg, workDir, 'ib-agent-1');
 
-    const out = resolveAwaitingInboundFromIm(reg, {
+    const out = await resolveAwaitingInboundFromIm(reg, {
       ...humanInbound('hi'),
       senderSid: 'agent:other',
     });
@@ -129,7 +131,7 @@ describe('resolveAwaitingInboundFromIm', () => {
     expect(out.reason).toMatch(/human|agent/i);
   });
 
-  it('multiple AWAITING on same thread without instance_id → no auto resolve', () => {
+  it('multiple AWAITING on same thread without instance_id → no auto resolve', async () => {
     const w1 = mkWorkDir(root, 'm1');
     const w2 = mkWorkDir(root, 'm2');
     addPending(path.join(w1, '.brain'), { kind: 'ask_user', spec: { prompt: 'q1' } });
@@ -137,13 +139,13 @@ describe('resolveAwaitingInboundFromIm', () => {
     registerAwaiting(reg, w1, 'ib-m1');
     registerAwaiting(reg, w2, 'ib-m2');
 
-    const out = resolveAwaitingInboundFromIm(reg, humanInbound('ambiguous'));
+    const out = await resolveAwaitingInboundFromIm(reg, humanInbound('ambiguous'));
 
     expect(out.resolved).toBe(false);
     expect(out.reason).toMatch(/ambiguous|multiple|disambigu/i);
   });
 
-  it('multiple AWAITING: body contains instance_id → resolve matching only', () => {
+  it('multiple AWAITING: body contains instance_id → resolve matching only', async () => {
     const w1 = mkWorkDir(root, 'd1');
     const w2 = mkWorkDir(root, 'd2');
     addPending(path.join(w1, '.brain'), { kind: 'ask_user', spec: { prompt: 'q1' } });
@@ -151,7 +153,7 @@ describe('resolveAwaitingInboundFromIm', () => {
     registerAwaiting(reg, w1, 'ib-target');
     registerAwaiting(reg, w2, 'ib-other');
 
-    const out = resolveAwaitingInboundFromIm(
+    const out = await resolveAwaitingInboundFromIm(
       reg,
       humanInbound('for ib-target: cookie here'),
     );
@@ -162,19 +164,47 @@ describe('resolveAwaitingInboundFromIm', () => {
     expect(otherPending?.status).toBe('pending');
   });
 
-  it('[NEW_GOAL] prefix → no resolve', () => {
+  it('[NEW_GOAL] prefix → no resolve', async () => {
     const workDir = mkWorkDir(root, 'new-goal');
     addPending(path.join(workDir, '.brain'), { kind: 'ask_user', spec: { prompt: 'q' } });
     registerAwaiting(reg, workDir, 'ib-ng');
 
-    const out = resolveAwaitingInboundFromIm(reg, humanInbound('[NEW_GOAL] 做别的'));
+    const out = await resolveAwaitingInboundFromIm(reg, humanInbound('[NEW_GOAL] 做别的'));
 
     expect(out.resolved).toBe(false);
     expect(out.reason).toMatch(/new_goal|goal/i);
   });
 
-  it('no AWAITING on thread → no resolve', () => {
-    const out = resolveAwaitingInboundFromIm(reg, humanInbound('hello', 'thread:empty'));
+  it('no AWAITING on thread → no resolve', async () => {
+    const out = await resolveAwaitingInboundFromIm(reg, humanInbound('hello', 'thread:empty'));
     expect(out.resolved).toBe(false);
+  });
+
+  it('long cookie + memoryBlockStore → credential_ref + bind file', async () => {
+    const workDir = mkWorkDir(root, 'cred');
+    const brainDir = path.join(workDir, '.brain');
+    addPending(brainDir, {
+      kind: 'ask_user',
+      spec: { prompt: '请粘贴微博 Cookie' },
+    });
+    registerAwaiting(reg, workDir, 'ib-cred-1');
+    const store = createMemoryBlockStore(root, null, 'agent:test');
+    const cookie =
+      'SUB=abcdefghijklmnopqrstuvwxyz0123456789; SUBP=zyxwvutsrqponmlkjihgfedcba9876543210; WBPSESS=longtokenvalue';
+
+    const out = await resolveAwaitingInboundFromIm(reg, humanInbound(cookie), {
+      memoryBlockStore: store,
+      updatedBy: 'human:alice',
+    });
+
+    expect(out.resolved).toBe(true);
+    expect(out.credentialRef?.slot).toBe('weibo');
+    const pending = readPendings(brainDir)[0];
+    expect(isCredentialRefResult(pending?.result)).toBe(true);
+    expect((pending?.result as { reply?: string }).reply).toBeUndefined();
+    const secretPath = path.join(workDir, '.brain', 'secrets', 'weibo.json');
+    expect(fs.existsSync(secretPath)).toBe(true);
+    const onDisk = JSON.parse(fs.readFileSync(secretPath, 'utf8')) as { value: string };
+    expect(onDisk.value).toBe(cookie);
   });
 });

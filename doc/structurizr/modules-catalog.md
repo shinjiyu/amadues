@@ -30,12 +30,13 @@
 | innerBrainRegistry | 内脑任务表 | `outer/inner-brain-registry.ts` | spawn/stop → TaskRecord；`markStaleRunningAsStopped` |
 | innerBrainStartupResume | **外脑重启恢复 RUNNING** | `outer/inner-brain-startup-resume.ts` | 启动 → 同一 instance 再 spawn |
 | brainAsyncSnapshot | workDir 异步快照 | `outer/brain-async-snapshot.ts` | workDir → `is_post_complete` 等 |
-| registryLifecycleReconcile | **registry↔workDir 对账** | `outer/registry-lifecycle-reconcile.ts`（待实现） | 假 AWAITING → DONE |
-| awaitingInboundResolver | **IM 回复解 pending** | `outer/awaiting-inbound-resolver.ts`（待实现） | human IM → resolve → changeWatcher spawn |
+| registryLifecycleReconcile | **registry↔workDir 对账** | `outer/registry-lifecycle-reconcile.ts` | 假 AWAITING → DONE |
+| awaitingInboundResolver | **IM 回复解 pending** | `outer/awaiting-inbound-resolver.ts` | human IM → resolve → changeWatcher spawn |
 | innerSpawner | spawn 子进程 | `pi-mono/inner-brain-spawner.ts` | goal/workDir → child |
 | kpiRegistry | KPI 与反思 burst | `outer/kpi-registry.ts` | set_kpi → trail / idleStreak |
 | kpiBurstHooks | burst 退出 hook | `outer/kpi-burst-hooks.ts` | reflexion.json → trail；streak → meta；AUTO_NEXT → 下一 burst |
 | outerMemory | mem9 记忆 | `outer/outer-memory.ts` | chat/task → mem9 |
+| **memoryBlockStore** | **结构化 Block CRUD** | `outer/memory-block-store.ts` + `memory-block-tools.ts` | `memory_block_*`；bind → `.brain/secrets/` |
 | completionNotify | 完成通知（IM 精简） | `outer/completion-notify.ts` + `completion-report.ts` | DONE → `audience=im` 正文 + 附件 |
 | pushLoop | 消费 worker 输出 | `outer/push-loop.ts` | `.run` events → 渠道 |
 | changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | bootstrap + pendings 到期/解封 → spawn |
@@ -56,7 +57,8 @@
 
 **外脑重启恢复内脑**（实现与 ADL）：见 [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md)。
 
-**AWAITING 生命周期**（对账 + IM 必达 + bootstrap）：见 [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)。
+**AWAITING 生命周期**：[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)。  
+**Memory Block**：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md)。
 
 **记忆/知识边界**（P3c）：见 [`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUNDARY.md)。
 

@@ -2,7 +2,7 @@
 
 > **English:** Shiro→Kuroneko research reuse = **inner brain distills `write_skill`** (drive9 `/skills/shared/`), prompted automatically—not memory blocks or a separate research vault. Keychain stays a **kv_secret memory block** (future).
 
-**状态**：设计草案（2026-05-27，研究路径已按 skill 蒸馏修订）· 实现未开始
+**状态**：B1 ✅ keychain 工具 · **B2** ✅ IM 凭证自动 vault（见 memory-blocks-framework）· R1 ⏳ Attributor `write_skill`
 
 关联：[`MEMORY-STORAGE-BOUNDARY.md`](../structurizr/MEMORY-STORAGE-BOUNDARY.md) · [`attributor.ts`](../../packages/server/src/openkuroneko/controller/attributor.ts) · [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md)（600 字截断专篇）· [`memory-belief-reconciliation.md`](./memory-belief-reconciliation.md)
 
@@ -188,9 +188,9 @@ awaitingInboundResolver / 外脑
 
 ### 验收
 
-- [ ] 用户贴 Cookie → `memory_block_put(keychain, …)` → 内脑 `read_file` 拿到完整 SUB
-- [ ] executor 不再出现「SUB 被截断」假阳性（见 [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md) + 钥匙串 bind）
-- [ ] mem9 中搜不到 Cookie 明文
+- [x] 用户贴 Cookie → `memory_block_put` / IM resolve → 内脑 `read_file(.brain/secrets/…)` 得完整 SUB
+- [x] executor `credential_ref` 内联路径，不再 spill 假截断
+- [ ] mem9 中搜不到 Cookie 明文（需运行时验收）
 
 ---
 

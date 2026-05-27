@@ -73,6 +73,20 @@
                     }
                 }
 
+                memoryBlockStore = component "Memory Block Store" "【结构化长期记忆】Block+Strategy CRUD；keychain=kv_secret；bind→.brain/secrets" "TypeScript" {
+                    tags "Outer-Module" "Conversation" "Memory"
+                    properties {
+                        "path" "packages/server/src/outer/memory-block-store.ts; memory-block-strategies.ts; memory-block-tools.ts"
+                        "horizon.intention" "Cookie/Token/地址簿等精确 KV；与 mem9 语义记忆分离"
+                        "horizon.in" "block_id + key + payload; instance_id(bind)"
+                        "horizon.out" "entry metadata; workDir bind files"
+                        "horizon.deps" "drive9 /vault/blocks; innerBrainRegistry(workDir); outerToolExecutor"
+                        "horizon.test.unit" "memory-block-store.test.ts; memory-block-tools.test.ts"
+                        "horizon.test.integration" "memoryBlockStore.component.integration.test.ts"
+                        "horizon.note" "B0+B1 已实现；keychain_* 别名"
+                    }
+                }
+
                 // ── 对话 / 工具 ─────────────────────────────────────────
                 outerConversationLoop = component "Outer Conversation Loop" "【外脑多轮】LLM ↔ tools 循环直到 reply_to_user 或达上限" "TypeScript" {
                     tags "Outer-Module" "Conversation"
@@ -147,24 +161,26 @@
                 registryLifecycleReconcile = component "Registry Lifecycle Reconcile" "【registry↔workDir 对账】AWAITING/BLOCKED 假挂起→DONE；启动时 + changeWatcher.bootstrap" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
-                        "path" "packages/server/src/outer/registry-lifecycle-reconcile.ts（待实现）"
+                        "path" "packages/server/src/outer/registry-lifecycle-reconcile.ts"
                         "horizon.intention" "消除 is_post_complete 时 registry 仍为 AWAITING"
                         "horizon.in" "innerBrainRegistry + brainAsyncSnapshot"
                         "horizon.out" "registry.update(DONE|保持)"
-                        "horizon.test.unit" "registry-lifecycle-reconcile.test.ts（待实现）"
-                        "horizon.note" "实现状态：设计已定稿 2026-05-27，见 INNER-BRAIN-AWAITING-LIFECYCLE.md"
+                        "horizon.test.unit" "registry-lifecycle-reconcile.test.ts"
+                        "horizon.test.integration" "registryLifecycleReconcile.component.integration.test.ts"
+                        "horizon.note" "见 INNER-BRAIN-AWAITING-LIFECYCLE.md"
                     }
                 }
 
                 awaitingInboundResolver = component "Awaiting Inbound Resolver" "【IM 必达】人消息 → 同 thread 的 ask_user pending → resolved；spawn 仍由 changeWatcher" "TypeScript" {
                     tags "Outer-Module" "Inbound" "Inner-Lifecycle"
                     properties {
-                        "path" "packages/server/src/outer/awaiting-inbound-resolver.ts（待实现）"
+                        "path" "packages/server/src/outer/awaiting-inbound-resolver.ts"
                         "horizon.intention" "宪法 IMWatcher 的确定性实现；不依赖 LLM 调 send_directive"
                         "horizon.in" "ChatIRInboundEvent(human) + innerBrainRegistry"
                         "horizon.out" "resolvePending on workDir"
                         "horizon.deps" "brainAsyncSnapshot; innerBrainRegistry"
-                        "horizon.test.unit" "awaiting-inbound-resolver.test.ts（待实现）"
+                        "horizon.test.unit" "awaiting-inbound-resolver.test.ts"
+                        "horizon.test.integration" "awaitingInboundResolver.component.integration.test.ts"
                         "horizon.note" "挂载于 outerBrainFacade，policy 之后、conversationLoop 之前"
                     }
                 }

@@ -50,6 +50,7 @@
 | [`COMPONENT-TEST-MAP.md`](./structurizr/COMPONENT-TEST-MAP.md) | L3 组件 ↔ 测试文件 |
 | [`INNER-BRAIN-RESUME.md`](./structurizr/INNER-BRAIN-RESUME.md) | 外脑重启恢复 RUNNING 内脑（ADL + 实现） |
 | [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md) | AWAITING：registry 对账、IM 必达、changeWatcher bootstrap（设计权威） |
+| [`MEMORY-BLOCKS.md`](./structurizr/MEMORY-BLOCKS.md) | Memory Block：keychain=kv_secret、`memory_block_*`（设计权威） |
 | [`COMPONENT-TESTING.md`](./structurizr/COMPONENT-TESTING.md) | 组件测试约定 |
 | [`REFACTOR-PLAN.md`](./structurizr/REFACTOR-PLAN.md) | P0–P4 架构对齐计划（进行中） |
 

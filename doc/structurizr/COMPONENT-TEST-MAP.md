@@ -35,7 +35,8 @@
 | changeWatcher | ✅ `change-watcher.test.ts` + `change-watcher.bootstrap.test.ts` | ✅ `changeWatcher.component.integration.test.ts` | — | bootstrap + reconcile 已接 |
 | brainAsyncSnapshot | ✅ `brain-async-snapshot.test.ts` | — | — | |
 | registryLifecycleReconcile | ✅ `registry-lifecycle-reconcile.test.ts` | ✅ `registryLifecycleReconcile.component.integration.test.ts` | — | 含周期 reconcile |
-| awaitingInboundResolver | ✅ `awaiting-inbound-resolver.test.ts` | ✅ `awaitingInboundResolver.component.integration.test.ts` | — | IM→resolve→spawn 链 |
+| awaitingInboundResolver | ✅ `awaiting-inbound-resolver.test.ts` | ✅ `awaitingInboundResolver.component.integration.test.ts` | — | IM→resolve；B2 凭证→credential_ref |
+| memoryBlockStore | ✅ `memory-block-store.test.ts` + `memory-block-tools.test.ts` | ✅ `memoryBlockStore.component.integration.test.ts` | — | B1 工具已接 outerToolExecutor |
 | innerBrainStartupResume | ✅ `inner-brain-startup-resume.test.ts` | ✅ `innerBrainStartupResume.component.integration.test.ts` | — | ADL [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md) |
 | llmGateway | ✅ `raw.test.ts` 等 | ✅ `llmGateway.component.integration.test.ts` | — | |
 

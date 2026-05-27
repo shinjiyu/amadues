@@ -3,9 +3,9 @@
 > **Status:** 待实现 · **Recorded:** 2026-05-27  
 > **English:** Structured long-term agent memory as typed **blocks** (keychain = first `kv_secret` block). Uniform `memory_block_*` tools; per-block strategy for schema, ACL, and prompt redaction.
 
-**状态**：设计草案 · **待实现**
+**状态**：B0 ✅ store · B1 ✅ `memory_block_*` · **B2** ✅ IM 凭证 → keychain + `credential_ref` + executor 对齐
 
-关联：[`cross-agent-research-and-keychain.md`](./cross-agent-research-and-keychain.md)（钥匙串首批落地细节）· [`MEMORY-STORAGE-BOUNDARY.md`](../structurizr/MEMORY-STORAGE-BOUNDARY.md) · [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md)（大 payload 与 bind 配合）
+关联：[`MEMORY-BLOCKS.md`](../structurizr/MEMORY-BLOCKS.md)（**ADL 权威**）· [`cross-agent-research-and-keychain.md`](./cross-agent-research-and-keychain.md) · [`MEMORY-STORAGE-BOUNDARY.md`](../structurizr/MEMORY-STORAGE-BOUNDARY.md) · [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md)（大 payload 与 bind 配合）
 
 **不在本框架内**：跨 Agent **研究结论** → 内脑 Attributor **`write_skill`**（见 cross-agent 问题 1），不用 Block。
 
@@ -106,8 +106,8 @@ MemoryBlockRegistry
 
 ## 验收
 
-- [ ] 外脑 `memory_block_put(keychain, weibo, …)` 后 drive9 有条目；`memory_block_entries` 只见 key
-- [ ] `memory_block_bind` 后内脑 `read_file(".brain/secrets/weibo.json")` 得完整 value
+- [x] 外脑 `memory_block_put(keychain, weibo, …)` 后 vault 有条目；`memory_block_entries` 只见 key
+- [x] IM 长 Cookie → awaiting resolver → `credential_ref` + bind；内脑 `read_file(".brain/secrets/weibo.json")` 得完整 value
 - [ ] mem9 检索不到 Cookie 明文
 - [ ] 新 strategy 仅注册 + 配置一行即可加块（无需新工具名）
 

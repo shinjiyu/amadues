@@ -8,43 +8,48 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { formatResolvedPendingResultForPrompt } from './executor.js';
 
+function tempWorkDir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'exec-resolved-'));
+}
+
 describe('formatResolvedPendingResultForPrompt', () => {
-  let workDir = '';
+  let workDir: string;
 
   afterEach(() => {
     if (workDir) fs.rmSync(workDir, { recursive: true, force: true });
   });
 
-  it('small result stays inline (no spill file)', () => {
-    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exec-res-'));
-    const result = { reply: 'short ok' };
-    const out = formatResolvedPendingResultForPrompt('pend-short', result, workDir);
-    expect(out).toBe(JSON.stringify(result));
-    expect(fs.existsSync(path.join(workDir, '.brain/inbound/pending-results/pend-short.json'))).toBe(false);
+  it('inlines small result without truncation', () => {
+    workDir = tempWorkDir();
+    const out = formatResolvedPendingResultForPrompt('pend-1', { reply: 'ok' }, workDir);
+    expect(out).toBe('{"reply":"ok"}');
   });
 
-  it('large result spills to .brain/inbound/pending-results/ with full JSON on disk', () => {
-    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exec-res-'));
-    const cookie = 'SUB=' + 'x'.repeat(5000);
-    const result = { reply: cookie };
-    const serialized = JSON.stringify(result);
-
-    const out = formatResolvedPendingResultForPrompt('pend-mpo4pfk5-9ee9be', result, workDir);
-
-    expect(out).toContain('pending-results/pend-mpo4pfk5-9ee9be.json');
-    expect(out).toContain('read_file');
-    expect(out.length).toBeLessThan(serialized.length);
-
-    const spillPath = path.join(workDir, '.brain/inbound/pending-results/pend-mpo4pfk5-9ee9be.json');
-    expect(fs.readFileSync(spillPath, 'utf8')).toBe(serialized);
-    expect(JSON.parse(fs.readFileSync(spillPath, 'utf8')).reply).toBe(cookie);
+  it('spills large result to pending-results file', () => {
+    workDir = tempWorkDir();
+    const big = 'x'.repeat(4000);
+    const out = formatResolvedPendingResultForPrompt('pend-big', { reply: big }, workDir);
+    expect(out).toContain('.brain/inbound/pending-results/pend-big.json');
+    const spill = path.join(workDir, '.brain', 'inbound', 'pending-results', 'pend-big.json');
+    expect(fs.existsSync(spill)).toBe(true);
+    const parsed = JSON.parse(fs.readFileSync(spill, 'utf8')) as { reply: string };
+    expect(parsed.reply).toBe(big);
   });
 
-  it('does not hard-cap at 600 characters in preview', () => {
-    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exec-res-'));
-    const result = { reply: 'a'.repeat(800) };
-    const out = formatResolvedPendingResultForPrompt('pend-800', result, workDir);
-    expect(out).toBe(JSON.stringify(result));
-    expect(out.length).toBeGreaterThan(600);
+  it('credential_ref stays inline with path hint (no secret in prompt)', () => {
+    workDir = tempWorkDir();
+    const ref = {
+      kind: 'credential_ref' as const,
+      block_id: 'keychain' as const,
+      slot: 'weibo',
+      path: '.brain/secrets/weibo.json',
+      byteLength: 900,
+      credential_kind: 'cookie_header',
+    };
+    const out = formatResolvedPendingResultForPrompt('pend-cred', ref, workDir);
+    expect(out).toContain('credential_ref');
+    expect(out).toContain('.brain/secrets/weibo.json');
+    expect(out).not.toContain('SUB=');
+    expect(fs.existsSync(path.join(workDir, '.brain', 'inbound', 'pending-results'))).toBe(false);
   });
 });

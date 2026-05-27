@@ -356,6 +356,15 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.kpiRegistry "set_kpi / view_kpi" "in-process" {
             tags "import"
         }
+        kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.memoryBlockStore "memory_block_* list/put/bind" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.memoryBlockStore -> drive9 "vault/blocks entries" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.agentServer.memoryBlockStore -> kuroneko.agentServer.innerBrainRegistry "bind → workDir/.brain/secrets" "in-process" {
+            tags "import"
+        }
         kuroneko.agentServer.innerBrainRegistry -> kuroneko.agentServer.innerSpawner "spawnAndAttachWorker" "child_process" {
             tags "spawn"
         }
@@ -484,7 +493,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "07-L3-Outer-Inbound-IM" {
             title "L3 Outer — IM 入站（Facade 路径）"
-            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.outerToolExecutor
+            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.memoryBlockStore kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.outerToolExecutor
             autolayout tb
         }
 

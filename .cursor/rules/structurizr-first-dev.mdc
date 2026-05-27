@@ -1,0 +1,27 @@
+---
+description: 新功能开发顺序 — Structurizr → 用例 → 代码 → 测试（本仓库强制）
+alwaysApply: true
+---
+
+# 开发顺序（Structurizr-first）
+
+本仓库以 **`doc/structurizr/` 为架构权威（ADL）**。实现新能力时 **必须** 按下列顺序，禁止跳过 Structurizr 直接写业务代码。
+
+## 四步
+
+1. **Structurizr** — 更新 `workspace.dsl` / `components/agent-server.dsl`、`MEMORY-STORAGE-BOUNDARY.md` 或专篇（如 `MEMORY-BLOCKS.md`）、`modules-catalog.md`、`COMPONENT-TEST-MAP.md`（计划测项可先标 ⏳）
+2. **用例** — 单测 `*.test.ts` + 组件测 `*.component.integration.test.ts`（先红；可配最小 stub 仅为了能 import）
+3. **代码** — 实现到绿；路径与 ADL `horizon.path` 一致
+4. **测试** — `npm run test:unit` / `npm run test:integration -w @utlra/server`；必要时 `doc/structurizr/validate.bat`
+
+## 禁止
+
+- 只在 `doc/todo/` 写设计、不更新 Structurizr 就合并实现
+- 用 `git` 推送（本机统一 **`hutao`**）
+- 未请求时主动 `git commit`
+
+## 参考
+
+- [`doc/structurizr/REFACTOR-PLAN.md`](doc/structurizr/REFACTOR-PLAN.md)
+- [`doc/structurizr/COMPONENT-TESTING.md`](doc/structurizr/COMPONENT-TESTING.md)
+- 范例：[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](doc/structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md)

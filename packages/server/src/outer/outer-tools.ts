@@ -53,6 +53,8 @@ import {
   readSelfUpdateSession,
 } from '../self-update/session.js';
 import { PerformanceGoalEngine } from '../performance-goals/engine.js';
+import { MEMORY_BLOCK_TOOL_DEFS, dispatchMemoryBlockTool } from './memory-block-tools.js';
+import type { MemoryBlockStore } from './memory-block-store.js';
 
 // ── OpenAI-compatible tool schema ──────────────────────────────────────────
 
@@ -501,6 +503,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
       },
     },
   },
+  ...MEMORY_BLOCK_TOOL_DEFS,
 ];
 
 // ── 工具执行上下文 ──────────────────────────────────────────────────────────
@@ -544,6 +547,8 @@ export interface OuterToolContext {
   skillStore?: SkillMemoryStore;
   /** 技能 drive9 存储层（原文存储，语义检索，优先于 mem9） */
   skillDrive9Store?: SkillDrive9Store;
+  /** Memory Block 存储（keychain 等结构化长期记忆） */
+  memoryBlockStore?: MemoryBlockStore;
 }
 
 export interface ToolCallResult {
@@ -1851,8 +1856,11 @@ export async function executeOuterTool(
         },
         ctx,
       );
-    default:
+    default: {
+      const mb = await dispatchMemoryBlockTool(name, args, ctx);
+      if (mb) return mb;
       return { replied: false, output: `未知工具：${name}` };
+    }
   }
 }
 

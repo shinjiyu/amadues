@@ -44,6 +44,7 @@ import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
 import { OuterMemoryStore } from './outer-memory.js';
 import type { SkillMemoryStore } from '../mem9/skill-memory-store.js';
 import type { SkillDrive9Store } from '../drive9/skill-drive9-store.js';
+import type { MemoryBlockStore } from './memory-block-store.js';
 import type { IActionLogStore, ActionLogEntry } from '../heartbeat/types.js';
 import { writeBornEvent, writeActionEvent } from '../heartbeat/agent-behavior-log.js';
 
@@ -113,6 +114,8 @@ export interface OuterBrainDeps {
   skillStore?: SkillMemoryStore;
   /** 技能 drive9 存储层（原文存储，优先于 mem9） */
   skillDrive9Store?: SkillDrive9Store;
+  /** Memory Block（keychain / vault blocks） */
+  memoryBlockStore?: MemoryBlockStore;
   /** 行为日志存储（可选，由 heartbeat 模块注入，用于心跳检测） */
   actionLogStore?: IActionLogStore;
 }
@@ -358,11 +361,17 @@ export class OuterBrain {
 
     // ── Step 0.6: AWAITING 人消息 → resolve ask_user（changeWatcher 后续 spawn）──
     if (innerBrainRegistry && isHumanSender(senderSid)) {
-      const awaitingResolve = resolveAwaitingInboundFromIm(innerBrainRegistry, ev);
+      const awaitingResolve = await resolveAwaitingInboundFromIm(innerBrainRegistry, ev, {
+        memoryBlockStore: this.deps.memoryBlockStore,
+        updatedBy: senderSid,
+      });
       if (awaitingResolve.resolved) {
         console.log(
           `[utlra][awaiting-resolver] resolved instance=${awaitingResolve.instanceId} ` +
-            `pending=${awaitingResolve.pendingId} thread=${threadId}`,
+            `pending=${awaitingResolve.pendingId} thread=${threadId}` +
+            (awaitingResolve.credentialRef
+              ? ` credential_ref slot=${awaitingResolve.credentialRef.slot}`
+              : ''),
         );
       }
     }
@@ -508,6 +517,7 @@ export class OuterBrain {
         memoryStore:      this.deps.memoryStore,
         skillStore:       this.deps.skillStore,
         skillDrive9Store: this.deps.skillDrive9Store,
+        memoryBlockStore: this.deps.memoryBlockStore,
       },
       registry,
       threadSids,

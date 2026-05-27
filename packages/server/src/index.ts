@@ -51,10 +51,11 @@ import {
 } from './outer/inner-lifecycle.js';
 import { OuterBrain } from './outer/outer-brain.js';
 import { createMemoryStore, type OuterMemoryStore } from './outer/outer-memory.js';
+import { createMemoryBlockStore } from './outer/memory-block-store.js';
 import { initSkillMemoryStore, type SkillMemoryStore } from './mem9/skill-memory-store.js';
 import { Mem9Client } from './mem9/mem9-client.js';
 import { initSkillDrive9Store, type SkillDrive9Store } from './drive9/skill-drive9-store.js';
-import { resolveDrive9Config } from './drive9/drive9-client.js';
+import { getDrive9Client, resolveDrive9Config } from './drive9/drive9-client.js';
 import { InnerBrainRegistry, type TaskRecord, type TaskStatus } from './outer/inner-brain-registry.js';
 import { KpiRegistry, formatKpiReflexionBlock } from './outer/kpi-registry.js';
 import { processBurstExitForKpi } from './outer/kpi-burst-hooks.js';
@@ -1604,6 +1605,8 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   globalMemoryStore = memoryStore;
   void memoryStore.init();
 
+  const memoryBlockStore = createMemoryBlockStore(DATA_ROOT, getDrive9Client(), agentSid);
+
   let skillStore: SkillMemoryStore | undefined;
   let skillDrive9Store: SkillDrive9Store | undefined;
 
@@ -1647,6 +1650,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     scheduleReflexionBurst,
     scheduleNextKpiBurst,
     memoryStore,
+    memoryBlockStore,
     skillStore,
     skillDrive9Store,
   });
