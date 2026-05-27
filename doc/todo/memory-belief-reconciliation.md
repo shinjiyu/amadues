@@ -1,6 +1,6 @@
 # TODO：外脑记忆跨时间降权修订（Belief Reconciliation）
 
-> **Status:** 待实现 · **Recorded:** 2026-05-19  
+> **Status:** MVP 已实现 · **Recorded:** 2026-05-19  
 > **English:** Stale mem9 / task memories keep competing with user corrections; need belief revision via downranking, not deletion.
 
 ---
@@ -75,9 +75,10 @@ score = sim(query, memory) × validity × recency_decay × source_trust
 
 ### MVP
 
-- [ ] 用户取消/完成 → 规则匹配 topic → **强制** `update_tasks` 等价写入 + mem9 `validity` 降权
-- [ ] `read_memory` / `readChatLog` 默认过滤 `validity < 0.3`
-- [ ] 作废条在 UI/日志可折叠：`曾计划 XX（已于 T 取消）`
+- [x] 用户取消/完成 → 规则匹配 → 强制 `update_tasks` 等价 + 本地 belief 索引
+- [x] `readChatLog` 默认过滤 mem9 `validity < 0.3`（metadata）
+- [x] 作废条折叠：`formatMemoryForLlm` 注入「已修订信念」段
+- [ ] mem9 全量 downrank 运行时验收（MVP 已 fire-and-forget update）
 
 ### M1
 

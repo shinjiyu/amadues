@@ -376,6 +376,17 @@ export class OuterBrain {
       }
     }
 
+    // ── Step 0.65: 用户取消/完成 → 信念对账（降权 tasks + belief）──
+    const memStore = this.deps.memoryStore;
+    if (memStore && isHumanSender(senderSid) && content.trim()) {
+      const belief = memStore.reconcileFromUserMessage(content, senderSid);
+      if (belief.applied) {
+        console.log(
+          `[utlra][belief-reconcile] ${belief.intent} topic=${belief.topic?.slice(0, 60)} thread=${threadId}`,
+        );
+      }
+    }
+
     // ── IP-03: 写入 respond 事件（入站消息触发） ──────────────────────────
     const respondScope = `thread:${threadId} from:${senderSid}`;
     this._appendLocalLog({ timestamp: Date.now(), operation_type: 'respond', impact_scope: respondScope });
@@ -482,7 +493,6 @@ export class OuterBrain {
     const longTermGoal = loadOuterGoal(dataRoot);
 
     // 记忆注入：将 daily-log 和 tasks 状态附加到知识上下文前面
-    const memStore = this.deps.memoryStore;
     const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', hasAny: false };
     const memBlock = memStore ? memStore.formatMemoryForLlm(memory) : '';
     const fullContext = memBlock

@@ -15,10 +15,16 @@
  *   - 未配置 MEM9_API_KEY 时，对话读操作返回空；未配置 DRIVE9_API_KEY 时，tasks 仅驻留内存
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
 import { Mem9Client } from '../mem9/mem9-client.js';
 import { getDrive9Client } from '../drive9/drive9-client.js';
+import {
+  BeliefRevisionStore,
+  filterMemoriesByValidity,
+  formatArchivedBeliefHints,
+  reconcileBeliefFromUserMessage,
+  type BeliefReconcileResult,
+  type BeliefRevision,
+} from './memory-belief-reconcile.js';
 
 export type { Mem9Client };
 
@@ -44,13 +50,20 @@ export class OuterMemoryStore {
   readonly chatAgentId: string;
   /** drive9 上任务状态文件路径，如 tasks/kuro.md */
   private readonly tasksD9Path: string;
+  private readonly beliefStore: BeliefRevisionStore | null;
+  private beliefRevisions: BeliefRevision[] = [];
 
   constructor(
     readonly mem9: Mem9Client | null,
     readonly agentSid: string,
+    dataRoot?: string,
   ) {
     this.chatAgentId = `${agentSid}:chat`;
     this.tasksD9Path = `tasks/${agentSid}.md`;
+    this.beliefStore = dataRoot ? new BeliefRevisionStore(dataRoot, agentSid) : null;
+    if (this.beliefStore) {
+      this.beliefRevisions = this.beliefStore.read().revisions;
+    }
   }
 
   /**
@@ -94,10 +107,12 @@ export class OuterMemoryStore {
     try {
       const mems = await this.mem9.search({ agentId: this.chatAgentId, query, limit });
       if (mems.length === 0) return '（暂无对话日志）';
+      const active = filterMemoriesByValidity(mems);
+      if (active.length === 0) return '（暂无有效对话日志；作废记忆已降权过滤）';
       // 优先用服务端原生字段 created_at（不经 LLM 修改，最可靠），
       // 回退到我们在 metadata.ts 写入的 ISO 字符串。
       // 升序（旧→新），LLM 阅读更自然。
-      const sorted = [...mems].sort((a, b) => {
+      const sorted = [...active].sort((a, b) => {
         const ta = a.created_at ?? (a.metadata?.['ts'] as string | undefined) ?? '';
         const tb = b.created_at ?? (b.metadata?.['ts'] as string | undefined) ?? '';
         return ta < tb ? -1 : ta > tb ? 1 : 0;
@@ -140,16 +155,60 @@ export class OuterMemoryStore {
   }
 
   formatMemoryForLlm(ctx: MemoryContext): string {
-    if (!ctx.hasAny) return '';
-    return [
-      '## 记忆',
-      '',
-      '### 当前任务状态',
-      ctx.tasks,
-      '',
-      '### 最近对话日志',
-      ctx.dailyLog,
-    ].join('\n');
+    if (!ctx.hasAny && this.beliefRevisions.length === 0) return '';
+    const archived = formatArchivedBeliefHints(this.beliefRevisions);
+    const parts = ['## 记忆', ''];
+    if (ctx.hasAny || this.tasksCache) {
+      parts.push('### 当前任务状态', ctx.tasks, '');
+    }
+    if (archived) {
+      parts.push(archived, '');
+    }
+    if (ctx.hasAny) {
+      parts.push('### 最近对话日志', ctx.dailyLog);
+    }
+    return parts.join('\n');
+  }
+
+  /**
+   * 用户 IM 取消/完成 → 强制对账 tasks + 本地 belief 修订（MVP）。
+   */
+  reconcileFromUserMessage(text: string, userSid: string): BeliefReconcileResult {
+    const { result, tasks, revisions } = reconcileBeliefFromUserMessage(
+      text,
+      userSid,
+      this.beliefStore,
+      this.tasksCache || this.readTasks(),
+    );
+    if (result.applied) {
+      this.beliefRevisions = revisions;
+      this.writeTasks(tasks);
+      void this.downrankMem9ByTopic(result.topic!, result.intent!);
+    }
+    return result;
+  }
+
+  private async downrankMem9ByTopic(topic: string, status: 'cancelled' | 'completed'): Promise<void> {
+    if (!this.mem9 || !topic.trim()) return;
+    const validity = status === 'cancelled' ? 0.15 : 0.25;
+    try {
+      const hits = await this.mem9.search({ agentId: this.chatAgentId, query: topic, limit: 12 });
+      for (const mem of hits) {
+        if (!mem.content.includes(topic.slice(0, 20)) && !topic.includes(mem.content.slice(0, 20))) {
+          continue;
+        }
+        await this.mem9.update(mem.id, {
+          metadata: {
+            ...(mem.metadata ?? {}),
+            validity,
+            status,
+            revised_at: new Date().toISOString(),
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('[outer-memory] mem9 validity downrank failed:', (e as Error).message);
+    }
   }
 
   // ── 内脑输出 → mem9 自动提取 ───────────────────────────────────────────────
@@ -204,16 +263,16 @@ export class OuterMemoryStore {
 
 // ── 工厂函数：从环境变量创建 OuterMemoryStore ────────────────────────────────
 
-export function createMemoryStore(_dataRoot: string, agentSid: string): OuterMemoryStore {
+export function createMemoryStore(dataRoot: string, agentSid: string): OuterMemoryStore {
   const apiKey = process.env['MEM9_API_KEY']?.trim();
   const apiUrl = process.env['MEM9_API_URL']?.trim();
 
   if (apiKey) {
     const mem9 = new Mem9Client({ apiKey, apiUrl });
     console.log(`[outer-memory] mem9 已启用 agentSid=${agentSid} url=${apiUrl ?? 'https://api.mem9.ai'}`);
-    return new OuterMemoryStore(mem9, agentSid);
+    return new OuterMemoryStore(mem9, agentSid, dataRoot);
   }
 
-  console.log('[outer-memory] MEM9_API_KEY 未设置，记忆层不可用');
-  return new OuterMemoryStore(null, agentSid);
+  console.log('[outer-memory] MEM9_API_KEY 未设置，记忆层不可用（belief/tasks 本地仍可用）');
+  return new OuterMemoryStore(null, agentSid, dataRoot);
 }

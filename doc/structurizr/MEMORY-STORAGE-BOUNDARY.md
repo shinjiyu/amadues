@@ -11,7 +11,7 @@
 | **外脑记忆 mem9** | HTTPS | mem9 `${sid}:chat` / `:tasks` | `OuterMemoryStore`、`write_memo` | `readMemoryContext` |
 | **技能/共享 drive9** | HTTPS | `/skills/shared/` | 内脑 `write_skill` | `seedRelevantSkillsFromDrive9`、内脑 `get_skill_content` |
 | **Memory Block** | drive9 / 本地 | `/vault/blocks/{block_id}/entries/{key}.json` | 外脑 `memory_block_*` | 外脑 list；内脑 **bind 后** `.brain/secrets/` 等 |
-| **大 payload 暂存** | 本地 workDir | `.brain/inbound/pending-results/` | Executor spill | 内脑 `read_file` |
+| **Belief 修订索引** | 本地 JSON | `DATA_ROOT/belief/{agentSid}.json` | `memory-belief-reconcile`（用户取消/完成） | `read_memory` 折叠提示 |
 
 专篇：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md) · [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)
 
@@ -41,8 +41,9 @@
 |------|------|
 | 外脑装配 | `packages/server/src/index.ts` |
 | mem9 门面 | `outer/outer-memory.ts` |
+| **Belief 对账** | `outer/memory-belief-reconcile.ts` |
 | K/S/P 检索 | `outer/knowledge-retrieval.ts` |
-| **Memory Block** | `outer/memory-block-store.ts`（计划）· `outer/memory-block-tools.ts`（计划） |
+| **Memory Block** | `outer/memory-block-store.ts` · `outer/memory-block-tools.ts` |
 | 内脑写 mem9 | `openkuroneko/tools/definitions/write-memo.ts` |
 | 内脑写技能 | `openkuroneko/tools/definitions/write-skill.ts` |
 | drive9 技能 | `openkuroneko/skills/drive9-provider.ts` |

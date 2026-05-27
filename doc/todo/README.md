@@ -4,11 +4,11 @@
 
 | 文档 | 状态 | 说明 |
 |------|------|------|
-| [`memory-belief-reconciliation.md`](./memory-belief-reconciliation.md) | **待实现** | 外脑记忆跨时间「降权修订」：Belief / Episodic 分离、取消与完成对账、检索 validity |
+| [`memory-belief-reconciliation.md`](./memory-belief-reconciliation.md) | **MVP 已完成** | 用户取消/完成 → belief 对账 + tasks/mem9 降权 |
 | [`inner-brain-awaiting-lifecycle.md`](./inner-brain-awaiting-lifecycle.md) | **P0+P1 已完成** | AWAITING：reconcile、IM resolver、bootstrap、周期对账、组件测 |
 | [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md) | **已完成** | resolved pending spill（去掉 600 字硬截断） |
-| [`cross-agent-research-and-keychain.md`](./cross-agent-research-and-keychain.md) | **待实现** | 研究共享：内脑 Attributor `write_skill` 蒸馏；钥匙串落地见下项 |
-| [`memory-blocks-framework.md`](./memory-blocks-framework.md) | **待实现** | Memory Block：动态分块 + 策略（`kv_secret` 钥匙串为首块）+ `memory_block_*` CRUD |
+| [`cross-agent-research-and-keychain.md`](./cross-agent-research-and-keychain.md) | **R1+R2 已完成** | 研究共享：Attributor write_skill + 重试/BLOCK 兜底 |
+| [`memory-blocks-framework.md`](./memory-blocks-framework.md) | **B0–B2 已完成** | Memory Block + keychain + IM credential_ref |
 
 **已实现（非 backlog）**：Dashboard **参与策略 Lab** — 外脑「是否回复/插嘴」策略调试台，见下文说明。
 

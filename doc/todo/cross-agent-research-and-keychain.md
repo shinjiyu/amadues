@@ -2,7 +2,7 @@
 
 > **English:** Shiro→Kuroneko research reuse = **inner brain distills `write_skill`** (drive9 `/skills/shared/`), prompted automatically—not memory blocks or a separate research vault. Keychain stays a **kv_secret memory block** (future).
 
-**状态**：B1 ✅ keychain 工具 · **B2** ✅ IM 凭证自动 vault（见 memory-blocks-framework）· R1 ⏳ Attributor `write_skill`
+**状态**：B2 ✅ keychain · **R1+R2** ✅ Attributor write_skill 门控 + 重试/BLOCK 兜底 · R3 ⏳ Dashboard
 
 关联：[`MEMORY-STORAGE-BOUNDARY.md`](../structurizr/MEMORY-STORAGE-BOUNDARY.md) · [`attributor.ts`](../../packages/server/src/openkuroneko/controller/attributor.ts) · [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md)（600 字截断专篇）· [`memory-belief-reconciliation.md`](./memory-belief-reconciliation.md)
 
@@ -101,7 +101,9 @@ seedRelevantSkillsFromDrive9(goal)   // 已有
 
 ### 验收
 
-- [ ] 研究类 burst 结束后，drive9 `/skills/shared/` 新增或 merge 含对应 tags 的条目
+- [x] Attributor 研究里程碑：专用 prompt + 缺 write_skill 时 SUCCESS→CONTINUE 门控（R1）
+- [x] 契约要求 write_skill 但 0 次：Attributor 重试 pass → 仍缺则 BLOCK 通知外脑（R2）
+- [ ] 研究类 burst 结束后，drive9 `/skills/shared/` 新增或 merge 含对应 tags 的条目（运行时验收）
 - [ ] Kuroneko 同主题 `set_goal` 后，`.brain/skills.md` 索引含该条，`get_skill_content` 可读
 - [ ] 群聊不再用 >20 个 MD 附件代替共享
 - [ ] Attributor 日志中研究里程碑可见 `write_skill` 调用
@@ -200,9 +202,9 @@ awaitingInboundResolver / 外脑
 |------|------|
 | **P0** | [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md) — resolved pending spill，去掉 600 字硬截断 |
 | **B1** | Memory Block 框架 + `kv_secret` / `keychain`（见 [`memory-blocks-framework.md`](./memory-blocks-framework.md)） |
-| **R1** | Attributor 研究分支提示词 + 里程碑契约模板（`write_skill` 蒸馏） |
-| **R2** | P1 框架兜底：研究里程碑未 `write_skill` → CONTINUE/BLOCK |
-| **R3** | Dashboard 钥匙串管理页（slot 列表/删除/绑定测试） |
+| **R1** | Attributor 研究分支 + write_skill 门控 | ✅ |
+| **R2** | Attributor 重试 pass + 仍缺则 BLOCK | ✅ |
+| **R3** | Dashboard 钥匙串管理页（可选） | ⏳ |
 
 ---
 

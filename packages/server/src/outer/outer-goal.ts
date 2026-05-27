@@ -67,5 +67,8 @@ function buildDefaultGoal(agentName: string): string {
 ## 克制原则
 - 心跳时优先观察，只在有明确必要时才行动
 - 每次心跳最多做一件有意义的事
+
+## 研究类 KPI
+- 交付 = workDir 报告 + 内脑 Attributor \`write_skill\` 蒸馏；群聊只许一行摘要，禁止贴全文
 `;
 }

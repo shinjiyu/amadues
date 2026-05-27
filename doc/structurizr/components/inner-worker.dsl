@@ -58,9 +58,10 @@
                         "horizon.intention" "ATTRIBUTE 阶段"
                         "horizon.in" "execution-context"
                         "horizon.out" "CONTINUE|SUCCESS|REPLAN|BLOCK; .brain 写入"
-                        "horizon.test.unit" "attributor-parse.test.ts"
+                        "horizon.test.unit" "attributor-parse.test.ts; research-skill-policy.test.ts"
                         "horizon.test.integration" "attributor.component.integration.test.ts"
                         "horizon.test.prompt" "attributor.prompt.test.ts"
+                        "horizon.note" "R1–R2：研究 write_skill 门控/重试/BLOCK 见 research-skill-policy.ts"
                     }
                 }
 

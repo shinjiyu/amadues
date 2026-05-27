@@ -29,7 +29,7 @@
 | innerSpawner | ❌ | ✅ `innerSpawner.component.integration.test.ts` | — | + 可选 `spawn-inner-worker-live`（`UTLRA_TEST_SPAWN_INNER=1`） |
 | kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | |
 | kpiBurstHooks | ✅ `kpi-burst-hooks.test.ts` | ✅ `kpiBurstHooks.component.integration.test.ts` | — | 与 `kpi-lifecycle.integration` 互补 |
-| outerMemory | ❌ | ✅ `outerMemory.component.integration.test.ts` | — | |
+| outerMemory | ✅ `memory-belief-reconcile.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP |
 | completionNotify | 🟡 `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 `inner-brain-deliverables.md` |
 | pushLoop | ❌ | ✅ `pushLoop.component.integration.test.ts` | — | BLOCK → IM |
 | changeWatcher | ✅ `change-watcher.test.ts` + `change-watcher.bootstrap.test.ts` | ✅ `changeWatcher.component.integration.test.ts` | — | bootstrap + reconcile 已接 |
@@ -49,7 +49,7 @@
 | controllerFsm | 🟡 completion-report | ✅ `controllerFsm.component.integration.test.ts` | ❌ E.1 run-burst | BrainFS state |
 | decomposer | ✅ `parse-milestones.test.ts` | ✅ `decomposer.component.integration.test.ts` | ✅ `decomposer.prompt.test.ts` | |
 | executor | 🟡 | ✅ `executor.component.integration.test.ts` | — | + `executor-resolved-pendings.test.ts` |
-| attributor | ✅ `attributor-parse.test.ts` | ✅ `attributor.component.integration.test.ts` | ✅ `attributor.prompt.test.ts` | |
+| attributor | ✅ `attributor-parse.test.ts` + `research-skill-policy.test.ts` | ✅ `attributor.component.integration.test.ts` | ✅ `attributor.prompt.test.ts` | R1 研究里程碑 write_skill 门控 |
 | reflexionModule | ✅ reflexion 解析 | ✅ `reflexionModule.component.integration.test.ts` | ✅ `reflexion.prompt.test.ts` | |
 | blockResolver | ❌ | ✅ `blockResolver.component.integration.test.ts` | — | FakeLLM |
 | brainFs | ✅ `parse-milestones.test.ts` | ✅ `brainFs.component.integration.test.ts` | — | |

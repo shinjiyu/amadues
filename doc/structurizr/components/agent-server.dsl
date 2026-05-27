@@ -69,7 +69,9 @@
                         "horizon.in" "mem9 read"
                         "horizon.out" "formatMemoryForLlm 文本块"
                         "horizon.deps" "mem9-client + drive9-client（本模块为唯一外脑门面）"
+                        "horizon.test.unit" "memory-belief-reconcile.test.ts"
                         "horizon.test.integration" "outerMemory.component.integration.test.ts"
+                        "horizon.note" "MVP：用户取消/完成 → belief 对账 + tasks 降权"
                     }
                 }
 
