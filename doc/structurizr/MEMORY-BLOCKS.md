@@ -1,123 +1,110 @@
 # Memory Block 抽象（ADL 权威）
 
-> **English:** Structured long-term agent memory as **typed blocks** with pluggable **strategies**. First block: `keychain` (`kv_secret`). Uniform outer tools `memory_block_*`; secrets never go to mem9 chat ingest.
+> **English:** Agent-owned **notebook memory** — typed blocks with pluggable strategies. Persistent, non-evicting CRUD at block + entry level. Evolves the outer memory stack alongside mem9 / drive9 / repository.
 
-**状态**：B0–B2 ✅（store + 工具 + IM 凭证 credential_ref）· B3+ ⏳ 更多 strategy / Dashboard
+**状态**：B0–B1 ✅ vault + entry CRUD · **B2 解耦** ✅ · **B3** ✅ 块级 CRUD + `notebook` + Dashboard 只读 API
 
-关联：[`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUNDARY.md) · [`doc/todo/memory-blocks-framework.md`](../todo/memory-blocks-framework.md) · [`doc/todo/cross-agent-research-and-keychain.md`](../todo/cross-agent-research-and-keychain.md)
+关联：[`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUNDARY.md) · [`doc/todo/memory-blocks-framework.md`](../todo/memory-blocks-framework.md)
 
-**不在 Block 内**：跨 Agent 研究结论 → 内脑 Attributor **`write_skill`** → drive9 `/skills/shared/`（见 cross-agent todo）。
+**原则**：Memory Block 是外脑第四层记忆（记事本），**不**耦合 AWAITING 生命周期或内脑 workDir。外脑 CRUD 后，需要时自行把关键内容写入 `set_goal` / `send_directive` / IM 回复交给内脑。
 
 ---
 
-## 1. 动机
+## 1. 在记忆栈中的位置
 
-| 需求 | mem9 / skills | Memory Block |
-|------|---------------|--------------|
-| Cookie、Token、API Key | 语义检索；易 ingest 泄露 | `kv_secret` / `keychain` |
-| 地址簿 | 非操作步骤 | `kv_contact` / `addressbook`（未来） |
-| 记账本 | 需精确 CRUD | `record_ledger` / `ledger`（未来） |
+| 层 | 隐喻 | 写入 | 淘汰 |
+|----|------|------|------|
+| mem9 | 软回忆、信念 | 追加 + 语义检索 | 降权 / supersede |
+| drive9 skills | 可复用步骤 | `write_skill` | 版本迭代 |
+| repository K/S/P | 执行产物 | promote | 归档 |
+| **Memory Block** | **记事本** | Agent 自选 CRUD | **不自动淘汰**（仅显式 delete） |
 
-钥匙串 = **`block_id=keychain`** + **`strategy=kv_secret`**，不是独立子系统。
+`keychain`（`kv_secret`）是预置块之一，不是 Block 系统的全部。
 
 ---
 
 ## 2. 概念
 
 ```text
-MemoryBlockRegistry (配置 + 策略注册表)
-  block_id: keychain      → strategy: kv_secret
-  block_id: addressbook  → strategy: kv_contact   (未来)
-  block_id: ledger       → strategy: record_ledger (未来)
+MemoryBlockRegistry (per agent, 不互通)
+  block_id: keychain      → strategy: kv_secret   (凭证，prompt 脱敏)
+  block_id: <agent 自建>  → strategy: notebook   (通用记事本，可读)
 
-存储（推荐）：
-  drive9  /vault/blocks/{block_id}/entries/{key}.json
-  降级    DATA_ROOT/vault/blocks/...
+存储（仅本地，按 Agent 的 DATA_ROOT 隔离）：
+  DATA_ROOT/vault/blocks/blocks-index.json
+  DATA_ROOT/vault/blocks/{block_id}/entries/{key}.json
 ```
 
 | 概念 | 说明 |
 |------|------|
-| **Block** | 命名空间 + strategy + ACL（per agent） |
-| **Entry** | 块内一条记录（`weibo`、`contact:张三`） |
-| **Strategy** | 校验、脱敏、是否可进外脑 prompt、`bind` 规则 |
+| **Block** | 命名空间 + strategy（本子） |
+| **Entry** | 块内一条记录（页） |
+| **Strategy** | schema、脱敏、是否可进外脑 prompt |
+
+**B3**：Agent CRUD **块**（`memory_block_create` / `update` / `delete_block`）+ CRUD **记录**（`put` / `get` / `delete`）；用户块索引 `vault/blocks/blocks-index.json`。
 
 ---
 
-## 3. 策略表（权威）
+## 3. 策略表
 
-| strategy | block 示例 | Entry | 外脑 prompt | 内脑 |
-|----------|------------|-------|-------------|------|
-| `kv_secret` | `keychain` | `{ key, kind, value, updated_at, updated_by }` | **无 value**（仅 list keys） | `memory_block_bind` → `.brain/secrets/{key}.json` |
-| `kv_contact` | `addressbook` | `{ key, name, im, notes }` | 可脱敏片段 | 按需 bind |
-| `record_ledger` | `ledger` | `{ id, amount, category, ts, memo }` | 聚合统计 | 一般不整表注入 |
+| strategy | 示例 block | 外脑 prompt | 说明 |
+|----------|------------|-------------|------|
+| `kv_secret` | `keychain` | 无 value | Cookie / Token |
+| `notebook` | （Agent 自建） | 可读摘要/全文 | 通用记事本（B3） |
 
 ---
 
-## 4. 组件 `memoryBlockStore`（L3）
-
-| 属性 | 值 |
-|------|-----|
-| **职责** | Block CRUD、策略执行、`bind` 到 workDir |
-| **计划路径** | `packages/server/src/outer/memory-block-store.ts`；`memory-block-strategies.ts`；工具 `packages/server/src/outer/memory-block-tools.ts` |
-| **In** | `block_id` + `key` + payload；`instance_id`（bind） |
-| **Out** | 条目元数据；`.brain/secrets/*.json` 或策略路径 |
-| **Deps** | drive9（优先）；`innerBrainRegistry`（resolve workDir）；**禁止** mem9 ingest 明文 secret |
-
-### 外脑工具（`outerToolExecutor` 注册）
+## 4. 外脑工具（`outerToolExecutor`）
 
 | 工具 | 作用 |
 |------|------|
 | `memory_block_list` | 可见 block 列表 |
-| `memory_block_entries` | key 列表（secret 无 value） |
-| `memory_block_get` | 按策略返回（secret 块外脑禁全文） |
-| `memory_block_put` | upsert |
-| `memory_block_delete` | 删除 |
-| `memory_block_bind` | `keys[]` + `instance_id` → workDir |
+| `memory_block_create` | 新建块（`notebook` / `kv_secret`） |
+| `memory_block_update` | 改 title / description |
+| `memory_block_delete_block` | 删整块（不可删 `keychain`） |
+| `memory_block_entries` | entry key 列表 |
+| `memory_block_get` | 读条目（secret 块脱敏） |
+| `memory_block_put` | upsert（notebook 用 `body`/`title`/`tags`） |
+| `memory_block_delete` | 删条目 |
+| `keychain_put` / `keychain_entries` | `keychain` 别名 |
 
-过渡期可保留 `keychain_*` 别名指向同一 store。
+**Dashboard（只读）**：`GET /api/memory/blocks`、`GET /api/memory/blocks/:blockId/entries`（无 secret `value`）。
+
+**已移除（B2 解耦）**：`memory_block_bind`、`credential_ref`、awaiting 自动 vault。
+
+内脑需要块内内容时：外脑在 IM 回合里 `memory_block_get`（或后续 notebook 可读策略）→ `set_goal` / 回复中提供必要片段，**不**复制到 `.brain/secrets/`。
 
 ---
 
-## 5. 边界（与 mem9 / skills / burst）
+## 5. 边界
 
 | 内容 | Block | mem9 | skills |
 |------|-------|------|--------|
+| Agent 自选长期笔记 | ✅ notebook | ❌ | ❌ |
 | Cookie/Token | ✅ keychain | ❌ 禁止 ingest | ❌ |
 | 研究结论 | ❌ | 摘要可选 | ✅ `write_skill` |
-| 任务进度 | ❌ | ✅ tasks/chat | ❌ |
 | burst 战术 | ❌ | ❌ | ❌ `.brain/*` |
 
-与 **resolved pending spill**（`.brain/inbound/pending-results/`）互补：大 payload 先进 spill 文件，凭证长期存 Block。
+AWAITING resolve 仅写 `{ reply: text }`；是否 `memory_block_put` 由**外脑 LLM 下一轮**决定。
 
 ---
 
-## 6. 安全（MVP）
-
-- 日志：只打 `block_id` + `key` + `value.length`
-- `kv_secret`：禁止 `write_memo` / smart ingest 全文
-- drive9 ACL 沿用现有 key；vault 不入 git
-
----
-
-## 7. 实现梯度
+## 6. 实施梯度
 
 | 阶段 | 交付 |
 |------|------|
-| B0 | `BlockStrategy` 接口 + `MemoryBlockStore` 骨架 |
-| B1 | `kv_secret` + `keychain` + `memory_block_*` 五工具 |
-| B2 | `credential_ref` + awaiting resolver + executor 对齐 | ✅ |
-| B3+ | `kv_contact`、`record_ledger`、Dashboard |
+| B0 | Store + strategy 骨架 |
+| B1 | `kv_secret` / `keychain` + entry CRUD 工具 |
+| B2 | **解耦** awaiting / bind / credential_ref / executor 特殊路径 | ✅ |
+| B3 | 块级 CRUD + `notebook` strategy + Dashboard | ✅ |
 
 ---
 
-## 8. 测试映射
-
-见 [`COMPONENT-TEST-MAP.md`](./COMPONENT-TEST-MAP.md) — `memoryBlockStore` 行（⏳ 用例已登记，实现后转 ✅）。
-
----
-
-## 9. 修订
+## 7. 修订
 
 | 日期 | 说明 |
 |------|------|
-| 2026-05-28 | 初版 ADL；取代 MEMORY-STORAGE-BOUNDARY 中独立 keychain / research vault 行 |
+| 2026-05-28 | 初版 ADL |
+| 2026-05-19 | 记事本定位；B2 切断 awaiting/内脑 bind 耦合 |
+| 2026-05-19 | B3：notebook、块 CRUD、Dashboard `/api/memory/blocks` |
+| 2026-05-19 | 存储定稿：**仅本地 vault**，不走 drive9（与 skills 分离） |

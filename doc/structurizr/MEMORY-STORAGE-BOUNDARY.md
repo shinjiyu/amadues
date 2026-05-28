@@ -10,7 +10,7 @@
 | **执行轨 Repository** | `FilesystemRepositoryStore` | `DATA_ROOT/repository/` | 晋升 `promote-from-workspace` | **外脑** `knowledgeRetrieval`（K/S/P） |
 | **外脑记忆 mem9** | HTTPS | mem9 `${sid}:chat` / `:tasks` | `OuterMemoryStore`、`write_memo` | `readMemoryContext` |
 | **技能/共享 drive9** | HTTPS | `/skills/shared/` | 内脑 `write_skill` | `seedRelevantSkillsFromDrive9`、内脑 `get_skill_content` |
-| **Memory Block** | drive9 / 本地 | `/vault/blocks/{block_id}/entries/{key}.json` | 外脑 `memory_block_*` | 外脑 list；内脑 **bind 后** `.brain/secrets/` 等 |
+| **Memory Block** | **本地** | `DATA_ROOT/vault/blocks/`（索引 + entries） | 外脑 `memory_block_*` | 外脑 CRUD；**不**上 drive9/mem9 |
 | **Belief 修订索引** | 本地 JSON | `DATA_ROOT/belief/{agentSid}.json` | `memory-belief-reconcile`（用户取消/完成） | `read_memory` 折叠提示 |
 
 专篇：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md) · [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)

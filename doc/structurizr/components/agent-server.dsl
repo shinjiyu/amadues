@@ -13,13 +13,14 @@
                     }
                 }
 
-                threadOrchestrator = component "Thread Orchestrator" "【线程新鲜度】反 agent 自循环、触发消息是否仍最新；供对话环中止" "TypeScript" {
+                threadOrchestrator = component "Thread Orchestrator" "【线程编排】jitter/debounce + 同 thread FIFO 串行 + freshCheck（仅触发上被一并@的 agent 算抢答；独占@本 agent 不因他人插话放弃）" "TypeScript" {
                     tags "Outer-Module" "Inbound"
                     properties {
-                        "path" "packages/server/src/outer/thread-orchestrator.ts"
-                        "horizon.intention" "防止过时消息继续驱动 LLM"
-                        "horizon.in" "seenTracker + threadId + triggerMessageId"
-                        "horizon.out" "freshCheck 回调"
+                        "path" "packages/server/src/outer/thread-orchestrator.ts; packages/chat-ir/src/seen-tracker.ts"
+                        "horizon.intention" "防并发激荡；分别@不同 agent 时不互掐"
+                        "horizon.in" "seenTracker(track 含 mention_target_sids) + threadId + triggerMessageId"
+                        "horizon.out" "freshCheck 回调；UTLRA_ORCHESTRATOR_MAX_QUEUED 排队"
+                        "horizon.test.unit" "packages/chat-ir/src/seen-tracker.test.ts"
                         "horizon.test.integration" "threadOrchestrator.component.integration.test.ts"
                     }
                 }

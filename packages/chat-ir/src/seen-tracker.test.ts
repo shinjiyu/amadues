@@ -98,6 +98,62 @@ describe('ChatIRSeenTracker.hasAnotherAgentRepliedAfter', () => {
     t.track('th1', { message_id: 'self', sender_sid: SELF });
     expect(t.hasAnotherAgentRepliedAfter('th1', 'trigger')).toBe(false);
   });
+
+  it('触发仅 @ 自己时，其它 agent 插话不算抢答', () => {
+    const t = makeTracker();
+    t.track('th1', {
+      message_id: 'trigger',
+      sender_sid: HUMAN,
+      mention_target_sids: [SELF],
+    });
+    t.track('th1', { message_id: 'a1', sender_sid: OTHER_AGENT });
+    expect(t.hasAnotherAgentRepliedAfter('th1', 'trigger')).toBe(false);
+  });
+
+  it('触发 @ 自己 + 另一 agent 时，仅该 agent 的回复算抢答', () => {
+    const t = makeTracker();
+    t.track('th1', {
+      message_id: 'trigger',
+      sender_sid: HUMAN,
+      mention_target_sids: [SELF, OTHER_AGENT],
+    });
+    t.track('th1', { message_id: 'a1', sender_sid: OTHER_AGENT });
+    expect(t.hasAnotherAgentRepliedAfter('th1', 'trigger')).toBe(true);
+    t.reset();
+    t.track('th1', {
+      message_id: 'trigger2',
+      sender_sid: HUMAN,
+      mention_target_sids: [SELF, OTHER_AGENT],
+    });
+    t.track('th1', { message_id: 'a2', sender_sid: 'agent:third' });
+    expect(t.hasAnotherAgentRepliedAfter('th1', 'trigger2')).toBe(false);
+  });
+
+  it('无 mention 元数据时，webchat 马甲（registry.kind=agent）不算抢答', () => {
+    const regPath = path.join(
+      tmpdir(),
+      `chat-ir-fresh-${Date.now()}-${Math.random()}.json`,
+    );
+    const registry = new IdentityRegistry(regPath);
+    const webchatPeer = 'webchat:user:shiro';
+    registry.upsert({
+      schema: 'identity.v1',
+      sid: webchatPeer,
+      kind: 'agent',
+      display_name: 'shiro',
+      aliases: [],
+      roles_in_tenant: [],
+      bindings: [],
+      updated_at: new Date().toISOString(),
+    });
+    const t = new ChatIRSeenTracker({
+      selfAgentSid: SELF,
+      identityRegistry: registry,
+    });
+    t.track('th1', { message_id: 'trigger', sender_sid: HUMAN });
+    t.track('th1', { message_id: 'noise', sender_sid: webchatPeer });
+    expect(t.hasAnotherAgentRepliedAfter('th1', 'trigger')).toBe(false);
+  });
 });
 
 describe('ChatIRSeenTracker.track', () => {

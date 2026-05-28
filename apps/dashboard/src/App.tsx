@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { InnerLiveDeck, type BrainInspector, type PiLogsResponse } from './inner-live.js';
 import { OuterPanel } from './outer-panel.js';
 import { ParticipationLabPanel } from './participation-lab.js';
+import { MemoryBlocksPanel } from './memory-blocks-panel.js';
 
 type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation';
 
@@ -186,8 +187,14 @@ export function App() {
 function MemoryPanel({ apiPrefix }: { apiPrefix: string }) {
   const [dailyLog, setDailyLog] = useState<string>('');
   const [tasks, setTasks] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [tasksEdit, setTasksEdit] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
     try {
       const r = await fetch(`${apiPrefix}/outer/memory`);
       if (!r.ok) return;
@@ -196,8 +203,30 @@ function MemoryPanel({ apiPrefix }: { apiPrefix: string }) {
       setTasks(j.tasks ?? '');
     } catch {
       // ignore
+    } finally {
+      setLoading(false);
     }
   }, [apiPrefix]);
+
+  const handleSaveTasks = useCallback(async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const r = await fetch(`${apiPrefix}/outer/memory/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks_markdown: tasksEdit }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      setTasks(tasksEdit);
+      setEditing(false);
+      setSaveMsg('已保存');
+    } catch (e) {
+      setSaveMsg(`保存失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [apiPrefix, tasksEdit]);
 
   useEffect(() => {
     void refresh();
@@ -305,6 +334,8 @@ function MemoryPanel({ apiPrefix }: { apiPrefix: string }) {
           LLM 可通过 update_tasks 工具更新。路径：outer/memory/tasks.md
         </p>
       </div>
+
+      <MemoryBlocksPanel apiPrefix={apiPrefix} />
     </div>
   );
 }

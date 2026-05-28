@@ -23,7 +23,7 @@
 | **participationPolicy** | **是否说话 / 是否回复** | `outer/inbound-policy.ts` + `participation-state.ts` | `OuterInboundMeta` → `shouldReply` / SPEAK·SILENT |
 | outerBrainFacade | 外脑编排入口 | `outer/outer-brain.ts` | `ChatIRInboundEvent` → 调 loop / policy |
 | knowledgeRetrieval | 知识检索 | `outer/knowledge-retrieval.ts` | query → K/S/P 片段 |
-| threadOrchestrator | 线程串行/新鲜度 | `outer/thread-orchestrator.ts` | thread ops |
+| threadOrchestrator | 线程串行 + mention 感知 freshCheck + FIFO 排队 | `outer/thread-orchestrator.ts`; `chat-ir/seen-tracker.ts` | thread ops |
 | outerConversationLoop | 外脑多轮 LLM | `outer/outer-conversation-loop.ts` | context → tool_calls |
 | outerToolExecutor | 外脑工具执行 | `outer/outer-tools.ts` | tool_call → reply/spawn |
 | outerOrchestrator | M6 roundtrip | `outer/orchestrator.ts` | 入站 → reply + spawn |

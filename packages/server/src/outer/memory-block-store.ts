@@ -1,64 +1,128 @@
 /**
+ * Memory Block — local vault only (per DATA_ROOT / agent instance).
  * @see doc/structurizr/MEMORY-BLOCKS.md
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { Drive9Client } from '../drive9/drive9-client.js';
 import {
-  getDefaultBlockRegistry,
+  getSystemBlocks,
+  isSupportedCreateStrategy,
+  isSystemBlockId,
+  pathSafeBlockId,
   pathSafeKey,
   resolveStrategy,
   type BlockDefinition,
   type BlockStrategyId,
   type KvSecretEntry,
+  type NotebookEntry,
 } from './memory-block-strategies.js';
 
 const VAULT_REL = 'vault/blocks';
+const INDEX_FILE = 'blocks-index.json';
+
+interface BlocksIndexFile {
+  schema: 'memory-blocks.v1';
+  blocks: BlockDefinition[];
+}
 
 export interface MemoryBlockStoreOptions {
   dataRoot: string;
-  drive9?: Drive9Client | null;
   agentId?: string;
-  blocks?: BlockDefinition[];
 }
 
 export class MemoryBlockStore {
   private readonly dataRoot: string;
-  private readonly drive9: Drive9Client | null;
   private readonly agentId: string;
-  private readonly blocks: BlockDefinition[];
+  private userBlocks: BlockDefinition[];
 
   constructor(opts: MemoryBlockStoreOptions) {
     this.dataRoot = opts.dataRoot;
-    this.drive9 = opts.drive9 ?? null;
     this.agentId = opts.agentId ?? 'default';
-    this.blocks = opts.blocks ?? getDefaultBlockRegistry();
+    this.userBlocks = loadUserBlocks(opts.dataRoot);
+    fs.mkdirSync(this.vaultRoot(), { recursive: true });
   }
 
   listBlocks(): BlockDefinition[] {
-    return this.blocks.map((b) => ({ ...b }));
+    return this.mergedBlocks().map((b) => ({ ...b }));
   }
 
   resolveBlock(blockId: string): BlockDefinition {
-    const block = this.blocks.find((b) => b.blockId === blockId);
-    if (!block) throw new Error(`memory_block: unknown block_id ${blockId}`);
+    const id = pathSafeBlockId(blockId);
+    const block = this.mergedBlocks().find((b) => b.blockId === id);
+    if (!block) throw new Error(`memory_block: unknown block_id ${id}`);
     return block;
+  }
+
+  async createBlock(
+    blockId: string,
+    strategy: BlockStrategyId,
+    opts: { title?: string; description?: string },
+    _createdBy?: string,
+  ): Promise<BlockDefinition> {
+    const id = pathSafeBlockId(blockId);
+    if (!isSupportedCreateStrategy(strategy)) {
+      throw new Error(`memory_block: cannot create block with strategy ${strategy}`);
+    }
+    if (isSystemBlockId(id) || this.mergedBlocks().some((b) => b.blockId === id)) {
+      throw new Error(`memory_block: block_id already exists: ${id}`);
+    }
+    const now = new Date().toISOString();
+    const block: BlockDefinition = {
+      blockId: id,
+      strategy,
+      title: opts.title?.trim() || id,
+      description: opts.description?.trim() || `Memory block (${strategy})`,
+      created_at: now,
+      updated_at: now,
+      system: false,
+    };
+    this.userBlocks.push(block);
+    this.persistUserBlocks();
+    fs.mkdirSync(this.entryDir(id), { recursive: true });
+    return { ...block };
+  }
+
+  async updateBlock(
+    blockId: string,
+    patch: { title?: string; description?: string },
+  ): Promise<BlockDefinition> {
+    const id = pathSafeBlockId(blockId);
+    if (isSystemBlockId(id)) {
+      throw new Error(`memory_block: cannot update system block ${id}`);
+    }
+    const idx = this.userBlocks.findIndex((b) => b.blockId === id);
+    if (idx < 0) throw new Error(`memory_block: unknown block_id ${id}`);
+    const cur = this.userBlocks[idx]!;
+    if (patch.title !== undefined) cur.title = patch.title.trim() || cur.blockId;
+    if (patch.description !== undefined) cur.description = patch.description.trim();
+    cur.updated_at = new Date().toISOString();
+    this.persistUserBlocks();
+    return { ...cur };
+  }
+
+  async deleteBlock(blockId: string): Promise<boolean> {
+    const id = pathSafeBlockId(blockId);
+    if (isSystemBlockId(id)) {
+      throw new Error(`memory_block: cannot delete system block ${id}`);
+    }
+    const idx = this.userBlocks.findIndex((b) => b.blockId === id);
+    if (idx < 0) return false;
+    this.userBlocks.splice(idx, 1);
+    this.persistUserBlocks();
+    const dir = this.entryDir(id);
+    if (fs.existsSync(dir)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    return true;
   }
 
   async listEntryKeys(blockId: string): Promise<string[]> {
     const block = this.resolveBlock(blockId);
-    if (this.drive9) {
-      const dir = this.drive9EntryDir(blockId);
-      const entries = await this.drive9.list(dir);
-      return entries
-        .filter((e) => e.name.endsWith('.json'))
-        .map((e) => e.name.replace(/\.json$/, ''));
-    }
-    const localDir = this.localEntryDir(blockId);
-    if (!fs.existsSync(localDir)) return [];
+    const dir = this.entryDir(block.blockId);
+    if (!fs.existsSync(dir)) return [];
     return fs
-      .readdirSync(localDir)
+      .readdirSync(dir)
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.replace(/\.json$/, ''));
   }
@@ -70,10 +134,10 @@ export class MemoryBlockStore {
   ): Promise<Record<string, unknown> | null> {
     const block = this.resolveBlock(blockId);
     const strategy = resolveStrategy(block.strategy);
-    const raw = await this.readEntryJson(blockId, key);
+    const raw = this.readEntryJson(block.blockId, key);
     if (!raw) return null;
-    const redact = block.strategy === 'kv_secret' && !opts.includeValue;
-    return strategy.toPublicMeta(raw as KvSecretEntry, redact);
+    const redact = strategy.redactInOuterPrompt && !opts.includeValue;
+    return strategy.toPublicMeta(raw as KvSecretEntry & NotebookEntry, redact);
   }
 
   async put(
@@ -84,102 +148,88 @@ export class MemoryBlockStore {
   ): Promise<Record<string, unknown>> {
     const block = this.resolveBlock(blockId);
     const strategy = resolveStrategy(block.strategy);
-    pathSafeKey(key);
-    const entry = strategy.normalizePut(key, payload, updatedBy ?? this.agentId);
-    await this.writeEntryJson(blockId, key, entry);
-    const redact = block.strategy === 'kv_secret';
-    return strategy.toPublicMeta(entry, redact);
+    const safeKey = pathSafeKey(key);
+    const entry = strategy.normalizePut(safeKey, payload, updatedBy ?? this.agentId);
+    this.writeEntryJson(block.blockId, safeKey, entry);
+    return strategy.toPublicMeta(entry, strategy.redactInOuterPrompt);
   }
 
-  async delete(blockId: string, key: string): Promise<boolean> {
-    this.resolveBlock(blockId);
+  async deleteEntry(blockId: string, key: string): Promise<boolean> {
+    const block = this.resolveBlock(blockId);
     pathSafeKey(key);
-    if (this.drive9) {
-      const p = this.drive9EntryPath(blockId, key);
-      try {
-        await this.drive9.delete(p);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    const local = this.localEntryPath(blockId, key);
+    const local = this.entryPath(block.blockId, key);
     if (!fs.existsSync(local)) return false;
     fs.unlinkSync(local);
     return true;
   }
 
-  /**
-   * Write selected keys into workDir/.brain/secrets/ for inner brain read_file.
-   */
-  async bind(blockId: string, keys: string[], workDir: string): Promise<string[]> {
-    const block = this.resolveBlock(blockId);
-    const strategy = resolveStrategy(block.strategy);
-    const secretsDir = path.join(workDir, '.brain', 'secrets');
-    fs.mkdirSync(secretsDir, { recursive: true });
-    const written: string[] = [];
-    for (const key of keys) {
-      pathSafeKey(key);
-      const raw = await this.readEntryJson(blockId, key);
-      if (!raw) throw new Error(`memory_block: missing entry ${blockId}/${key}`);
-      const rel = strategy.bindRelativePath(key);
-      const dest = path.join(secretsDir, rel);
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(dest, JSON.stringify(raw, null, 2), 'utf8');
-      written.push(path.join('.brain/secrets', rel).replace(/\\/g, '/'));
-    }
-    return written;
+  /** @deprecated use deleteEntry */
+  async delete(blockId: string, key: string): Promise<boolean> {
+    return this.deleteEntry(blockId, key);
   }
 
-  // ── storage ─────────────────────────────────────────────────────────────
+  private mergedBlocks(): BlockDefinition[] {
+    const byId = new Map<string, BlockDefinition>();
+    for (const b of getSystemBlocks()) byId.set(b.blockId, b);
+    for (const b of this.userBlocks) byId.set(b.blockId, { ...b });
+    return Array.from(byId.values());
+  }
 
-  private localVaultRoot(): string {
+  private indexPath(): string {
+    return path.join(this.vaultRoot(), INDEX_FILE);
+  }
+
+  private persistUserBlocks(): void {
+    const file: BlocksIndexFile = {
+      schema: 'memory-blocks.v1',
+      blocks: this.userBlocks,
+    };
+    fs.mkdirSync(this.vaultRoot(), { recursive: true });
+    fs.writeFileSync(this.indexPath(), JSON.stringify(file, null, 2), 'utf8');
+  }
+
+  private vaultRoot(): string {
     return path.join(this.dataRoot, VAULT_REL);
   }
 
-  private localEntryDir(blockId: string): string {
-    return path.join(this.localVaultRoot(), blockId, 'entries');
+  private entryDir(blockId: string): string {
+    return path.join(this.vaultRoot(), blockId, 'entries');
   }
 
-  private localEntryPath(blockId: string, key: string): string {
-    return path.join(this.localEntryDir(blockId), `${pathSafeKey(key)}.json`);
+  private entryPath(blockId: string, key: string): string {
+    return path.join(this.entryDir(blockId), `${pathSafeKey(key)}.json`);
   }
 
-  private drive9EntryDir(blockId: string): string {
-    return `/${VAULT_REL}/${blockId}/entries`;
+  private readEntryJson(blockId: string, key: string): unknown | null {
+    const fp = this.entryPath(blockId, key);
+    if (!fs.existsSync(fp)) return null;
+    return JSON.parse(fs.readFileSync(fp, 'utf8')) as unknown;
   }
 
-  private drive9EntryPath(blockId: string, key: string): string {
-    return `${this.drive9EntryDir(blockId)}/${pathSafeKey(key)}.json`;
-  }
-
-  private async readEntryJson(blockId: string, key: string): Promise<unknown | null> {
-    if (this.drive9) {
-      const p = this.drive9EntryPath(blockId, key);
-      try {
-        const text = await this.drive9.read(p);
-        return JSON.parse(text) as unknown;
-      } catch {
-        return null;
-      }
-    }
-    const local = this.localEntryPath(blockId, key);
-    if (!fs.existsSync(local)) return null;
-    return JSON.parse(fs.readFileSync(local, 'utf8')) as unknown;
-  }
-
-  private async writeEntryJson(blockId: string, key: string, entry: unknown): Promise<void> {
-    const body = JSON.stringify(entry, null, 2);
-    if (this.drive9) {
-      await this.drive9.write(this.drive9EntryPath(blockId, key), body);
-      return;
-    }
-    const dest = this.localEntryPath(blockId, key);
+  private writeEntryJson(blockId: string, key: string, entry: unknown): void {
+    const dest = this.entryPath(blockId, key);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, body, 'utf8');
+    fs.writeFileSync(dest, JSON.stringify(entry, null, 2), 'utf8');
   }
 }
 
-export function createMemoryBlockStore(dataRoot: string, drive9?: Drive9Client | null, agentId?: string): MemoryBlockStore {
-  return new MemoryBlockStore({ dataRoot, drive9: drive9 ?? null, agentId });
+function loadUserBlocks(dataRoot: string): BlockDefinition[] {
+  const fp = path.join(dataRoot, VAULT_REL, INDEX_FILE);
+  try {
+    const raw = JSON.parse(fs.readFileSync(fp, 'utf8')) as BlocksIndexFile;
+    if (raw.schema !== 'memory-blocks.v1' || !Array.isArray(raw.blocks)) return [];
+    return raw.blocks.filter(
+      (b) =>
+        b &&
+        typeof b.blockId === 'string' &&
+        !isSystemBlockId(b.blockId) &&
+        isSupportedCreateStrategy(b.strategy),
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function createMemoryBlockStore(dataRoot: string, agentId?: string): MemoryBlockStore {
+  return new MemoryBlockStore({ dataRoot, agentId });
 }

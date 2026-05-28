@@ -18,8 +18,6 @@ import {
   formatMilestoneContractForPrompt,
 } from '../brain/index.js';
 import { captureSnapshot } from './snapshot.js';
-import { isCredentialRefResult } from '../../outer/credential-ref.js';
-
 // Executor 读取 brain 文件时的字符上限（取最近内容，防止历史噪音淹没指令）
 const KNOWLEDGE_MAX    = 5000;
 const CONSTRAINTS_MAX  = 4000;
@@ -86,18 +84,6 @@ export function formatResolvedPendingResultForPrompt(
   result: unknown,
   workDir: string,
 ): string {
-  if (isCredentialRefResult(result)) {
-    return JSON.stringify({
-      kind: result.kind,
-      block_id: result.block_id,
-      slot: result.slot,
-      path: result.path,
-      byteLength: result.byteLength,
-      credential_kind: result.credential_kind,
-      hint: '凭证已写入 keychain 并 bind 到 workDir；请 read_file 上述 path 获取全文，勿依赖 IM 原文或 spill 摘要',
-    });
-  }
-
   const serialized = JSON.stringify(result ?? null);
   if (serialized.length <= RESOLVED_RESULT_INLINE_MAX) {
     return serialized;

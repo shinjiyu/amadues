@@ -24,14 +24,14 @@ export interface ThreadsRouterDeps {
 export function buildThreadsRouter(deps: ThreadsRouterDeps): Hono {
   const { users, threads, uploads, hub, maxMessagesPerPage } = deps;
   const r = new Hono();
-  r.use('*', identityMiddleware(users));
+  const auth = identityMiddleware(users);
 
-  r.get('/threads', (c) => {
+  r.get('/threads', auth, (c) => {
     const userId = c.get('userId');
     return c.json({ threads: threads.listVisible(userId) });
   });
 
-  r.post('/threads/dm', async (c) => {
+  r.post('/threads/dm', auth, async (c) => {
     const userId = c.get('userId');
     const body = await c.req.json().catch(() => ({}));
     const parsed = CreateDmRequestSchema.safeParse(body);
@@ -49,7 +49,7 @@ export function buildThreadsRouter(deps: ThreadsRouterDeps): Hono {
     return c.json({ thread });
   });
 
-  r.get('/threads/:id/messages', async (c) => {
+  r.get('/threads/:id/messages', auth, async (c) => {
     const userId = c.get('userId');
     const threadId = c.req.param('id');
     if (!threads.canAccess(threadId, userId)) {
@@ -67,7 +67,7 @@ export function buildThreadsRouter(deps: ThreadsRouterDeps): Hono {
     return c.json({ thread_id: threadId, messages, next_before });
   });
 
-  r.post('/threads/:id/messages', async (c) => {
+  r.post('/threads/:id/messages', auth, async (c) => {
     const userId = c.get('userId');
     const threadId = c.req.param('id');
     if (!threads.canAccess(threadId, userId)) {

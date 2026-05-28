@@ -28,6 +28,7 @@ import {
   type MentionResolutionOptions,
   type MessagePart,
   type MessageRecord,
+  mentionTargetSidsFromParts,
 } from '@utlra/chat-ir';
 import type { Thread as WebChatThread, Message as WebChatMessage } from '@utlra/webchat-protocol';
 import type { WebChatBridgeConfig } from './config.js';
@@ -241,6 +242,9 @@ export class WebChatChannel implements ChatIRChannel {
           this.opts.seenTracker.track(ev.threadId, {
             message_id: ev.message.message_id,
             sender_sid: ev.senderSid,
+            mention_target_sids: mentionTargetSidsFromParts(
+              ev.message.parts as Array<{ type: string; target_sid?: string }>,
+            ),
           });
           if (ev.senderSid === this.opts.agentSid) return;
           if (ev.participantSids.length > 0 && !ev.participantSids.includes(this.opts.agentSid)) {
@@ -378,6 +382,7 @@ export class WebChatChannel implements ChatIRChannel {
     this.opts.seenTracker.track(irThreadId, {
       message_id: messageRecord.message_id,
       sender_sid: senderSid,
+      mention_target_sids: mentionTargetSidsFromParts(parts),
     });
   }
 }

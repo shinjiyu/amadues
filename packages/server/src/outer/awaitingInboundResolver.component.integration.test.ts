@@ -11,8 +11,6 @@ import { ChangeWatcher } from '../pi-mono/change-watcher.js';
 import { InnerBrainRegistry, type TaskRecord } from './inner-brain-registry.js';
 import { resolveAwaitingInboundFromIm } from './awaiting-inbound-resolver.js';
 import type { ImInboundEvent } from './outer-brain.js';
-import { createMemoryBlockStore } from './memory-block-store.js';
-import { isCredentialRefResult } from './credential-ref.js';
 import { createTestDataRoot, type TestDataRoot } from '../testing/temp-data-root.js';
 
 const THREAD = 'thread:awaiting-comp';
@@ -87,27 +85,5 @@ describe('component: awaitingInboundResolver', () => {
 
     expect(spawned).toHaveLength(1);
     expect(spawned[0]!.instanceId).toBe('ib-resolver-chain');
-  });
-
-  it('长 Cookie + memoryBlockStore → credential_ref（B2）', async () => {
-    root = createTestDataRoot('awaiting-cred-');
-    reg = new InnerBrainRegistry(root.dataRoot);
-    const { workDir } = setupAwaitingAskUser('ib-cred-chain');
-    const store = createMemoryBlockStore(root.dataRoot, null, 'agent:test');
-    const cookie =
-      'SUB=abcdefghijklmnopqrstuvwxyz0123456789; SUBP=zyxwvutsrqponmlkjihgfedcba9876543210; WBPSESS=token';
-
-    const ev: ImInboundEvent = {
-      threadId: THREAD,
-      senderSid: 'human:alice',
-      message: { message_id: 'msg-cred', parts: [{ type: 'text', text: cookie }] },
-    };
-
-    const resolved = await resolveAwaitingInboundFromIm(reg, ev, { memoryBlockStore: store });
-    expect(resolved.resolved).toBe(true);
-    expect(resolved.credentialRef?.path).toContain('.brain/secrets/');
-
-    const pending = readPendings(path.join(workDir, '.brain'))[0];
-    expect(isCredentialRefResult(pending?.result)).toBe(true);
   });
 });

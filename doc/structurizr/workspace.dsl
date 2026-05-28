@@ -41,14 +41,15 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             !adrs decisions
 
             // ── L2 共享库（npm 包，非独立进程）────────────────────
-            chatIrLib = container "Chat IR" "消息/线程 schema、ChatIRChannel、StructuredReply" "npm @utlra/chat-ir" {
+            chatIrLib = container "Chat IR" "消息/线程 schema、ChatIRChannel、ChatIRSeenTracker（mention 感知 freshCheck）、StructuredReply" "npm @utlra/chat-ir" {
                 tags "Library"
                 properties {
                     "path" "packages/chat-ir"
-                    "horizon.intention" "渠道无关聊天中间表示"
-                    "horizon.in" "Channel API 调用"
-                    "horizon.out" "类型与序列化契约"
+                    "horizon.intention" "渠道无关聊天中间表示 + 运行时观察（反 loop / 抢答）"
+                    "horizon.in" "Channel track/postMessage；mention parts"
+                    "horizon.out" "类型契约；hasAnotherAgentRepliedAfter（独占@不互掐）"
                     "horizon.deps" "无 kuroneko 业务包"
+                    "horizon.test.unit" "packages/chat-ir/src/seen-tracker.test.ts"
                 }
             }
 
@@ -107,7 +108,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
                     "path" "packages/discord-bridge"
                     "horizon.intention" "Discord 渠道适配"
                     "horizon.in" "Gateway; postMessage"
-                    "horizon.out" "ChatIRInboundEvent; REST send"
+                    "horizon.out" "ChatIRInboundEvent; REST send; seenTracker.track(mention_target_sids)"
                     "horizon.deps" "chat-ir"
                 }
             }
@@ -117,7 +118,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
                     "path" "packages/webchat-bridge"
                     "horizon.intention" "入站 WS→IR；出站 IR→REST（含 ChatAssetStore 附件上传）"
                     "horizon.in" "chat-server 事件; agent postMessage(parts)"
-                    "horizon.out" "ChatIR 映射; attachment_ids"
+                    "horizon.out" "ChatIR 映射; attachment_ids; seenTracker.track(mention_target_sids)"
                     "horizon.protocol" "doc/protocols/webchat-wire.md §4"
                     "horizon.test.unit" "asset-upload.test.ts; reply-render.test.ts"
                     "horizon.deps" "chat-ir, webchat-protocol"
@@ -200,10 +201,10 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
 
         // ── L2 库依赖（import 国境雏形）──────────────────────────
-        kuroneko.discordBridge -> kuroneko.chatIrLib "implements ChatIRChannel" "npm import" {
+        kuroneko.discordBridge -> kuroneko.chatIrLib "ChatIRChannel + seenTracker.track(mention)" "npm import" {
             tags "import"
         }
-        kuroneko.webchatBridge -> kuroneko.chatIrLib "协议映射" "npm import" {
+        kuroneko.webchatBridge -> kuroneko.chatIrLib "ChatIR 映射 + seenTracker.track(mention)" "npm import" {
             tags "import"
         }
         kuroneko.webchatBridge -> kuroneko.webchatProtocolLib "共享 DTO" "npm import" {
@@ -297,7 +298,10 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         // ── L3 外脑：双入口（IM Facade / HTTP Orchestrator）────────────────
         // IM 主路径
-        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.threadOrchestrator "makeFreshCheck" "in-process" {
+        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.threadOrchestrator "schedule(jitter/FIFO) + makeFreshCheck" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.threadOrchestrator -> kuroneko.chatIrLib "ChatIRSeenTracker.hasAnotherAgentRepliedAfter" "npm import" {
             tags "import"
         }
         kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.knowledgeRetrieval "retrieveComprehensiveKnowledge" "in-process" {
@@ -318,7 +322,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.outerConversationLoop "runOuterConversationLoop" "in-process" {
             tags "import"
         }
-        kuroneko.agentServer.threadOrchestrator -> kuroneko.agentServer.outerConversationLoop "freshCheck 注入 ctx" "in-process" {
+        kuroneko.agentServer.threadOrchestrator -> kuroneko.agentServer.outerConversationLoop "mention-aware freshCheck → ctx" "in-process" {
             tags "import"
         }
         kuroneko.agentServer.participationPolicy -> kuroneko.agentServer.llmGateway "SPEAK/SILENT / topic check" "HTTPS" {

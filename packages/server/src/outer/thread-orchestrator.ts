@@ -7,11 +7,17 @@
  *  2. Debounce：jitter 期间若同一 thread 有新消息到来，重置计时器，
  *     只处理最新的一批消息（合并上下文）。
  *  3. 进程内互斥锁：同一 thread 同时只允许一个 LLM 调用。
- *     处理中有新触发时最多排队一条（超出的丢弃，等到排队那条处理完再决定是否继续）。
- *  4. 发送前新鲜度检查（cross-process）：LLM 生成完毕、准备 postMessage 前，
- *     查询 IM server 查看是否有其他 agent 在 jitter/处理期间已先发了回复。
- *     若是，丢弃本次结果（静默），避免重复/激荡。
+ *     处理中有新触发时 FIFO 排队（默认最多 5 条，超出丢最旧），全部跑完再释放锁。
+ *  4. 发送前新鲜度检查：仅当「触发消息上被一并 @ 的其它 agent」已抢先回复时才放弃发送；
+ *     单独 @ 本 agent 时，大群里其它 agent 插话不触发放弃（见 ChatIRSeenTracker）。
  */
+
+const DEFAULT_MAX_QUEUED_PER_THREAD = 5;
+
+function resolveMaxQueuedPerThread(): number {
+  const n = Number(process.env['UTLRA_ORCHESTRATOR_MAX_QUEUED'] ?? DEFAULT_MAX_QUEUED_PER_THREAD);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : DEFAULT_MAX_QUEUED_PER_THREAD;
+}
 
 /** 线程状态 */
 interface ThreadState {
@@ -19,8 +25,8 @@ interface ThreadState {
   processing: boolean;
   /** jitter 计时器句柄 */
   jitterTimer: ReturnType<typeof setTimeout> | null;
-  /** jitter 期间排队的最新事件（只保留最新，旧的丢弃） */
-  queued: (() => Promise<void>) | null;
+  /** 处理中积压的入站任务（FIFO，避免「后一条 @」覆盖前一条） */
+  queued: Array<() => Promise<void>>;
 }
 
 export interface OrchestratorOptions {
@@ -43,7 +49,7 @@ export class ThreadOrchestrator {
   private getState(threadId: string): ThreadState {
     let s = this.threads.get(threadId);
     if (!s) {
-      s = { processing: false, jitterTimer: null, queued: null };
+      s = { processing: false, jitterTimer: null, queued: [] };
       this.threads.set(threadId, s);
     }
     return s;
@@ -65,8 +71,11 @@ export class ThreadOrchestrator {
     }
 
     if (state.processing) {
-      // 进程内正在处理中：最多排一条，丢弃旧排队
-      state.queued = taskFn;
+      const maxQueued = resolveMaxQueuedPerThread();
+      if (state.queued.length >= maxQueued) {
+        state.queued.shift();
+      }
+      state.queued.push(taskFn);
       return;
     }
 
@@ -83,7 +92,11 @@ export class ThreadOrchestrator {
 
     // jitter 结束后再次检查（可能在等待期间 processing 已结束并触发了 queued）
     if (state.processing) {
-      state.queued = taskFn;
+      const maxQueued = resolveMaxQueuedPerThread();
+      if (state.queued.length >= maxQueued) {
+        state.queued.shift();
+      }
+      state.queued.push(taskFn);
       return;
     }
 
@@ -98,13 +111,11 @@ export class ThreadOrchestrator {
     } catch (e) {
       console.error('[utlra][orchestrator] task error', e);
     } finally {
-      state.processing = false;
-      // 有排队的任务则以 jitter 方式执行
-      const next = state.queued;
+      const next = state.queued.shift();
       if (next) {
-        state.queued = null;
-        // 不再加 jitter（已经等过了），直接执行
-        void this.runWithLock(threadId, next);
+        await this.runWithLock(threadId, next);
+      } else {
+        state.processing = false;
       }
     }
   }

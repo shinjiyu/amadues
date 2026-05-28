@@ -1,5 +1,5 @@
 /**
- * ADL component: memoryBlockStore — local vault + bind
+ * ADL component: memoryBlockStore — local vault persistence
  * @see doc/structurizr/MEMORY-BLOCKS.md
  */
 import fs from 'node:fs';
@@ -27,17 +27,5 @@ describe('component: memoryBlockStore', () => {
     expect(fs.existsSync(file)).toBe(true);
     const listed = await store.listEntryKeys('keychain');
     expect(listed).toContain('site-a');
-  });
-
-  it('bind path is readable as inner brain secret file', async () => {
-    const store = createMemoryBlockStore(root);
-    const workDir = path.join(root, 'workspaces', 'task-mb-1');
-    fs.mkdirSync(path.join(workDir, '.brain'), { recursive: true });
-    await store.put('keychain', 'cred', { kind: 'token', value: 'secret-42' });
-    await store.bind('keychain', ['cred'], workDir);
-    const bound = path.join(workDir, '.brain', 'secrets', 'cred.json');
-    expect(fs.existsSync(bound)).toBe(true);
-    const parsed = JSON.parse(fs.readFileSync(bound, 'utf8')) as { value: string };
-    expect(parsed.value).toBe('secret-42');
   });
 });

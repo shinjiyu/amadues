@@ -28,8 +28,26 @@ import type { IdentityRegistry } from './runtime/identity-registry.js';
 export interface SeenMessage {
   message_id: string;
   sender_sid: string;
+  /**
+   * 结构化 @ 目标 sid 列表（来自 mention parts）。
+   * 用于 freshCheck：仅与「触发消息上 @ 到的其它 agent」构成抢答竞争。
+   */
+  mention_target_sids?: string[];
   /** 内部 LRU 修剪用；调用方可不传，由 tracker 填 Date.now() */
   seen_at?: number;
+}
+
+/** 从 MessagePart 列表提取 mention 的 target_sid（去重保序）。 */
+export function mentionTargetSidsFromParts(
+  parts: ReadonlyArray<{ type: string; target_sid?: string }>,
+): string[] {
+  const out: string[] = [];
+  for (const p of parts) {
+    if (p.type === 'mention' && typeof p.target_sid === 'string' && p.target_sid) {
+      out.push(p.target_sid);
+    }
+  }
+  return [...new Set(out)];
 }
 
 export interface ChatIRSeenTrackerOptions {
@@ -79,6 +97,7 @@ export class ChatIRSeenTracker {
     list.push({
       message_id: m.message_id,
       sender_sid: m.sender_sid,
+      ...(m.mention_target_sids?.length ? { mention_target_sids: m.mention_target_sids } : {}),
       seen_at: m.seen_at ?? Date.now(),
     });
     while (list.length > this.maxPerThread) list.shift();
@@ -100,25 +119,58 @@ export class ChatIRSeenTracker {
   }
 
   /**
-   * 新鲜度检查：`triggerMessageId` 之后，是否有"另一个 agent"（非自己）发过消息。
+   * 新鲜度检查：`triggerMessageId` 之后，是否有「与本 agent 抢答同一触发」的另一 agent 发言。
    *
-   * 用于发送回复前的最后一道闸：若别的 agent 已经替我回了，本 agent 可以放弃发送。
-   * 若 trigger 尚未被 `track()` 进来过，本方法返回 `false`（无信息，按"无人代答"处理，
-   * 让上层决定是否仍发送）。
+   * 规则（避免「分别 @ 不同人」被误杀）：
+   * - 触发消息 **仅 @ 本 agent** → 不视为竞争，返回 false（大群里他人插话不掐断）。
+   * - 触发 **@ 了本 agent + 其它 agent** → 仅那些 **同时在触发里被 @ 的 agent** 的后续发言算抢答。
+   * - 触发 **无 mention 元数据** → 回退为仅 `idp:agent:` / `agent:` 前缀的 peer（不含 registry 里的 webchat 马甲）。
+   *
+   * 若 trigger 尚未被 `track()` 进来过，返回 `false`（无信息，按可发送处理）。
    */
   hasAnotherAgentRepliedAfter(threadId: string, triggerMessageId: string): boolean {
     const list = this.byThread.get(threadId) ?? [];
     let foundTrigger = false;
+    let triggerMentions: string[] | undefined;
     for (const m of list) {
       if (m.message_id === triggerMessageId) {
         foundTrigger = true;
+        triggerMentions = m.mention_target_sids;
         continue;
       }
       if (!foundTrigger) continue;
       if (m.sender_sid === this.selfAgentSid) continue;
-      if (this.isAgentSender(m.sender_sid)) return true;
+      if (this.isCompetingAgentReply(m.sender_sid, triggerMentions)) return true;
     }
     return false;
+  }
+
+  /**
+   * 该 sender 是否在 freshCheck 语义下与当前触发构成抢答。
+   */
+  private isCompetingAgentReply(senderSid: string, triggerMentions: string[] | undefined): boolean {
+    const mentions = triggerMentions ?? [];
+
+    if (mentions.length > 0) {
+      const agentMentions = mentions.filter((sid) => this.isAgentSender(sid));
+      const mentionsSelf = agentMentions.includes(this.selfAgentSid);
+
+      // 仅 @ 本 agent（可含 @ 人类）：他人 agent 发言不算抢答
+      if (mentionsSelf && agentMentions.length === 1) {
+        return false;
+      }
+
+      // 多人 @：只有触发里一并 @ 到的其它 agent 算竞争者
+      if (mentionsSelf && agentMentions.length > 1) {
+        return agentMentions.includes(senderSid) && senderSid !== this.selfAgentSid;
+      }
+
+      // 触发未 @ 本 agent（不应走到外脑回复，保守不掐）
+      return false;
+    }
+
+    // 无 mention 元数据：仅标准 agent sid 前缀（跨进程 idp:agent:*），不把 webchat 马甲当抢答
+    return AGENT_SID_RE.test(senderSid);
   }
 
   /** 测试用：清空所有缓存。 */

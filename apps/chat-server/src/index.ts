@@ -67,6 +67,11 @@ async function main(): Promise<void> {
     }),
   );
 
+  app.route('/', buildUploadsRouter({
+    users,
+    uploads,
+    maxUploadSize: config.maxUploadSize,
+  }));
   app.route('/', buildUsersRouter(users));
   app.route('/', buildThreadsRouter({
     users,
@@ -74,11 +79,6 @@ async function main(): Promise<void> {
     uploads,
     hub,
     maxMessagesPerPage: config.maxMessagesPerPage,
-  }));
-  app.route('/', buildUploadsRouter({
-    users,
-    uploads,
-    maxUploadSize: config.maxUploadSize,
   }));
 
   app.onError((err, c) => {

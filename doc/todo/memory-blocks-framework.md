@@ -31,9 +31,10 @@ MemoryBlockRegistry
   ├── block_id: "addressbook"   strategy: kv_contact   (未来)
   └── block_id: "ledger"        strategy: record_ledger (未来)
 
-存储（推荐）：
-  drive9 /vault/blocks/{block_id}/entries/{key}.json
-  无 drive9 时降级：DATA_ROOT/vault/blocks/...
+存储（定稿，仅本地）：
+  DATA_ROOT/vault/blocks/blocks-index.json
+  DATA_ROOT/vault/blocks/{block_id}/entries/{key}.json
+  （不走 drive9；与 /skills/shared/ 分离）
 ```
 
 | 概念 | 说明 |

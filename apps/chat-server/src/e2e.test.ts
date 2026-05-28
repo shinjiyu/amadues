@@ -64,9 +64,9 @@ async function startChatServer(opts: { agentUserId?: string; agentSecret?: strin
   const app = new Hono();
   app.use('*', cors({ origin: '*' }));
   app.get('/healthz', (c) => c.json({ ok: true }));
+  app.route('/', buildUploadsRouter({ users, uploads, maxUploadSize: 1024 * 1024 }));
   app.route('/', buildUsersRouter(users));
   app.route('/', buildThreadsRouter({ users, threads, uploads, hub, maxMessagesPerPage: 200 }));
-  app.route('/', buildUploadsRouter({ users, uploads, maxUploadSize: 1024 * 1024 }));
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     console.error('test server', err);
@@ -290,6 +290,21 @@ describe('WebChat e2e — §9 验收', () => {
       reply_to_message_id: 'nonexistent',
     });
     expect(bad.status).toBe(404);
+  });
+
+  it('GET /uploads/:asset_id 无需 X-User-Id（Markdown 预览 / img src）', async () => {
+    const fd = new FormData();
+    fd.append('file', new Blob(['# hello\n\npreview'], { type: 'text/markdown' }), 'note.md');
+    const up = await fetch(`http://127.0.0.1:${srv.port}/uploads`, {
+      method: 'POST',
+      headers: { 'X-User-Id': 'alice' },
+      body: fd,
+    });
+    expect(up.status).toBe(200);
+    const meta = (await up.json()) as { asset_id: string };
+    const got = await fetch(`http://127.0.0.1:${srv.port}/uploads/${meta.asset_id}`);
+    expect(got.status).toBe(200);
+    expect(await got.text()).toContain('# hello');
   });
 
   it('§9.6 WebChatChannel 适配器：agent 收到 human 消息并能回复（与 Discord 模式等价）', async () => {

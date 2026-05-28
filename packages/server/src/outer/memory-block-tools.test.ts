@@ -6,10 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { InnerBrainRegistry } from './inner-brain-registry.js';
 import { createMemoryBlockStore } from './memory-block-store.js';
 import {
-  execMemoryBlockBind,
+  execMemoryBlockCreate,
   execMemoryBlockEntries,
   execMemoryBlockList,
   execMemoryBlockPut,
@@ -53,7 +52,23 @@ describe('memory-block-tools', () => {
     expect(out.output).toContain('keychain');
   });
 
-  it('memory_block_put → entries without value in list/get', async () => {
+  it('memory_block_create + put notebook entry', async () => {
+    const ctx = minimalCtx(root);
+    const created = await execMemoryBlockCreate(
+      { block_id: 'lab-notes', strategy: 'notebook', title: '实验室' },
+      ctx,
+    );
+    expect(created.output).toContain('lab-notes');
+    const put = await execMemoryBlockPut(
+      { block_id: 'lab-notes', key: 'n1', body: '记住：先 ADL 再代码' },
+      ctx,
+    );
+    expect(put.output).toContain('notebook');
+    const entries = await execMemoryBlockEntries({ block_id: 'lab-notes' }, ctx);
+    expect(entries.output).toContain('n1');
+  });
+
+  it('memory_block_put keychain without value in list output', async () => {
     const ctx = minimalCtx(root);
     const put = await execMemoryBlockPut(
       { block_id: 'keychain', key: 'weibo', kind: 'cookie', value: 's=1' },
@@ -61,41 +76,6 @@ describe('memory-block-tools', () => {
     );
     expect(put.output).toContain('weibo');
     expect(put.output).not.toContain('s=1');
-
-    const entries = await execMemoryBlockEntries({ block_id: 'keychain' }, ctx);
-    expect(entries.output).toContain('weibo');
-  });
-
-  it('memory_block_bind resolves instance_id via registry', async () => {
-    const reg = new InnerBrainRegistry(root);
-    const workDir = path.join(root, 'ws-bind');
-    fs.mkdirSync(path.join(workDir, '.brain'), { recursive: true });
-    reg.register({
-      instanceId: 'ib-mb-01',
-      workspaceId: 'task-ib-mb-01',
-      workDir,
-      goal: 'test',
-      originUser: 'human:u1',
-      originThread: 'thread:t1',
-      status: 'RUNNING',
-      startedAt: new Date().toISOString(),
-    });
-
-    const ctx = minimalCtx(root, { innerBrainRegistry: reg });
-    await execMemoryBlockPut(
-      { block_id: 'keychain', key: 'cred', kind: 'token', value: 'tok-bind' },
-      ctx,
-    );
-
-    const bind = await execMemoryBlockBind(
-      { block_id: 'keychain', keys: 'cred', instance_id: 'ib-mb-01' },
-      ctx,
-    );
-    expect(bind.output).toContain('.brain/secrets/cred.json');
-    const onDisk = JSON.parse(
-      fs.readFileSync(path.join(workDir, '.brain', 'secrets', 'cred.json'), 'utf8'),
-    ) as { value: string };
-    expect(onDisk.value).toBe('tok-bind');
   });
 
   it('returns disabled message when store missing', async () => {
@@ -103,15 +83,14 @@ describe('memory-block-tools', () => {
     expect(out.output).toContain('未启用');
   });
 
-  it('executeOuterTool dispatches memory_block_put', async () => {
+  it('executeOuterTool dispatches memory_block_create', async () => {
     const { executeOuterTool } = await import('./outer-tools.js');
     const ctx = minimalCtx(root);
     const out = await executeOuterTool(
-      'memory_block_put',
-      JSON.stringify({ block_id: 'keychain', key: 'x', kind: 'token', value: 'sec' }),
+      'memory_block_create',
+      JSON.stringify({ block_id: 'x-notes', strategy: 'notebook', title: 'X' }),
       ctx,
     );
-    expect(out.output).toContain('keychain/x');
-    expect(out.output).not.toContain('sec');
+    expect(out.output).toContain('x-notes');
   });
 });

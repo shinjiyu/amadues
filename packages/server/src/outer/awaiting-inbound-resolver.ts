@@ -13,26 +13,12 @@ import {
 } from '../openkuroneko/pendings/index.js';
 import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { ImInboundEvent } from './outer-brain.js';
-import type { MemoryBlockStore } from './memory-block-store.js';
-import {
-  looksLikeCredential,
-  vaultCredentialReply,
-  type CredentialRefResult,
-} from './credential-ref.js';
-
-export interface AwaitingInboundResolveOptions {
-  memoryBlockStore?: MemoryBlockStore;
-  /** 写入 keychain 时的 updated_by（默认 human sender） */
-  updatedBy?: string;
-}
 
 export interface AwaitingInboundResolveResult {
   resolved: boolean;
   instanceId?: string;
   pendingId?: string;
   reason: string;
-  /** B2：凭证已 vault + bind，pending result 为 credential_ref */
-  credentialRef?: CredentialRefResult;
 }
 
 export function inboundMessageText(ev: ImInboundEvent): string {
@@ -75,11 +61,7 @@ function pickTargetInstance(
   return { target: mentioned };
 }
 
-async function resolveLatestAskUser(
-  workDir: string,
-  replyText: string,
-  opts?: AwaitingInboundResolveOptions & { askPrompt?: string },
-): Promise<PendingItem | null> {
+function resolveLatestAskUser(workDir: string, replyText: string): PendingItem | null {
   const brainDir = path.join(workDir, '.brain');
   if (!fs.existsSync(path.join(brainDir, 'pendings.json'))) return null;
 
@@ -87,33 +69,16 @@ async function resolveLatestAskUser(
   const latest = askUsers.length > 0 ? askUsers[askUsers.length - 1] : null;
   if (!latest) return null;
 
-  const askPrompt =
-    opts?.askPrompt ??
-    (typeof latest.spec === 'object' && latest.spec && 'prompt' in latest.spec
-      ? String((latest.spec as { prompt?: string }).prompt ?? '')
-      : '');
-
-  let result: unknown = { reply: replyText };
-  if (opts?.memoryBlockStore && looksLikeCredential(replyText)) {
-    result = await vaultCredentialReply(
-      opts.memoryBlockStore,
-      workDir,
-      replyText,
-      askPrompt,
-      opts.updatedBy ?? 'human:im',
-    );
-  }
-
-  return resolvePending(brainDir, latest.id, { result });
+  return resolvePending(brainDir, latest.id, { result: { reply: replyText } });
 }
 
 /**
  * 确定性 resolve：单 AWAITING 实例 + 最近 pending ask_user。
+ * 仅写入 `{ reply: text }`；Memory Block / 凭证归档由外脑 LLM 另行 CRUD。
  */
 export async function resolveAwaitingInboundFromIm(
   registry: InnerBrainRegistry,
   ev: ImInboundEvent,
-  opts?: AwaitingInboundResolveOptions,
 ): Promise<AwaitingInboundResolveResult> {
   if (!isHumanSender(ev.senderSid)) {
     return { resolved: false, reason: 'sender_not_human' };
@@ -132,10 +97,7 @@ export async function resolveAwaitingInboundFromIm(
     return { resolved: false, reason: pickReason ?? 'no_awaiting_on_thread' };
   }
 
-  const resolved = await resolveLatestAskUser(target.workDir, text, {
-    memoryBlockStore: opts?.memoryBlockStore,
-    updatedBy: opts?.updatedBy ?? ev.senderSid,
-  });
+  const resolved = resolveLatestAskUser(target.workDir, text);
   if (!resolved) {
     return {
       resolved: false,
@@ -144,18 +106,10 @@ export async function resolveAwaitingInboundFromIm(
     };
   }
 
-  const cred =
-    resolved.result &&
-    typeof resolved.result === 'object' &&
-    (resolved.result as CredentialRefResult).kind === 'credential_ref'
-      ? (resolved.result as CredentialRefResult)
-      : undefined;
-
   return {
     resolved: true,
     instanceId: target.instanceId,
     pendingId: resolved.id,
-    reason: cred ? 'ask_user_resolved_credential_ref' : 'ask_user_resolved',
-    ...(cred ? { credentialRef: cred } : {}),
+    reason: 'ask_user_resolved',
   };
 }

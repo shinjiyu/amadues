@@ -130,6 +130,7 @@ const repoStore = new FilesystemRepositoryStore(DATA_ROOT);
 
 // 外脑记忆层（模块级引用，供 API 路由访问；在 serve 回调内初始化后赋值）
 let globalMemoryStore: OuterMemoryStore | null = null;
+let globalMemoryBlockStore: import('./outer/memory-block-store.js').MemoryBlockStore | null = null;
 const performanceGoalEngine = new PerformanceGoalEngine(DATA_ROOT);
 const innerBrainRegistry = new InnerBrainRegistry(DATA_ROOT);
 const kpiRegistry = new KpiRegistry(DATA_ROOT);
@@ -995,6 +996,39 @@ app.post('/api/outer/memory/tasks', async (c) => {
   return c.json({ ok: true });
 });
 
+/** Memory Block 列表（Dashboard / 运维只读；secret 块不返回 entry 明文） */
+app.get('/api/memory/blocks', async (c) => {
+  const store = globalMemoryBlockStore;
+  if (!store) return c.json({ ok: true, blocks: [] });
+  const blocks = store.listBlocks();
+  const enriched = await Promise.all(
+    blocks.map(async (b) => ({
+      ...b,
+      entry_count: (await store.listEntryKeys(b.blockId).catch(() => [])).length,
+    })),
+  );
+  return c.json({ ok: true, blocks: enriched });
+});
+
+/** 某块的 entry 列表（metadata；keychain 无 value） */
+app.get('/api/memory/blocks/:blockId/entries', async (c) => {
+  const store = globalMemoryBlockStore;
+  if (!store) return c.json({ ok: true, entries: [] });
+  const blockId = c.req.param('blockId');
+  try {
+    const keys = await store.listEntryKeys(blockId);
+    const entries = await Promise.all(
+      keys.map(async (key) => {
+        const meta = await store.get(blockId, key);
+        return { key, meta };
+      }),
+    );
+    return c.json({ ok: true, block_id: blockId, entries });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
 app.get('/api/performance/goals', (c) => {
   const includeArchived = c.req.query('includeArchived') === 'true';
   return c.json({
@@ -1605,7 +1639,8 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   globalMemoryStore = memoryStore;
   void memoryStore.init();
 
-  const memoryBlockStore = createMemoryBlockStore(DATA_ROOT, getDrive9Client(), agentSid);
+  const memoryBlockStore = createMemoryBlockStore(DATA_ROOT, agentSid);
+  globalMemoryBlockStore = memoryBlockStore;
 
   let skillStore: SkillMemoryStore | undefined;
   let skillDrive9Store: SkillDrive9Store | undefined;

@@ -619,8 +619,9 @@ interface ChatIRChannel {
 
 // packages/chat-ir/src/seen-tracker.ts —— 对消息序列的查询
 class ChatIRSeenTracker {
-  track(threadId, { message_id, sender_sid }): void;
+  track(threadId, { message_id, sender_sid, mention_target_sids? }): void;
   countConsecutiveAgentMessages(threadId): number;
+  /** 仅与触发消息上被一并 @ 的 agent 构成抢答；独占 @ 本 agent 时返回 false */
   hasAnotherAgentRepliedAfter(threadId, triggerMessageId): boolean;
 }
 ```
@@ -629,7 +630,7 @@ class ChatIRSeenTracker {
 - `ChatIRChannel`：传输——连接、发消息、入站 callback。具体实现（DiscordChannel / 未来 Lark / Slack）各自不同。
 - `ChatIRSeenTracker`：聊天记录上的"运行时观察"查询。**与具体渠道无关**，所有 channel 实现共享同一个 tracker 实例。
 
-**契约**：channel 实现必须在**入站消息落库后**与**出站消息发送成功后**各调一次 `seenTracker.track(...)`。tracker 才能给业务侧提供完整的反 loop / 新鲜度信号。
+**契约**：channel 实现必须在**入站消息落库后**与**出站消息发送成功后**各调一次 `seenTracker.track(...)`，并尽量带上 `mention_target_sids`（从 mention parts 提取）。tracker 才能给业务侧提供完整的反 loop / 新鲜度（含「分别 @ 不同 agent 不互掐」）信号。
 
 | 实现 | 状态 | 位置 |
 |---|---|---|

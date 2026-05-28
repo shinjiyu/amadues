@@ -8,7 +8,8 @@
 | [`inner-brain-awaiting-lifecycle.md`](./inner-brain-awaiting-lifecycle.md) | **P0+P1 已完成** | AWAITING：reconcile、IM resolver、bootstrap、周期对账、组件测 |
 | [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md) | **已完成** | resolved pending spill（去掉 600 字硬截断） |
 | [`cross-agent-research-and-keychain.md`](./cross-agent-research-and-keychain.md) | **R1+R2 已完成** | 研究共享：Attributor write_skill + 重试/BLOCK 兜底 |
-| [`memory-blocks-framework.md`](./memory-blocks-framework.md) | **B0–B2 已完成** | Memory Block + keychain + IM credential_ref |
+| [`memory-blocks-framework.md`](./memory-blocks-framework.md) | **B0–B2 已完成** | Memory Block + keychain + B2 解耦 awaiting/bind |
+| [`outer-brain-web-search-tool.md`](./outer-brain-web-search-tool.md) | **待实现** | 外脑专用 Web Search 工具（与内脑 playwright 分离） |
 
 **已实现（非 backlog）**：Dashboard **参与策略 Lab** — 外脑「是否回复/插嘴」策略调试台，见下文说明。
 

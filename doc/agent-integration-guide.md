@@ -101,9 +101,9 @@ interface ChatIRChannel {
 
 // @utlra/chat-ir —— 对消息序列的运行时查询
 class ChatIRSeenTracker {
-  track(threadId, { message_id, sender_sid }): void;       // 由 channel 实现调
+  track(threadId, { message_id, sender_sid, mention_target_sids? }): void; // 桥在入站/出站各调一次
   countConsecutiveAgentMessages(threadId): number;          // 反 agent-loop
-  hasAnotherAgentRepliedAfter(threadId, triggerId): boolean; // 新鲜度检查
+  hasAnotherAgentRepliedAfter(threadId, triggerId): boolean; // 新鲜度：仅「触发上被一并@的 agent」算抢答；独占@本 agent 时他人插话不掐断
 }
 
 interface ChatIROutboundBody {
@@ -394,7 +394,10 @@ if (!v.ok) {
 ### 4.3 发出
 
 ```typescript
-// 新鲜度检查：别的 agent 已经接话了，本 agent 放弃发送
+// 新鲜度检查（OuterBrain 经 makeFreshCheck 注入 outer-tools / conversation-loop）：
+// - 触发仅 @ 本 agent → 不因大群里其它 agent 插话而放弃
+// - 触发 @ 本 agent + 其它 agent → 仅那些 agent 的后续发言算抢答
+// - 无 mention 元数据 → 回退为 idp:agent:/agent: 前缀 peer（不含 webchat 马甲）
 if (this.seenTracker.hasAnotherAgentRepliedAfter(ev.threadId, ev.message.message_id)) {
   return;
 }

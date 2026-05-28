@@ -367,10 +367,11 @@ if (!store.messages[threadId]) store.messages[threadId] = [];
 store.messages[threadId]!.push(messageRecord);
 saveThreads(store);
 
-// 必须！喂给共享 tracker，让 agent 业务侧的反 loop / 新鲜度查询能看到这条
+// 必须！喂给共享 tracker（含 mention_target_sids，供 freshCheck 区分「分别@」与「多人@抢答」）
 this.opts.seenTracker.track(threadId, {
   message_id: messageRecord.message_id,
   sender_sid: senderSid,
+  mention_target_sids: mentionTargetSidsFromParts(parts),
 });
 
 // 自己发的不回环触发（§4.0 已规定 sender = bot 在最顶层就过滤了；这里是兜底）

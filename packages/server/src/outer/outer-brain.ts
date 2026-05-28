@@ -361,17 +361,11 @@ export class OuterBrain {
 
     // ── Step 0.6: AWAITING 人消息 → resolve ask_user（changeWatcher 后续 spawn）──
     if (innerBrainRegistry && isHumanSender(senderSid)) {
-      const awaitingResolve = await resolveAwaitingInboundFromIm(innerBrainRegistry, ev, {
-        memoryBlockStore: this.deps.memoryBlockStore,
-        updatedBy: senderSid,
-      });
+      const awaitingResolve = await resolveAwaitingInboundFromIm(innerBrainRegistry, ev);
       if (awaitingResolve.resolved) {
         console.log(
           `[utlra][awaiting-resolver] resolved instance=${awaitingResolve.instanceId} ` +
-            `pending=${awaitingResolve.pendingId} thread=${threadId}` +
-            (awaitingResolve.credentialRef
-              ? ` credential_ref slot=${awaitingResolve.credentialRef.slot}`
-              : ''),
+            `pending=${awaitingResolve.pendingId} thread=${threadId}`,
         );
       }
     }

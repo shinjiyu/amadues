@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Attachment } from '@utlra/webchat-protocol';
+import { resolveAttachmentFetchUrl } from '../attachment-url.js';
 import { isMarkdownAttachment, MarkdownPreviewModal } from './MarkdownPreviewModal.js';
 
 interface Props {
@@ -17,6 +18,7 @@ export function FileAttachmentCard({ attachment }: Props) {
   const isMd = isMarkdownAttachment(attachment);
 
   if (isMd) {
+    const fetchUrl = resolveAttachmentFetchUrl(attachment.url);
     return (
       <>
         <button
@@ -30,16 +32,20 @@ export function FileAttachmentCard({ attachment }: Props) {
           <span className="file-card-meta">{humanSize(attachment.size)}</span>
         </button>
         {previewOpen && (
-          <MarkdownPreviewModal attachment={attachment} onClose={() => setPreviewOpen(false)} />
+          <MarkdownPreviewModal
+            attachment={{ ...attachment, url: fetchUrl }}
+            onClose={() => setPreviewOpen(false)}
+          />
         )}
       </>
     );
   }
 
+  const href = resolveAttachmentFetchUrl(attachment.url);
   return (
     <a
       className="file-card"
-      href={attachment.url}
+      href={href}
       target="_blank"
       rel="noreferrer"
       download={attachment.name}

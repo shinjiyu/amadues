@@ -36,20 +36,11 @@ describe('formatResolvedPendingResultForPrompt', () => {
     expect(parsed.reply).toBe(big);
   });
 
-  it('credential_ref stays inline with path hint (no secret in prompt)', () => {
+  it('large cookie reply spills like any large JSON result', () => {
     workDir = tempWorkDir();
-    const ref = {
-      kind: 'credential_ref' as const,
-      block_id: 'keychain' as const,
-      slot: 'weibo',
-      path: '.brain/secrets/weibo.json',
-      byteLength: 900,
-      credential_kind: 'cookie_header',
-    };
-    const out = formatResolvedPendingResultForPrompt('pend-cred', ref, workDir);
-    expect(out).toContain('credential_ref');
-    expect(out).toContain('.brain/secrets/weibo.json');
-    expect(out).not.toContain('SUB=');
-    expect(fs.existsSync(path.join(workDir, '.brain', 'inbound', 'pending-results'))).toBe(false);
+    const cookie = 'SUB=' + 'a'.repeat(4000);
+    const out = formatResolvedPendingResultForPrompt('pend-cookie', { reply: cookie }, workDir);
+    expect(out).toContain('.brain/inbound/pending-results/pend-cookie.json');
+    expect(out).not.toContain(cookie.slice(0, 100));
   });
 });

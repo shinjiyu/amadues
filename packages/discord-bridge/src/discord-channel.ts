@@ -25,6 +25,7 @@ import {
   type LooseThreadStore,
   type MessageRecord,
   type MessagePart,
+  mentionTargetSidsFromParts,
 } from '@utlra/chat-ir';
 import { DiscordClient } from './client.js';
 import { DiscordThreadMapper } from './thread-mapper.js';
@@ -154,6 +155,7 @@ export class DiscordChannel implements ChatIRChannel {
     this.opts.seenTracker.track(threadId, {
       message_id: messageRecord.message_id,
       sender_sid: messageRecord.sender_sid,
+      mention_target_sids: mentionTargetSidsFromParts(parts),
     });
     console.log(
       `[discord-channel] → discord channel ${channelId} (thread ${threadId}) msg ${sentId}`,
@@ -169,6 +171,9 @@ export class DiscordChannel implements ChatIRChannel {
     this.opts.seenTracker.track(ev.threadId, {
       message_id: ev.message.message_id,
       sender_sid: ev.senderSid,
+      mention_target_sids: mentionTargetSidsFromParts(
+        ev.message.parts as Array<{ type: string; target_sid?: string }>,
+      ),
     });
 
     if (ev.senderSid === this.opts.agentSid) return;

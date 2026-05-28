@@ -21,7 +21,7 @@
 | participationPolicy | ✅ `inbound-policy.test.ts` | ✅ `participationPolicy.component.integration.test.ts` | ✅ `inbound-policy.prompt.test.ts` | 样板组件 |
 | outerBrainFacade | 🟡 片段 | ✅ `outerBrainFacade.component.integration.test.ts` | — | + `integration/outer-brain-inbound` 全链 |
 | knowledgeRetrieval | ❌ | ✅ `knowledgeRetrieval.component.integration.test.ts` | — | |
-| threadOrchestrator | ❌ | ✅ `threadOrchestrator.component.integration.test.ts` | — | |
+| threadOrchestrator | ✅ `chat-ir/seen-tracker.test.ts`（freshCheck @ 语义） | ✅ `threadOrchestrator.component.integration.test.ts`（串行 + FIFO 排队） | — | freshCheck 实现于 `@utlra/chat-ir` |
 | outerConversationLoop | ❌ | ✅ `outerConversationLoop.component.integration.test.ts` | — | + `integration/outer-conversation-loop-assembly` |
 | outerToolExecutor | 🟡 tools 单测散落 | ✅ `outerToolExecutor.component.integration.test.ts` | — | `normalizeAgentReplyMentionText` |
 | outerOrchestrator | 🟡 parse | ✅ `outerOrchestrator.component.integration.test.ts` | — | + `outer-roundtrip` / `outer-roundtrip-inner`（注入 spawn） |

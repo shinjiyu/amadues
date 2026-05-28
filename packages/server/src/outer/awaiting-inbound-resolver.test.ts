@@ -15,8 +15,6 @@ import {
   isHumanSender,
   resolveAwaitingInboundFromIm,
 } from './awaiting-inbound-resolver.js';
-import { createMemoryBlockStore } from './memory-block-store.js';
-import { isCredentialRefResult } from './credential-ref.js';
 
 const THREAD = 'thread:awaiting-lab';
 
@@ -180,7 +178,7 @@ describe('resolveAwaitingInboundFromIm', () => {
     expect(out.resolved).toBe(false);
   });
 
-  it('long cookie + memoryBlockStore → credential_ref + bind file', async () => {
+  it('long cookie reply stays plain { reply } (no auto vault)', async () => {
     const workDir = mkWorkDir(root, 'cred');
     const brainDir = path.join(workDir, '.brain');
     addPending(brainDir, {
@@ -188,23 +186,14 @@ describe('resolveAwaitingInboundFromIm', () => {
       spec: { prompt: '请粘贴微博 Cookie' },
     });
     registerAwaiting(reg, workDir, 'ib-cred-1');
-    const store = createMemoryBlockStore(root, null, 'agent:test');
     const cookie =
       'SUB=abcdefghijklmnopqrstuvwxyz0123456789; SUBP=zyxwvutsrqponmlkjihgfedcba9876543210; WBPSESS=longtokenvalue';
 
-    const out = await resolveAwaitingInboundFromIm(reg, humanInbound(cookie), {
-      memoryBlockStore: store,
-      updatedBy: 'human:alice',
-    });
+    const out = await resolveAwaitingInboundFromIm(reg, humanInbound(cookie));
 
     expect(out.resolved).toBe(true);
-    expect(out.credentialRef?.slot).toBe('weibo');
     const pending = readPendings(brainDir)[0];
-    expect(isCredentialRefResult(pending?.result)).toBe(true);
-    expect((pending?.result as { reply?: string }).reply).toBeUndefined();
-    const secretPath = path.join(workDir, '.brain', 'secrets', 'weibo.json');
-    expect(fs.existsSync(secretPath)).toBe(true);
-    const onDisk = JSON.parse(fs.readFileSync(secretPath, 'utf8')) as { value: string };
-    expect(onDisk.value).toBe(cookie);
+    expect((pending?.result as { reply?: string })?.reply).toBe(cookie);
+    expect(fs.existsSync(path.join(workDir, '.brain', 'secrets'))).toBe(false);
   });
 });

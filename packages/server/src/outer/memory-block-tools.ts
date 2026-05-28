@@ -5,6 +5,7 @@
 import type { ToolDef } from './outer-tools.js';
 import type { OuterToolContext, ToolCallResult } from './outer-tools.js';
 import type { MemoryBlockStore } from './memory-block-store.js';
+import type { BlockStrategyId } from './memory-block-strategies.js';
 
 export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
   {
@@ -12,19 +13,71 @@ export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'memory_block_list',
       description:
-        '列出当前 agent 可用的 Memory Block（如 keychain=凭证）。secret 块的 value 永不出现在外脑 prompt；需注入内脑时用 memory_block_bind。',
+        '列出当前 agent 的 Memory Block（本子）。含系统 keychain 与用户自建 notebook 等。',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'memory_block_entries',
-      description: '列出某 block 下的 entry key（kv_secret 块不返回 value）。',
+      name: 'memory_block_create',
+      description:
+        '新建一个 Memory Block（记事本）。strategy 推荐 notebook；kv_secret 仅当确需凭证专用块时使用。系统块 keychain 已预置。',
       parameters: {
         type: 'object',
         properties: {
-          block_id: { type: 'string', description: '块 ID，如 keychain' },
+          block_id: { type: 'string', description: '新块 ID（字母数字、下划线、连字符）' },
+          strategy: {
+            type: 'string',
+            description: 'notebook（默认，可读记事）或 kv_secret',
+            enum: ['notebook', 'kv_secret'],
+          },
+          title: { type: 'string', description: '显示标题' },
+          description: { type: 'string', description: '块用途说明' },
+        },
+        required: ['block_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'memory_block_update',
+      description: '更新块的 title/description（不能改 strategy）。系统块不可改。',
+      parameters: {
+        type: 'object',
+        properties: {
+          block_id: { type: 'string', description: '块 ID' },
+          title: { type: 'string', description: '新标题' },
+          description: { type: 'string', description: '新说明' },
+        },
+        required: ['block_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'memory_block_delete_block',
+      description: '删除整个块及其全部条目。不可删除 keychain 系统块。',
+      parameters: {
+        type: 'object',
+        properties: {
+          block_id: { type: 'string', description: '块 ID' },
+        },
+        required: ['block_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'memory_block_entries',
+      description: '列出某 block 下的 entry key。',
+      parameters: {
+        type: 'object',
+        properties: {
+          block_id: { type: 'string', description: '块 ID' },
         },
         required: ['block_id'],
       },
@@ -35,7 +88,7 @@ export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'memory_block_get',
       description:
-        '读取 block 条目。kv_secret/keychain 外脑仅返回 metadata（kind、updated_at），不含 value；内脑请 bind 后 read_file。',
+        '读取 block 条目。notebook 返回 title/body；keychain 外脑仅 metadata（无 value 明文）。',
       parameters: {
         type: 'object',
         properties: {
@@ -51,16 +104,19 @@ export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'memory_block_put',
       description:
-        '写入或更新 block 条目。keychain 需 kind + value（Cookie/Token 等）；禁止写入 mem9 chat。',
+        '写入或更新条目。notebook：body（必填）+ 可选 title/tags；keychain：kind + value（Cookie/Token）。禁止写入 mem9。',
       parameters: {
         type: 'object',
         properties: {
-          block_id: { type: 'string', description: '块 ID，如 keychain' },
-          key: { type: 'string', description: 'entry key，如 weibo' },
-          kind: { type: 'string', description: '凭证类型：cookie / token / api_key / generic' },
-          value: { type: 'string', description: 'secret 明文（仅存 vault，不进外脑 prompt）' },
+          block_id: { type: 'string', description: '块 ID' },
+          key: { type: 'string', description: 'entry key' },
+          body: { type: 'string', description: 'notebook 正文' },
+          title: { type: 'string', description: 'notebook 标题' },
+          tags: { type: 'string', description: 'notebook 标签，逗号或换行分隔' },
+          kind: { type: 'string', description: 'keychain：cookie / token / api_key' },
+          value: { type: 'string', description: 'keychain 明文或 notebook body 别名' },
         },
-        required: ['block_id', 'key', 'value'],
+        required: ['block_id', 'key'],
       },
     },
   },
@@ -79,48 +135,87 @@ export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
       },
     },
   },
-  {
-    type: 'function',
-    function: {
-      name: 'memory_block_bind',
-      description:
-        '将选定 entry 写入内脑 workDir/.brain/secrets/，供 read_file 使用。需 instance_id（list_inner_brains 可查）。',
-      parameters: {
-        type: 'object',
-        properties: {
-          block_id: { type: 'string', description: '块 ID' },
-          keys: { type: 'string', description: '逗号或换行分隔的 key 列表' },
-          instance_id: { type: 'string', description: '内脑 instance_id' },
-        },
-        required: ['block_id', 'keys', 'instance_id'],
-      },
-    },
-  },
 ];
-
-function parseKeysArg(raw: unknown): string[] {
-  if (typeof raw !== 'string') return [];
-  return raw.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
-}
 
 function requireStore(ctx: OuterToolContext): MemoryBlockStore | null {
   return ctx.memoryBlockStore ?? null;
 }
 
-function resolveBindWorkDir(ctx: OuterToolContext, instanceId: string): string | null {
-  const id = instanceId.trim();
-  if (!id) return null;
-  const rec = ctx.innerBrainRegistry?.get(id);
-  if (!rec?.workDir) return null;
-  return rec.workDir;
+function parseStrategy(raw: unknown): BlockStrategyId {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (s === 'kv_secret' || s === 'notebook') return s;
+  return 'notebook';
 }
 
 export async function execMemoryBlockList(ctx: OuterToolContext): Promise<ToolCallResult> {
   const store = requireStore(ctx);
   if (!store) return { replied: false, output: '（Memory Block 未启用）' };
   const blocks = store.listBlocks();
-  const lines = blocks.map((b) => `- ${b.blockId} (${b.strategy}): ${b.description}`);
+  const lines = blocks.map((b) => {
+    const sys = b.system ? ' [system]' : '';
+    const title = b.title ? ` "${b.title}"` : '';
+    return `- ${b.blockId}${title} (${b.strategy})${sys}: ${b.description}`;
+  });
   return { replied: false, output: `Memory Blocks（${blocks.length}）：\n${lines.join('\n')}` };
+}
+
+export async function execMemoryBlockCreate(
+  args: { block_id?: string; strategy?: string; title?: string; description?: string },
+  ctx: OuterToolContext,
+): Promise<ToolCallResult> {
+  const store = requireStore(ctx);
+  if (!store) return { replied: false, output: '（Memory Block 未启用）' };
+  const blockId = args.block_id?.trim() ?? '';
+  if (!blockId) return { replied: false, output: '（block_id 为空）' };
+  try {
+    const block = await store.createBlock(
+      blockId,
+      parseStrategy(args.strategy),
+      { title: args.title, description: args.description },
+      ctx.agentSid,
+    );
+    return {
+      replied: false,
+      output: `已创建块 ${block.blockId}（${block.strategy}）。\n${JSON.stringify(block, null, 2)}`,
+    };
+  } catch (e) {
+    return { replied: false, output: `（错误：${e instanceof Error ? e.message : String(e)}）` };
+  }
+}
+
+export async function execMemoryBlockUpdate(
+  args: { block_id?: string; title?: string; description?: string },
+  ctx: OuterToolContext,
+): Promise<ToolCallResult> {
+  const store = requireStore(ctx);
+  if (!store) return { replied: false, output: '（Memory Block 未启用）' };
+  const blockId = args.block_id?.trim() ?? '';
+  if (!blockId) return { replied: false, output: '（block_id 为空）' };
+  try {
+    const block = await store.updateBlock(blockId, {
+      title: args.title,
+      description: args.description,
+    });
+    return { replied: false, output: `已更新块 ${block.blockId}。\n${JSON.stringify(block, null, 2)}` };
+  } catch (e) {
+    return { replied: false, output: `（错误：${e instanceof Error ? e.message : String(e)}）` };
+  }
+}
+
+export async function execMemoryBlockDeleteBlock(
+  args: { block_id?: string },
+  ctx: OuterToolContext,
+): Promise<ToolCallResult> {
+  const store = requireStore(ctx);
+  if (!store) return { replied: false, output: '（Memory Block 未启用）' };
+  const blockId = args.block_id?.trim() ?? '';
+  if (!blockId) return { replied: false, output: '（block_id 为空）' };
+  try {
+    const ok = await store.deleteBlock(blockId);
+    return { replied: false, output: ok ? `已删除块 ${blockId} 及全部条目` : `（块 ${blockId} 不存在）` };
+  } catch (e) {
+    return { replied: false, output: `（错误：${e instanceof Error ? e.message : String(e)}）` };
+  }
 }
 
 export async function execMemoryBlockEntries(
@@ -159,27 +254,37 @@ export async function execMemoryBlockGet(
 }
 
 export async function execMemoryBlockPut(
-  args: { block_id?: string; key?: string; kind?: string; value?: string },
+  args: {
+    block_id?: string;
+    key?: string;
+    body?: string;
+    title?: string;
+    tags?: string;
+    kind?: string;
+    value?: string;
+  },
   ctx: OuterToolContext,
 ): Promise<ToolCallResult> {
   const store = requireStore(ctx);
   if (!store) return { replied: false, output: '（Memory Block 未启用）' };
   const blockId = args.block_id?.trim() ?? '';
   const key = args.key?.trim() ?? '';
-  const value = args.value ?? '';
   if (!blockId || !key) return { replied: false, output: '（block_id 或 key 为空）' };
-  if (!value.trim()) return { replied: false, output: '（value 为空）' };
   try {
-    const meta = await store.put(
-      blockId,
-      key,
-      { kind: args.kind ?? 'generic', value },
-      ctx.agentSid,
-    );
-    const len = value.length;
+    const block = store.resolveBlock(blockId);
+    const content =
+      block.strategy === 'notebook'
+        ? String(args.body ?? args.value ?? '').trim()
+        : String(args.value ?? args.body ?? '').trim();
+    if (!content) return { replied: false, output: '（body/value 为空）' };
+    const payload: Record<string, unknown> =
+      block.strategy === 'notebook'
+        ? { body: content, title: args.title, tags: args.tags }
+        : { kind: args.kind ?? 'generic', value: content };
+    const meta = await store.put(blockId, key, payload, ctx.agentSid);
     return {
       replied: false,
-      output: `已写入 ${blockId}/${key}（value.length=${len}，外脑不可见明文）。\n${JSON.stringify(meta, null, 2)}`,
+      output: `已写入 ${blockId}/${key}（${block.strategy}）。\n${JSON.stringify(meta, null, 2)}`,
     };
   } catch (e) {
     return { replied: false, output: `（错误：${e instanceof Error ? e.message : String(e)}）` };
@@ -196,41 +301,13 @@ export async function execMemoryBlockDelete(
   const key = args.key?.trim() ?? '';
   if (!blockId || !key) return { replied: false, output: '（block_id 或 key 为空）' };
   try {
-    const ok = await store.delete(blockId, key);
+    const ok = await store.deleteEntry(blockId, key);
     return { replied: false, output: ok ? `已删除 ${blockId}/${key}` : `（${blockId}/${key} 不存在）` };
   } catch (e) {
     return { replied: false, output: `（错误：${e instanceof Error ? e.message : String(e)}）` };
   }
 }
 
-export async function execMemoryBlockBind(
-  args: { block_id?: string; keys?: string; instance_id?: string },
-  ctx: OuterToolContext,
-): Promise<ToolCallResult> {
-  const store = requireStore(ctx);
-  if (!store) return { replied: false, output: '（Memory Block 未启用）' };
-  const blockId = args.block_id?.trim() ?? '';
-  const instanceId = args.instance_id?.trim() ?? '';
-  const keys = parseKeysArg(args.keys);
-  if (!blockId || !instanceId || keys.length === 0) {
-    return { replied: false, output: '（block_id、instance_id 或 keys 无效）' };
-  }
-  const workDir = resolveBindWorkDir(ctx, instanceId);
-  if (!workDir) return { replied: false, output: `（instance_id ${instanceId} 不存在或无 workDir）` };
-  try {
-    const paths = await store.bind(blockId, keys, workDir);
-    return {
-      replied: false,
-      output:
-        `已 bind ${keys.length} 条到 ${instanceId}：\n` +
-        paths.map((p) => `- ${p}（内脑 read_file 可用）`).join('\n'),
-    };
-  } catch (e) {
-    return { replied: false, output: `（错误：${e instanceof Error ? e.message : String(e)}）` };
-  }
-}
-
-/** Transitional aliases → keychain block */
 export async function execKeychainPut(
   args: { key?: string; kind?: string; value?: string },
   ctx: OuterToolContext,
@@ -245,16 +322,6 @@ export async function execKeychainEntries(ctx: OuterToolContext): Promise<ToolCa
   return execMemoryBlockEntries({ block_id: 'keychain' }, ctx);
 }
 
-export async function execKeychainBind(
-  args: { keys?: string; instance_id?: string },
-  ctx: OuterToolContext,
-): Promise<ToolCallResult> {
-  return execMemoryBlockBind(
-    { block_id: 'keychain', keys: args.keys, instance_id: args.instance_id },
-    ctx,
-  );
-}
-
 export async function dispatchMemoryBlockTool(
   name: string,
   args: Record<string, unknown>,
@@ -263,28 +330,41 @@ export async function dispatchMemoryBlockTool(
   switch (name) {
     case 'memory_block_list':
       return execMemoryBlockList(ctx);
+    case 'memory_block_create':
+      return execMemoryBlockCreate(
+        args as { block_id?: string; strategy?: string; title?: string; description?: string },
+        ctx,
+      );
+    case 'memory_block_update':
+      return execMemoryBlockUpdate(
+        args as { block_id?: string; title?: string; description?: string },
+        ctx,
+      );
+    case 'memory_block_delete_block':
+      return execMemoryBlockDeleteBlock(args as { block_id?: string }, ctx);
     case 'memory_block_entries':
       return execMemoryBlockEntries(args as { block_id?: string }, ctx);
     case 'memory_block_get':
       return execMemoryBlockGet(args as { block_id?: string; key?: string }, ctx);
     case 'memory_block_put':
       return execMemoryBlockPut(
-        args as { block_id?: string; key?: string; kind?: string; value?: string },
+        args as {
+          block_id?: string;
+          key?: string;
+          body?: string;
+          title?: string;
+          tags?: string;
+          kind?: string;
+          value?: string;
+        },
         ctx,
       );
     case 'memory_block_delete':
       return execMemoryBlockDelete(args as { block_id?: string; key?: string }, ctx);
-    case 'memory_block_bind':
-      return execMemoryBlockBind(
-        args as { block_id?: string; keys?: string; instance_id?: string },
-        ctx,
-      );
     case 'keychain_put':
       return execKeychainPut(args as { key?: string; kind?: string; value?: string }, ctx);
     case 'keychain_entries':
       return execKeychainEntries(ctx);
-    case 'keychain_bind':
-      return execKeychainBind(args as { keys?: string; instance_id?: string }, ctx);
     default:
       return null;
   }
