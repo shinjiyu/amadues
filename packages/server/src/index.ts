@@ -60,8 +60,8 @@ import { getDrive9Client, resolveDrive9Config } from './drive9/drive9-client.js'
 import { InnerBrainRegistry, type TaskRecord, type TaskStatus } from './outer/inner-brain-registry.js';
 import { KpiRegistry, formatKpiReflexionBlock } from './outer/kpi-registry.js';
 import { processBurstExitForKpi } from './outer/kpi-burst-hooks.js';
-import { writeStopSignal } from './pi-mono/run-tick.js';
 import { readWorkerStatus, isPidAlive, spawnInnerBrainWorker } from './pi-mono/inner-brain-spawner.js';
+import { isInnerBrainStoppable, stopInnerBrainInstance } from './outer/stop-inner-brain.js';
 import { createChangeWatcher, type ChangeWatcher } from './pi-mono/change-watcher.js';
 import { registryLifecycleReconcile, startRegistryLifecycleReconcileInterval } from './outer/registry-lifecycle-reconcile.js';
 import { isBrainAwaitingAsync } from './outer/brain-async-snapshot.js';
@@ -1348,30 +1348,17 @@ app.post('/api/inner-brains/:id/stop', (c) => {
   const id = c.req.param('id');
   const record = innerBrainRegistry.get(id);
   if (!record) return c.json({ error: `实例 ${id} 不存在` }, 404);
-  if (record.status !== 'RUNNING') {
-    return c.json({ ok: true, message: `实例 ${id} 已不在运行中（状态：${record.status}）` });
+  const res = stopInnerBrainInstance(record, innerBrainRegistry);
+  if (!res.ok) {
+    return c.json({ ok: true, message: res.message });
   }
 
-  const actions: string[] = [];
-
-  // 1. 优雅停止：写停止信号文件（子进程在下个 tick 间隙检测到后自行退出）
-  writeStopSignal(record.workDir);
-  actions.push('stop_signal_written');
-
-  // 2. 如果子进程还活着，发 SIGTERM（立即终止，不等下一个 tick 间隙）
-  if (record.pid != null && isPidAlive(record.pid)) {
-    try {
-      process.kill(record.pid, 'SIGTERM');
-      actions.push(`sigterm_sent(pid=${record.pid})`);
-    } catch {
-      actions.push('sigterm_failed');
-    }
-  }
-
-  // exit handler 会在子进程退出后更新状态；这里也预先标记，防止 API 轮询看到旧状态
-  innerBrainRegistry.update(id, { status: 'STOPPED', finishedAt: new Date().toISOString() });
-
-  return c.json({ ok: true, message: `已停止实例 ${id}`, actions });
+  console.log(`[utlra][stop-inner-brain] api ${id} prior=${res.priorStatus} actions=${res.actions.join(',')}`);
+  return c.json({
+    ok: true,
+    message: `已停止实例 ${id}（原状态 ${res.priorStatus}）`,
+    actions: res.actions,
+  });
 });
 
 /**

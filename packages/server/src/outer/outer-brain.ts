@@ -535,8 +535,14 @@ export class OuterBrain {
       longTermGoal,
     });
 
+    const toolsChain = result.toolsUsed.length ? result.toolsUsed.join('→') : '(none)';
+    const lastPreview =
+      result.lastContent?.trim()
+        ? result.lastContent.trim().replace(/\s+/g, ' ').slice(0, 120) +
+          (result.lastContent.trim().length > 120 ? '…' : '')
+        : '(empty)';
     console.log(
-      `[utlra][outer-brain] loop done: replied=${result.replied} rounds=${result.roundsUsed}`,
+      `[utlra][outer-brain] loop done: replied=${result.replied} rounds=${result.roundsUsed} tools=${toolsChain}${!result.replied ? ` lastContent=${lastPreview}` : ''}`,
     );
 
     // ── IP-04: 若 result.replied，写入 communicate 事件 ────────────────────

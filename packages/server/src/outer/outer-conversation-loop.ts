@@ -159,6 +159,14 @@ ${OUTER_ASYNC_ORCHESTRATION_GUIDE}
 }
 
 const MAX_TOOL_ROUNDS = 8;
+
+/** 日志单行摘要，避免 tool output / LLM 正文刷屏 */
+function logSnippet(text: string | null | undefined, maxLen = 160): string {
+  if (!text?.trim()) return '(empty)';
+  const oneLine = text.trim().replace(/\s+/g, ' ');
+  return oneLine.length <= maxLen ? oneLine : `${oneLine.slice(0, maxLen)}…`;
+}
+
 /**
  * 外脑单次 LLM 调用最大 token。
  * 聊天回复靠提示词约束简洁，不靠截断；内脑任务（set_goal）需要足够上下文。
@@ -286,6 +294,9 @@ export async function runOuterConversationLoop(
     lastContent = resp.content ?? null;
 
     if (!resp.tool_calls.length) {
+      console.log(
+        `[utlra][outer-loop] round ${roundsUsed}/${MAX_TOOL_ROUNDS} no-tools replied=${replied} content=${logSnippet(resp.content)}`,
+      );
       // LLM 没有调用工具——兜底：有文本且未回复时直接发送，但先做 freshCheck
       if (!replied && resp.content?.trim()) {
         let shouldSend = true;
@@ -337,6 +348,10 @@ export async function runOuterConversationLoop(
       if (toolOut.replied) replied = true;
       if (toolOut.abortLoop) shouldAbort = true;
 
+      console.log(
+        `[utlra][outer-loop] round ${roundsUsed}/${MAX_TOOL_ROUNDS} tool=${tc.function.name} toolReplied=${toolOut.replied} loopReplied=${replied} abort=${!!toolOut.abortLoop} out=${logSnippet(toolOut.output, 120)}`,
+      );
+
       // 工具结果追加到消息历史
       messages.push({
         role: 'tool',
@@ -356,6 +371,11 @@ export async function runOuterConversationLoop(
       break;
     }
   }
+
+  const toolsChain = toolsUsed.length ? toolsUsed.join('→') : '(none)';
+  console.log(
+    `[utlra][outer-loop] done: replied=${replied} rounds=${roundsUsed} tools=${toolsChain} lastContent=${logSnippet(lastContent)}`,
+  );
 
   return { replied, roundsUsed, lastContent, toolsUsed };
 }

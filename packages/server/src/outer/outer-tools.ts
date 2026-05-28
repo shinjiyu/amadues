@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runOpenKuronekoPiMonoAuto, writeStopSignal, clearStopSignal } from '../pi-mono/run-tick.js';
 import { spawnInnerBrainWorker, readWorkerStatus } from '../pi-mono/inner-brain-spawner.js';
+import { isInnerBrainStoppable, stopInnerBrainInstance } from './stop-inner-brain.js';
 import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import { formatKpiReflexionBlock } from './kpi-registry.js';
@@ -279,8 +280,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'stop_inner_brain',
       description:
-        '停止内脑任务实例。传入 instance_id 停止指定实例，不传则停止所有运行中的实例。' +
-        '适用于：任务卡住需要终止、需要重新派发新任务。',
+        '停止内脑任务实例（含 AWAITING/ask_user 挂起中）。传入 instance_id 停止指定实例，不传则停止所有可停实例。' +
+        '适用于：用户放弃任务、任务卡住、ask_user 等回复时需要彻底终止。',
       parameters: {
         type: 'object',
         properties: {
@@ -1249,24 +1250,39 @@ async function execStopInnerBrain(
     if (!record) {
       return { replied: false, output: `找不到实例 ${instanceId}。` };
     }
-    if (record.status !== 'RUNNING') {
-      return { replied: false, output: `实例 ${instanceId} 已不在运行中（状态：${record.status}）。` };
+    const res = stopInnerBrainInstance(record, registry);
+    if (!res.ok) {
+      return { replied: false, output: res.message };
     }
-    writeStopSignal(record.workDir);
-    registry.update(instanceId, { status: 'STOPPED', finishedAt: new Date().toISOString() });
-    return { replied: false, output: `已向实例 ${instanceId} 发送停止信号，下一 tick 后将停止。` };
+    console.log(
+      `[utlra][stop-inner-brain] ${instanceId} prior=${res.priorStatus} actions=${res.actions.join(',')}`,
+    );
+    return {
+      replied: false,
+      output:
+        `已停止实例 ${instanceId}（原状态 ${res.priorStatus}）：${res.actions.join('；')}。` +
+        (res.priorStatus === 'AWAITING' ? ' 已取消 ask_user pending 并尝试结束子进程。' : ''),
+    };
   }
 
-  // 停止所有运行中的实例
-  const running = registry.running();
-  if (!running.length) {
-    return { replied: false, output: '当前没有运行中的内脑实例。' };
+  const stoppable = registry.list().filter((r) => isInnerBrainStoppable(r.status));
+  if (!stoppable.length) {
+    return { replied: false, output: '当前没有可停止的内脑实例（RUNNING/AWAITING/BLOCKED）。' };
   }
-  for (const r of running) {
-    writeStopSignal(r.workDir);
-    registry.update(r.instanceId, { status: 'STOPPED', finishedAt: new Date().toISOString() });
+  const summaries: string[] = [];
+  for (const r of stoppable) {
+    const res = stopInnerBrainInstance(r, registry);
+    if (res.ok) {
+      summaries.push(`${r.instanceId}(${res.priorStatus})`);
+      console.log(
+        `[utlra][stop-inner-brain] ${r.instanceId} prior=${res.priorStatus} actions=${res.actions.join(',')}`,
+      );
+    }
   }
-  return { replied: false, output: `已向 ${running.length} 个实例发送停止信号：${running.map((r) => r.instanceId).join(', ')}。` };
+  return {
+    replied: false,
+    output: `已停止 ${summaries.length} 个实例：${summaries.join(', ')}。`,
+  };
 }
 
 function execSendDirective(
