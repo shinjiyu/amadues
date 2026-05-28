@@ -15,6 +15,11 @@ import path from 'node:path';
 import type { SkillMemoryStore, SkillRecord } from '../mem9/skill-memory-store.js';
 import type { SkillDrive9Store } from '../drive9/skill-drive9-store.js';
 import { serializeSkill, deserializeSkill, SHARED_SKILLS_DIR } from '../drive9/skill-drive9-store.js';
+import type { KnowledgeDrive9Store } from '../drive9/knowledge-drive9-store.js';
+import {
+  mergeWorkDirKnowledgeToDrive9,
+  seedRelevantKnowledgeToWorkDir,
+} from './knowledge-promote.js';
 
 // ── 类型 ────────────────────────────────────────────────────────────────────
 
@@ -318,6 +323,89 @@ export async function seedRelevantSkillsFromDrive9(
   fs.writeFileSync(path.join(workBrain, 'skills.md'), indexLines.join(''), 'utf8');
   console.log(`[utlra][agent-pool] drive9 seed: ${skills.length} 条技能 → ${path.basename(workDir)}`);
 }
+
+/**
+ * drive9 seed 之后，从本地 agent-pool 补充尚未注入的技能（并集，不覆盖 drive9 已有 id）。
+ */
+export function seedLocalAgentPoolSkillsIntoWorkDir(
+  dataRoot: string,
+  workDir: string,
+  goal: string,
+  topK = 5,
+): void {
+  const poolBrain = getAgentPoolBrainDir(dataRoot);
+  const selected = selectRelevantSkills(poolBrain, goal, topK);
+  if (selected.length === 0) return;
+
+  const workBrain = path.join(workDir, '.brain');
+  const workSkillsDir = path.join(workBrain, 'skills');
+  const workIndexPath = path.join(workBrain, 'skills.md');
+  fs.mkdirSync(workBrain, { recursive: true });
+
+  const existing = fs.existsSync(workIndexPath)
+    ? parseSkillIndex(fs.readFileSync(workIndexPath, 'utf8'))
+    : [];
+  const existingIds = new Set(existing.map((e) => e.id));
+
+  const poolSkillsDir = path.join(poolBrain, 'skills');
+  let added = 0;
+  const indexLines = fs.existsSync(workIndexPath)
+    ? fs.readFileSync(workIndexPath, 'utf8').split('\n')
+    : [SKILLS_INDEX_HEADER.trimEnd()];
+
+  for (const e of selected) {
+    if (existingIds.has(e.id)) continue;
+    const src = path.join(poolSkillsDir, e.category, `${e.id}.md`);
+    if (!fs.existsSync(src)) continue;
+    const destCat = path.join(workSkillsDir, e.category);
+    fs.mkdirSync(destCat, { recursive: true });
+    fs.copyFileSync(src, path.join(destCat, `${e.id}.md`));
+    indexLines.push([e.id, e.category, e.title, e.tags.join(','), e.ts].join('\t'));
+    existingIds.add(e.id);
+    added++;
+  }
+
+  if (added === 0) return;
+  fs.writeFileSync(workIndexPath, indexLines.filter(Boolean).join('\n') + '\n', 'utf8');
+  console.log(`[utlra][agent-pool] local pool 补充 ${added} 条技能 → ${path.basename(workDir)}`);
+}
+
+/**
+ * set_goal 统一 seed：drive9 技能 + 本地池补充 + drive9 事实（方案 B）。
+ */
+export async function seedInnerBrainSharedContext(opts: {
+  dataRoot: string;
+  workDir: string;
+  goal: string;
+  skillDrive9Store?: SkillDrive9Store;
+  knowledgeDrive9Store?: KnowledgeDrive9Store;
+  skillStore?: SkillMemoryStore;
+  skillTopK?: number;
+  knowledgeTopK?: number;
+}): Promise<void> {
+  const skillTopK = opts.skillTopK ?? 5;
+  const knowledgeTopK = opts.knowledgeTopK ?? 8;
+
+  if (opts.skillDrive9Store) {
+    await seedRelevantSkillsFromDrive9(opts.skillDrive9Store, opts.workDir, opts.goal, skillTopK);
+    seedLocalAgentPoolSkillsIntoWorkDir(opts.dataRoot, opts.workDir, opts.goal, skillTopK);
+  } else if (opts.skillStore) {
+    await seedRelevantSkillsFromMem9(opts.skillStore, opts.workDir, opts.goal, skillTopK);
+  } else {
+    seedRelevantSkillsToWorkDir(opts.dataRoot, opts.workDir, opts.goal, skillTopK);
+  }
+
+  if (opts.knowledgeDrive9Store) {
+    await seedRelevantKnowledgeToWorkDir(
+      opts.knowledgeDrive9Store,
+      opts.workDir,
+      opts.goal,
+      knowledgeTopK,
+    );
+  }
+}
+
+export { mergeWorkDirKnowledgeToDrive9, seedRelevantKnowledgeToWorkDir };
 
 /**
  * 将 workDir/.brain/skills 中的技能写入 drive9 shared 池（fire-and-forget）。

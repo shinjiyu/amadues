@@ -267,7 +267,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer -> mem9 "OuterMemoryStore" "HTTPS" {
             tags "http"
         }
-        kuroneko.agentServer -> drive9 "SkillDrive9 / AgentPool" "HTTPS" {
+        kuroneko.agentServer -> drive9 "SkillDrive9 + KnowledgeDrive9 + AgentPool" "HTTPS" {
             tags "http"
         }
 

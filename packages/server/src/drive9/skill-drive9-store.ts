@@ -4,7 +4,7 @@
  * 目录结构（drive9 workspace 内）：
  *   /skills/shared/{id}.md     — 共享技能池（所有 agent 可读写）
  *   /skills/{agentSid}/{id}.md — 个人技能库（单 agent 私有）
- *   /knowledge/{agentSid}/{id}.md — 知识条目（未来扩展）
+ *   /knowledge/shared/{id}.md — 共享事实（见 knowledge-drive9-store.ts）
  *   /constraints/{agentSid}/{id}.md — 红线（未来扩展）
  *
  * 与 mem9 的分工：

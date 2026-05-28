@@ -55,6 +55,7 @@ import { createMemoryBlockStore } from './outer/memory-block-store.js';
 import { initSkillMemoryStore, type SkillMemoryStore } from './mem9/skill-memory-store.js';
 import { Mem9Client } from './mem9/mem9-client.js';
 import { initSkillDrive9Store, type SkillDrive9Store } from './drive9/skill-drive9-store.js';
+import { initKnowledgeDrive9Store, type KnowledgeDrive9Store } from './drive9/knowledge-drive9-store.js';
 import { getDrive9Client, resolveDrive9Config } from './drive9/drive9-client.js';
 import { InnerBrainRegistry, type TaskRecord, type TaskStatus } from './outer/inner-brain-registry.js';
 import { KpiRegistry, formatKpiReflexionBlock } from './outer/kpi-registry.js';
@@ -1644,14 +1645,17 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
 
   let skillStore: SkillMemoryStore | undefined;
   let skillDrive9Store: SkillDrive9Store | undefined;
+  let knowledgeDrive9Store: KnowledgeDrive9Store | undefined;
 
   const drive9Config = resolveDrive9Config();
   if (drive9Config) {
     skillDrive9Store = initSkillDrive9Store(drive9Config.apiKey, drive9Config.apiUrl);
+    knowledgeDrive9Store = initKnowledgeDrive9Store() ?? undefined;
     const sourceNote = drive9Config.source === 'env'
       ? 'DRIVE9_* env'
       : `drive9 ctx (${drive9Config.contextName ?? 'current'})`;
     console.log(`[utlra] SkillDrive9Store 已初始化 → drive9 /skills/shared/ via ${sourceNote}`);
+    console.log(`[utlra] KnowledgeDrive9Store 已初始化 → drive9 /knowledge/shared/ via ${sourceNote}`);
   } else {
     const mem9ApiKey = process.env['MEM9_API_KEY'];
     if (mem9ApiKey) {
@@ -1688,6 +1692,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     memoryBlockStore,
     skillStore,
     skillDrive9Store,
+    knowledgeDrive9Store,
   });
 
   // Push Loop：轮询内脑输出，主动推送 BLOCK/COMPLETE/PROGRESS 事件

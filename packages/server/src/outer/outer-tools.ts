@@ -38,16 +38,16 @@ import {
 import { notifyInnerBrainTaskComplete } from './completion-notify.js';
 import { expandAttachAssetIds, type AttachmentPart } from './attach-expand.js';
 import {
-  seedRelevantSkillsToWorkDir,
   mergeWorkDirSkillsToAgentPool,
-  seedRelevantSkillsFromMem9,
   mergeWorkDirSkillsToMem9,
-  seedRelevantSkillsFromDrive9,
   mergeWorkDirSkillsToDrive9,
+  mergeWorkDirKnowledgeToDrive9,
+  seedInnerBrainSharedContext,
 } from './agent-pool.js';
 import type { OuterMemoryStore } from './outer-memory.js';
 import type { SkillMemoryStore } from '../mem9/skill-memory-store.js';
 import type { SkillDrive9Store } from '../drive9/skill-drive9-store.js';
+import type { KnowledgeDrive9Store } from '../drive9/knowledge-drive9-store.js';
 import {
   initSelfUpdateSession,
   readSelfUpdateSession,
@@ -547,6 +547,8 @@ export interface OuterToolContext {
   skillStore?: SkillMemoryStore;
   /** 技能 drive9 存储层（原文存储，语义检索，优先于 mem9） */
   skillDrive9Store?: SkillDrive9Store;
+  /** 事实 drive9 存储层（/knowledge/shared/，方案 B） */
+  knowledgeDrive9Store?: KnowledgeDrive9Store;
   /** Memory Block 存储（keychain 等结构化长期记忆） */
   memoryBlockStore?: MemoryBlockStore;
 }
@@ -686,14 +688,15 @@ async function execSetGoal(
     // 清除可能残留的停止信号
     clearStopSignal(workDir);
 
-    // Agent Pool：按目标注入相关技能（drive9 优先 → mem9 次之 → 本地关键词兜底）
-    if (ctx.skillDrive9Store) {
-      await seedRelevantSkillsFromDrive9(ctx.skillDrive9Store, workDir, goal);
-    } else if (ctx.skillStore) {
-      await seedRelevantSkillsFromMem9(ctx.skillStore, workDir, goal);
-    } else {
-      seedRelevantSkillsToWorkDir(ctx.dataRoot, workDir, goal);
-    }
+    // 共享上下文 seed：drive9 技能 + 本地池补充 + drive9 事实（方案 B）
+    await seedInnerBrainSharedContext({
+      dataRoot: ctx.dataRoot,
+      workDir,
+      goal,
+      skillDrive9Store: ctx.skillDrive9Store,
+      knowledgeDrive9Store: ctx.knowledgeDrive9Store,
+      skillStore: ctx.skillStore,
+    });
 
     let dispatchGoal = goal;
     if (resolvedKpiId && ctx.kpiRegistry) {
@@ -803,6 +806,9 @@ async function execSetGoal(
             mergeWorkDirSkillsToDrive9(ctx.skillDrive9Store, workDir, ctx.agentSid);
           } else if (ctx.skillStore) {
             mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
+          }
+          if (ctx.knowledgeDrive9Store) {
+            mergeWorkDirKnowledgeToDrive9(ctx.knowledgeDrive9Store, workDir, ctx.agentSid);
           }
 
           if (finalStatus === 'DONE') {
@@ -1013,6 +1019,9 @@ async function execStartSelfUpdate(
           mergeWorkDirSkillsToDrive9(ctx.skillDrive9Store, workDir, ctx.agentSid);
         } else if (ctx.skillStore) {
           mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
+        }
+        if (ctx.knowledgeDrive9Store) {
+          mergeWorkDirKnowledgeToDrive9(ctx.knowledgeDrive9Store, workDir, ctx.agentSid);
         }
 
         if (finalStatus === 'DONE') {

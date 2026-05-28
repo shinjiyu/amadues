@@ -9,7 +9,8 @@
 | **工作区 File-as-State** | 本地磁盘 | `<workDir>/.brain/*`、`.run/*` | 内脑阶段机、外脑 `set_goal` | Controller、Dashboard |
 | **执行轨 Repository** | `FilesystemRepositoryStore` | `DATA_ROOT/repository/` | 晋升 `promote-from-workspace` | **外脑** `knowledgeRetrieval`（K/S/P） |
 | **外脑记忆 mem9** | HTTPS | mem9 `${sid}:chat` / `:tasks` | `OuterMemoryStore`、`write_memo` | `readMemoryContext` |
-| **技能/共享 drive9** | HTTPS | `/skills/shared/` | 内脑 `write_skill` | `seedRelevantSkillsFromDrive9`、内脑 `get_skill_content` |
+| **技能 drive9** | HTTPS | `/skills/shared/` | 内脑 `write_skill`、burst 结束 merge skills | `seedInnerBrainSharedContext`（含 drive9+本地池并集）、`get_skill_content` |
+| **事实 drive9（方案 B）** | HTTPS | `/knowledge/shared/` | burst 结束 `mergeWorkDirKnowledgeToDrive9`（从 `knowledge.md` 过滤晋升） | `seedInnerBrainSharedContext` → 写入新 burst `.brain/knowledge.md` |
 | **Memory Block** | **本地** | `DATA_ROOT/vault/blocks/`（索引 + entries） | 外脑 `memory_block_*` | 外脑 CRUD；**不**上 drive9/mem9 |
 | **Belief 修订索引** | 本地 JSON | `DATA_ROOT/belief/{agentSid}.json` | `memory-belief-reconcile`（用户取消/完成） | `read_memory` 折叠提示 |
 
@@ -27,7 +28,8 @@
    - 战术：`.brain/*`（BrainFS）  
    - 归档：archive sessions  
    - 软记忆：`write_memo` → mem9（**非** secret）  
-   - 可复用步骤/研究蒸馏：`write_skill` → drive9 `/skills/shared/`
+   - 可复用步骤：`write_skill` → drive9 `/skills/shared/`
+   - 环境事实：`knowledge.md` 中 `[事实]` → burst 结束晋升 drive9 `/knowledge/shared/`（脱敏/截断/去重）；下轮 `set_goal` seed 进 `.brain/knowledge.md`
 
 3. **禁止**  
    - 内脑/ pi-mono **import** `FilesystemRepositoryStore`（检索属外脑）  
@@ -46,7 +48,9 @@
 | **Memory Block** | `outer/memory-block-store.ts` · `outer/memory-block-tools.ts` |
 | 内脑写 mem9 | `openkuroneko/tools/definitions/write-memo.ts` |
 | 内脑写技能 | `openkuroneko/tools/definitions/write-skill.ts` |
-| drive9 技能 | `openkuroneko/skills/drive9-provider.ts` |
+| drive9 技能 | `drive9/skill-drive9-store.ts` |
+| drive9 事实晋升/seed | `drive9/knowledge-drive9-store.ts` · `outer/knowledge-promote.ts` · `outer/agent-pool.ts` `seedInnerBrainSharedContext` |
+| drive9 技能检索（Executor） | `openkuroneko/skills/drive9-provider.ts` |
 
 ## 守门
 
