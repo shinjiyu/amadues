@@ -73,7 +73,16 @@ export class WebChatWsClient {
     this.isReady = false;
     let ws: NodeWebSocket;
     try {
-      ws = new NodeWebSocket(this.opts.url);
+      // Node ws 支持在 upgrade 握手时携带自定义 header；
+      // 这是 chat-server 在 WEBCHAT_AUTH_REQUIRED=1 下让 agent 绕过 cookie 鉴权的唯一办法
+      // （浏览器的 WebSocket API 无法 set header，所以浏览器走 cookie 路径）。
+      const upgradeHeaders: Record<string, string> = {
+        'X-User-Id': this.opts.userId,
+      };
+      if (this.opts.agentSecret) {
+        upgradeHeaders['Authorization'] = `Bearer ${this.opts.agentSecret}`;
+      }
+      ws = new NodeWebSocket(this.opts.url, { headers: upgradeHeaders });
     } catch (e) {
       console.warn('[webchat-bridge] ws construct failed', e);
       this.scheduleReconnect();

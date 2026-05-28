@@ -34,3 +34,11 @@ scripts/local-dashboard/.pids/
 **/.tool-outputs/
 # chat-server 运行时消息与上传（勿入库）
 apps/chat-server/data/
+# 本地敏感配置/部署脚本：ssh 凭据、生产 .env、临时下发文件
+.local/
+deploy/webchat/.env
+deploy/webchat/data/
+# 本地 commit 草稿与 scratch
+commit-msg*.txt
+tmp/
+packages/server/supabase/

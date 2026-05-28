@@ -24,6 +24,33 @@ function loadRepoChatServerEnv(): void {
 }
 loadRepoChatServerEnv();
 
+export interface AuthConfig {
+  /** 是否对人类用户强制鉴权（公网部署必须 1）。0 时仍支持登录，但匿名也放行（仅本地调试）。 */
+  required: boolean;
+  /** loginserver 根 URL（如 `https://example.com`）。required=1 时必填。 */
+  loginServerUrl: string | null;
+  /** 白名单 JSON 持久化路径；默认 `${dataRoot}/auth.json`。 */
+  authDataFile: string;
+  /** 启动时种子的 admin email 列表（逗号分隔）。 */
+  adminEmails: string[];
+  /** Cookie secure：`auto`=按 X-Forwarded-Proto；`always`=强制；`never`=关闭。 */
+  cookieSecure: 'auto' | 'always' | 'never';
+  /** Cookie domain（如 `.example.com`）。省略则浏览器按当前 host 设。 */
+  cookieDomain?: string;
+  /** loginserver hosted 登录页 URL（可相对，如 `/login`）。 */
+  loginPageUrl: string;
+  /** 登录页用什么 query 参数收 return 地址。loginserver 默认 `redirect`。 */
+  loginReturnParam: string;
+  /** loginserver 把 access token 存到 localStorage 的 key（默认 `access_token`）。 */
+  loginTokenStorageKey: string;
+  /** loginserver 把 refresh token 存到 localStorage 的 key（默认 `refresh_token`）。 */
+  loginRefreshStorageKey: string;
+  /** loginserver 把 user 资料 JSON 存到 localStorage 的 key（默认 `user`）。 */
+  loginUserStorageKey: string;
+  /** 可选：loginserver hosted 登出页 URL。 */
+  logoutPageUrl: string;
+}
+
 export interface ChatServerConfig {
   port: number;
   dataRoot: string;
@@ -37,12 +64,20 @@ export interface ChatServerConfig {
    */
   agentUserIds: Set<string>;
   agentSecret: string | null;
-  /** CORS 白名单；`*` = 任意 */
+  /** CORS 白名单；`*` = 任意（鉴权开启时不要用 `*`，浏览器会拒 credentials）。 */
   corsOrigin: string;
   /** 单文件大小上限（字节） */
   maxUploadSize: number;
   /** 单次历史拉取的硬上限 */
   maxMessagesPerPage: number;
+  /** 鉴权相关。 */
+  auth: AuthConfig;
+  /**
+   * 浏览器看到的 chat-server 公开根路径前缀（不含尾斜杠），用于附件 URL 拼接。
+   * - 同源根路径部署：留空（默认）→ url = `/uploads/<id>`
+   * - 子路径部署（如 nginx `/webchat/`）：`/webchat` → url = `/webchat/uploads/<id>`
+   */
+  publicBasePath: string;
 }
 
 export function loadConfig(): ChatServerConfig {
@@ -69,6 +104,60 @@ export function loadConfig(): ChatServerConfig {
 
   const maxUploadSize = Number(process.env['CHAT_SERVER_MAX_UPLOAD_SIZE'] ?? 25 * 1024 * 1024);
 
+  const required = parseBool(process.env['WEBCHAT_AUTH_REQUIRED']);
+  const loginServerUrl =
+    process.env['WEBCHAT_LOGIN_SERVER_URL']?.trim()?.replace(/\/$/, '') || null;
+  if (required && !loginServerUrl) {
+    throw new Error(
+      'WEBCHAT_AUTH_REQUIRED=1 但缺少 WEBCHAT_LOGIN_SERVER_URL（应为 loginserver 根地址，如 https://example.com）',
+    );
+  }
+  const authDataFile =
+    process.env['WEBCHAT_AUTH_DATA_FILE']?.trim() || path.join(dataRoot, 'auth.json');
+  const adminEmails = (process.env['WEBCHAT_ADMIN_EMAILS'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const cookieSecureRaw = (process.env['WEBCHAT_COOKIE_SECURE']?.trim() || 'auto').toLowerCase();
+  const cookieSecure: 'auto' | 'always' | 'never' =
+    cookieSecureRaw === 'always' || cookieSecureRaw === 'never' ? cookieSecureRaw : 'auto';
+  const cookieDomainRaw = process.env['WEBCHAT_COOKIE_DOMAIN']?.trim();
+  const cookieDomain = cookieDomainRaw && cookieDomainRaw.length > 0 ? cookieDomainRaw : undefined;
+
+  const loginPageUrl = (process.env['WEBCHAT_LOGIN_PAGE_URL']?.trim() || '').replace(/\/+$/, '');
+  if (required && !loginPageUrl) {
+    throw new Error(
+      'WEBCHAT_AUTH_REQUIRED=1 但缺少 WEBCHAT_LOGIN_PAGE_URL（默认 loginserver 路径：`/login`）',
+    );
+  }
+  const loginReturnParam = process.env['WEBCHAT_LOGIN_RETURN_PARAM']?.trim() || 'redirect';
+  const loginTokenStorageKey =
+    process.env['WEBCHAT_LOGIN_TOKEN_STORAGE_KEY']?.trim() || 'access_token';
+  const loginRefreshStorageKey =
+    process.env['WEBCHAT_LOGIN_REFRESH_STORAGE_KEY']?.trim() || 'refresh_token';
+  const loginUserStorageKey =
+    process.env['WEBCHAT_LOGIN_USER_STORAGE_KEY']?.trim() || 'user';
+  const logoutPageUrl = (process.env['WEBCHAT_LOGOUT_PAGE_URL']?.trim() || '').replace(/\/+$/, '');
+
+  const auth: AuthConfig = {
+    required,
+    loginServerUrl,
+    authDataFile,
+    adminEmails,
+    cookieSecure,
+    ...(cookieDomain ? { cookieDomain } : {}),
+    loginPageUrl,
+    loginReturnParam,
+    loginTokenStorageKey,
+    loginRefreshStorageKey,
+    loginUserStorageKey,
+    logoutPageUrl,
+  };
+
+  let publicBasePath = (process.env['WEBCHAT_PUBLIC_BASE_PATH'] ?? '').trim();
+  if (publicBasePath.endsWith('/')) publicBasePath = publicBasePath.replace(/\/+$/, '');
+  if (publicBasePath && !publicBasePath.startsWith('/')) publicBasePath = `/${publicBasePath}`;
+
   return {
     port,
     dataRoot,
@@ -78,5 +167,13 @@ export function loadConfig(): ChatServerConfig {
     corsOrigin,
     maxUploadSize,
     maxMessagesPerPage: 200,
+    auth,
+    publicBasePath,
   };
+}
+
+function parseBool(v: string | undefined): boolean {
+  if (!v) return false;
+  const t = v.trim().toLowerCase();
+  return t === '1' || t === 'true' || t === 'yes' || t === 'on';
 }

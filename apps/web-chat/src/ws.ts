@@ -27,7 +27,8 @@ const HELLO_TIMEOUT_MS = 15_000;
 
 function deriveWsUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}/ws`;
+  const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
+  return `${proto}//${location.host}${base}/ws`;
 }
 
 export class WebChatWs {

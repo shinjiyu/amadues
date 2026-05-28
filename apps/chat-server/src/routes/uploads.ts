@@ -10,10 +10,13 @@ export interface UploadsRouterDeps {
   users: UserStore;
   uploads: UploadStore;
   maxUploadSize: number;
+  /** 子路径部署时附件 url 的前缀（不含尾斜杠），如 `/webchat`。空字符串=同源根。 */
+  publicBasePath?: string;
 }
 
 export function buildUploadsRouter(deps: UploadsRouterDeps): Hono {
   const { users, uploads, maxUploadSize } = deps;
+  const basePrefix = deps.publicBasePath ?? '';
   const r = new Hono();
 
   r.post('/uploads', identityMiddleware(users), async (c) => {
@@ -42,7 +45,7 @@ export function buildUploadsRouter(deps: UploadsRouterDeps): Hono {
     });
     return c.json({
       asset_id: meta.asset_id,
-      url: `/uploads/${meta.asset_id}`,
+      url: `${basePrefix}/uploads/${meta.asset_id}`,
       mime: meta.mime,
       name: meta.original_name,
       size: meta.size,

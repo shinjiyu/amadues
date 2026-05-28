@@ -1,0 +1,94 @@
+version: "3.8"
+
+# WebChat 子路径部署（Docker Compose）：
+#   - 外层 nginx 反代 `/webchat/`、`/webchat/api/`、`/webchat/ws`（见 deploy/nginx/webchat-subpath.conf）。
+#   - 若启用 loginserver SSO，同一 server 块还需反代 `/login`、`/api/auth/*` 等。
+#
+# 启动方式（必须在仓库根目录，保证 ./data 卷路径正确）：
+#   cp deploy/webchat/.env.example deploy/webchat/.env   # 编辑
+#   docker compose -f deploy/webchat/docker-compose.webchat.yml --env-file deploy/webchat/.env up -d --build
+
+services:
+  chat-server:
+    build:
+      context: ../..               # 必须从仓库根构建（monorepo 共用 lockfile）
+      dockerfile: apps/chat-server/Dockerfile
+    image: utlra/chat-server:latest
+    container_name: utlra-chat-server
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=8790
+      - TZ=Asia/Shanghai
+      - CHAT_SERVER_DATA_ROOT=/data
+      - WEBCHAT_AUTH_DATA_FILE=/data/auth.json
+      # ── 鉴权（公网部署强制）─────────────────────────────────
+      - WEBCHAT_AUTH_REQUIRED=1
+      - WEBCHAT_LOGIN_SERVER_URL=${WEBCHAT_LOGIN_SERVER_URL:-http://host.docker.internal:5001}
+      - WEBCHAT_LOGIN_PAGE_URL=${WEBCHAT_LOGIN_PAGE_URL:-/login}
+      - WEBCHAT_LOGIN_RETURN_PARAM=${WEBCHAT_LOGIN_RETURN_PARAM:-redirect}
+      - WEBCHAT_LOGIN_TOKEN_STORAGE_KEY=${WEBCHAT_LOGIN_TOKEN_STORAGE_KEY:-access_token}
+      - WEBCHAT_LOGIN_REFRESH_STORAGE_KEY=${WEBCHAT_LOGIN_REFRESH_STORAGE_KEY:-refresh_token}
+      - WEBCHAT_LOGIN_USER_STORAGE_KEY=${WEBCHAT_LOGIN_USER_STORAGE_KEY:-user}
+      - WEBCHAT_LOGOUT_PAGE_URL=${WEBCHAT_LOGOUT_PAGE_URL:-}
+      - WEBCHAT_ADMIN_EMAILS=${WEBCHAT_ADMIN_EMAILS:-}
+      - WEBCHAT_COOKIE_SECURE=${WEBCHAT_COOKIE_SECURE:-auto}
+      - WEBCHAT_COOKIE_DOMAIN=${WEBCHAT_COOKIE_DOMAIN:-}
+      # ── CORS：开启 credentials 时不能用 `*` ─────────────────
+      - CHAT_SERVER_CORS_ORIGIN=${CHAT_SERVER_CORS_ORIGIN:-https://example.com}
+      # ── 子路径前缀（影响附件 URL）──────────────────────────
+      - WEBCHAT_PUBLIC_BASE_PATH=${WEBCHAT_PUBLIC_BASE_PATH:-/webchat}
+      # ── Agent 旁路（Kuroneko/Shiro/Gin 用同一 secret）──────
+      - WEBCHAT_AGENT_USER_ID=${WEBCHAT_AGENT_USER_ID:-kuroneko,shiro,gin}
+      - WEBCHAT_AGENT_SECRET=${WEBCHAT_AGENT_SECRET:-}
+      # ── 业务参数 ────────────────────────────────────────────
+      - WEBCHAT_GLOBAL_THREAD_ID=${WEBCHAT_GLOBAL_THREAD_ID:-global}
+      - CHAT_SERVER_MAX_UPLOAD_SIZE=${CHAT_SERVER_MAX_UPLOAD_SIZE:-26214400}
+    volumes:
+      - ./data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - utlra-webchat
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --tries=1
+        - --spider
+        - http://127.0.0.1:8790/healthz
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    # 仅暴露给本机 nginx，不暴露公网
+    ports:
+      - "127.0.0.1:8790:8790"
+
+  web-chat:
+    build:
+      context: ../..
+      dockerfile: apps/web-chat/Dockerfile
+      args:
+        VITE_BASE: ${VITE_BASE:-/webchat/}
+    image: utlra/web-chat:latest
+    container_name: utlra-web-chat
+    restart: unless-stopped
+    depends_on:
+      chat-server:
+        condition: service_healthy
+    networks:
+      - utlra-webchat
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "127.0.0.1:8791:8080"
+
+networks:
+  utlra-webchat:
+    driver: bridge

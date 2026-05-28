@@ -31,10 +31,15 @@ export class WebChatRestClient {
   }
 
   private headers(extra?: Record<string, string>): HeadersInit {
-    return {
+    const out: Record<string, string> = {
       'X-User-Id': this.opts.config.agentUserId,
-      ...(extra ?? {}),
     };
+    if (this.opts.config.agentSecret) {
+      // chat-server 开启 WEBCHAT_AUTH_REQUIRED=1 时，必须靠 Bearer secret 走 agent 旁路；
+      // 不开启时多余的 header 也无害（middleware 仅在 agentSecret 命中时才升级 principal）。
+      out['Authorization'] = `Bearer ${this.opts.config.agentSecret}`;
+    }
+    return { ...out, ...(extra ?? {}) };
   }
 
   private async checkOk(res: Response): Promise<Response> {

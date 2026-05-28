@@ -1,0 +1,38 @@
+# 不打入镜像的本地产物 / 数据 / 工具
+**/node_modules
+**/dist
+**/.cache
+**/.vite
+**/.tsbuildinfo
+
+# 本地数据
+apps/chat-server/data
+apps/chat-server/data/**
+apps/web-chat/data
+packages/server/data*
+packages/server/data-*
+packages/server/supabase/.temp
+data
+data/**
+
+# 历史/中间文件
+.git
+.git/**
+.gitignore
+.vscode
+.idea
+
+# 终端/日志
+terminals
+**/*.log
+
+# Mac/Windows
+.DS_Store
+Thumbs.db
+
+# 文档/测试快照（chat-server/web-chat 不需要）
+doc
+testdata
+*.md
+!apps/chat-server/README.md
+!apps/web-chat/README.md

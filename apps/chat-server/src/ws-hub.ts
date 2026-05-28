@@ -20,12 +20,20 @@ import {
 } from '@utlra/webchat-protocol';
 import type { UserStore } from './users.js';
 import type { ThreadStore } from './threads.js';
+import type { Principal } from './auth/types.js';
 
 const HELLO_TIMEOUT_MS = 30_000;
 
 interface ConnectionState {
   ws: WebSocket;
   userId: string | null;
+  /**
+   * 来自 upgrade 阶段的鉴权结果（cookie / agent secret）。
+   * - `kind: 'user'` → hello 必须与这里的 user_id 一致（display_name 以白名单为准）
+   * - `kind: 'agent'` → hello 必须命中保留 agent，且 user_id 一致
+   * - `kind: 'anonymous'` → 兼容旧模式（dev/required=false）；hub 视配置接受或拒绝
+   */
+  principal: Principal;
   /** 已订阅的 thread_id 集合 */
   subscriptions: Set<string>;
   helloTimer: NodeJS.Timeout;
@@ -37,6 +45,8 @@ export interface WsHubOptions {
   /** 保留 user_id 集合：声称这些之一时必须携带 agentSecret */
   agentUserIds: Set<string>;
   agentSecret: string | null;
+  /** 公网模式：anonymous upgrade 直接拒绝 hello。默认 false（兼容 e2e/dev）。 */
+  authRequired?: boolean;
 }
 
 export class WsHub {
@@ -47,10 +57,11 @@ export class WsHub {
 
   constructor(private readonly opts: WsHubOptions) {}
 
-  handleConnection(ws: WebSocket): void {
+  handleConnection(ws: WebSocket, principal: Principal = { kind: 'anonymous' }): void {
     const state: ConnectionState = {
       ws,
       userId: null,
+      principal,
       subscriptions: new Set(),
       helloTimer: setTimeout(() => {
         if (!state.userId) {
@@ -135,17 +146,44 @@ export class WsHub {
     displayName: string,
     agentSecret: string | undefined,
   ): Promise<void> {
-    // agent 保留 user_id 校验：声称是任意保留 user_id 之一 → 必须携带正确 secret
-    if (this.opts.agentUserIds.has(userId)) {
-      if (!this.opts.agentSecret) {
-        this.sendError(state.ws, 'not_authenticated', '服务器未配置 agent secret');
-        try { state.ws.close(4003, 'agent secret missing'); } catch { /* ignore */ }
+    // ── 1) 已登录人类用户（upgrade 阶段 cookie 已验过）─────────────
+    if (state.principal.kind === 'user') {
+      const p = state.principal;
+      // hello 里 user_id 必须等于 cookie 解出的 user_id，否则视为冒名
+      if (userId !== p.userId) {
+        this.sendError(state.ws, 'not_authenticated', 'hello user_id 与登录态不一致');
+        try { state.ws.close(4003, 'hello user_id mismatch'); } catch { /* ignore */ }
         return;
       }
-      if (agentSecret !== this.opts.agentSecret) {
-        this.sendError(state.ws, 'not_authenticated', 'agent_secret 不匹配');
-        try { state.ws.close(4003, 'agent secret mismatch'); } catch { /* ignore */ }
+      // display_name 以服务端为准（前端可能传昵称，这里强制覆盖到白名单值）
+      displayName = p.displayName || displayName;
+    } else if (state.principal.kind === 'agent') {
+      // Upgrade 阶段已通过 Bearer secret 验证；hello 里允许直接绑定 agent user_id，
+      // 也允许带 agent_secret（与现有 bridge 兼容），但只信 upgrade 阶段的认证。
+      if (userId !== state.principal.userId) {
+        this.sendError(state.ws, 'not_authenticated', 'hello user_id 与 agent 凭证不一致');
+        try { state.ws.close(4003, 'hello user_id mismatch'); } catch { /* ignore */ }
         return;
+      }
+    } else {
+      // ── 2) Anonymous upgrade（无 cookie，且非 agent Bearer）─────
+      if (this.opts.authRequired) {
+        this.sendError(state.ws, 'not_authenticated', '未登录');
+        try { state.ws.close(4401, 'login required'); } catch { /* ignore */ }
+        return;
+      }
+      // 旧的兼容路径：声称是 agent 的，必须 hello 里带正确 secret（dev 也保留这条）
+      if (this.opts.agentUserIds.has(userId)) {
+        if (!this.opts.agentSecret) {
+          this.sendError(state.ws, 'not_authenticated', '服务器未配置 agent secret');
+          try { state.ws.close(4003, 'agent secret missing'); } catch { /* ignore */ }
+          return;
+        }
+        if (agentSecret !== this.opts.agentSecret) {
+          this.sendError(state.ws, 'not_authenticated', 'agent_secret 不匹配');
+          try { state.ws.close(4003, 'agent secret mismatch'); } catch { /* ignore */ }
+          return;
+        }
       }
     }
 

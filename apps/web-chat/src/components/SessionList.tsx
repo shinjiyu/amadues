@@ -9,6 +9,7 @@ interface Props {
   highlightByThread: Record<string, boolean>;
   usersById: Map<string, UserPresence>;
   meUserId: string;
+  isMobile?: boolean;
   onSelect: (threadId: string) => void;
   onStartDm: (peerUserId: string) => void;
 }
@@ -21,6 +22,7 @@ export function SessionList({
   highlightByThread,
   usersById,
   meUserId,
+  isMobile = false,
   onSelect,
   onStartDm,
 }: Props) {
@@ -52,7 +54,7 @@ export function SessionList({
       <div style={{ padding: '12px 14px 4px', fontSize: 11, color: '#6e7681' }}>私聊</div>
       {dmThreads.length === 0 && (
         <div style={{ padding: '4px 14px', color: '#6e7681', fontSize: 12 }}>
-          点击右侧成员发起私聊
+          {isMobile ? '在底部「成员」中点击用户发起私聊' : '点击右侧成员发起私聊'}
         </div>
       )}
       {dmThreads.map((t) => {

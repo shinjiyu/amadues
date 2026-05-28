@@ -1,13 +1,15 @@
 /**
- * 身份解析中间件 —— REST 请求里读 `X-User-Id` header，必要时 upsert。
+ * 身份解析中间件（已与 auth middleware 协作的兼容层）。
  *
- * 无认证：客户端自报。没有 `X-User-Id` 的请求会被 401 拒绝（除非是公开端点，
- * 由路由自己跳过中间件）。
+ * 历史背景：M1 时 chat-server 无认证，直接读 `X-User-Id` header。
+ * 现在 auth middleware（`auth/middleware.ts`）在更外层把 cookie/secret 解析后已经写好
+ * `c.var.userId` / `c.var.displayName` / `c.var.principal`。本中间件成为兜底层：
  *
- * `display_name`：
- * - 默认沿用 store 里的现有值
- * - 若 query 带 `?display_name=xxx`，会更新到 store
- * - 若 store 里没记录且 query 也没给，记一个临时名 `user_<userId>`
+ * - 若 auth middleware 已注入 `userId` → 直接 `next()`
+ * - 否则：旧路径（开发态、未启用 auth 时）退化为读 `X-User-Id`
+ *
+ * 公网部署务必把 `WEBCHAT_AUTH_REQUIRED=1`，auth middleware 在 anonymous 时会先 401，
+ * 这条兜底逻辑永远不会触达「无 header 401」分支。
  */
 import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -22,6 +24,11 @@ declare module 'hono' {
 
 export function identityMiddleware(users: UserStore) {
   return async (c: Context, next: Next): Promise<void | Response> => {
+    if (c.var.userId) {
+      await next();
+      return;
+    }
+    // 兜底：旧的「客户端自报」开发路径
     const userId = c.req.header('x-user-id')?.trim();
     if (!userId) {
       throw new HTTPException(401, {

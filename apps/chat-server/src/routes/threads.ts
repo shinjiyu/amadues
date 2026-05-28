@@ -19,10 +19,13 @@ export interface ThreadsRouterDeps {
   uploads: UploadStore;
   hub: WsHub;
   maxMessagesPerPage: number;
+  /** 子路径部署时附件 url 的前缀（不含尾斜杠），如 `/webchat`。 */
+  publicBasePath?: string;
 }
 
 export function buildThreadsRouter(deps: ThreadsRouterDeps): Hono {
   const { users, threads, uploads, hub, maxMessagesPerPage } = deps;
+  const basePrefix = deps.publicBasePath ?? '';
   const r = new Hono();
   const auth = identityMiddleware(users);
 
@@ -51,8 +54,8 @@ export function buildThreadsRouter(deps: ThreadsRouterDeps): Hono {
 
   r.get('/threads/:id/messages', auth, async (c) => {
     const userId = c.get('userId');
-    const threadId = c.req.param('id');
-    if (!threads.canAccess(threadId, userId)) {
+    const threadId = c.req.param('id') ?? '';
+    if (!threadId || !threads.canAccess(threadId, userId)) {
       throw new HTTPException(403, { message: 'not a participant of this thread' });
     }
     const qParsed = ListMessagesQuerySchema.safeParse({
@@ -69,8 +72,8 @@ export function buildThreadsRouter(deps: ThreadsRouterDeps): Hono {
 
   r.post('/threads/:id/messages', auth, async (c) => {
     const userId = c.get('userId');
-    const threadId = c.req.param('id');
-    if (!threads.canAccess(threadId, userId)) {
+    const threadId = c.req.param('id') ?? '';
+    if (!threadId || !threads.canAccess(threadId, userId)) {
       throw new HTTPException(403, { message: 'not a participant of this thread' });
     }
     const body = await c.req.json().catch(() => ({}));
@@ -97,7 +100,7 @@ export function buildThreadsRouter(deps: ThreadsRouterDeps): Hono {
       }
       attachments.push({
         asset_id: meta.asset_id,
-        url: `/uploads/${meta.asset_id}`,
+        url: `${basePrefix}/uploads/${meta.asset_id}`,
         mime: meta.mime,
         name: meta.original_name,
         size: meta.size,

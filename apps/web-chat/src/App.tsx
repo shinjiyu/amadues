@@ -6,15 +6,23 @@ import type {
   PostMessageRequest,
   Attachment,
 } from '@utlra/webchat-protocol';
-import { loadIdentity, saveIdentity, clearIdentity, suggestUserId, type ClientIdentity } from './auth.js';
-import { LoginScreen } from './components/LoginScreen.js';
+import {
+  fetchCurrentIdentity,
+  fetchAuthConfig,
+  consumeLoginserverTokens,
+  stripLegacyUrlTokens,
+  redirectToLogin,
+  logout as logoutRequest,
+  type ClientIdentity,
+} from './auth.js';
+import { AdminPage } from './components/AdminPage.js';
 import { SessionList } from './components/SessionList.js';
 import { OnlineSidebar } from './components/OnlineSidebar.js';
 import { MessageTimeline } from './components/MessageTimeline.js';
 import { MessageInput } from './components/MessageInput.js';
 import { WebChatWs, type ConnectionStatus } from './ws.js';
 import {
-  fetchMe,
+  UnauthorizedError,
   fetchThreads,
   fetchUsers,
   listMessages,
@@ -24,31 +32,106 @@ import {
 } from './api.js';
 
 const GLOBAL_THREAD_ID = 'global';
+const MOBILE_BREAKPOINT_PX = 768;
 
-export function App() {
-  const [identity, setIdentity] = useState<ClientIdentity | null>(() => loadIdentity());
+type MobilePanel = 'sessions' | 'chat' | 'members';
 
-  const handleLogin = (displayName: string, userId?: string): void => {
-    const id: ClientIdentity = {
-      user_id: userId?.trim() || suggestUserId(displayName),
-      display_name: displayName.trim(),
-    };
-    saveIdentity(id);
-    setIdentity(id);
-  };
-
-  const handleLogout = (): void => {
-    clearIdentity();
-    setIdentity(null);
-  };
-
-  if (!identity) {
-    return <LoginScreen onLogin={handleLogin} />;
-  }
-  return <MainScreen identity={identity} onLogout={handleLogout} />;
+function useIsMobile(): boolean {
+  const query = `(max-width: ${MOBILE_BREAKPOINT_PX}px)`;
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = (): void => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [query]);
+  return isMobile;
 }
 
-function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout: () => void }) {
+type BootState =
+  | { kind: 'loading' }
+  | { kind: 'ready'; identity: ClientIdentity }
+  | { kind: 'redirecting' }
+  | { kind: 'error'; message: string };
+
+export function App() {
+  const [boot, setBoot] = useState<BootState>({ kind: 'loading' });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        stripLegacyUrlTokens();
+        // 1) 优先用 loginserver 留在 localStorage / URL 上的 token 换 cookie
+        const fromStorage = await consumeLoginserverTokens();
+        if (cancelled) return;
+        if (fromStorage) {
+          setBoot({ kind: 'ready', identity: fromStorage });
+          return;
+        }
+        // 2) 已有 cookie 则直接进
+        const existing = await fetchCurrentIdentity();
+        if (cancelled) return;
+        if (existing) {
+          setBoot({ kind: 'ready', identity: existing });
+          return;
+        }
+        // 3) 仍未登录 → 跳 loginserver hosted 登录页
+        const cfg = await fetchAuthConfig();
+        if (cancelled) return;
+        if (!cfg.login_page_url) {
+          setBoot({
+            kind: 'error',
+            message:
+              '服务端未配置 WEBCHAT_LOGIN_PAGE_URL；联系管理员把它指向 loginserver hosted 登录页。',
+          });
+          return;
+        }
+        setBoot({ kind: 'redirecting' });
+        redirectToLogin(cfg);
+      } catch (e) {
+        if (cancelled) return;
+        setBoot({ kind: 'error', message: (e as Error).message });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleLogout = async (): Promise<void> => {
+    setBoot({ kind: 'redirecting' });
+    await logoutRequest();
+  };
+
+  if (boot.kind === 'loading' || boot.kind === 'redirecting') {
+    return (
+      <div className="login">
+        <div className="login-card">
+          {boot.kind === 'redirecting' ? '前往登录…' : '载入中…'}
+        </div>
+      </div>
+    );
+  }
+  if (boot.kind === 'error') {
+    return (
+      <div className="login">
+        <div className="login-card">
+          <h1>WebChat</h1>
+          <p style={{ color: '#f85149' }}>{boot.message}</p>
+          <button type="button" onClick={() => window.location.reload()}>重试</button>
+        </div>
+      </div>
+    );
+  }
+  return <MainScreen identity={boot.identity} onLogout={handleLogout} />;
+}
+
+function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout: () => void | Promise<void> }) {
+  const isMobile = useIsMobile();
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>('chat');
+  const [showAdmin, setShowAdmin] = useState<boolean>(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [users, setUsers] = useState<UserPresence[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -121,17 +204,24 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity.user_id]);
 
+  const handleUnauthorized = useCallback((e: unknown): boolean => {
+    if (e instanceof UnauthorizedError) {
+      void onLogout();
+      return true;
+    }
+    return false;
+  }, [onLogout]);
+
   // Initial bootstrap (REST)
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        await fetchMe(identity);
-        const [u, t] = await Promise.all([fetchUsers(identity), fetchThreads(identity)]);
+        const [u, t] = await Promise.all([fetchUsers(), fetchThreads()]);
         if (cancelled) return;
         setUsers(u.users);
         setThreads(t.threads);
-        const { messages, next_before } = await listMessages(identity, GLOBAL_THREAD_ID, { limit: 50 });
+        const { messages, next_before } = await listMessages(GLOBAL_THREAD_ID, { limit: 50 });
         if (cancelled) return;
         setMessagesByThread((prev) => ({ ...prev, [GLOBAL_THREAD_ID]: messages }));
         setHasMoreByThread((prev) => ({ ...prev, [GLOBAL_THREAD_ID]: next_before !== null }));
@@ -139,20 +229,25 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
           wsRef.current?.updateCursor(GLOBAL_THREAD_ID, messages[messages.length - 1]!.id);
         }
       } catch (e) {
-        if (!cancelled) setError((e as Error).message);
+        if (cancelled) return;
+        if (handleUnauthorized(e)) return;
+        setError((e as Error).message);
       }
     })();
     return () => { cancelled = true; };
-  }, [identity]);
+  }, [identity, handleUnauthorized]);
 
   const handleSelectThread = useCallback(async (threadId: string): Promise<void> => {
     setActiveThreadId(threadId);
     setUnreadByThread((prev) => ({ ...prev, [threadId]: 0 }));
     setHighlightByThread((prev) => ({ ...prev, [threadId]: false }));
     setReplyingTo(null);
+    if (typeof window !== 'undefined' && window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`).matches) {
+      setMobilePanel('chat');
+    }
     if (!messagesByThread[threadId]) {
       try {
-        const { messages, next_before } = await listMessages(identity, threadId, { limit: 50 });
+        const { messages, next_before } = await listMessages(threadId, { limit: 50 });
         setMessagesByThread((prev) => ({ ...prev, [threadId]: messages }));
         setHasMoreByThread((prev) => ({ ...prev, [threadId]: next_before !== null }));
         if (messages.length > 0) {
@@ -161,6 +256,7 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
           wsRef.current?.subscribe(threadId, null);
         }
       } catch (e) {
+        if (handleUnauthorized(e)) return;
         setError((e as Error).message);
       }
     } else {
@@ -169,37 +265,39 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
         cached && cached.length > 0 ? cached[cached.length - 1]!.id : null;
       wsRef.current?.subscribe(threadId, cursor);
     }
-  }, [identity, messagesByThread]);
+  }, [messagesByThread, handleUnauthorized]);
 
   const handleLoadMore = useCallback(async (): Promise<void> => {
     const current = messagesByThread[activeThreadId];
     if (!current || current.length === 0) return;
     const before = current[0]!.id;
     try {
-      const { messages, next_before } = await listMessages(identity, activeThreadId, { before, limit: 50 });
+      const { messages, next_before } = await listMessages(activeThreadId, { before, limit: 50 });
       setMessagesByThread((prev) => ({
         ...prev,
         [activeThreadId]: [...messages, ...(prev[activeThreadId] ?? [])],
       }));
       setHasMoreByThread((prev) => ({ ...prev, [activeThreadId]: next_before !== null }));
     } catch (e) {
+      if (handleUnauthorized(e)) return;
       setError((e as Error).message);
     }
-  }, [activeThreadId, identity, messagesByThread]);
+  }, [activeThreadId, messagesByThread, handleUnauthorized]);
 
   const handleStartDm = useCallback(async (peerUserId: string): Promise<void> => {
     if (peerUserId === identity.user_id) return;
     try {
-      const { thread } = await createDm(identity, peerUserId);
+      const { thread } = await createDm(peerUserId);
       setThreads((prev) => {
         if (prev.some((t) => t.id === thread.id)) return prev;
         return [...prev, thread];
       });
       await handleSelectThread(thread.id);
     } catch (e) {
+      if (handleUnauthorized(e)) return;
       setError((e as Error).message);
     }
-  }, [identity, handleSelectThread]);
+  }, [identity, handleSelectThread, handleUnauthorized]);
 
   const handleSend = useCallback(async (input: {
     text: string;
@@ -215,16 +313,17 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
       ...(input.replyToId ? { reply_to_message_id: input.replyToId } : {}),
     };
     try {
-      await postMessage(identity, activeThreadId, body);
+      await postMessage(activeThreadId, body);
       setReplyingTo(null);
     } catch (e) {
+      if (handleUnauthorized(e)) return;
       setError((e as Error).message);
     }
-  }, [identity, activeThreadId]);
+  }, [activeThreadId, handleUnauthorized]);
 
   const handleUpload = useCallback(async (file: File): Promise<Attachment | null> => {
     try {
-      const meta = await uploadFile(identity, file);
+      const meta = await uploadFile(file);
       return {
         asset_id: meta.asset_id,
         url: meta.url,
@@ -233,10 +332,11 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
         size: meta.size,
       };
     } catch (e) {
+      if (handleUnauthorized(e)) return null;
       setError((e as Error).message);
       return null;
     }
-  }, [identity]);
+  }, [handleUnauthorized]);
 
   const activeThread = useMemo(
     () => threads.find((t) => t.id === activeThreadId),
@@ -263,18 +363,43 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
     return { group, dms };
   }, [threads]);
 
+  if (showAdmin && identity.role === 'admin') {
+    return (
+      <AdminPage
+        meEmail={identity.email}
+        onClose={() => setShowAdmin(false)}
+        onUnauthorized={() => void onLogout()}
+      />
+    );
+  }
+
+  const panelClass = (panel: MobilePanel): string =>
+    `col col-panel-${panel}${!isMobile || mobilePanel === panel ? ' col-panel-active' : ''}`;
+
   return (
-    <div className="app-main">
-      <div className="col">
+    <div className={isMobile ? 'app-main app-main--mobile' : 'app-main'}>
+      <div className={panelClass('sessions')}>
         <div className="col-header">
           <span>会话</span>
-          <button
-            type="button"
-            onClick={onLogout}
-            style={{ background: 'transparent', border: 0, color: '#8b949e', fontSize: 11 }}
-          >
-            登出
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {identity.role === 'admin' && (
+              <button
+                type="button"
+                onClick={() => setShowAdmin(true)}
+                style={{ background: 'transparent', border: 0, color: '#58a6ff', fontSize: 11 }}
+                title="白名单管理"
+              >
+                管理
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onLogout}
+              style={{ background: 'transparent', border: 0, color: '#8b949e', fontSize: 11 }}
+            >
+              登出
+            </button>
+          </div>
         </div>
         {connectionStatus !== 'open' && (
           <div className={`connection-banner${connectionStatus === 'error' ? ' error' : ''}`}>
@@ -292,14 +417,25 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
           highlightByThread={highlightByThread}
           usersById={usersById}
           meUserId={identity.user_id}
+          isMobile={isMobile}
           onSelect={handleSelectThread}
           onStartDm={handleStartDm}
         />
       </div>
 
-      <div className="col">
+      <div className={panelClass('chat')}>
         {activeThread && (
           <div className="thread-header">
+            {isMobile && (
+              <button
+                type="button"
+                className="mobile-back-btn"
+                aria-label="返回会话列表"
+                onClick={() => setMobilePanel('sessions')}
+              >
+                ‹
+              </button>
+            )}
             {activeThread.kind === 'group' ? (
               <h2>大群</h2>
             ) : (
@@ -344,7 +480,7 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
         </div>
       </div>
 
-      <div className="col">
+      <div className={panelClass('members')}>
         <div className="col-header">
           <span>成员</span>
           <span className="me">我:{identity.display_name}</span>
@@ -352,9 +488,35 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
         <OnlineSidebar
           users={users}
           meUserId={identity.user_id}
-          onClickUser={(uid) => uid !== identity.user_id && handleStartDm(uid)}
+          onClickUser={(uid) => uid !== identity.user_id && void handleStartDm(uid)}
         />
       </div>
+
+      {isMobile && (
+        <nav className="mobile-bottom-nav" aria-label="主菜单">
+          <button
+            type="button"
+            className={mobilePanel === 'sessions' ? 'active' : ''}
+            onClick={() => setMobilePanel('sessions')}
+          >
+            会话
+          </button>
+          <button
+            type="button"
+            className={mobilePanel === 'chat' ? 'active' : ''}
+            onClick={() => setMobilePanel('chat')}
+          >
+            聊天
+          </button>
+          <button
+            type="button"
+            className={mobilePanel === 'members' ? 'active' : ''}
+            onClick={() => setMobilePanel('members')}
+          >
+            成员
+          </button>
+        </nav>
+      )}
     </div>
   );
 }

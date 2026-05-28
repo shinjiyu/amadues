@@ -25,6 +25,7 @@ export interface UserStoreOptions {
 export class UserStore {
   private byId = new Map<string, User>();
   private onlineCount = new Map<string, number>();
+  private writeChain: Promise<void> = Promise.resolve();
   private readonly file: string;
 
   constructor(private readonly opts: UserStoreOptions) {
@@ -92,8 +93,18 @@ export class UserStore {
     return false;
   }
 
-  private async persist(): Promise<void> {
+  private enqueuePersist(): Promise<void> {
+    const next = this.writeChain.then(() => this.persistNow());
+    this.writeChain = next.catch(() => {});
+    return next;
+  }
+
+  private async persistNow(): Promise<void> {
     const data: UsersFile = { schema: 'users.v1', users: this.list() };
     await writeJsonAtomic(this.file, data);
+  }
+
+  private async persist(): Promise<void> {
+    await this.enqueuePersist();
   }
 }
