@@ -1,4 +1,5 @@
 import { normalizeBaseUrl, type LlmProvider } from './types.js';
+import { beginLlmCall, endLlmCall, recordLlmUsageFromResponse } from '../outer/llm-usage-tracker.js';
 
 interface RawLlmErrorShape {
   error?: { message?: string; code?: string };
@@ -28,21 +29,27 @@ export async function llmRawChatCompletion<T extends RawLlmErrorShape = RawLlmEr
   opts: LlmRawChatOptions,
 ): Promise<LlmRawChatResult<T>> {
   const body = normalizeProviderRequestBody(opts.provider, opts.body);
-  const res = await fetch(`${normalizeBaseUrl(opts.baseUrl)}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${opts.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  beginLlmCall();
+  try {
+    const res = await fetch(`${normalizeBaseUrl(opts.baseUrl)}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${opts.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
 
-  const raw = (await res.json()) as T;
-  if (!res.ok) {
-    const msg = raw.error?.message ?? res.statusText;
-    throw new Error(`${displayProviderName(opts.provider)} HTTP ${res.status}: ${msg}`);
+    const raw = (await res.json()) as T;
+    recordLlmUsageFromResponse(raw);
+    if (!res.ok) {
+      const msg = raw.error?.message ?? res.statusText;
+      throw new Error(`${displayProviderName(opts.provider)} HTTP ${res.status}: ${msg}`);
+    }
+    return { raw, status: res.status };
+  } finally {
+    endLlmCall();
   }
-  return { raw, status: res.status };
 }
 
 /**

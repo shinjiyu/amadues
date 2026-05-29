@@ -262,3 +262,103 @@
                         "horizon.test.integration" "kpiBurstHooks.component.integration.test.ts; kpi-lifecycle.integration.test.ts"
                     }
                 }
+
+                // ── 心跳 / 自主调度 ─────────────────────────────────────
+                outerHeartbeat = component "Outer Heartbeat" "【定时心跳】死亡检测 + 长期目标 LLM；增强：资源感知→闲忙判定→自主任务" "TypeScript" {
+                    tags "Outer-Module" "Autonomy" "Heartbeat"
+                    properties {
+                        "path" "packages/server/src/outer/outer-heartbeat.ts"
+                        "horizon.intention" "外脑自主循环；每 tick 注入 ResourceSnapshot 与 AutonomyVerdict"
+                        "horizon.in" "HeartbeatDeps + LLM env"
+                        "horizon.out" "post_to_im / set_goal / autonomy dispatch"
+                        "horizon.env" "UTLRA_OUTER_HEARTBEAT_INTERVAL_MS; UTLRA_OUTER_HEARTBEAT_ENABLED"
+                        "horizon.test.integration" "outer-heartbeat.integration.test.ts"
+                        "horizon.note" "见 RESOURCE-AWARENESS-AUTONOMY.md"
+                    }
+                }
+
+                performanceGoalEngine = component "Performance Goal Engine" "【长期绩效目标】审阅 scorecard；心跳注入 performanceBlock" "TypeScript" {
+                    tags "Outer-Module" "Autonomy" "KPI"
+                    properties {
+                        "path" "packages/server/src/performance-goals/engine.ts"
+                        "horizon.intention" "自驱动绩效目标 LLM 审阅"
+                        "horizon.in" "PerformanceGoalStore + mem9 context"
+                        "horizon.out" "reviewGoalsForHeartbeat 文本块"
+                        "horizon.test.unit" "performance-goals/*.test.ts"
+                    }
+                }
+
+                llmUsageTracker = component "LLM Usage Tracker" "【LLM 计量】in-flight 计数 + usage 滚动窗口（prompt/completion tokens）" "TypeScript" {
+                    tags "Outer-Module" "Autonomy"
+                    properties {
+                        "path" "packages/server/src/outer/llm-usage-tracker.ts"
+                        "horizon.intention" "resourceProbe 的 token/并发数据源"
+                        "horizon.in" "llmRawChatCompletion 完成事件"
+                        "horizon.out" "LlmUsageSnapshot"
+                        "horizon.deps" "llmGateway"
+                        "horizon.note" "待实现 P0"
+                    }
+                }
+
+                resourceProbe = component "Resource Probe" "【资源感知】内脑数量、LLM 负载、入站队列、IM 频控、进程内存 → ResourceSnapshot" "TypeScript" {
+                    tags "Outer-Module" "Autonomy"
+                    properties {
+                        "path" "packages/server/src/outer/resource-probe.ts"
+                        "horizon.intention" "心跳 tick 前只读采集系统负载"
+                        "horizon.in" "innerBrainRegistry; llmUsageTracker; threadOrchestrator; participation-state"
+                        "horizon.out" "ResourceSnapshot JSON"
+                        "horizon.test.unit" "resource-probe.test.ts"
+                        "horizon.note" "见 RESOURCE-AWARENESS-AUTONOMY.md §5"
+                    }
+                }
+
+                autonomyPolicyStore = component "Autonomy Policy Store" "【闲忙规则】policy.json + policy-rubric.md；聊天 tools 可改" "TypeScript" {
+                    tags "Outer-Module" "Autonomy"
+                    properties {
+                        "path" "packages/server/src/outer/autonomy-policy-store.ts"
+                        "horizon.intention" "可配置 hardGates + 自然语言 rubric"
+                        "horizon.in" "read / patch / replace rubric"
+                        "horizon.out" "AutonomyPolicy"
+                        "horizon.deps" "outerToolExecutor(memory_block 同构 CRUD)"
+                        "horizon.test.unit" "autonomy-policy-store.test.ts"
+                    }
+                }
+
+                autonomyJudge = component "Autonomy Judge" "【闲忙判定】P0 仅 hard gates → idle|busy；P2 可选 rubric LLM" "TypeScript" {
+                    tags "Outer-Module" "Autonomy"
+                    properties {
+                        "path" "packages/server/src/outer/autonomy-judge.ts"
+                        "horizon.intention" "资源快照 + policy.hardGates 同步判定是否可 dispatch"
+                        "horizon.in" "ResourceSnapshot + AutonomyPolicy"
+                        "horizon.out" "AutonomyVerdict(idle|busy)"
+                        "horizon.deps" "autonomyPolicyStore"
+                        "horizon.test.unit" "autonomy-judge.test.ts"
+                        "horizon.note" "P0 不调 LLM；见 RESOURCE-AWARENESS-AUTONOMY.md §7"
+                    }
+                }
+
+                agentPersonality = component "Agent Personality" "【性格参数】personality.json：idleChatProbability 等；与 soul.md 并列" "TypeScript" {
+                    tags "Outer-Module" "Autonomy" "Conversation"
+                    properties {
+                        "path" "packages/server/src/outer/personality.ts"
+                        "horizon.intention" "定时器闲聊分支 Bernoulli 概率 p；各 agent DATA_ROOT 独立"
+                        "horizon.in" "read / patch personality.json"
+                        "horizon.out" "AgentPersonality"
+                        "horizon.deps" "soul.md 同目录 outer/；outerToolExecutor update_personality"
+                        "horizon.test.unit" "personality.test.ts"
+                        "horizon.note" "见 RESOURCE-AWARENESS-AUTONOMY.md §6.2"
+                    }
+                }
+
+                autonomyTaskDispatcher = component "Autonomy Task Dispatcher" "【自主任务】KPI 优先 spawn；否则 personality 概率闲聊" "TypeScript" {
+                    tags "Outer-Module" "Autonomy"
+                    properties {
+                        "path" "packages/server/src/outer/autonomy-task-dispatcher.ts"
+                        "horizon.intention" "阶梯：hasKpi&&canSpawn→kpi_inner_goal；否则 random<p→casual_chat"
+                        "horizon.in" "AutonomyVerdict(idle) + policy + personality + kpiRegistry"
+                        "horizon.out" "post_to_im / set_goal + action-log"
+                        "horizon.deps" "outerToolExecutor; participationPolicy; kpiRegistry; agentPersonality; autonomy-task-handlers"
+                        "horizon.test.integration" "autonomy-heartbeat.component.integration.test.ts"
+                        "horizon.note" "见 RESOURCE-AWARENESS-AUTONOMY.md §8.3"
+                    }
+                }

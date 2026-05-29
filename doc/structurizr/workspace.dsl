@@ -462,6 +462,62 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.changeWatcher -> kuroneko.agentServer.innerSpawner "spawn on resolved pending" "child_process" {
             tags "spawn"
         }
+
+        // ── L3 外脑：心跳 / 资源感知 / 自主调度 ─────────────────
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.resourceProbe "collect ResourceSnapshot" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.autonomyPolicyStore "load policy + rubric" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.autonomyJudge "evaluate idle|busy" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.performanceGoalEngine "reviewGoalsForHeartbeat" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.resourceProbe -> kuroneko.agentServer.innerBrainRegistry "count RUNNING/AWAITING/BLOCKED" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.resourceProbe -> kuroneko.agentServer.llmUsageTracker "tokens + inFlight" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.resourceProbe -> kuroneko.agentServer.threadOrchestrator "orchestrator queue depth" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.llmUsageTracker -> kuroneko.agentServer.llmGateway "wrap chat/completions" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.autonomyJudge -> kuroneko.agentServer.autonomyPolicyStore "hardGates" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.autonomyTaskDispatcher "verdict=idle → KPI优先/闲聊概率" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.autonomyTaskDispatcher -> kuroneko.agentServer.agentPersonality "idleChatProbability" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.autonomyTaskDispatcher -> kuroneko.agentServer.outerToolExecutor "post_to_im / set_goal" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.autonomyTaskDispatcher -> kuroneko.agentServer.participationPolicy "casual_chat 频控" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.autonomyTaskDispatcher -> kuroneko.agentServer.kpiRegistry "hasKpi → kpi_inner_goal" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.autonomyTaskDispatcher -> kuroneko.agentServer.performanceGoalEngine "（P1 可选）scorecard" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.autonomyPolicyStore "read/update via chat tools" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.autonomyPolicyStore "read_autonomy_policy / update_*" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.agentPersonality "read/update_personality" "in-process" {
+            tags "import"
+        }
     }
 
     views {
@@ -533,6 +589,12 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         component kuroneko.innerWorker "10c-L3-Inner-Reflexion" {
             title "L3 内脑 — safeArchive / reflexion / 归档"
             include kuroneko.innerWorker.controllerFsm kuroneko.innerWorker.reflexionModule kuroneko.innerWorker.blockResolver kuroneko.innerWorker.archiveStore kuroneko.innerWorker.decomposer kuroneko.innerWorker.brainFs kuroneko.innerWorker.piMonoScheduler kuroneko.innerWorker.workerHost
+            autolayout tb
+        }
+
+        component kuroneko.agentServer "11-L3-Outer-Autonomy" {
+            title "L3 外脑 — 资源感知 / 心跳闲忙 / 自主任务"
+            include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.resourceProbe kuroneko.agentServer.llmUsageTracker kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.agentPersonality kuroneko.agentServer.autonomyJudge kuroneko.agentServer.autonomyTaskDispatcher kuroneko.agentServer.performanceGoalEngine kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.participationPolicy kuroneko.agentServer.kpiRegistry kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop
             autolayout tb
         }
 

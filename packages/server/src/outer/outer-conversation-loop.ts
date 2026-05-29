@@ -11,6 +11,11 @@ import { llmRawChatCompletion } from '../llm/raw.js';
 import { OUTER_TOOL_DEFS, executeOuterTool } from './outer-tools.js';
 import type { OuterToolContext, ToolDef } from './outer-tools.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE } from './brain-async-snapshot.js';
+import {
+  isToolOutputOk,
+  recordOuterToolCall,
+  recordOuterToolResult,
+} from './outer-tool-audit.js';
 
 // OpenAI-compatible 工具调用消息结构
 
@@ -153,6 +158,7 @@ ${OUTER_ASYNC_ORCHESTRATION_GUIDE}
 
 ## 硬约束
 - 必须用 reply_to_user 工具发送消息，不能只输出文本
+- 存 Cookie/Token：对每个字段分别调用 keychain_put（如 key=zhihu__xsrf），禁止只口头说「已存入 keychain」而不调用工具；写入成功时工具返回含「已写入并校验」
 - 禁止编造未知信息
 - 禁止在 reply_to_user 的 text 里写 Markdown 链接（例如 \`[昵称](@sid:…)\`）；@人只用「@昵称」或「@显示名」纯文本，不要带 sid URI
 - 每轮最多调用工具 ${MAX_TOOL_ROUNDS} 次`;
@@ -334,6 +340,17 @@ export async function runOuterConversationLoop(
     // 依次执行所有工具调用
     let shouldAbort = false;
     for (const tc of resp.tool_calls) {
+      recordOuterToolCall({
+        dataRoot: ctx.dataRoot,
+        agentSid: ctx.agentSid,
+        threadId: ctx.threadId,
+        round: roundsUsed,
+        toolName: tc.function.name,
+        argsJson: tc.function.arguments,
+        actionLogStore: ctx.actionLogStore,
+      });
+
+      const t0 = Date.now();
       let toolOut: { replied: boolean; output: string; abortLoop?: boolean };
       try {
         toolOut = await executeOuterTool(tc.function.name, tc.function.arguments, ctx);
@@ -343,13 +360,25 @@ export async function runOuterConversationLoop(
           output: `工具执行错误：${e instanceof Error ? e.message : String(e)}`,
         };
       }
+      const ok = isToolOutputOk(toolOut.output);
+      recordOuterToolResult({
+        dataRoot: ctx.dataRoot,
+        agentSid: ctx.agentSid,
+        threadId: ctx.threadId,
+        round: roundsUsed,
+        toolName: tc.function.name,
+        output: toolOut.output,
+        ok,
+        durationMs: Date.now() - t0,
+        actionLogStore: ctx.actionLogStore,
+      });
 
       toolsUsed.push(tc.function.name);
       if (toolOut.replied) replied = true;
       if (toolOut.abortLoop) shouldAbort = true;
 
       console.log(
-        `[utlra][outer-loop] round ${roundsUsed}/${MAX_TOOL_ROUNDS} tool=${tc.function.name} toolReplied=${toolOut.replied} loopReplied=${replied} abort=${!!toolOut.abortLoop} out=${logSnippet(toolOut.output, 120)}`,
+        `[utlra][outer-loop] round ${roundsUsed}/${MAX_TOOL_ROUNDS} tool=${tc.function.name} ok=${ok} toolReplied=${toolOut.replied} loopReplied=${replied} abort=${!!toolOut.abortLoop} out=${logSnippet(toolOut.output, 120)}`,
       );
 
       // 工具结果追加到消息历史

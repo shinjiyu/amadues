@@ -141,6 +141,19 @@ function requireStore(ctx: OuterToolContext): MemoryBlockStore | null {
   return ctx.memoryBlockStore ?? null;
 }
 
+/** keychain 写入后读回校验，防止「声称已存但磁盘为空」 */
+async function verifyKeychainEntryWritten(
+  store: MemoryBlockStore,
+  key: string,
+): Promise<string> {
+  const full = await store.get('keychain', key, { includeValue: true });
+  const value = full?.value;
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`keychain/${key} verify failed: empty after put`);
+  }
+  return value;
+}
+
 function parseStrategy(raw: unknown): BlockStrategyId {
   const s = typeof raw === 'string' ? raw.trim() : '';
   if (s === 'kv_secret' || s === 'notebook') return s;
@@ -282,6 +295,18 @@ export async function execMemoryBlockPut(
         ? { body: content, title: args.title, tags: args.tags }
         : { kind: args.kind ?? 'generic', value: content };
     const meta = await store.put(blockId, key, payload, ctx.agentSid);
+    if (blockId === 'keychain' && block.strategy === 'kv_secret') {
+      const verified = await verifyKeychainEntryWritten(store, key);
+      console.log(
+        `[utlra][memory-block] keychain put verified key=${key} len=${verified.length} by=${ctx.agentSid}`,
+      );
+      return {
+        replied: false,
+        output:
+          `已写入并校验 ${blockId}/${key}（${block.strategy}，value ${verified.length} 字符）。\n` +
+          `${JSON.stringify(meta, null, 2)}`,
+      };
+    }
     return {
       replied: false,
       output: `已写入 ${blockId}/${key}（${block.strategy}）。\n${JSON.stringify(meta, null, 2)}`,

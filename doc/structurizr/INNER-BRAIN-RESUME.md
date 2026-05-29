@@ -54,7 +54,7 @@ agentServer 进程 load (index.ts)
         pushLoop / heartbeat / channel …
 ```
 
-> **实现现状**：`registryLifecycleReconcile` / `awaitingInboundResolver` / `changeWatcher.bootstrap` 为 **待实现**（2026-05-27 设计已定稿）。当前仅 `innerBrainStartupResume` + 轮询版 `changeWatcher`。
+> **实现现状（2026-05-28）**：`registryLifecycleReconcile`、`awaitingInboundResolver`、`changeWatcher.bootstrap`、周期 reconcile **已实现**（见 [`doc/todo/inner-brain-awaiting-lifecycle.md`](../todo/inner-brain-awaiting-lifecycle.md)）。`innerBrainStartupResume` 与 AWAITING 链路互补。
 
 ---
 

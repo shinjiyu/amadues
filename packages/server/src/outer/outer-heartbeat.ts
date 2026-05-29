@@ -29,8 +29,12 @@ import { loadSoul } from './soul.js';
 import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
 import type { OuterMemoryStore } from './outer-memory.js';
 import type { LogEntry } from './outer-brain.js';
+import type { KpiRegistry } from './kpi-registry.js';
+import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { PerformanceGoalEngine } from '../performance-goals/engine.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE } from './brain-async-snapshot.js';
+import { runAutonomyPipeline } from './autonomy-pipeline.js';
+import type { ResourceProbeDeps } from './resource-probe.js';
 
 // ── 配置（统一经 loadHeartbeatConfigFromEnv() 解析，唯一的 env 读取点） ──────
 
@@ -448,6 +452,13 @@ export interface HeartbeatDeps {
   assetStore: ChatAssetStore;
   /** 外脑记忆层（可选，传入时心跳上下文包含记忆） */
   memoryStore?: OuterMemoryStore;
+  /** 多内脑注册表（autonomy dispatch set_goal 必需） */
+  innerBrainRegistry?: InnerBrainRegistry;
+  /** KPI 注册表（autonomy kpi_inner_goal 必需） */
+  kpiRegistry?: KpiRegistry;
+  scheduleReflexionBurst?: (kpiId: string) => string | null;
+  scheduleNextKpiBurst?: (kpiId: string) => string | null;
+  getOrchestratorStats?: ResourceProbeDeps['getOrchestratorStats'];
   /**
    * 外脑实例引用（可选，传入时启用 Environment 侧死亡检测）。
    * 心跳 tick 通过 outerBrain.getRecentActions() 获取行为日志快照，
@@ -610,6 +621,35 @@ export class OuterHeartbeat {
       const agentSid = resolveAgentSid();
       const workspaceId = resolveWorkspaceId();
 
+      // ── P0 autonomy：probe → hard gates → KPI/闲聊 dispatch ─────────────
+      if (this.deps.innerBrainRegistry && this.deps.kpiRegistry) {
+        const autonomy = await runAutonomyPipeline({
+          dataRoot: this.deps.dataRoot,
+          repoRoot: this.deps.repoRoot,
+          agentSid,
+          workspaceId,
+          defaultThreadId: this.config.defaultThreadId,
+          registry: this.deps.innerBrainRegistry,
+          kpiRegistry: this.deps.kpiRegistry,
+          imClient: this.deps.imClient,
+          assetStore: this.deps.assetStore,
+          getEngine: this.deps.getEngine,
+          workspaceStore: this.deps.workspaceStore,
+          repoStore: this.deps.repoStore,
+          memoryStore: this.deps.memoryStore,
+          getLlmEnv: this.deps.getLlmEnv,
+          getOrchestratorStats: this.deps.getOrchestratorStats,
+          scheduleReflexionBurst: this.deps.scheduleReflexionBurst,
+          scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
+        });
+
+        if (autonomy.skippedLegacyHeartbeat) {
+          console.log('[utlra][heartbeat] tick done (autonomy dispatched, legacy LLM skipped)');
+          return;
+        }
+      }
+
+      // ── Legacy LLM 心跳（autonomy 未 dispatch 时 fallback） ───────────────
       // 热更新：每次 tick 重新读取 soul 和 long-term goal
       const soul = loadSoul(this.deps.dataRoot);
       const longTermGoal = loadOuterGoal(this.deps.dataRoot);
@@ -632,6 +672,10 @@ export class OuterHeartbeat {
         repoStore: this.deps.repoStore,
         dataRoot: this.deps.dataRoot,
         memoryStore: this.deps.memoryStore,
+        innerBrainRegistry: this.deps.innerBrainRegistry,
+        kpiRegistry: this.deps.kpiRegistry,
+        scheduleReflexionBurst: this.deps.scheduleReflexionBurst,
+        scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
       };
 
       this.deps.workspaceStore.ensureWorkspace(workspaceId);

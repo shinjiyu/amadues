@@ -75,7 +75,17 @@ describe('memory-block-tools', () => {
       ctx,
     );
     expect(put.output).toContain('weibo');
+    expect(put.output).toContain('已写入并校验');
     expect(put.output).not.toContain('s=1');
+  });
+
+  it('keychain put rejects empty value', async () => {
+    const ctx = minimalCtx(root);
+    const put = await execMemoryBlockPut(
+      { block_id: 'keychain', key: 'empty-test', kind: 'cookie', value: '   ' },
+      ctx,
+    );
+    expect(put.output).toContain('body/value 为空');
   });
 
   it('returns disabled message when store missing', async () => {

@@ -56,6 +56,13 @@ import {
 import { PerformanceGoalEngine } from '../performance-goals/engine.js';
 import { MEMORY_BLOCK_TOOL_DEFS, dispatchMemoryBlockTool } from './memory-block-tools.js';
 import type { MemoryBlockStore } from './memory-block-store.js';
+import type { IActionLogStore } from '../heartbeat/types.js';
+import {
+  loadAutonomyPolicy,
+  patchAutonomyPolicy,
+} from './autonomy-policy-store.js';
+import { loadPersonality, patchPersonality } from './personality.js';
+import type { AutonomyHardGates, AutonomyTaskTypeConfig } from './autonomy-types.js';
 
 // ── OpenAI-compatible tool schema ──────────────────────────────────────────
 
@@ -299,8 +306,9 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'send_directive',
       description:
-        '向指定内脑实例发送即时指令（补充约束/要求/反馈）。目标实例可为 RUNNING 或 AWAITING' +
-        '（等定时/等回复时可用 feedback resolve ask_user pending）。\n' +
+        '向指定内脑实例发送即时指令（补充约束/要求/反馈）。目标实例可为 RUNNING 或 AWAITING。\n' +
+        '**用户要求终止/放弃任务时不要用本工具**——应调用 stop_inner_brain（AWAITING 也可停）。\n' +
+        'feedback 会 resolve ask_user 并触发新一轮内脑，不等于停止。\n' +
         '- "constraint": 补充约束\n' +
         '- "requirement": 补充任务要求\n' +
         '- "feedback": 用户反馈或解封回复\n' +
@@ -484,6 +492,72 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
   {
     type: 'function',
     function: {
+      name: 'read_autonomy_policy',
+      description:
+        '读取外脑自主调度策略（hard gates、cooldown、任务类型开关）与性格概率 idleChatProbability。' +
+        '用于回答「现在闲忙判定规则是什么 / 自主行动频率如何」等问题。',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_autonomy_policy',
+      description:
+        '部分更新自主调度策略。可改 enabled、hardGates 阈值、各 taskType 的 enabled/cooldown/maxPerDay。' +
+        '例：「内脑超过 2 个就别自主行动」→ max_running_inner_brains=2。',
+      parameters: {
+        type: 'object',
+        properties: {
+          enabled: { type: 'string', description: 'true | false；是否启用自主 dispatch' },
+          max_running_inner_brains: { type: 'string', description: 'hardGates.maxRunningInnerBrains' },
+          max_awaiting_inner_brains: { type: 'string', description: 'hardGates.maxAwaitingInnerBrains' },
+          max_llm_in_flight: { type: 'string', description: 'hardGates.maxLlmInFlight' },
+          min_ms_since_last_autonomous_action: {
+            type: 'string',
+            description: 'hardGates.minMsSinceLastAutonomousAction（毫秒）',
+          },
+          block_if_orchestrator_queued_above: {
+            type: 'string',
+            description: 'hardGates.blockIfOrchestratorQueuedAbove',
+          },
+          block_if_outer_loop_active: {
+            type: 'string',
+            description: 'true | false；外脑对话环占用时是否 block',
+          },
+          casual_chat_enabled: { type: 'string', description: 'true | false' },
+          casual_chat_cooldown_ms: { type: 'string', description: 'casual_chat cooldownMs' },
+          casual_chat_max_per_day: { type: 'string', description: 'casual_chat maxPerDay' },
+          kpi_inner_goal_enabled: { type: 'string', description: 'true | false' },
+          kpi_inner_goal_cooldown_ms: { type: 'string', description: 'kpi_inner_goal cooldownMs' },
+          kpi_inner_goal_max_per_day: { type: 'string', description: 'kpi_inner_goal maxPerDay' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_personality',
+      description:
+        '更新结构化性格配置（与 soul.md 并列）。idle_chat_probability 控制心跳闲聊分支掷骰概率 p∈[0,1]。' +
+        '例：「闲时可以多聊点」→ idle_chat_probability=0.35。',
+      parameters: {
+        type: 'object',
+        properties: {
+          idle_chat_probability: {
+            type: 'string',
+            description: '0~1 的小数；仅影响 autonomy casual_chat 分支',
+          },
+        },
+        required: ['idle_chat_probability'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'read_inner_status',
       description:
         '查询内脑状态：阶段、产物、registry_status，以及 async（controller_mode、active_pendings、' +
@@ -525,8 +599,8 @@ export interface OuterToolContext {
   repoStore: FilesystemRepositoryStore;
   dataRoot: string;
   innerBrainRegistry?: InnerBrainRegistry;
-  /** 行为日志存储（与 OuterBrain 共享，目前 OuterToolContext 内未消费，仅为兼容 heartbeat 注入） */
-  actionLogStore?: unknown;
+  /** 行为日志存储（heartbeat）；外脑 loop 对每个 tool 写入 writeActionEvent */
+  actionLogStore?: IActionLogStore;
   /** KPI 注册表，用于 set_kpi / list_kpis / view_kpi / abandon_kpi / achieve_kpi 工具 */
   kpiRegistry?: KpiRegistry;
   /**
@@ -1538,6 +1612,168 @@ function execReadPerformanceGoals(ctx: OuterToolContext): ToolCallResult {
   return { replied: false, output: lines.join('\n') };
 }
 
+function parseOptionalBool(raw: string | undefined): boolean | null {
+  if (raw == null || raw.trim() === '') return null;
+  const v = raw.trim().toLowerCase();
+  if (v === 'true' || v === '1' || v === 'yes') return true;
+  if (v === 'false' || v === '0' || v === 'no') return false;
+  return null;
+}
+
+function parseOptionalInt(raw: string | undefined): number | null {
+  if (raw == null || raw.trim() === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.floor(n) : null;
+}
+
+function execReadAutonomyPolicy(ctx: OuterToolContext): ToolCallResult {
+  const policy = loadAutonomyPolicy(ctx.dataRoot);
+  const personality = loadPersonality(ctx.dataRoot);
+  const g = policy.hardGates;
+  const lines = [
+    `enabled: ${policy.enabled}`,
+    `lastAutonomousActionAt: ${policy.lastAutonomousActionAt ?? '—'}`,
+    `updatedAt: ${policy.updatedAt}`,
+    '',
+    'hardGates:',
+    `  maxRunningInnerBrains: ${g.maxRunningInnerBrains}`,
+    `  maxAwaitingInnerBrains: ${g.maxAwaitingInnerBrains}`,
+    `  maxLlmInFlight: ${g.maxLlmInFlight}`,
+    `  maxTokensPerHour: ${g.maxTokensPerHour ?? 'null'}`,
+    `  minMsSinceLastAutonomousAction: ${g.minMsSinceLastAutonomousAction}`,
+    `  blockIfOrchestratorQueuedAbove: ${g.blockIfOrchestratorQueuedAbove}`,
+    `  blockIfOuterLoopActive: ${g.blockIfOuterLoopActive}`,
+    '',
+    'taskTypes:',
+  ];
+  for (const [id, cfg] of Object.entries(policy.taskTypes)) {
+    lines.push(`  ${id}: enabled=${cfg.enabled} cooldownMs=${cfg.cooldownMs} maxPerDay=${cfg.maxPerDay}`);
+  }
+  lines.push('', `personality.idleChatProbability: ${personality.idleChatProbability}`);
+  return { replied: false, output: lines.join('\n') };
+}
+
+function execUpdateAutonomyPolicy(
+  args: {
+    enabled?: string;
+    max_running_inner_brains?: string;
+    max_awaiting_inner_brains?: string;
+    max_llm_in_flight?: string;
+    min_ms_since_last_autonomous_action?: string;
+    block_if_orchestrator_queued_above?: string;
+    block_if_outer_loop_active?: string;
+    casual_chat_enabled?: string;
+    casual_chat_cooldown_ms?: string;
+    casual_chat_max_per_day?: string;
+    kpi_inner_goal_enabled?: string;
+    kpi_inner_goal_cooldown_ms?: string;
+    kpi_inner_goal_max_per_day?: string;
+  },
+  ctx: OuterToolContext,
+): ToolCallResult {
+  const patch: Parameters<typeof patchAutonomyPolicy>[1] = {};
+  const hardGates: Partial<AutonomyHardGates> = {};
+  const taskTypes: Record<string, Partial<AutonomyTaskTypeConfig>> = {};
+
+  if (args.enabled !== undefined) {
+    const enabled = parseOptionalBool(args.enabled);
+    if (enabled === null) return { replied: false, output: 'enabled 须为 true 或 false。' };
+    patch.enabled = enabled;
+  }
+
+  const intFields: Array<[keyof AutonomyHardGates, string | undefined]> = [
+    ['maxRunningInnerBrains', args.max_running_inner_brains],
+    ['maxAwaitingInnerBrains', args.max_awaiting_inner_brains],
+    ['maxLlmInFlight', args.max_llm_in_flight],
+    ['minMsSinceLastAutonomousAction', args.min_ms_since_last_autonomous_action],
+    ['blockIfOrchestratorQueuedAbove', args.block_if_orchestrator_queued_above],
+  ];
+  for (const [key, raw] of intFields) {
+    const n = parseOptionalInt(raw);
+    if (n === null) continue;
+    if (n < 0) return { replied: false, output: `${String(key)} 须为非负整数。` };
+    hardGates[key] = n;
+  }
+
+  if (args.block_if_outer_loop_active !== undefined) {
+    const v = parseOptionalBool(args.block_if_outer_loop_active);
+    if (v === null) return { replied: false, output: 'block_if_outer_loop_active 须为 true 或 false。' };
+    hardGates.blockIfOuterLoopActive = v;
+  }
+
+  if (Object.keys(hardGates).length > 0) patch.hardGates = hardGates;
+
+  const mergeTask = (
+    id: string,
+    enabledRaw?: string,
+    cooldownRaw?: string,
+    maxPerDayRaw?: string,
+  ): string | null => {
+    const row: Partial<AutonomyTaskTypeConfig> = {};
+    if (enabledRaw !== undefined) {
+      const enabled = parseOptionalBool(enabledRaw);
+      if (enabled === null) return `${id} enabled 须为 true 或 false`;
+      row.enabled = enabled;
+    }
+    const cooldown = parseOptionalInt(cooldownRaw);
+    if (cooldownRaw !== undefined) {
+      if (cooldown === null || cooldown < 0) return `${id} cooldown_ms 须为非负整数`;
+      row.cooldownMs = cooldown;
+    }
+    const maxPerDay = parseOptionalInt(maxPerDayRaw);
+    if (maxPerDayRaw !== undefined) {
+      if (maxPerDay === null || maxPerDay < 0) return `${id} max_per_day 须为非负整数`;
+      row.maxPerDay = maxPerDay;
+    }
+    if (Object.keys(row).length > 0) taskTypes[id] = row;
+    return null;
+  };
+
+  for (const errMsg of [
+    mergeTask('casual_chat', args.casual_chat_enabled, args.casual_chat_cooldown_ms, args.casual_chat_max_per_day),
+    mergeTask(
+      'kpi_inner_goal',
+      args.kpi_inner_goal_enabled,
+      args.kpi_inner_goal_cooldown_ms,
+      args.kpi_inner_goal_max_per_day,
+    ),
+  ]) {
+    if (errMsg) return { replied: false, output: errMsg };
+  }
+
+  if (Object.keys(taskTypes).length > 0) patch.taskTypes = taskTypes;
+
+  if (
+    patch.enabled === undefined &&
+    !patch.hardGates &&
+    !patch.taskTypes
+  ) {
+    return { replied: false, output: '未提供任何可更新字段。' };
+  }
+
+  const next = patchAutonomyPolicy(ctx.dataRoot, patch);
+  return {
+    replied: false,
+    output: `自主策略已更新（enabled=${next.enabled}，updatedAt=${next.updatedAt}）。`,
+  };
+}
+
+function execUpdatePersonality(
+  args: { idle_chat_probability?: string },
+  ctx: OuterToolContext,
+): ToolCallResult {
+  const raw = args.idle_chat_probability?.trim() ?? '';
+  const p = Number(raw);
+  if (!Number.isFinite(p) || p < 0 || p > 1) {
+    return { replied: false, output: 'idle_chat_probability 须为 0~1 之间的数字。' };
+  }
+  const next = patchPersonality(ctx.dataRoot, { idleChatProbability: p });
+  return {
+    replied: false,
+    output: `性格已更新：idleChatProbability=${next.idleChatProbability}（updatedAt=${next.updatedAt}）。`,
+  };
+}
+
 function execManagePerformanceGoal(
   args: {
     action?: string;
@@ -1866,6 +2102,29 @@ export async function executeOuterTool(
       return execUpdateTasks(args as { tasks_markdown?: string }, ctx);  // sync: updates cache immediately
     case 'read_performance_goals':
       return execReadPerformanceGoals(ctx);
+    case 'read_autonomy_policy':
+      return execReadAutonomyPolicy(ctx);
+    case 'update_autonomy_policy':
+      return execUpdateAutonomyPolicy(
+        args as {
+          enabled?: string;
+          max_running_inner_brains?: string;
+          max_awaiting_inner_brains?: string;
+          max_llm_in_flight?: string;
+          min_ms_since_last_autonomous_action?: string;
+          block_if_orchestrator_queued_above?: string;
+          block_if_outer_loop_active?: string;
+          casual_chat_enabled?: string;
+          casual_chat_cooldown_ms?: string;
+          casual_chat_max_per_day?: string;
+          kpi_inner_goal_enabled?: string;
+          kpi_inner_goal_cooldown_ms?: string;
+          kpi_inner_goal_max_per_day?: string;
+        },
+        ctx,
+      );
+    case 'update_personality':
+      return execUpdatePersonality(args as { idle_chat_probability?: string }, ctx);
     case 'manage_performance_goal':
       return execManagePerformanceGoal(
         args as {

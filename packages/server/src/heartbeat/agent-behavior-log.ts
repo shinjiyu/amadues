@@ -91,6 +91,16 @@ const TOOL_NAME_TO_OPERATION_TYPE: Record<string, string> = {
   read_performance_goals: 'performance_goals_read',
   manage_performance_goal: 'performance_goal_manage',
   post_to_im: 'message_send',
+  keychain_put: 'credential_write',
+  keychain_entries: 'credential_read',
+  memory_block_list: 'memory_block_read',
+  memory_block_create: 'memory_block_write',
+  memory_block_update: 'memory_block_write',
+  memory_block_delete_block: 'memory_block_write',
+  memory_block_entries: 'memory_block_read',
+  memory_block_get: 'memory_block_read',
+  memory_block_put: 'memory_block_write',
+  memory_block_delete: 'memory_block_write',
 };
 
 /**

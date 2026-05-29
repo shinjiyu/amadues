@@ -70,6 +70,8 @@ MemoryBlockRegistry (per agent, 不互通)
 
 **Dashboard（只读）**：`GET /api/memory/blocks`、`GET /api/memory/blocks/:blockId/entries`（无 secret `value`）。
 
+**外脑 tool 审计（2026-05-28）**：每次外脑 tool 调用写入 `DATA_ROOT/outer/tool-logs/<agentSid>/YYYY-MM-DD.jsonl`（`tool.call` / `tool.result`，args 脱敏）。`keychain_put` 成功后 store 读回校验，失败则工具返回错误。
+
 **已移除（B2 解耦）**：`memory_block_bind`、`credential_ref`、awaiting 自动 vault。
 
 内脑需要块内内容时：外脑在 IM 回合里 `memory_block_get`（或后续 notebook 可读策略）→ `set_goal` / 回复中提供必要片段，**不**复制到 `.brain/secrets/`。

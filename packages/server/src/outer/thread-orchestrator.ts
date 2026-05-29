@@ -119,6 +119,17 @@ export class ThreadOrchestrator {
       }
     }
   }
+
+  /** 供 resourceProbe 观测 orchestrator 队列与活跃 thread */
+  getStats(): { queuedTotal: number; activeThreads: number } {
+    let queuedTotal = 0;
+    let activeThreads = 0;
+    for (const state of this.threads.values()) {
+      queuedTotal += state.queued.length;
+      if (state.processing) activeThreads += 1;
+    }
+    return { queuedTotal, activeThreads };
+  }
 }
 
 /**

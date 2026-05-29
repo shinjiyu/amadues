@@ -26,6 +26,7 @@ import {
   isHumanSender,
   resolveAwaitingInboundFromIm,
 } from './awaiting-inbound-resolver.js';
+import { tryStopInnerBrainsFromInbound } from './stop-inner-brain.js';
 import {
   decideOuterShouldReply,
   isDmEmptyOrPlaceholderContent,
@@ -297,6 +298,11 @@ export class OuterBrain {
     return this._actionLog.slice(start).reverse();
   }
 
+  /** 供 autonomy resourceProbe 读取 orchestrator 负载 */
+  getOrchestratorStats(): { queuedTotal: number; activeThreads: number } {
+    return this.orchestrator.getStats();
+  }
+
   /**
    * 追加一条日志到内存数组（自动裁剪超限部分）
    */
@@ -360,6 +366,17 @@ export class OuterBrain {
     if (meta.threadKind === 'dm' && isDmEmptyOrPlaceholderContent(content)) {
       console.log(`[utlra][outer-brain] skip: dm_empty_or_placeholder`);
       return;
+    }
+
+    // ── Step 0.55: 用户要求停任务 → 真 stop（先于 ask_user resolve，避免误唤醒）──
+    if (innerBrainRegistry && isHumanSender(senderSid) && content.trim()) {
+      const inboundStop = tryStopInnerBrainsFromInbound(innerBrainRegistry, threadId, content);
+      if (inboundStop.stopped.length > 0) {
+        console.log(
+          `[utlra][stop-inner-brain] inbound auto-stop thread=${threadId} ` +
+            `instances=${inboundStop.stopped.join(',')} detail=${inboundStop.summaries.join(';')}`,
+        );
+      }
     }
 
     // ── Step 0.6: AWAITING 人消息 → resolve ask_user（changeWatcher 后续 spawn）──
@@ -556,28 +573,7 @@ export class OuterBrain {
       }
     }
 
-    // ── IP-06 补充: set_goal / send_directive 日志写入 ──────────────────────────────────────────
-    if (result.toolsUsed?.length) {
-      for (const toolName of result.toolsUsed) {
-        if (toolName === 'set_goal') {
-          const goalScope = `thread:${threadId} agent:${agentSid}`;
-          this._appendLocalLog({ timestamp: Date.now(), operation_type: 'goal_set', impact_scope: goalScope });
-          if (this.deps.actionLogStore) {
-            writeActionEvent(this.deps.actionLogStore, agentSid, 'goal_set', goalScope).catch((err) => {
-              console.error('[utlra][outer-brain] failed to write goal_set event', err);
-            });
-          }
-        } else if (toolName === 'send_directive') {
-          const directiveScope = `thread:${threadId} agent:${agentSid}`;
-          this._appendLocalLog({ timestamp: Date.now(), operation_type: 'directive_send', impact_scope: directiveScope });
-          if (this.deps.actionLogStore) {
-            writeActionEvent(this.deps.actionLogStore, agentSid, 'directive_send', directiveScope).catch((err) => {
-              console.error('[utlra][outer-brain] failed to write directive_send event', err);
-            });
-          }
-        }
-      }
-    }
+    // set_goal / send_directive 等行为日志由 outer-conversation-loop 对每个 tool 写入（outer-tool-audit）
     // 对话结束后追加 Daily Log（仅在实际回复了用户时记录）
     if (result.replied && memStore) {
       memStore.appendChatLog({

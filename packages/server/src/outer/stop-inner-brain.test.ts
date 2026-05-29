@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { addPending } from '../openkuroneko/pendings/index.js';
 import { InnerBrainRegistry } from './inner-brain-registry.js';
-import { isInnerBrainStoppable, stopInnerBrainInstance } from './stop-inner-brain.js';
+import {
+  isInnerBrainStoppable,
+  stopInnerBrainInstance,
+  tryStopInnerBrainsFromInbound,
+} from './stop-inner-brain.js';
 
 describe('stop-inner-brain', () => {
   const roots: string[] = [];
@@ -70,5 +74,13 @@ describe('stop-inner-brain', () => {
     const res = stopInnerBrainInstance(record, registry);
     expect(res.ok).toBe(false);
     expect(registry.get('ib-test')?.status).toBe('DONE');
+  });
+
+  it('inbound「把这个任务停掉」→ 停该 thread 上最近 AWAITING', () => {
+    const { registry } = mkEnv('AWAITING');
+    registry.update('ib-test', { originThread: 'webchat:global' });
+    const r = tryStopInnerBrainsFromInbound(registry, 'webchat:global', '把这个任务停掉');
+    expect(r.stopped).toEqual(['ib-test']);
+    expect(registry.get('ib-test')?.status).toBe('STOPPED');
   });
 });

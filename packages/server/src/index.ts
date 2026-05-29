@@ -67,7 +67,7 @@ import { registryLifecycleReconcile, startRegistryLifecycleReconcileInterval } f
 import { isBrainAwaitingAsync } from './outer/brain-async-snapshot.js';
 import { notifyInnerBrainTaskComplete, type CompletionNotifyDeps } from './outer/completion-notify.js';
 import { PushLoop } from './outer/push-loop.js';
-import { OuterHeartbeat } from './outer/outer-heartbeat.js';
+import { OuterHeartbeat, loadHeartbeatConfigFromEnv } from './outer/outer-heartbeat.js';
 import { loadInnerLlmEnvFromProcess, runInnerLlmStep } from './llm/inner-llm-step.js';
 import { llmRawChatCompletion } from './llm/raw.js';
 import {
@@ -1350,7 +1350,7 @@ app.post('/api/inner-brains/:id/stop', (c) => {
   if (!record) return c.json({ error: `实例 ${id} 不存在` }, 404);
   const res = stopInnerBrainInstance(record, innerBrainRegistry);
   if (!res.ok) {
-    return c.json({ ok: true, message: res.message });
+    return c.json({ ok: false, message: res.message }, 400);
   }
 
   console.log(`[utlra][stop-inner-brain] api ${id} prior=${res.priorStatus} actions=${res.actions.join(',')}`);
@@ -1720,6 +1720,13 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     imClient: channel,
     assetStore,
     memoryStore,
+    outerBrain,
+    innerBrainRegistry,
+    kpiRegistry,
+    scheduleReflexionBurst,
+    scheduleNextKpiBurst,
+    getOrchestratorStats: () => outerBrain.getOrchestratorStats(),
+    config: loadHeartbeatConfigFromEnv(),
   });
   heartbeat.start();
 

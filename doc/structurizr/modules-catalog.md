@@ -41,6 +41,14 @@
 | pushLoop | 消费 worker 输出 | `outer/push-loop.ts` | `.run` events → 渠道 |
 | changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | bootstrap + pendings 到期/解封 → spawn |
 | llmGateway | LLM 调用 | `llm/` | messages → text/tools |
+| **outerHeartbeat** | **定时心跳 + 死亡检测** | `outer/outer-heartbeat.ts` | tick → post_to_im / set_goal |
+| **llmUsageTracker** | **LLM token/并发计量** | `outer/llm-usage-tracker.ts` | completion → 滚动 usage |
+| **resourceProbe** | **资源感知快照** | `outer/resource-probe.ts` | registry/tracker → ResourceSnapshot |
+| **autonomyPolicyStore** | **闲忙规则（可聊天改）** | `outer/autonomy-policy-store.ts` | policy.json + rubric.md |
+| **autonomyJudge** | **闲忙判定（hard gates）** | `outer/autonomy-judge.ts` | snapshot+policy → idle/busy |
+| **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
+| **autonomyTaskDispatcher** | **自主任务分发** | `outer/autonomy-task-dispatcher.ts` | KPI 优先 → 否则 p 闲聊 |
+| performanceGoalEngine | 长期绩效目标审阅 | `performance-goals/engine.ts` | goals → heartbeat block |
 
 **视图**（Structurizr，按路径拆开避免一张图过密）：
 
@@ -52,8 +60,11 @@
 | `08-L3-Outer-Inner-Lifecycle` | spawn、**startupResume**、**reconcile**、registry、changeWatcher、pushLoop、completionNotify、KPI |
 | `10-L2-KPI-Closed-Loop` | L2：agentServer ↔ innerWorker |
 | `10b-L3-Outer-KPI` / `10c-L3-Inner-Reflexion` | L3 外脑调度 / 内脑反思分图 |
+| **`11-L3-Outer-Autonomy`** | **心跳：probe → gates → KPI优先/性格闲聊** |
 
 **KPI 闭环**（实现与 ADL）：见 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)。
+
+**资源感知与心跳自主调度**（实现与 ADL）：见 [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md)。
 
 **外脑重启恢复内脑**（实现与 ADL）：见 [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md)。
 
@@ -113,3 +124,5 @@ DECOMPOSE → EXECUTE → ATTRIBUTE → (CONTINUE|下一里程碑|REPLAN|BLOCK)
 | 2026-05-19 | KPI 闭环接通：视图 `10-L2` / `10b` / `10c` + `KPI-CLOSED-LOOP.md` |
 | 2026-05-20 | P2：`deps.rules.cjs` + `npm run structurizr:deps` |
 | 2026-05-20 | P3c：`MEMORY-STORAGE-BOUNDARY.md` + repository/mem9/drive9 deps 规则 |
+| 2026-05-29 | 资源感知 + 心跳自主调度：`RESOURCE-AWARENESS-AUTONOMY.md` + 视图 `11-L3-Outer-Autonomy` |
+| 2026-05-29 | 分支选择简化为 KPI 优先 + `agentPersonality.idleChatProbability`；judge P0 仅 hard gates |
