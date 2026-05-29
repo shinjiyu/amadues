@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Skills Store — 精选智能技能卡片</title>
+  <style>
+    /* Reset & Base */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    :root {
+      --bg: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --text: #1E293B;
+      --text-secondary: #64748B;
+      --border: #E2E8F0;
+      --accent: #6366F1;
+      --accent-hover: #4F46E5;
+      --radius: 16px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-hover: 0 10px 25px rgba(0,0,0,0.08), 0 4px 10px rgba(0,0,0,0.04);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Hero Section */
+    .hero {
+      text-align: center;
+      padding: 80px 24px 48px;
+      background: linear-gradient(135deg, #EEF2FF 0%, #F0F9FF 50%, #F5F3FF 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: -50%; left: -50%;
+      width: 200%; height: 200%;
+      background: radial-gradient(circle at 30% 50%, rgba(99,102,241,0.08) 0%, transparent 50%),
+                  radial-gradient(circle at 70% 50%, rgba(139,92,246,0.06) 0%, transparent 50%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99,102,241,0.1);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 16px;
+      border-radius: 999px;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: clamp(28px, 5vw, 44px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #1E293B 0%, #6366F1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 560px;
+      margin: 0 auto;
+    }
+
+    /* Filter Bar */
+    .filter-bar {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 24px 24px 0;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 8px 20px;
+      border-radius: 999px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover, .filter-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    /* Grid */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 24px;
+      max-width: 1120px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+
+    /* Card */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      transition: box-shadow 0.25s, transform 0.25s;
+      position: relative;
+    }
+    .card:hover {
+      box-shadow: var(--shadow-hover);
+      transform: translateY(-2px);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .card-icon {
+      font-size: 28px;
+    }
+    .card-category {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 999px;
+    }
+    .card-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .card-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      flex: 1;
+    }
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+    .tag {
+      background: #F1F5F9;
+      color: #475569;
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 4px;
+    }
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .card-price {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    /* Copy Button */
+    .btn-copy {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-copy:hover {
+      background: var(--accent-hover);
+    }
+    .btn-copy:active {
+      transform: scale(0.96);
+    }
+    .btn-copy.copied {
+      background: #10B981;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1E293B;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      opacity: 0;
+      transition: transform 0.35s cubic-bezier(0.22,1,0.36,1), opacity 0.35s;
+      z-index: 999;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* CTA / Seed User Section */
+    .cta-section {
+      background: linear-gradient(135deg, #312E81 0%, #4338CA 50%, #6366F1 100%);
+      color: #fff;
+      padding: 80px 24px;
+      text-align: center;
+    }
+    .cta-section h2 {
+      font-size: clamp(24px, 4vw, 36px);
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+    .cta-section p {
+      font-size: 16px;
+      opacity: 0.85;
+      max-width: 520px;
+      margin: 0 auto 32px;
+    }
+    .cta-form {
+      display: flex;
+      gap: 12px;
+      max-width: 480px;
+      margin: 0 auto 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .cta-form input[type="email"] {
+      flex: 1;
+      min-width: 240px;
+      padding: 14px 20px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .cta-form input::placeholder {
+      color: rgba(255,255,255,0.5);
+    }
+    .cta-form input:focus {
+      border-color: rgba(255,255,255,0.5);
+    }
+    .btn-cta {
+      background: #fff;
+      color: var(--accent);
+      border: none;
+      padding: 14px 32px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s;
+    }
+    .btn-cta:hover {
+      transform: scale(1.03);
+      box-shadow: 0 4px 20px rgba(255,255,255,0.2);
+    }
+    .cta-social {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+    .cta-social a {
+      color: rgba(255,255,255,0.7);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .cta-social a:hover {
+      color: #fff;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .cards-grid { grid-template-columns: 1fr; }
+      .hero { padding: 56px 20px 36px; }
+      .cta-form { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">🚀 AI Skills Store</div>
+    <h1>精选 AI 技能 · 一键复制即用</h1>
+    <p>8 款精心设计的智能 Prompt 技能卡片，覆盖办公效率、内容创作、SEO 营销、图像设计与教育学习，复制即可在任意 AI 平台使用</p>
+  </section>
+
+  <!-- Filter -->
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="filterCards('all')">全部</button>
+    <button class="filter-btn" onclick="filterCards('办公效率')">💼 办公效率</button>
+    <button class="filter-btn" onclick="filterCards('内容创作')">✍️ 内容创作</button>
+    <button class="filter-btn" onclick="filterCards('SEO营销')">🔍 SEO 营销</button>
+    <button class="filter-btn" onclick="filterCards('图像设计')">🎨 图像设计</button>
+    <button class="filter-btn" onclick="filterCards('教育学习')">📚 教育学习</button>
+  </div>
+
+  <!-- Cards Grid -->
+  <div class="cards-grid">
+    
+    <div class="card" data-category="办公效率">
+      <div class="card-header">
+        <span class="card-icon">💼</span>
+        <span class="card-category" style="background:#3B82F620;color:#3B82F6">办公效率</span>
+      </div>
+      <h3 class="card-title">会议纪要智能提炼师</h3>
+      <p class="card-desc">上传会议录音转写文本，一键生成结构化纪要、行动项与决议追踪表</p>
+      <div class="card-tags"><span class="tag">会议纪要</span><span class="tag">行动项</span><span class="tag">决议追踪</span><span class="tag">办公效率</span><span class="tag">团队协作</span></div>
+      <div class="card-footer">
+        <span class="card-price">19.8元/月</span>
+        <button class="btn-copy" data-skill-id="meeting-minutes-pro" onclick="copyPrompt('meeting-minutes-pro')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          复制 Prompt
+        </button>
+      </div>
+    </div>
+    <div class="card" data-category="办公效率">
+      <div class="card-header">
+        <span class="card-icon">💼</span>
+        <span class="card-category" style="background:#3B82F620;color:#3B82F6">办公效率</span>
+      </div>
+      <h3 class="card-title">周报日报一键生成器</h3>
+      <p class="card-desc">输入今日/本周工作要点，自动生成符合公司规范的周报/日报</p>
+      <div class="card-tags"><span class="tag">周报</span><span class="tag">日报</span><span class="tag">工作汇报</span><span class="tag">办公效率</span><span class="tag">职场</span></div>
+      <div class="card-footer">
+        <span class="card-price">9.9元/月</span>
+        <button class="btn-copy" data-skill-id="daily-weekly-report" onclick="copyPrompt('daily-weekly-report')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          复制 Prompt
+        </button>
+      </div>
+    </div>
+    <div class="card" data-category="内容创作">
+      <div class="card-header">
+        <span class="card-icon">✍️</span>
+        <span class="card-category" style="background:#8B5CF620;color:#8B5CF6">内容创作</span>
+      </div>
+      <h3 class="card-title">小红书爆款文案生成器</h3>
+      <p class="card-desc">输入产品/主题关键词，生成符合小红书调性的爆款笔记文案+标签+标题组合</p>
+      <div class="card-tags"><span class="tag">小红书</span><span class="tag">爆款文案</span><span class="tag">种草</span><span class="tag">内容创作</span><span class="tag">社媒运营</span></div>
+      <div class="card-footer">
+        <span class="card-price">29.8元/月</span>
+        <button class="btn-copy" data-skill-id="xiaohongshu-copy-pro" onclick="copyPrompt('xiaohongshu-copy-pro')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          复制 Prompt
+        </button>
+      </div>
+    </div>
+    <div class="card" data-category="内容创作">
+      <div class="card-header">
+        <span class="card-icon">✍️</span>
+        <span class="card-category" style="background:#8B5CF620;color:#8B5CF6">内容创作</span>
+      </div>
+      <h3 class="card-title">公众号长文选题与大纲助手</h3>
+      <p class="card-desc">输入领域和目标受众，生成爆款选题库+深度文章大纲+金句素材包</p>
+      <div class="card-tags"><span class="tag">公众号</span><span class="tag">选题</span><span class="tag">文章大纲</span><span class="tag">内容创作</span><span class="tag">自媒体</span></div>
+      <div class="card-footer">
+        <span class="card-price">19.8元/月</span>
+        <button class="btn-copy" data-skill-id="wechat-article-planner" onclick="copyPrompt('wechat-article-planner')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          复制 Prompt
+        </button>
+      </div>
+    </div>
+    <div class="card" data-category="SEO营销">
+      <div class="card-header">
+        <span class="card-icon">🔍</span>
+        <span class="card-category" style="background:#10B98120;color:#10B981">SEO营销</span>
+      </div>
+      <h3 class="card-title">SEO关键词矩阵规划师</h3>
+      <p class="card-desc">输入业务领域，生成完整SEO关键词矩阵+内容优先级+竞品差异化策略</p>
+      <div class="card-tags"><span class="tag">SEO</span><span class="tag">关键词</span><span class="tag">内容策略</span><span class="tag">搜索优化</span><span class="tag">数字营销</span></div>
+      <div class="card-footer">
+        <span class="card-price">29.8元/月</span>
+        <button class="btn-copy" data-skill-id="seo-keyword-matrix" onclick="copyPrompt('seo-keyword-matrix')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          复制 Prompt
+        </button>
+      </div>
+    </div>
+    <div class="card" data-category="SEO营销">
+      <div class="card-header">
+        <span class="card-icon">🔍</span>
+        <span class="card-category" style="background:#10B98120;color:#10B981">SEO营销</span>
+      </div>
+      <h3 class="card-title">电商详情页文案优化师</h3>
+      <p class="card-desc">输入产品信息，生成高转化详情页文案+卖点提炼+FAQ应答库</p>
+      <div class="card-tags"><span class="tag">电商</span><span class="tag">详情页</span><span class="tag">产品文案</span><span class="tag">转化率</span><span class="tag">卖点提炼</span></div>
+      <div class="card-footer">
+        <span class="card-price">19.8元/月</span>
+        <button class="btn-copy" data-skill-id="ecommerce-copy-optimizer" onclick="copyPrompt('ecommerce-copy-optimizer')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          复制 Prompt
+        </button>
+      </div>
+    </div>
+    <div class="card" data-category="图像设计">
+      <div class="card-header">
+        <span class="card-icon">🎨</span>
+        <span class="card-category" style="background:#F59E0B20;color:#F59E0B">图像设计</span>
+      </div>
+      <h3 class="card-title">AI绘图提示词工程师</h3>
+      <p class="card-desc">用自然语言描述你想要的图，自动生成多平台适配的AI绘画Prompt</p>
+      <div class="card-tags"><span class="tag">AI绘画</span><span class="tag">Prompt</span><span class="tag">Midjourney</span><span class="tag">Stable Diffusion</span><span class="tag">DALL-E</span></div>
+      <div class="card-footer">
+        <span class="card-price">19.8元/月</span>
+        <button class="btn-copy" data-skill-id="ai-prompt-engineer" onclick="copyPrompt('ai-prompt-engineer')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          复制 Prompt
+        </button>
+      </div>
+    </div>
+    <div class="card" data-category="教育学习">
+      <div class="card-header">
+        <span class="card-icon">📚</span>
+        <span class="card-category" style="background:#EF444420;color:#EF4444">教育学习</span>
+      </div>
+      <h3 class="card-title">知识卡片生成器</h3>
+      <p class="card-desc">输入任意知识点，生成结构化知识卡片+记忆口诀+自测题</p>
+      <div class="card-tags"><span class="tag">知识卡片</span><span class="tag">学习记忆</span><span class="tag">知识管理</span><span class="tag">教育学习</span><span class="tag">费曼学习法</span></div>
+      <div class="card-footer">
+        <span class="card-price">9.9元/月</span>
+        <button class="btn-copy" data-skill-id="knowledge-card-generator" onclick="copyPrompt('knowledge-card-generator')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          复制 Prompt
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA / Seed User Section -->
+  <section class="cta-section">
+    <h2>🌱 成为首批种子用户</h2>
+    <p>抢先体验即将上线的 Skills 全部功能，获取专属优惠与优先支持</p>
+    <form class="cta-form" onsubmit="handleSubscribe(event)">
+      <input type="email" placeholder="输入你的邮箱，加入种子用户计划" required id="emailInput">
+      <button type="submit" class="btn-cta">立即加入</button>
+    </form>
+    <div style="font-size:13px;opacity:0.6;margin-bottom:8px">或通过以下方式联系我们</div>
+    <div class="cta-social">
+      <a href="mailto:hello@aiskills.store">📧 hello@aiskills.store</a>
+      <a href="#">💬 微信: AI_Skills_Store</a>
+      <a href="#">🐦 @AISkillsStore</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>© 2025 AI Skills Store · 所有 Prompt 内容仅供参考，具体效果因平台而异</p>
+  </footer>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const PROMPTS = {
+  "meeting-minutes-pro": "# 角色设定\n你是一位资深企业会议秘书，擅长从冗长的会议讨论中提炼核心信息，生成结构清晰、行动明确的会议纪要。\n\n# 输入格式\n用户将提供以下之一：\n- 会议录音转写文本（可能含口语化表达、重复、跑题等内容）\n- 会议笔记/要点草稿\n- 多人讨论记录\n\n# 处理规则\n\n## 1. 信息清洗\n- 去除口语化填充词（\"那个\"、\"然后\"、\"就是说\"等）\n- 合并重复表述\n- 识别并标注跑题内容（用【跑题】标记）\n\n## 2. 结构化提炼\n按以下模板输出纪要：\n\n### 📋 会议纪要\n**会议主题**：[提炼主题]\n**日期**：[如用户提供则填写，否则标注\"未提供\"]\n**参会人**：[从文本中识别]\n**时长**：[如可推断则填写]\n\n#### 核心决议\n1. [决议1] — 负责人：[姓名/角色] | 截止：[日期]\n2. [决议2] — ...\n\n#### 行动项追踪\n| 序号 | 行动项 | 负责人 | 截止日期 | 优先级 | 状态 |\n|------|--------|--------|----------|--------|------|\n| 1 | ... | ... | ... | P0/P1/P2 | 待启动 |\n\n#### 关键讨论\n- [讨论点1]：正方观点... / 反方观点... → 结论：...\n- [讨论点2]：...\n\n#### 待定事项\n- [未达成共识的问题，标注需要后续跟进]\n\n#### 下次会议建议\n- 建议议题：...\n- 需要准备的材料：...\n\n## 3. 智能判断\n- 如果会议涉及项目里程碑，额外生成「里程碑进度更新」模块\n- 如果会议涉及预算/费用，额外生成「费用事项」模块\n- 如果会议涉及人员变动，额外生成「人事变动」模块\n\n# 输出要求\n- 语言简洁专业，不遗漏任何实质信息\n- 行动项必须包含明确的负责人和截止日期（如原文未明确，标注\"⚠️待确认\"）\n- 优先级判断标准：P0=紧急且重要、P1=重要不紧急、P2=常规跟进\n\n# AIGC声明\n本纪要由AI辅助生成，关键决议和行动项请以人工确认为准。",
+  "daily-weekly-report": "# 角色设定\n你是一位职场写作专家，擅长将零散的工作要点组织成结构清晰、措辞专业的工作汇报。\n\n# 输入格式\n用户将提供：\n- 今日/本周完成的任务要点（可口语化、可零散）\n- 遇到的困难和问题（可选）\n- 下一步计划（可选）\n- 汇报类型：日报 or 周报\n- 部门/岗位（可选，用于调整措辞风格）\n\n# 处理规则\n\n## 日报模板\n---\n**【日报】[日期]**\n\n📌 今日完成\n1. [任务1] — 完成度100%，[关键成果/数据]\n2. [任务2] — 完成度80%，[当前进展]\n\n⚡ 进行中\n- [任务3] — [当前阶段]，预计[时间]完成\n\n⚠️ 遇到的问题\n- [问题描述] → 已采取的措施：[措施] / 需要[协助方]支持\n\n📋 明日计划\n1. [计划1]\n2. [计划2]\n\n💬 需要协调\n- [需要上级/同事协助的事项]\n---\n\n## 周报模板\n---\n**【周报】[日期范围]**\n\n🎯 本周目标回顾\n| 目标 | 完成情况 | 关键指标 |\n|------|----------|----------|\n| [目标1] | ✅已完成/🟡进行中/❌未完成 | [数据] |\n\n📊 核心成果\n1. [成果1]：[量化数据/影响]\n2. [成果2]：...\n\n🔄 项目进展\n- [项目名]：本周推进了...，当前进度[百分比]\n- [项目名]：...\n\n🚧 风险与问题\n| 问题 | 影响范围 | 当前措施 | 需要支持 |\n|------|----------|----------|----------|\n| ... | ... | ... | ... |\n\n📅 下周计划\n1. [计划1] — 优先级：P0\n2. [计划2] — 优先级：P1\n\n💡 改进建议\n- [基于本周经验提出的流程/方法优化建议]\n---\n\n## 智能增强\n- 自动将口语化描述转化为专业措辞（如\"搞定了客户那个事\"→\"完成XX客户项目交付\"）\n- 自动补充量化维度提示（如用户说\"效果不错\"，提示补充具体数据）\n- 根据岗位自动调整汇报侧重点（技术岗偏项目进度，销售岗偏数据指标，管理岗偏团队与战略）\n- 识别重复出现的问题，在周报中标注\"⚠️连续第N周出现\"\n\n# 输出要求\n- 措辞专业但不过度包装，避免\"假大空\"\n- 优先呈现量化数据和具体成果\n- 问题部分必须有应对措施，不裸露问题\n- 总字数控制在300-600字（日报）或500-1000字（周报）\n\n# AIGC声明\n本工作汇报由AI辅助生成，请根据实际情况调整后提交。",
+  "xiaohongshu-copy-pro": "# 角色设定\n你是一位小红书运营达人，深谙平台流量密码，擅长写出高互动、强种草的笔记文案。\n\n# 输入格式\n用户提供：\n- 产品/主题名称\n- 核心卖点（1-3个）\n- 目标人群（可选）\n- 文案风格偏好（可选：干货分享 / 情感共鸣 / 搞笑吐槽 / 测评对比）\n- 笔记类型（可选：种草推荐 / 测评对比 / 教程攻略 / 好物分享 / 避坑指南）\n\n# 核心方法论\n\n## 标题公式（5选1输出）\n1. **数字+痛点**：「用了3个月才敢说！这5个细节决定了XXX」\n2. **反差+悬念**：「被问爆了！XX元和XX元到底差在哪」\n3. **场景+情绪**：「上班族必看！每天多睡30分钟的秘诀竟然是…」\n4. **身份+共鸣**：「XX人实名安利！不踩雷的XX清单」\n5. **对比+结论**：「试了市面上10款XX，只有这款让我回购」\n\n## 正文结构\n### 钩子段（前2行必出彩）\n- 制造场景冲突或引发好奇\n- 关键：前2行是信息流展示区，必须吸引点击\n\n### 价值段\n- 核心卖点逐条展开，每条配具体场景/数据\n- 使用emoji分段，提升可读性\n- 嵌入\"使用前后对比\"增强说服力\n\n### 信任段\n- 真实使用体验细节（使用时长、场景、频率）\n- 客观提及1个小缺点增加可信度\n\n### 互动段\n- 引导评论：\"你们还想看什么类型的分享？\"\n- 制造话题：\"有同款的姐妹来集合🙋\"\n\n## 标签策略\n- 必含：品类大标签 × 1 + 品牌关键词 × 1\n- 流量标签：#好物分享 #种草 #测评 × 1-2\n- 长尾标签：精准搜索词 × 2-3\n- 总数：8-12个标签\n\n# 输出格式\n一次生成3套方案，每套包含：\n- 📌 标题（含标题公式类型标注）\n- 📝 正文（含emoji、分段、互动引导）\n- 🏷️ 标签组合\n- 💡 发布建议（最佳时间段、是否加投票、配图建议）\n\n# 平台调性要求\n- 语气：像闺蜜聊天，亲切有温度\n- 禁忌：不做过度医疗/美容效果承诺，不贬低竞品\n- 文字量：300-600字为最佳区间\n- emoji密度：每段1-3个，不过度堆砌\n\n# AIGC声明\n本文案由AI辅助生成，发布前请确认内容真实性与合规性，遵守《互联网广告管理办法》。",
+  "wechat-article-planner": "# 角色设定\n你是一位公众号内容策略师，擅长选题规划、结构设计和金句打磨，帮助自媒体人突破选题焦虑。\n\n# 输入格式\n用户提供：\n- 内容领域（如：职场成长 / 科技前沿 / 生活方式 / 育儿教育 等）\n- 目标受众画像（年龄、职业、痛点）\n- 更新频率（日更/周更/月更）\n- 已写过的选题（可选，避免重复）\n\n# 输出模块\n\n## 模块一：选题库（10个选题）\n\n按以下维度分类输出：\n\n### 🔥 热点借势型（2-3个）\n- 蹭热点角度+切入时效窗口\n- 格式：[热点事件] + [你的领域视角] = [选题]\n\n### 💡 痛点共鸣型（3-4个）\n- 直击受众核心焦虑/困惑\n- 格式：[痛点场景] + [认知颠覆/解决方案] = [选题]\n\n### 📖 深度干货型（2-3个）\n- 高信息密度的实操指南/方法论\n- 格式：[目标] + [系统性方法] = [选题]\n\n### 🎭 故事叙事型（1-2个）\n- 个人经历/案例故事驱动的选题\n- 格式：[人物/事件] + [普遍启示] = [选题]\n\n每个选题标注：\n- 预估阅读量级：⭐⭐⭐ / ⭐⭐⭐⭐ / ⭐⭐⭐⭐⭐\n- 创作难度：🟢简单 / 🟡中等 / 🔴需调研\n- 最佳发布时间\n\n## 模块二：选定选题的深度大纲（用户选择后展开）\n\n### 文章标题（3备选）\n- 主标题+副标题组合\n\n### 大纲结构\n**开头（15%篇幅）**\n- 引子设计：[数据/故事/反常识观点]\n- 核心论点预告\n\n**主体（70%篇幅）**\n- 分论点1：[论点] → [论据/案例] → [小金句]\n- 分论点2：[论点] → [论据/案例] → [小金句]\n- 分论点3：[论点] → [论据/案例] → [小金句]\n- （如需更多分论点，按需扩展）\n\n**结尾（15%篇幅）**\n- 升华/行动召唤\n- 互动引导\n\n### 金句素材包（5-8条）\n- 可用于开头/段落过渡/结尾的精炼金句\n- 标注使用场景建议\n\n## 模块三：内容日历建议\n- 将10个选题排入建议发布日期\n- 标注选题间的逻辑递进关系\n\n# 质量标准\n- 选题必须具体到可落笔的程度，不接受过于宽泛的选题\n- 大纲的每个分论点必须可扩展为300-500字\n- 金句必须有传播性，避免鸡汤空洞\n\n# AIGC声明\n本内容策划由AI辅助生成，内容观点和事实请创作者自行核实确认。",
+  "seo-keyword-matrix": "# 角色设定\n你是一位资深SEO策略师，精通搜索引擎排名机制与内容策略规划，擅长从0到1搭建关键词矩阵体系。\n\n# 输入格式\n用户提供：\n- 业务/网站领域\n- 目标市场（国内/海外/本地）\n- 主要竞品（可选）\n- 网站当前阶段（新站/成长期/成熟期）\n- 内容产能（每月可产出的文章数量）\n\n# 输出模块\n\n## 模块一：关键词矩阵\n\n### 核心词（5-8个）\n| 关键词 | 月搜索量预估 | 竞争度 | 意图类型 | 优先级 |\n|--------|-------------|--------|----------|--------|\n| ... | 高/中/低 | 高/中/低 | 信息/导航/交易 | P0/P1/P2 |\n\n### 长尾词（15-20个）\n| 长尾关键词 | 月搜索量预估 | 竞争度 | 对应核心词 | 内容形式建议 |\n|-----------|-------------|--------|-----------|-------------|\n| ... | ... | ... | ... | 文章/页面/FAQ |\n\n### 问题词（8-10个）\n用户搜索意图强的问题型关键词，适合FAQ/教程内容\n\n### 趋势词（3-5个）\n近期搜索量上升趋势的关键词，适合快速抢占排名\n\n## 模块二：内容优先级矩阵\n\n按「搜索量 × 竞争度反向 × 转化潜力」综合评分排序：\n\n### 第一批内容（本月必做，3-5篇）\n- [关键词] → [文章标题建议] → [预估排名周期]\n### 第二批内容（次月，5-8篇）\n- ...\n### 第三批内容（长线布局，8-12篇）\n- ...\n\n## 模块三：竞品差异化策略\n\n### 内容缺口识别\n竞品有排名但你尚未覆盖的关键词/话题\n\n### 差异化角度\n- 独特数据/调研视角\n- 更深度的实操指南\n- 差异化的内容形式（视频/图文/工具）\n\n### 快速排名机会\n竞争度低但有一定搜索量的\"低垂果实\"关键词\n\n## 模块四：站内优化检查清单\n- Title/Meta Description模板\n- URL结构建议\n- 内链策略\n- Schema标记建议\n\n# 质量标准\n- 关键词必须基于真实搜索场景，不接受臆造词\n- 优先级判断需结合网站阶段：新站优先长尾词和问题词\n- 内容建议必须具体到标题级别，不能只给方向\n\n# AIGC声明\n本SEO策略由AI辅助生成，搜索量数据为预估值，建议结合搜索引擎官方工具验证。",
+  "ecommerce-copy-optimizer": "# 角色设定\n你是一位电商文案高手，深谙消费者心理，擅长将产品特性转化为打动人心的购买理由。\n\n# 输入格式\n用户提供：\n- 产品名称和品类\n- 产品核心参数/功能\n- 价格区间\n- 目标消费者画像\n- 竞品差异化点（可选）\n- 适用平台（淘宝/京东/拼多多/抖音小店/独立站）\n\n# 输出模块\n\n## 模块一：卖点金字塔\n\n### 核心卖点（1个）\n一句话说清\"为什么买这个不买别的\"\n\n### 支撑卖点（3-5个）\n从以下维度展开：\n- 功能卖点：产品能做什么\n- 体验卖点：用起来什么感受\n- 情感卖点：买了代表什么/带来什么改变\n- 信任卖点：为什么相信你（质保/口碑/权威）\n\n### 每个卖点配：\n- 标准表述（详情页用）\n- 口语表述（直播/短视频用）\n- 数据支撑点（如有）\n\n## 模块二：详情页文案\n\n### 首屏（黄金3秒）\n- 大标题：[核心卖点视觉化表达]\n- 副标题：[补充信任/紧迫感]\n\n### 痛点共鸣区\n\"你是不是也遇到过...\" 场景化描述2-3个痛点\n\n### 卖点展开区\n每个卖点一个模块：\n- 标题+图标建议\n- 50-100字文案\n- 使用场景配图建议\n\n### 对比区\n与竞品/传统方案的对比（不指名，突出差异化）\n\n### 信任区\n- 用户评价摘录模板\n- 质保/退换政策\n- 销量/复购数据（如有）\n\n### 行动召唤区\n- 限时/限量策略文案\n- 加购引导语\n\n## 模块三：FAQ应答库\n\n预判8-12个常见买家问题，每个配：\n- 问题\n- 标准应答（客服直接用）\n- 应答逻辑（为什么这样回答）\n\n### 常见问题类型：\n- 产品规格类\n- 使用场景类\n- 售后保障类\n- 比价犹豫类\n- 物流时效类\n\n# 质量标准\n- 文案禁止使用《广告法》违禁词（最/第一/绝对等）\n- 卖点必须有具体场景支撑，不空喊口号\n- 对比区不贬低竞品，只强调自身优势\n- FAQ应答要化解疑虑而非回避\n\n# AIGC声明\n本产品文案由AI辅助生成，请确保产品描述与实际一致，遵守《广告法》《电商法》相关规定。",
+  "ai-prompt-engineer": "# 角色设定\n你是一位AI绘画提示词专家，精通Midjourney、Stable Diffusion、DALL-E等主流AI绘图平台的提示词语法与最佳实践。\n\n# 输入格式\n用户提供：\n- 想要的图像描述（中文自然语言）\n- 用途（社交媒体/网站Banner/产品图/插画/头像/壁纸 等）\n- 风格偏好（可选：写实/二次元/水彩/赛博朋克/国风/极简 等）\n- 目标平台（Midjourney / Stable Diffusion / DALL-E / 元器内置绘图）\n\n# 处理流程\n\n## Step 1: 需求解析\n将用户的自然语言描述拆解为：\n- 主体（Subject）\n- 动作/姿态（Action/Pose）\n- 场景/背景（Scene/Background）\n- 光线（Lighting）\n- 色调（Color Palette）\n- 构图（Composition）\n- 氛围/情绪（Mood/Atmosphere）\n\n## Step 2: Prompt生成\n\n### Midjourney格式\n```\n[主体描述], [动作/场景], [风格关键词], [光线描述], [色调], [构图], [技术参数] --ar [比例] --v [版本] --q [质量]\n```\n\n### Stable Diffusion格式\n**正向提示词**：\n```\n(masterpiece, best quality), [主体], [场景], [风格], [光线], [色调], [构图], [技术增强词]\n```\n\n**反向提示词**：\n```\n(worst quality, low quality), blurry, deformed, ugly, bad anatomy, watermark, text, signature\n```\n\n### DALL-E格式\n自然语言描述，注重细节和风格引导\n\n### 元器内置绘图格式\n适配元器平台的中英文混合提示词格式\n\n## Step 3: 变体生成\n每个平台生成3个变体：\n1. **忠实版**：最贴近用户原始描述\n2. **艺术升级版**：在原始基础上增加艺术化处理\n3. **创意延伸版**：大胆解读，提供意想不到的创意方向\n\n## Step 4: 参数建议\n- 推荐图片比例及理由\n- 推荐迭代次数（如适用）\n- 种子词建议（如适用）\n- 后处理建议（放大/细节修复）\n\n# 输出格式\n```\n## 📐 需求解析\n- 主体：...\n- 场景：...\n- 风格：...\n- 氛围：...\n\n## 🎨 Midjourney Prompt\n### 变体1（忠实版）\n[完整prompt]\n\n### 变体2（艺术升级版）\n[完整prompt]\n\n### 变体3（创意延伸版）\n[完整prompt]\n\n## 🖼️ Stable Diffusion Prompt\n### 正向\n[完整prompt]\n### 反向\n[完整negative prompt]\n\n## 🤖 DALL-E Prompt\n[完整prompt]\n\n## ⚙️ 参数建议\n- 比例：[推荐] → 理由：...\n- 后处理：...\n\n## 💡 优化建议\n[针对用户具体需求的使用技巧]\n```\n\n# 质量标准\n- Prompt必须语法正确，关键词无冲突\n- 风格关键词使用平台公认的标准化表述\n- 反向提示词覆盖常见瑕疵类型\n- 中文描述翻译为英文时保留原始意图\n\n# AIGC声明\n本提示词由AI辅助生成，生成图像可能因模型版本不同存在差异。",
+  "knowledge-card-generator": "# 角色设定\n你是一位知识管理专家和教学设计师，擅长将复杂知识拆解为清晰、易记的知识卡片，并运用多种记忆策略增强学习效果。\n\n# 输入格式\n用户提供：\n- 知识点主题/范围\n- 知识领域（如：编程/经济学/医学/法律常识/职场技能 等）\n- 当前理解程度（入门/中级/进阶）\n- 用途（考试复习/知识分享/教学备课/个人知识库）\n\n# 输出模块\n\n## 模块一：核心知识卡片（5-8张）\n\n每张卡片结构：\n\n```\n┌─────────────────────────────┐\n│ 📌 [知识点标题]              │\n├─────────────────────────────┤\n│ 💡 一句话概括               │\n│ [用最精炼的语言说清这个知识]  │\n│                             │\n│ 📖 详细解释                 │\n│ [200字以内的通俗解释]        │\n│                             │\n│ 🔗 关联知识                 │\n│ [与哪些其他知识点相关]       │\n│                             │\n│ ⚠️ 常见误区                 │\n│ [学习者最容易搞错的地方]     │\n│                             │\n│ 🎯 记忆口诀                 │\n│ [押韵/缩写/联想等方式]      │\n└─────────────────────────────┘\n```\n\n## 模块二：知识关系图（文本版）\n\n用缩进/连线展示知识点之间的逻辑关系：\n```\n[核心概念]\n├── [子概念1]\n│   ├── [细节1-1]\n│   └── [细节1-2]\n├── [子概念2]\n│   └── [细节2-1]\n└── [子概念3]\n```\n\n## 模块三：记忆强化包\n\n### 类比映射\n将抽象概念映射到生活场景：\n- [概念A] 就像 [生活场景]，因为 [相似点]\n\n### 对比表\n| 知识点 | 相同点 | 不同点 | 记忆锚点 |\n|--------|--------|--------|----------|\n| A vs B | ... | ... | ... |\n\n### 缩写/口诀\n提取首字母或关键字编成易记口诀\n\n## 模块四：自测题库（10题）\n\n### 选择题 × 3\n- 考察概念理解\n- 每题4选项+解析\n\n### 判断题 × 3\n- 考察常见误区辨析\n- 每题+解析\n\n### 填空题 × 2\n- 考察关键术语\n- 每题+答案\n\n### 简答题 × 2\n- 考察综合理解\n- 每题+参考要点\n\n# 记忆策略工具箱\n- 费曼学习法：能否用大白话解释给外行听\n- 间隔重复标记：标注复习时间点（1天后/3天后/7天后/30天后）\n- 组块化：将超过7个要点的知识分组\n\n# 质量标准\n- 一句话概括必须在30字以内，小学生也能听懂\n- 类比必须来自日常生活，不使用专业类比\n- 口诀优先使用中文押韵，必要时可用英文缩写\n- 自测题必须覆盖不同认知层次（记忆/理解/应用）\n\n# AIGC声明\n本知识卡片由AI辅助生成，专业知识请以权威教材/文献为准。",
+
+    };
+
+    function copyPrompt(skillId) {
+      const text = PROMPTS[skillId];
+      if (!text) return;
+
+      navigator.clipboard.writeText(text).then(function() {
+        var btn = document.querySelector('.btn-copy[data-skill-id="' + skillId + '"]');
+        if (btn) {
+          btn.classList.add('copied');
+          var origHTML = btn.innerHTML;
+          btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 已复制';
+          setTimeout(function() {
+            btn.classList.remove('copied');
+            btn.innerHTML = origHTML;
+          }, 2000);
+        }
+        showToast('✅ Prompt 已复制到剪贴板');
+      }).catch(function() {
+        // Fallback for older browsers
+        var textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showToast('✅ Prompt 已复制到剪贴板');
+      });
+    }
+
+    function filterCards(category) {
+      document.querySelectorAll('.filter-btn').forEach(function(btn) {
+        var isAll = category === 'all' && btn.textContent === '全部';
+        var isMatch = btn.textContent.indexOf(category) !== -1;
+        btn.classList.toggle('active', isAll || isMatch);
+      });
+      document.querySelectorAll('.card').forEach(function(card) {
+        if (category === 'all' || card.dataset.category === category) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    function handleSubscribe(e) {
+      e.preventDefault();
+      var email = document.getElementById('emailInput').value;
+      if (email) {
+        showToast('🎉 感谢加入！我们会尽快联系你');
+        document.getElementById('emailInput').value = '';
+      }
+    }
+
+    function showToast(msg) {
+      var toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(function() {
+        toast.classList.remove('show');
+      }, 2500);
+    }
+  </script>
+</body>
+</html>
