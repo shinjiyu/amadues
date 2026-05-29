@@ -1,0 +1,77 @@
+# 四 Agent Docker — 每人一份 deploy/agent/env/<name>.env（不入库）
+# 文档：doc/ops/agent-docker.md
+
+x-agent-common: &agent-common
+  build:
+    context: ../..
+    dockerfile: packages/server/Dockerfile
+  image: utlra/agent-server:latest
+  restart: unless-stopped
+  environment: &agent-runtime
+    NODE_ENV: production
+    TZ: Asia/Shanghai
+    UTLRA_DATA_ROOT: /data
+    PORT: "8787"
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/api/health"]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+    start_period: 30s
+
+services:
+  agent-kuroneko:
+    <<: *agent-common
+    container_name: utlra-agent-kuroneko
+    profiles: ["kuroneko", "all"]
+    env_file:
+      - path: env/kuroneko.env
+        required: true
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      <<: *agent-runtime
+    volumes:
+      - ../../packages/server/data:/data
+
+  agent-shiro:
+    <<: *agent-common
+    container_name: utlra-agent-shiro
+    profiles: ["shiro", "all"]
+    env_file:
+      - path: env/shiro.env
+        required: true
+    ports:
+      - "127.0.0.1:8788:8787"
+    environment:
+      <<: *agent-runtime
+    volumes:
+      - ../../packages/server/data-shiro:/data
+
+  agent-gin:
+    <<: *agent-common
+    container_name: utlra-agent-gin
+    profiles: ["gin", "all"]
+    env_file:
+      - path: env/gin.env
+        required: true
+    ports:
+      - "127.0.0.1:8789:8787"
+    environment:
+      <<: *agent-runtime
+    volumes:
+      - ../../packages/server/data-gin:/data
+
+  agent-aoi:
+    <<: *agent-common
+    container_name: utlra-agent-aoi
+    profiles: ["aoi", "all"]
+    env_file:
+      - path: env/aoi.env
+        required: true
+    ports:
+      - "127.0.0.1:8791:8787"
+    environment:
+      <<: *agent-runtime
+    volumes:
+      - ../../packages/server/data-aoi:/data

@@ -1,70 +1,67 @@
-# Git 工作流（Windows）/ Git workflow (Windows)
+# Git 工作流 / Git workflow
 
-> 本仓库在 Windows 开发机上统一使用 **`hutao`**（`D:\tools\Hutao\cmd\hutao.cmd`）代替原生 `git`，以避免 `git push` 被环境拦截。  
-> On this workstation, use **`hutao`** instead of plain `git` for all commands (especially push).
+> 常规开源协作：clone → branch → commit → push。本文补充 **Windows 凭据** 与 **勿入库** 清单。
 
 ---
 
 ## 日常命令 / Daily commands
 
-```powershell
-cd D:\kuroneko
+```bash
+cd <repo-root>
 
-hutao status
-hutao diff --stat HEAD
-hutao log --oneline -10
+git status
+git diff --stat HEAD
+git log --oneline -10
 
-hutao add <paths>
-hutao commit -F .tool-outputs\commit-msg.txt   # 多行说明用文件，避免 PowerShell heredoc 问题
+git add <paths>
+git commit -m "type(scope): summary"
 
-hutao fetch origin
-hutao pull origin main
+git fetch origin
+git pull origin main
+git push origin main
 ```
+
+PowerShell 多行 commit 说明可写入临时文件：`git commit -F commit-msg.txt`（勿提交该文件）。
 
 ---
 
 ## 推送 / Push
 
-### 方式 A：凭据管理器（推荐长期）
+### 凭据管理器（推荐）
 
-修好 [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager) 后：
+安装 [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager) 后：
 
-```powershell
-hutao push origin main
+```bash
+git push origin main
 ```
 
-若出现 `gcmcore` / `FileNotFoundException`，说明 GCM 未装好，用方式 B。
-
-### 方式 B：Personal Access Token（一次性 URL）
+### Personal Access Token
 
 在 **本机终端**执行（勿把 token 提交进仓库或贴进工单）：
 
-```powershell
-hutao push "https://<GITHUB_USER>:<GITHUB_PAT>@github.com/<OWNER>/<REPO>.git" main
+```bash
+git push "https://<GITHUB_USER>:<GITHUB_PAT>@github.com/<OWNER>/<REPO>.git" main
 ```
 
 推送成功后建议在 GitHub → **Settings → Developer settings → Personal access tokens** 轮换 token。
 
-### 同步远程引用 / Refresh `origin/main`
+### Windows：`hutao` 变通（可选）
 
-推送后若 `hutao status` 仍显示 `ahead`，可显式更新跟踪分支：
-
-```powershell
-hutao fetch "https://<GITHUB_USER>:<GITHUB_PAT>@github.com/<OWNER>/<REPO>.git" main:refs/remotes/origin/main
-```
+部分 Windows 环境原生 `git push` 会被拦截。若你使用项目维护者提供的 `hutao` 包装（见 `.cursor/rules/git-use-hutao.mdc`），命令与 `git` 相同，例如 `hutao push origin main`。其他开发者可忽略此项。
 
 ---
 
 ## 不要入库 / Do not commit
 
-- `.env` / `.env.local`（已在 `.gitignore`）
+- `deploy/agent/env/*.env`（仅 `*.env.example` 可入库）
+- 根目录 `.env` / `.env.*`（除 `*.example`）
 - `.tool-outputs/` 测试 JSON 与日志
-- `apps/chat-server/data/` 运行时聊天数据
-- 含 PAT 的脚本或文档
+- `packages/server/data*`、`apps/chat-server/data/` 运行时数据
+- 含 PAT / API Key 的脚本或文档
 
 ---
 
 ## 相关 / Related
 
-- 仓库规则：`.cursor/rules/git-use-hutao.mdc`
-- 本机总运维页：**local-dashboard**（`D:\UGit\-local_dashborad`，见 [`local-dashboard.md`](./local-dashboard.md)）
+- [`local-dashboard.md`](./local-dashboard.md) — 可选本机总控 UI
+- [`agent-docker.md`](./agent-docker.md) — Agent 容器与 env 布局

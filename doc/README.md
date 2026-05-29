@@ -108,8 +108,9 @@ node scripts/generate-test-report.mjs .tool-outputs/test-report-YYYYMMDD
 
 | 文档 | 说明 |
 |------|------|
-| [`ops/git-workflow.md`](./ops/git-workflow.md) | Windows 下 `hutao`、推送、凭据 |
-| [`ops/local-dashboard.md`](./ops/local-dashboard.md) | 注册到本机 **local-dashboard**（分组 `kuroneko`） |
+| [`ops/agent-docker.md`](./ops/agent-docker.md) | 四 Agent Docker、env 布局、数据卷 |
+| [`ops/git-workflow.md`](./ops/git-workflow.md) | Git 推送、凭据、勿入库清单 |
+| [`ops/local-dashboard.md`](./ops/local-dashboard.md) | 可选：注册到本机 **local-dashboard**（分组 `kuroneko`） |
 | [`apps/ops-console`](../apps/ops-console/) | Monorepo 内进程编排（`npm run dev:ops` → 7779） |
 
 ---

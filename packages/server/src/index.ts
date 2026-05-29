@@ -88,11 +88,11 @@ import { renderPerformanceDashboard } from './performance-goals/dashboard.js';
 import { registerHealthRoute } from './api/health-route.js';
 import { registerParticipationLabRoutes } from './api/participation-lab-route.js';
 
+import { resolveDataRoot } from './data-root.js';
+
 // repo root = packages/server/src → ../../..
 const REPO_ROOT = path.resolve(__serverDir, '..', '..', '..');
-const DATA_ROOT = process.env['UTLRA_DATA_ROOT']
-  ? path.resolve(REPO_ROOT, process.env['UTLRA_DATA_ROOT'])
-  : path.join(__serverDir, '..', 'data'); // packages/server/data（默认值）
+const DATA_ROOT = resolveDataRoot(REPO_ROOT, __serverDir, process.env['UTLRA_DATA_ROOT']);
 const WORKSPACES = path.join(DATA_ROOT, 'workspaces');
 const IDENTITY_FILE = path.join(DATA_ROOT, 'identities.json');
 const CHAT_DIR = path.join(DATA_ROOT, 'chat');

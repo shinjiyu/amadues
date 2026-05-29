@@ -1,2 +1,3 @@
 param()
-& "$PSScriptRoot\_invoke-local-dashboard.ps1" -Action 'start' -ServiceId 'agent-aoi'
+. "$PSScriptRoot\_agent-docker.ps1"
+Start-AgentDockerService -Profile 'aoi' -StartupWaitSec 180

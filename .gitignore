@@ -16,9 +16,10 @@ packages/server/data-aoi/
 .env
 .env.*
 !.env.example
-!.env.gin.example
-!.env.aoi.example
 !.env.chat-server.example
+deploy/agent/env/*
+!deploy/agent/env/*.example
+deploy/agent/.env
 .sandbox-data/
 # 便携 Node（Windows 上无 npm/node 时手工下载的运行时，不应入库）
 .tools/

@@ -9,16 +9,16 @@
 ## 要求
 
 - Node.js ≥ 20
-- Windows 本机 Git 推送请用 **`hutao`** 代替 `git`（见 [`doc/ops/git-workflow.md`](./doc/ops/git-workflow.md)）
+- Docker（运行 Agent 容器）
 
 ## 本地服务一览
 
 | 服务 | 命令 / 说明 | 地址 |
 |------|-------------|------|
-| **Kuroneko Agent** | `npm run dev:server`（`.env`） | API http://127.0.0.1:8787 |
-| **Shiro Agent** | `npm run dev:agent2`（`.env.agent2`） | API http://127.0.0.1:8788 |
-| **Gin Agent** | `npm run dev:gin`（`.env.gin`） | API http://127.0.0.1:8789 |
-| **Aoi Agent** | `npm run dev:aoi`（`.env.aoi`，GLM Coding Plan） | API http://127.0.0.1:8791 |
+| **Kuroneko Agent** | `npm run docker:agents:up:kuroneko` | API http://127.0.0.1:8787 |
+| **Shiro Agent** | `npm run docker:agents:up:shiro` | API http://127.0.0.1:8788 |
+| **Gin Agent** | `npm run docker:agents:up:gin` | API http://127.0.0.1:8789 |
+| **Aoi Agent** | `npm run docker:agents:up:aoi` | API http://127.0.0.1:8791 |
 | **Dashboard** | `npm run dev:dashboard` | http://127.0.0.1:5173（`/api`→8787，`/api2`→8788，`/api3`→8789，`/api4`→8791） |
 | **Chat Server** | `npm run dev:chat-server` | http://127.0.0.1:8790 |
 | **Web Chat H5** | `npm run dev:web-chat` | http://127.0.0.1:5180 |
@@ -39,25 +39,26 @@
 ## 安装与开发
 
 ```powershell
-cd D:\kuroneko
-copy .env.example .env
-# 编辑 .env：LLM Key、渠道（Discord 或 WebChat）等；Shiro 复制为 .env.agent2
-
+cd <repo-root>
+# 为每个 agent 准备 deploy/agent/env/<name>.env（见 deploy/agent/env/*.example）
 npm install
 npm run build
-npm run dev          # 8787 + Dashboard
+npm run docker:agents:up    # 四 Agent（Docker）
+npm run dev:dashboard       # 业务 Dashboard
 ```
 
-常用分包启动：
+常用命令：
 
 ```powershell
-npm run dev:server       # Kuroneko
-npm run dev:agent2       # Shiro（独立 data-shiro）
-npm run dev:gin          # Gin（独立 data-gin）
-npm run dev:aoi          # Aoi（独立 data-aoi，智谱 GLM Coding Plan）
-npm run dev:webchat-all  # chat-server + Web Chat H5
-npm run dev:ops          # Ops 日志台
+npm run docker:agents:up          # 四 Agent 全部
+npm run docker:agents:up:aoi      # 仅 Aoi
+npm run docker:agents:down        # 停止全部 Agent 容器
+npm run dev:dashboard             # 业务 Dashboard（5173）
+npm run dev:webchat-all           # 本地 chat-server + H5（可选，与 agent 无关）
+npm run dev:ops                   # Ops 日志台
 ```
+
+配置说明见 [`doc/ops/agent-docker.md`](./doc/ops/agent-docker.md)。**Agent 仅支持 Docker 启动**，不再提供 `dev:server` / `dev:agent2` 等本机进程模式。
 
 **离线调试**（未配渠道时）：`POST http://127.0.0.1:8787/api/outer/roundtrip` 触发外脑 roundtrip，写入 `<UTLRA_DATA_ROOT>/chat/threads.json`。
 
@@ -68,7 +69,7 @@ npm run dev:ops          # Ops 日志台
 | Provider | 典型变量 | 说明 |
 |----------|----------|------|
 | **智谱 GLM** | `ZHIPU_API_KEY`、`ZHIPU_MODEL=glm-5.1` | Coding Plan 须用 `ZHIPU_BASE_URL=https://open.bigmodel.cn/api/coding/paas/v4` |
-| **LocalModule** | `LOCALMODULE_API_KEY`、`UTLRA_INNER_LLM_PROVIDER=localmodule` | OpenAI 兼容端点（如 PocketCity） |
+| **LocalModule** | `LOCALMODULE_API_KEY`、`UTLRA_INNER_LLM_PROVIDER=localmodule` | OpenAI 兼容端点 |
 | **Kimi** | `KIMI_API_KEY` | Moonshot OpenAI 兼容 |
 
 **切勿**把 `.env` / `.env.agent2` 提交到 Git；Key 泄露请在控制台立即轮换。
@@ -117,15 +118,8 @@ npm run structurizr:check
 
 ## 同步到 Git
 
-Windows 本机请用 **`hutao`**（见 [`doc/ops/git-workflow.md`](./doc/ops/git-workflow.md)）：
-
-```powershell
-hutao status -sb
-hutao push origin main
-```
-
-推送凭据：GitHub PAT 或 SSH；GCM 异常时的变通方式见 [`doc/ops/git-workflow.md`](./doc/ops/git-workflow.md)。**勿在文档或聊天中粘贴 Token。**
+见 [`doc/ops/git-workflow.md`](./doc/ops/git-workflow.md)。**勿在文档或聊天中粘贴 Token。**
 
 ---
 
-本地运行时数据（`packages/server/data/`、`data-shiro/`、`apps/chat-server/data/`）均在 `.gitignore` 中，不会入库。
+本地运行时数据（`packages/server/data/`、`data-shiro/`、`data-gin/`、`data-aoi/`、`apps/chat-server/data/`）均在 `.gitignore` 中，不会入库。

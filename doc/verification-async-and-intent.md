@@ -46,7 +46,7 @@
    ```
 2. 进程退出,task → `AWAITING`
 3. **观察 1**:`.brain/pendings.json` 出现 ask_user pending,`intent` 三字段都有
-4. 用户回复 `"D:\\kuroneko"`(走 expectation 路径)/ 或 `"use cwd"`(走 fallback)
+4. 用户回复 `"/path/to/repo"`(走 expectation 路径)/ 或 `"use cwd"`(走 fallback)
 5. `ChangeWatcher` resolve pending → spawn 新 tick
 6. **观察 2**:新 tick 的 LLM prompt 里能看到"挂起时的意图"块
 7. **观察 3**:LLM 在新 tick 里"承接"——例如说 "回复符合 expectation(包含 D:\\),按计划列文件" 或 "回复 use cwd,走 fallback,改用 process.cwd()"

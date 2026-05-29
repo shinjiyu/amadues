@@ -1,19 +1,19 @@
 /**
- * 全链路闭环验证脚本 — M3 HeartbeatTaskBridge 集成验证
+ * 全链路闭环验证脚�?�?M3 HeartbeatTaskBridge 集成验证
  *
- * 验证链路：cron 注册 → 调度 → 执行 → 重试 → 告警
+ * 验证链路：cron 注册 �?调度 �?执行 �?重试 �?告警
  *
- * 运行方式：cd D:\kuroneko\packages\server && npx tsx src/openkuroneko/scheduled-tasks/test-full-chain.ts
+ * 运行方式：cd packages/server && npx tsx src/openkuroneko/scheduled-tasks/test-full-chain.ts
  *
- * 所有 API 签名已对照源码确认：
- *   - ScheduledTask.id (非 taskId)
- *   - CreateTaskRequest.createdBy (非 creator)
- *   - ToolCallAction.params (非 parameters)
- *   - PromptAction.content (非 prompt)
- *   - HeartbeatTaskBridge 构造: (config, deps)
+ * 所�?API 签名已对照源码确认：
+ *   - ScheduledTask.id (�?taskId)
+ *   - CreateTaskRequest.createdBy (�?creator)
+ *   - ToolCallAction.params (�?parameters)
+ *   - PromptAction.content (�?prompt)
+ *   - HeartbeatTaskBridge 构�? (config, deps)
  *   - executeToolCallAction 返回 string
- *   - CronParser.validate 是实例方法; validateCronExpression 是独立函数
- *   - SchedulerHealthSummary.state (非 status)
+ *   - CronParser.validate 是实例方�? validateCronExpression 是独立函�?
+ *   - SchedulerHealthSummary.state (�?status)
  */
 
 import * as path from 'node:path';
@@ -47,7 +47,7 @@ let tmpDir: string;
 
 function assert(condition: boolean, step: string, expected: string, actual: string): void {
   results.push({ step, passed: condition, expected, actual });
-  const icon = condition ? '✅' : '❌';
+  const icon = condition ? '�? : '�?;
   console.log(`  ${icon} ${step}: expected=${expected}, actual=${actual}`);
 }
 
@@ -58,7 +58,7 @@ async function sleep(ms: number): Promise<void> {
 // ── Step 1: Setup & Cron Validation ─────────────────────────────────────
 
 async function step1_cronValidation(): Promise<void> {
-  console.log('\n=== Step 1: Cron 表达式验证 ===');
+  console.log('\n=== Step 1: Cron 表达式验�?===');
 
   // Test valid cron expressions
   const valid1 = validateCronExpression('*/5 * * * *');
@@ -78,7 +78,7 @@ async function step1_cronValidation(): Promise<void> {
 // ── Step 2: Bridge Initialization ──────────────────────────────────────
 
 async function step2_bridgeInit(): Promise<void> {
-  console.log('\n=== Step 2: HeartbeatTaskBridge 初始化 ===');
+  console.log('\n=== Step 2: HeartbeatTaskBridge 初始�?===');
 
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scheduled-task-test-'));
 
@@ -235,7 +235,7 @@ async function step3_taskCreation(): Promise<void> {
 // ── Step 4: Scheduling & Execution ─────────────────────────────────────
 
 async function step4_schedulingAndExecution(): Promise<void> {
-  console.log('\n=== Step 4: 调度与执行 ===');
+  console.log('\n=== Step 4: 调度与执�?===');
 
   // Trigger heartbeat to process due tasks
   await bridge.onHeartbeat();
@@ -301,7 +301,7 @@ async function step5_manualTrigger(): Promise<void> {
 // ── Step 6: Pause & Resume ─────────────────────────────────────────────
 
 async function step6_pauseResume(): Promise<void> {
-  console.log('\n=== Step 6: 暂停与恢复 ===');
+  console.log('\n=== Step 6: 暂停与恢�?===');
 
   const paused = await bridge.pauseTask(taskId1);
   assert(paused.status === 'paused', '6a. task paused', 'paused', paused.status);
@@ -583,8 +583,8 @@ async function cleanup(): Promise<void> {
 
 async function main(): Promise<void> {
   console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║   Scheduled Task 全链路闭环验证 — M3 Integration Test      ║');
-  console.log('║   链路: cron注册 → 调度 → 执行 → 重试 → 告警              ║');
+  console.log('�?  Scheduled Task 全链路闭环验�?�?M3 Integration Test      �?);
+  console.log('�?  链路: cron注册 �?调度 �?执行 �?重试 �?告警              �?);
   console.log('╚══════════════════════════════════════════════════════════════╝');
 
   try {
@@ -617,11 +617,11 @@ async function main(): Promise<void> {
   const total = results.length;
 
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
-  console.log(`║   结果: ${passed}/${total} PASSED, ${failed} FAILED                          ║`);
+  console.log(`�?  结果: ${passed}/${total} PASSED, ${failed} FAILED                          ║`);
   console.log('╚══════════════════════════════════════════════════════════════╝');
 
   if (failed > 0) {
-    console.log('\n❌ Failed steps:');
+    console.log('\n�?Failed steps:');
     results.filter(r => !r.passed).forEach(r => {
       console.log(`  - ${r.step}: expected=${r.expected}, actual=${r.actual}`);
       if (r.error) console.log(`    error: ${r.error}`);

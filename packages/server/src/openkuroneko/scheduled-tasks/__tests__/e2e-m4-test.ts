@@ -1,9 +1,9 @@
 /**
  * E2E Integration Test: Scheduled-Task Full Chain (M4)
- * Covers: register 鈫?cron dispatch 鈫?execution 鈫?timeout 鈫?retry 鈫?unregister
+ * Covers: register �?cron dispatch �?execution �?timeout �?retry �?unregister
  *
  * Uses HeartbeatTaskBridge as the unified facade (real production code path).
- * No mocks for scheduler/store/monitor 鈥?only action callbacks are stubbed.
+ * No mocks for scheduler/store/monitor �?only action callbacks are stubbed.
  *
  * Known limitations observed (do NOT assert these):
  *   KL-1: scheduler_started BridgeEvent not captured (emit before wireUpEvents)
@@ -40,11 +40,11 @@ function assert(condition: boolean, label: string): void {
   testCounter++;
   if (condition) {
     passCount++;
-    console.log(`  鉁?[${testCounter}] ${label}`);
+    console.log(`  �?[${testCounter}] ${label}`);
   } else {
     failCount++;
     failures.push(`[${testCounter}] ${label}`);
-    console.error(`  鉁?[${testCounter}] ${label}`);
+    console.error(`  �?[${testCounter}] ${label}`);
   }
 }
 
@@ -298,7 +298,7 @@ async function main(): Promise<void> {
 
     const intervalTaskId = intervalTask.id;
 
-    // 鈹€鈹€鈹€ Step 6: Register retry once-task (will fail 鈫?retry) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    // 鈹€鈹€鈹€ Step 6: Register retry once-task (will fail �?retry) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     console.log('\n--- Step 6: Register Retry Once-Task ---');
     promptActionShouldFail = true; // Make prompt actions fail
     const retryTask = await bridge.createTask(makeRetryOnceTask(uniqueSuffix));
@@ -320,8 +320,8 @@ async function main(): Promise<void> {
     const createdEvents = bridgeEvents.filter(e => e.type === 'task_created');
     assertEqual(createdEvents.length, 4, 'Four task_created BridgeEvents');
 
-    // 鈹€鈹€鈹€ Step 8: Trigger heartbeat 鈫?execution 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-    console.log('\n--- Step 8: Trigger Heartbeat 鈫?Execution ---');
+    // 鈹€鈹€鈹€ Step 8: Trigger heartbeat �?execution 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    console.log('\n--- Step 8: Trigger Heartbeat �?Execution ---');
     await bridge.onHeartbeat();
     await delay(200); // Allow async execution to complete
 
@@ -452,7 +452,7 @@ async function main(): Promise<void> {
   }
 
   // 鈹€鈹€鈹€ Summary 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-  console.log('\n鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲');
+  console.log('\n鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨�?);
   console.log(`  Total: ${testCounter}  Passed: ${passCount}  Failed: ${failCount}`);
   if (failures.length > 0) {
     console.log('\n  FAILED:');
@@ -460,7 +460,7 @@ async function main(): Promise<void> {
       console.log(`    ${f}`);
     }
   }
-  console.log('鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲');
+  console.log('鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨�?);
 
   const exitCode = failCount > 0 ? 1 : 0;
   process.exit(exitCode);

@@ -81,14 +81,20 @@ export function saveAutonomyPolicy(dataRoot: string, policy: AutonomyPolicy): vo
 
 export function patchAutonomyPolicy(
   dataRoot: string,
-  patch: Partial<Pick<AutonomyPolicy, 'enabled' | 'hardGates' | 'taskTypes'>>,
+  patch: Partial<{
+    enabled: boolean;
+    hardGates: Partial<AutonomyPolicy['hardGates']>;
+    taskTypes: Record<string, Partial<AutonomyTaskTypeConfig>>;
+  }>,
 ): AutonomyPolicy {
   const current = loadAutonomyPolicy(dataRoot);
   const next: AutonomyPolicy = {
     ...current,
     ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
     hardGates: patch.hardGates ? { ...current.hardGates, ...patch.hardGates } : current.hardGates,
-    taskTypes: patch.taskTypes ? mergeTaskTypes({ ...current.taskTypes, ...patch.taskTypes }) : current.taskTypes,
+    taskTypes: patch.taskTypes
+      ? mergeTaskTypes({ ...current.taskTypes, ...patch.taskTypes } as Record<string, AutonomyTaskTypeConfig>)
+      : current.taskTypes,
     updatedAt: new Date().toISOString(),
     updatedBy: 'system',
   };

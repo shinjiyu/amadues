@@ -8,7 +8,7 @@
   "services": [
     {
       "id": "kuroneko-agent-kuroneko",
-      "label": "Agent: Kuroneko (8787)",
+      "label": "Agent: Kuroneko (8787, Docker)",
       "page": "kuroneko",
       "commands": {
         "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-agent-kuroneko.ps1",
@@ -20,7 +20,7 @@
     },
     {
       "id": "kuroneko-agent-shiro",
-      "label": "Agent: Shiro (8788)",
+      "label": "Agent: Shiro (8788, Docker)",
       "page": "kuroneko",
       "commands": {
         "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-agent-shiro.ps1",
@@ -32,7 +32,7 @@
     },
     {
       "id": "kuroneko-agent-gin",
-      "label": "Agent: Gin (8789)",
+      "label": "Agent: Gin (8789, Docker)",
       "page": "kuroneko",
       "commands": {
         "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-agent-gin.ps1",
@@ -44,7 +44,7 @@
     },
     {
       "id": "kuroneko-agent-aoi",
-      "label": "Agent: Aoi (8791)",
+      "label": "Agent: Aoi (8791, Docker)",
       "page": "kuroneko",
       "commands": {
         "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-agent-aoi.ps1",

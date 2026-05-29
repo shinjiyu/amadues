@@ -102,7 +102,10 @@ async function draftKpiGoal(
     memoryStore: deps.memoryStore ?? deps.toolCtx.memoryStore,
   });
 
-  const { raw } = await llmRawChatCompletion<{ choices?: Array<{ message?: { content?: string } }> }>({
+  const { raw } = await llmRawChatCompletion<{
+    choices?: Array<{ message?: { content?: string } }>;
+    error?: { message?: string };
+  }>({
     provider: env.provider,
     apiKey: env.apiKey,
     baseUrl: env.baseUrl,
@@ -184,7 +187,10 @@ async function draftCasualChatText(
   env: InnerLlmEnv,
   soul: string,
 ): Promise<string | null> {
-  const { raw } = await llmRawChatCompletion<{ choices?: Array<{ message?: { content?: string } }> }>({
+  const { raw } = await llmRawChatCompletion<{
+    choices?: Array<{ message?: { content?: string } }>;
+    error?: { message?: string };
+  }>({
     provider: env.provider,
     apiKey: env.apiKey,
     baseUrl: env.baseUrl,

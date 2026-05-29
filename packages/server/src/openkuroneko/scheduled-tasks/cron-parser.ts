@@ -13,7 +13,7 @@
  *   - Asterisk (*): any value
  *   - Comma (1,3,5): list of values
  *   - Hyphen (1-5): range of values
- *   - Slash (ASTERISK/5): step values â€” e.g. every 5 minutes
+ *   - Slash (ASTERISK/5): step values â€?e.g. every 5 minutes
  *   - Combined: 1-30/5 = from 1 to 30, step 5
  *
  * No external dependencies required.

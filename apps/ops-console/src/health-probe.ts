@@ -47,9 +47,9 @@ export class HealthProbe {
         }
       }
 
-      // 我们启动的服务：跑健康检查
+      // 我们启动的服务，或 Docker 外部托管但可 HTTP 探活
       if (
-        (r.status === 'starting' || r.status === 'running' || r.status === 'unhealthy') &&
+        (r.status === 'starting' || r.status === 'running' || r.status === 'unhealthy' || r.status === 'external') &&
         r.def.healthUrl
       ) {
         const ok = await checkHealth(r.def.healthUrl);

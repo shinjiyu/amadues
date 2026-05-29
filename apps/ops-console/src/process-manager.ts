@@ -6,6 +6,7 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { execFile } from 'node:child_process';
+import path from 'node:path';
 import type { ServiceDef } from './service-registry.js';
 
 export type ServiceStatus =
@@ -90,6 +91,10 @@ export class ProcessManager {
       return { ok: true };
     }
     if (r.status === 'external') {
+      if (r.def.healthUrl) {
+        // Docker agent：容器已跑、端口占用但无子进程
+        return this.startViaScript(id, r);
+      }
       return { ok: false, error: '端口被外部进程占用，请先释放或停止该进程' };
     }
 
@@ -161,12 +166,97 @@ export class ProcessManager {
     return { ok: true };
   }
 
+  private startViaScript(id: string, r: ServiceRuntime): { ok: boolean; error?: string } {
+    this.stopRequested.delete(id);
+    r.status = 'starting';
+    r.startedAt = Date.now();
+    r.lastExitCode = null;
+    r.lastExitSignal = null;
+    r.lastError = null;
+    r.lastHealthOk = null;
+    r.lastHealthCheck = null;
+    r.externalPid = null;
+    return this.spawnChild(id, r);
+  }
+
+  private spawnChild(id: string, r: ServiceRuntime): { ok: boolean; error?: string } {
+    const sysMsg = `[ops] spawn: ${r.def.cmd} ${r.def.args.join(' ')}  (cwd=${r.def.cwd})`;
+    this.appendLog(id, 'sys', sysMsg);
+
+    let child: ChildProcess;
+    try {
+      child = spawn(r.def.cmd, r.def.args, {
+        cwd: r.def.cwd,
+        env: { ...process.env },
+        shell: isWin,
+        detached: !isWin,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (e) {
+      r.status = 'crashed';
+      r.lastError = e instanceof Error ? e.message : String(e);
+      this.appendLog(id, 'sys', `[ops] spawn failed: ${r.lastError}`);
+      return { ok: false, error: r.lastError };
+    }
+
+    r.pid = child.pid ?? null;
+    this.children.set(id, child);
+
+    child.stdout?.on('data', (chunk: Buffer) =>
+      this.appendLog(id, 'stdout', chunk.toString('utf8')),
+    );
+    child.stderr?.on('data', (chunk: Buffer) =>
+      this.appendLog(id, 'stderr', chunk.toString('utf8')),
+    );
+
+    child.on('exit', (code, signal) => {
+      r.lastExitCode = code;
+      r.lastExitSignal = signal ?? null;
+      r.pid = null;
+      this.children.delete(id);
+      const wasStop = this.stopRequested.has(id);
+      this.stopRequested.delete(id);
+      if (wasStop) {
+        r.status = 'idle';
+        this.appendLog(id, 'sys', `[ops] stopped (code=${code} signal=${signal ?? '-'})`);
+      } else {
+        r.status = 'crashed';
+        this.appendLog(
+          id,
+          'sys',
+          `[ops] crashed (code=${code} signal=${signal ?? '-'})`,
+        );
+      }
+    });
+
+    child.on('error', (e) => {
+      r.lastError = e.message;
+      this.appendLog(id, 'sys', `[ops] child error: ${e.message}`);
+    });
+
+    return { ok: true };
+  }
+
   async stop(id: string): Promise<{ ok: boolean; error?: string }> {
     const r = this.runtimes.get(id);
     if (!r) return { ok: false, error: 'unknown service' };
     const child = this.children.get(id);
     if (!child || child.pid == null) {
-      // 没我们 spawn 的子进程；如果是 external 状态用户应自行处理
+      if (r.def.stopScript) {
+        r.status = 'stopping';
+        this.appendLog(id, 'sys', `[ops] stop via script: ${r.def.stopScript}`);
+        try {
+          await runStopScript(r.def.cwd, r.def.stopScript);
+          r.status = 'idle';
+          r.externalPid = null;
+          return { ok: true };
+        } catch (e) {
+          r.lastError = e instanceof Error ? e.message : String(e);
+          r.status = 'external';
+          return { ok: false, error: r.lastError };
+        }
+      }
       if (r.status === 'external') {
         return { ok: false, error: '该端口被外部进程占用，无法通过本工具停止' };
       }
@@ -192,7 +282,10 @@ export class ProcessManager {
     const r = this.runtimes.get(id);
     if (!r) return { ok: false, error: 'unknown service' };
     const wasRunning =
-      r.status === 'running' || r.status === 'starting' || r.status === 'unhealthy';
+      r.status === 'running' ||
+      r.status === 'starting' ||
+      r.status === 'unhealthy' ||
+      r.status === 'external';
     if (wasRunning) {
       const sr = await this.stop(id);
       if (!sr.ok) return sr;
@@ -213,7 +306,7 @@ export class ProcessManager {
     r.lastHealthCheck = now;
     if (ok) {
       r.lastHealthOk = now;
-      if (r.status === 'starting' || r.status === 'unhealthy') {
+      if (r.status === 'starting' || r.status === 'unhealthy' || r.status === 'external') {
         r.status = 'running';
       }
     } else if (r.status === 'running' || r.status === 'starting') {
@@ -289,4 +382,16 @@ async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<boo
     await new Promise((r) => setTimeout(r, 100));
   }
   return predicate();
+}
+
+function runStopScript(cwd: string, relScript: string): Promise<void> {
+  const scriptPath = path.join(cwd, relScript);
+  return new Promise((resolve, reject) => {
+    execFile(
+      'powershell',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+      { cwd, windowsHide: true },
+      (err) => (err ? reject(err) : resolve()),
+    );
+  });
 }

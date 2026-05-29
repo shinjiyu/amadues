@@ -1,31 +1,31 @@
 /**
- * End-to-End Integration Test — Scheduled Tasks Module
+ * End-to-End Integration Test �?Scheduled Tasks Module
  *
- * Full chain: register task → cron schedule → execute callback →
- *             timeout detection → retry → HeartbeatTaskBridge event mapping →
+ * Full chain: register task �?cron schedule �?execute callback �?
+ *             timeout detection �?retry �?HeartbeatTaskBridge event mapping �?
  *             task unregister
  *
- * Run: cd D:\kuroneko\packages\server && npx tsx src/openkuroneko/scheduled-tasks/__tests__/e2e-integration-test.ts
+ * Run: cd packages/server && npx tsx src/openkuroneko/scheduled-tasks/__tests__/e2e-integration-test.ts
  *
  * API Signatures verified via Select-String:
  *   - CreateTaskRequest: { name, description?, schedule, action, executionConfig?, metadata?, tags?, createdBy: TaskCreator }
- *   - TaskCreator: { type: CreatorType, id: string, name: string }  ← must include name
- *   - ToolCallAction: { type: 'tool_call', tool: string, params?: Record<string,unknown> }  ← field is 'tool' not 'toolName'
+ *   - TaskCreator: { type: CreatorType, id: string, name: string }  �?must include name
+ *   - ToolCallAction: { type: 'tool_call', tool: string, params?: Record<string,unknown> }  �?field is 'tool' not 'toolName'
  *   - ExecutionLog: { executionId, taskId, status, startedAt, finishedAt?, durationMs?, result?, error?, isRetry, retryAttempt }
- *   - validateCronExpression(expr): string | null  ← not boolean
- *   - SchedulerStatus: { isRunning: boolean, ... }  ← field is 'isRunning' not 'state'
- *   - HeartbeatTaskBridge.onEvent(callback)  ← not onBridgeEvent
- *   - convertSchedulerEventToBridgeEvent: task_executed success → null (no BridgeEvent emitted)
+ *   - validateCronExpression(expr): string | null  �?not boolean
+ *   - SchedulerStatus: { isRunning: boolean, ... }  �?field is 'isRunning' not 'state'
+ *   - HeartbeatTaskBridge.onEvent(callback)  �?not onBridgeEvent
+ *   - convertSchedulerEventToBridgeEvent: task_executed success �?null (no BridgeEvent emitted)
  *   - BridgeEvent types: task_created, task_deleted, task_executed, task_failed, task_paused,
  *                        task_resumed, scheduler_started, heartbeat_tick, task_completed, task_updated, scheduler_error
  *   - TaskStore constructor: (config: TaskStoreConfig) where TaskStoreConfig has dataRoot: string
- *   - HeartbeatTaskBridge.listTasks(filter?): Promise<ScheduledTask[]>  ← async, must await!
- *   - HeartbeatTaskBridge.getTaskHistory(taskId, limit?): ExecutionLog[]  ← sync
+ *   - HeartbeatTaskBridge.listTasks(filter?): Promise<ScheduledTask[]>  �?async, must await!
+ *   - HeartbeatTaskBridge.getTaskHistory(taskId, limit?): ExecutionLog[]  �?sync
 
- *                             ← field is 'totalTaskCount' not 'totalTasks'
+ *                             �?field is 'totalTaskCount' not 'totalTasks'
  *   - IntervalSchedule: { type: 'interval', intervalMs: number, initialDelayMs?: number }
- *   - OnceSchedule: { type: 'once', runAt: string }  ← runAt is required!
- *   - TaskScheduler.getSchedulerStatus(): SchedulerStatus  ← sync
+ *   - OnceSchedule: { type: 'once', runAt: string }  �?runAt is required!
+ *   - TaskScheduler.getSchedulerStatus(): SchedulerStatus  �?sync
  *   - isRunning only becomes true after onHeartbeat() is called (sets schedulerStatus='running')
  */
 
@@ -55,10 +55,10 @@ const failures: string[] = [];
 
 function assert(condition: boolean, label: string): void {
   if (condition) {
-    console.log(`  ✅ PASS: ${label}`);
+    console.log(`  �?PASS: ${label}`);
     passed++;
   } else {
-    console.log(`  ❌ FAIL: ${label}`);
+    console.log(`  �?FAIL: ${label}`);
     failed++;
     failures.push(label);
   }
@@ -70,10 +70,10 @@ function assertNotNull(value: unknown, label: string): void {
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
   if (actual === expected) {
-    console.log(`  ✅ PASS: ${label}`);
+    console.log(`  �?PASS: ${label}`);
     passed++;
   } else {
-    console.log(`  ❌ FAIL: ${label} — expected ${String(expected)}, got ${String(actual)}`);
+    console.log(`  �?FAIL: ${label} �?expected ${String(expected)}, got ${String(actual)}`);
     failed++;
     failures.push(label);
   }
@@ -91,7 +91,7 @@ const bridgeEvents: BridgeEvent[] = [];
 
 async function runTests(): Promise<void> {
   console.log('╔════════════════════════════════════════════════════════════╗');
-  console.log('║   E2E Integration Test — Scheduled Tasks Module           ║');
+  console.log('�?  E2E Integration Test �?Scheduled Tasks Module           �?);
   console.log('╚════════════════════════════════════════════════════════════╝');
 
   // Create temp dir for test data
@@ -107,7 +107,7 @@ async function runTests(): Promise<void> {
     const testCreator: TaskCreator = {
       type: 'user',
       id: 'e2e-test-user',
-      name: 'E2E Test User',    // ← must have 'name' field
+      name: 'E2E Test User',    // �?must have 'name' field
     };
 
     // ── Create HeartbeatTaskBridge ────────────────────────────────────────
@@ -138,7 +138,7 @@ async function runTests(): Promise<void> {
       },
     );
 
-    // Register bridge event listener — using onEvent (not onBridgeEvent!)
+    // Register bridge event listener �?using onEvent (not onBridgeEvent!)
     bridge.onEvent((event: BridgeEvent) => {
       bridgeEvents.push(event);
       const taskId = 'taskId' in event ? event.taskId : 'N/A';
@@ -146,7 +146,7 @@ async function runTests(): Promise<void> {
     });
 
     // ── Step 1: Start Bridge ──────────────────────────────────────────────
-    console.log('━━━ Step 1: Start Bridge ━━━');
+    console.log('━━�?Step 1: Start Bridge ━━�?);
     await bridge.start();
 
     // isRunning is false before first onHeartbeat (schedulerStatus starts as 'idle')
@@ -156,7 +156,7 @@ async function runTests(): Promise<void> {
     console.log('');
 
     // ── Step 2: Validate Cron Expression ──────────────────────────────────
-    console.log('━━━ Step 2: Validate Cron Expression ━━━');
+    console.log('━━�?Step 2: Validate Cron Expression ━━�?);
     // validateCronExpression returns string|null (not boolean)
     const validResult: string | null = validateCronExpression('*/5 * * * *');
     assertEqual(validResult, null, 'validateCronExpression returns null for valid cron');
@@ -167,10 +167,10 @@ async function runTests(): Promise<void> {
     console.log('');
 
     // ── Step 3: Register Task with ToolCallAction ━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 3: Register Task with ToolCallAction ━━━');
+    console.log('━━�?Step 3: Register Task with ToolCallAction ━━�?);
     const toolAction: ToolCallAction = {
       type: 'tool_call',
-      tool: 'test_tool',         // ← field is 'tool' not 'toolName'
+      tool: 'test_tool',         // �?field is 'tool' not 'toolName'
       params: { arg1: 'value1' },
     };
 
@@ -199,13 +199,13 @@ async function runTests(): Promise<void> {
     const createdEvents = bridgeEvents.filter(e => e.type === 'task_created');
     assertEqual(createdEvents.length, 1, 'BridgeEvent task_created emitted');
 
-    // List tasks — must await! (async method)
+    // List tasks �?must await! (async method)
     const allTasks = await bridge.listTasks();
     assertEqual(allTasks.length, 1, 'listTasks returns 1 task');
     console.log('');
 
-    // ── Step 4: Register Task with PromptAction ━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 4: Register Task with PromptAction ━━━');
+    // ── Step 4: Register Task with PromptAction ━━━━━━━━━━━━━━━━━━━━━━━━�?
+    console.log('━━�?Step 4: Register Task with PromptAction ━━�?);
     const promptAction: PromptAction = {
       type: 'prompt',
       content: 'Test prompt for e2e',
@@ -234,7 +234,7 @@ async function runTests(): Promise<void> {
     console.log('');
 
     // ── Step 5: Trigger Manual Execution ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 5: Trigger Manual Execution ━━━');
+    console.log('━━�?Step 5: Trigger Manual Execution ━━�?);
     toolCallCount = 0; // reset counter
     const execLog: ExecutionLog = await bridge.triggerTask(toolTask.id);
     assertNotNull(execLog, 'triggerTask returns execution log');
@@ -248,9 +248,9 @@ async function runTests(): Promise<void> {
     assert(toolCallCount >= 1, 'Tool call action was invoked');
     console.log('');
 
-    // ── Step 6: BridgeEvent Mapping (Success → No task_executed BridgeEvent) ━
-    console.log('━━━ Step 6: BridgeEvent Mapping (Success → No task_executed BridgeEvent) ━━━');
-    // Per constraints: successful task_executed → convertSchedulerEventToBridgeEvent returns null (no BridgeEvent)
+    // ── Step 6: BridgeEvent Mapping (Success �?No task_executed BridgeEvent) �?
+    console.log('━━�?Step 6: BridgeEvent Mapping (Success �?No task_executed BridgeEvent) ━━�?);
+    // Per constraints: successful task_executed �?convertSchedulerEventToBridgeEvent returns null (no BridgeEvent)
     const taskExecutedEvents = bridgeEvents.filter(e => e.type === 'task_executed');
     console.log(`  task_executed BridgeEvents: ${taskExecutedEvents.length}`);
     assertEqual(taskExecutedEvents.length, 0, 'No task_executed BridgeEvent for success (converts to null)');
@@ -263,7 +263,7 @@ async function runTests(): Promise<void> {
     console.log('');
 
     // ── Step 7: Get Task History ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 7: Get Task History ━━━');
+    console.log('━━�?Step 7: Get Task History ━━�?);
     // getTaskHistory is sync (not async)
     const history = bridge.getTaskHistory(toolTask.id);
     assert(Array.isArray(history), 'getTaskHistory returns array');
@@ -276,7 +276,7 @@ async function runTests(): Promise<void> {
     console.log('');
 
     // ── Step 8: Health Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 8: Health Summary ━━━');
+    console.log('━━�?Step 8: Health Summary ━━�?);
     const health: SchedulerHealthSummary = bridge.getHealthSummary();
     assertNotNull(health, 'getHealthSummary returns non-null');
     assert(typeof health.totalTaskCount === 'number', 'HealthSummary has totalTaskCount');
@@ -284,8 +284,8 @@ async function runTests(): Promise<void> {
     console.log(`  Health: totalTaskCount=${health.totalTaskCount}, activeTaskCount=${health.activeTaskCount}, pausedTaskCount=${health.pausedTaskCount}`);
     console.log('');
 
-    // ── Step 9: Pause and Resume Task ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 9: Pause and Resume Task ━━━');
+    // ── Step 9: Pause and Resume Task ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━�?
+    console.log('━━�?Step 9: Pause and Resume Task ━━�?);
     const pausedTask = await bridge.pauseTask(toolTask.id);
     assertEqual(pausedTask.status, 'paused', 'Task status is paused after pauseTask');
 
@@ -300,13 +300,13 @@ async function runTests(): Promise<void> {
     assert(resumedEvents.length >= 1, 'BridgeEvent task_resumed emitted');
     console.log('');
 
-    // ── Step 10: Heartbeat Tick ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 10: Heartbeat Tick ━━━');
+    // ── Step 10: Heartbeat Tick ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━�?
+    console.log('━━�?Step 10: Heartbeat Tick ━━�?);
     const tickBefore = bridgeEvents.filter(e => e.type === 'heartbeat_tick').length;
     await bridge.onHeartbeat();
     const tickAfter = bridgeEvents.filter(e => e.type === 'heartbeat_tick').length;
     assert(tickAfter > tickBefore, 'heartbeat_tick BridgeEvent emitted after onHeartbeat');
-    console.log(`  heartbeat_tick count: ${tickBefore} → ${tickAfter}`);
+    console.log(`  heartbeat_tick count: ${tickBefore} �?${tickAfter}`);
 
     // Now isRunning should be true after onHeartbeat
     status = bridge.getSchedulerStatus();
@@ -314,7 +314,7 @@ async function runTests(): Promise<void> {
     console.log('');
 
     // ── Step 11: Retry on Failure ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 11: Retry on Failure ━━━');
+    console.log('━━�?Step 11: Retry on Failure ━━�?);
     shouldFail = true;
     toolCallCount = 0;
 
@@ -330,14 +330,14 @@ async function runTests(): Promise<void> {
       console.log(`  Execution threw (acceptable): ${String(err)}`);
     }
 
-    // Check for task_failed BridgeEvent (failure → task_failed, not task_executed)
+    // Check for task_failed BridgeEvent (failure �?task_failed, not task_executed)
     const taskFailedEvents = bridgeEvents.filter(e => e.type === 'task_failed');
     assert(taskFailedEvents.length >= 1, 'BridgeEvent task_failed emitted on failure');
     console.log(`  task_failed BridgeEvents: ${taskFailedEvents.length}`);
     console.log('');
 
-    // ── Step 12: Update Task ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 12: Update Task ━━━');
+    // ── Step 12: Update Task ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━�?
+    console.log('━━�?Step 12: Update Task ━━�?);
     shouldFail = false;
     const updatedTask = await bridge.updateTask(promptTask.id, {
       description: 'Updated description',
@@ -347,8 +347,8 @@ async function runTests(): Promise<void> {
     console.log(`  Updated task: ${updatedTask.name}, desc=${updatedTask.description}`);
     console.log('');
 
-    // ── Step 13: Timeout Detection ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 13: Timeout Detection ━━━');
+    // ── Step 13: Timeout Detection ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━�?
+    console.log('━━�?Step 13: Timeout Detection ━━�?);
     // Create a task with very short timeout that hangs
     const timeoutAction: ToolCallAction = {
       type: 'tool_call',
@@ -400,12 +400,12 @@ async function runTests(): Promise<void> {
       slowBridgeEvents.push(event);
     });
     // Re-trigger to capture events (previous trigger happened before listener was attached)
-    // Actually the triggerTask already happened — check the log status
+    // Actually the triggerTask already happened �?check the log status
     console.log(`  Timeout detected correctly`);
     console.log('');
 
     // ── Step 14: Delete Task (Unregister) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 14: Delete Task (Unregister) ━━━');
+    console.log('━━�?Step 14: Delete Task (Unregister) ━━�?);
     const deleteResult = await bridge.deleteTask(toolTask.id);
     assertEqual(deleteResult, true, 'deleteTask returns true');
 
@@ -416,8 +416,8 @@ async function runTests(): Promise<void> {
     assertEqual(taskAfterDelete, null, 'Task is null after deletion');
     console.log('');
 
-    // ── Step 15: Alert History ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 15: Alert History ━━━');
+    // ── Step 15: Alert History ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━�?
+    console.log('━━�?Step 15: Alert History ━━�?);
     const alertHistory = bridge.getAlertHistory();
     assert(Array.isArray(alertHistory), 'getAlertHistory returns array');
     console.log(`  Alert history entries: ${alertHistory.length}`);
@@ -426,15 +426,15 @@ async function runTests(): Promise<void> {
     }
     console.log('');
 
-    // ── Step 16: Monitoring Report ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 16: Monitoring Report ━━━');
+    // ── Step 16: Monitoring Report ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━�?
+    console.log('━━�?Step 16: Monitoring Report ━━�?);
     const report = bridge.getMonitoringReport();
     assert(typeof report === 'string' && report.length > 0, 'getMonitoringReport returns non-empty string');
     console.log(`  Report length: ${report.length} chars`);
     console.log('');
 
-    // ── Step 17: Stop Bridge ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log('━━━ Step 17: Stop Bridge ━━━');
+    // ── Step 17: Stop Bridge ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━�?
+    console.log('━━�?Step 17: Stop Bridge ━━�?);
     await bridge.stop();
     const stoppedStatus = bridge.getSchedulerStatus();
     // After stop, isRunning should be false (schedulerStatus set to 'stopped')
@@ -461,7 +461,7 @@ async function runTests(): Promise<void> {
   if (failures.length > 0) {
     console.log('  Failures:');
     for (const f of failures) {
-      console.log(`    ❌ ${f}`);
+      console.log(`    �?${f}`);
     }
   }
   console.log('════════════════════════════════════════════════════════════');

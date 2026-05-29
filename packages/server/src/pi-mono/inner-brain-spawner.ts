@@ -18,7 +18,15 @@ import type { WorkerStatus } from './inner-brain-worker.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // entry script 沿用普通路径：Node 对 entry 解析较宽松；
 // 反而若传 `file://` URL，tsx loader 会把它当成相对路径再与 cwd 拼接，触发 ERR_MODULE_NOT_FOUND。
-const WORKER_SCRIPT = path.join(__dirname, 'inner-brain-worker.ts');
+const WORKER_SCRIPT_TS = path.join(__dirname, 'inner-brain-worker.ts');
+const WORKER_SCRIPT_JS = path.join(__dirname, 'inner-brain-worker.js');
+
+function resolveWorkerLaunch(): string[] {
+  if (fs.existsSync(WORKER_SCRIPT_JS)) {
+    return [WORKER_SCRIPT_JS];
+  }
+  return ['--import', TSX_ESM_PATH, WORKER_SCRIPT_TS];
+}
 
 /** 解析 tsx/esm loader file:// URL，用于子进程 --import 参数 */
 function resolveTsxEsm(): string {
@@ -76,7 +84,7 @@ export function isPidAlive(pid: number): boolean {
 export function spawnInnerBrainWorker(params: SpawnInnerBrainParams): SpawnedWorker {
   const child = spawn(
     process.execPath,
-    ['--import', TSX_ESM_PATH, WORKER_SCRIPT],
+    resolveWorkerLaunch(),
     {
       env: {
         ...process.env,

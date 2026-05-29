@@ -1,5 +1,5 @@
 /**
- * Integration Entry â€” HeartbeatTaskBridge â†” OuterHeartbeat adapter.
+ * Integration Entry â€?HeartbeatTaskBridge â†?OuterHeartbeat adapter.
  *
  * Compatibility helper around the scheduled-tasks engine.
  * New imports should prefer the re-export from `src/scheduler/index.ts`;
@@ -46,8 +46,8 @@ export interface ScheduledTaskIntegrationConfig
 
   /**
    * Optional: how the bridge integrates into the existing heartbeat cycle.
-   * - 'passive'  (default) â€” bridge only executes tasks when onHeartbeat() is called
-   * - 'active'   â€” bridge registers its own timer (not recommended; let OuterHeartbeat drive)
+   * - 'passive'  (default) â€?bridge only executes tasks when onHeartbeat() is called
+   * - 'active'   â€?bridge registers its own timer (not recommended; let OuterHeartbeat drive)
    */
   mode?: 'passive' | 'active';
 

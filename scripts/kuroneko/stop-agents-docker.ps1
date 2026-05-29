@@ -1,3 +1,3 @@
 param()
 . "$PSScriptRoot\_agent-docker.ps1"
-Stop-AgentDockerService -Profile 'aoi'
+Stop-AllAgentsDocker

@@ -1,39 +1,43 @@
 # Kuroneko 服务表 — 与 apps/ops-console/service-registry.ts 对齐
-$script:KuronekoRepoRoot = if ($env:KURONEKO_ROOT) { $env:KURONEKO_ROOT } else { 'D:\kuroneko' }
+$script:KuronekoRepoRoot = if ($env:KURONEKO_ROOT) { $env:KURONEKO_ROOT } else { (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 $script:KuronekoPidDir = Join-Path $KuronekoRepoRoot 'scripts\local-dashboard\.pids'
 
 $script:KuronekoServices = @{
   'agent-kuroneko' = @{
-    Label          = 'Agent: Kuroneko'
-    NpmScript      = 'dev:server'
+    Label          = 'Agent: Kuroneko (Docker)'
+    DockerProfile  = 'kuroneko'
+    ContainerName  = 'utlra-agent-kuroneko'
     Port           = 8787
     HealthUrl      = 'http://127.0.0.1:8787/api/health'
     OpenUrl        = $null
-    StartupWaitSec = 120
+    StartupWaitSec = 180
   }
   'agent-shiro' = @{
-    Label          = 'Agent: Shiro'
-    NpmScript      = 'dev:agent2'
+    Label          = 'Agent: Shiro (Docker)'
+    DockerProfile  = 'shiro'
+    ContainerName  = 'utlra-agent-shiro'
     Port           = 8788
     HealthUrl      = 'http://127.0.0.1:8788/api/health'
     OpenUrl        = $null
-    StartupWaitSec = 120
+    StartupWaitSec = 180
   }
   'agent-gin' = @{
-    Label          = 'Agent: Gin'
-    NpmScript      = 'dev:gin'
+    Label          = 'Agent: Gin (Docker)'
+    DockerProfile  = 'gin'
+    ContainerName  = 'utlra-agent-gin'
     Port           = 8789
     HealthUrl      = 'http://127.0.0.1:8789/api/health'
     OpenUrl        = $null
-    StartupWaitSec = 120
+    StartupWaitSec = 180
   }
   'agent-aoi' = @{
-    Label          = 'Agent: Aoi'
-    NpmScript      = 'dev:aoi'
+    Label          = 'Agent: Aoi (Docker)'
+    DockerProfile  = 'aoi'
+    ContainerName  = 'utlra-agent-aoi'
     Port           = 8791
     HealthUrl      = 'http://127.0.0.1:8791/api/health'
     OpenUrl        = $null
-    StartupWaitSec = 120
+    StartupWaitSec = 180
   }
   'dashboard' = @{
     Label          = 'Dashboard'

@@ -26,7 +26,7 @@
 
 - **用例**: §9.6 WebChatChannel 适配器：agent 收到 human 消息并能回复（与 Discord 模式等价）
 - **信息**: `Error: onAgentMessage timeout
-    at Timeout._onTimeout (D:\kuroneko\apps\chat-server\src\e2e.test.ts:359:43)
+    at Timeout._onTimeout (<repo>/apps/chat-server/src/e2e.test.ts:359:43)
     at listOnTimeout (node:internal/timers:588:17)
     at processTimers (node:internal/timers:523:7)`
 

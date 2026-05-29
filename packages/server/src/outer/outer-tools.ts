@@ -26,7 +26,6 @@ import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import { formatKpiReflexionBlock } from './kpi-registry.js';
 import { findLiveBurstForKpi } from './kpi-dispatch-guard.js';
-import { loadAutonomyPolicy } from './autonomy-policy-store.js';
 import { checkRunningInnerBrainCapacity } from './inner-brain-capacity.js';
 import { formatKpiDigest, suggestKpiAction, buildKpiBurstLinks } from './kpi-progress.js';
 import { ingestDeliverables } from './deliverables-ingest.js';
@@ -1731,17 +1730,17 @@ function execUpdateAutonomyPolicy(
     patch.enabled = enabled;
   }
 
-  const intFields: Array<[keyof AutonomyHardGates, string | undefined]> = [
+  const intFields = [
     ['maxRunningInnerBrains', args.max_running_inner_brains],
     ['maxAwaitingInnerBrains', args.max_awaiting_inner_brains],
     ['maxLlmInFlight', args.max_llm_in_flight],
     ['minMsSinceLastAutonomousAction', args.min_ms_since_last_autonomous_action],
     ['blockIfOrchestratorQueuedAbove', args.block_if_orchestrator_queued_above],
-  ];
+  ] as const;
   for (const [key, raw] of intFields) {
     const n = parseOptionalInt(raw);
     if (n === null) continue;
-    if (n < 0) return { replied: false, output: `${String(key)} 须为非负整数。` };
+    if (n < 0) return { replied: false, output: `${key} 须为非负整数。` };
     hardGates[key] = n;
   }
 

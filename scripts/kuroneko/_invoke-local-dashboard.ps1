@@ -15,7 +15,8 @@ function Get-KuronekoRepoRoot {
   if ($candidate -and (Test-Path (Join-Path $candidate 'scripts\local-dashboard\health.ps1'))) {
     return $candidate
   }
-  return 'D:\kuroneko'
+  Write-Error "Cannot resolve repo root from $script"
+  exit 2
 }
 
 $root = Get-KuronekoRepoRoot

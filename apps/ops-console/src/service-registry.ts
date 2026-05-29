@@ -28,63 +28,70 @@ export interface ServiceDef {
   dependsOn: string[];
   /** 启动后多少 ms 内健康检查不通过仍算 STARTING（避免 npm 编译期误报 unhealthy） */
   healthGraceMs: number;
+  /** Docker 等外部托管：无子进程时 stop 调用此 PowerShell 脚本（相对 repo 根） */
+  stopScript?: string;
 }
 
 export function buildServiceRegistry(repoRoot: string): ServiceDef[] {
   const cwd = repoRoot;
+  const ps = (rel: string) => path.join(cwd, rel);
 
   return [
     {
       id: 'agent-kuroneko',
       name: 'Agent: Kuroneko',
-      description: '主助手（默认 .env，端口 8787）— Discord 渠道桥同进程运行',
-      cmd: 'npm',
-      args: ['run', 'dev:server'],
+      description: '主助手（Docker，deploy/agent/env/kuroneko.env，端口 8787）',
+      cmd: 'powershell',
+      args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps('scripts/kuroneko/start-agent-kuroneko.ps1')],
       cwd,
       port: 8787,
       healthUrl: 'http://127.0.0.1:8787/api/health',
       openUrl: null,
       dependsOn: [],
-      healthGraceMs: 60_000,
+      healthGraceMs: 90_000,
+      stopScript: 'scripts/kuroneko/stop-agent-kuroneko.ps1',
     },
     {
       id: 'agent-shiro',
       name: 'Agent: Shiro',
-      description: '副助手（.env.agent2，端口 8788）',
-      cmd: 'npm',
-      args: ['run', 'dev:agent2'],
+      description: '副助手（Docker，deploy/agent/env/shiro.env，端口 8788）',
+      cmd: 'powershell',
+      args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps('scripts/kuroneko/start-agent-shiro.ps1')],
       cwd,
       port: 8788,
       healthUrl: 'http://127.0.0.1:8788/api/health',
       openUrl: null,
       dependsOn: [],
-      healthGraceMs: 60_000,
+      healthGraceMs: 90_000,
+      stopScript: 'scripts/kuroneko/stop-agent-shiro.ps1',
     },
     {
       id: 'agent-gin',
       name: 'Agent: Gin',
-      description: '第三助手（.env.gin，端口 8789）',
-      cmd: 'npm',
-      args: ['run', 'dev:gin'],
+      description: '第三助手（Docker，deploy/agent/env/gin.env，端口 8789）',
+      cmd: 'powershell',
+      args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps('scripts/kuroneko/start-agent-gin.ps1')],
       cwd,
       port: 8789,
       healthUrl: 'http://127.0.0.1:8789/api/health',
       openUrl: null,
       dependsOn: [],
-      healthGraceMs: 60_000,
+      healthGraceMs: 90_000,
+      stopScript: 'scripts/kuroneko/stop-agent-gin.ps1',
     },
     {
       id: 'agent-aoi',
       name: 'Agent: Aoi',
-      description: '第四助手（.env.aoi，GLM Coding Plan，端口 8791）',
-      cmd: 'npm',
-      args: ['run', 'dev:aoi'],
+      description: '第四助手（Docker，deploy/agent/env/aoi.env，端口 8791）',
+      cmd: 'powershell',
+      args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps('scripts/kuroneko/start-agent-aoi.ps1')],
       cwd,
       port: 8791,
       healthUrl: 'http://127.0.0.1:8791/api/health',
       openUrl: null,
       dependsOn: [],
-      healthGraceMs: 60_000,
+      healthGraceMs: 90_000,
+      stopScript: 'scripts/kuroneko/stop-agent-aoi.ps1',
     },
     {
       id: 'dashboard',

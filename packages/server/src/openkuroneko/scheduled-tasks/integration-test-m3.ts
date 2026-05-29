@@ -1,9 +1,9 @@
 /**
- * Full-chain integration test — M3 HeartbeatTaskBridge verification
+ * Full-chain integration test �?M3 HeartbeatTaskBridge verification
  *
- * Test chain: cron register → schedule → execute → retry → alert
+ * Test chain: cron register �?schedule �?execute �?retry �?alert
  *
- * Run: cd D:\kuroneko\packages\server && npx tsx src/openkuroneko/scheduled-tasks/integration-test-m3.ts
+ * Run: cd packages/server && npx tsx src/openkuroneko/scheduled-tasks/integration-test-m3.ts
  *
  * All API signatures verified against source code:
  *   - ScheduledTask.id (not taskId)
@@ -11,10 +11,10 @@
  *   - ToolCallAction.tool + .params (not toolName/parameters)
  *   - PromptAction.content (not prompt)
  *   - HeartbeatTaskBridge constructor: (config, deps)
- *   - HeartbeatTaskBridge.start() → Promise<void>
+ *   - HeartbeatTaskBridge.start() �?Promise<void>
  *   - HeartbeatTaskBridge.onEvent(callback) for event listening
  *   - executeToolCallAction returns string
- *   - validateCronExpression(expr) → string|null (null=valid)
+ *   - validateCronExpression(expr) �?string|null (null=valid)
  *   - SchedulerStatus.isRunning (not state)
  *   - SchedulerHealthSummary.state (SchedulerState type)
  *   - AlertNotification from alert-handler.js (not types)
@@ -56,20 +56,20 @@ const capturedAlerts: AlertNotification[] = [];
 
 function assert(condition: boolean, step: string, expected: string, actual: string): void {
   results.push({ step, passed: condition, expected, actual });
-  const icon = condition ? '✓' : '✗';
+  const icon = condition ? '�? : '�?;
   console.log(`  ${icon} ${step}: expected=${expected}, actual=${actual}`);
   if (!condition) {
-    console.log(`    → FAIL at ${new Error().stack?.split('\n')[2]?.trim()}`);
+    console.log(`    �?FAIL at ${new Error().stack?.split('\n')[2]?.trim()}`);
   }
 }
 
 function assertThrowsAsync(fn: () => Promise<unknown>, step: string): void {
   fn().then(() => {
     results.push({ step, passed: false, expected: 'throw', actual: 'no throw' });
-    console.log(`  ✗ ${step}: expected=throw, actual=no throw`);
+    console.log(`  �?${step}: expected=throw, actual=no throw`);
   }).catch(() => {
     results.push({ step, passed: true, expected: 'throw', actual: 'throw' });
-    console.log(`  ✓ ${step}: expected=throw, actual=throw`);
+    console.log(`  �?${step}: expected=throw, actual=throw`);
   });
 }
 
@@ -157,7 +157,7 @@ function printSummary(): void {
   if (failed > 0) {
     console.log('\n  Failed tests:');
     for (const r of results.filter(r => !r.passed)) {
-      console.log(`    ✗ ${r.step}: expected=${r.expected}, actual=${r.actual}`);
+      console.log(`    �?${r.step}: expected=${r.expected}, actual=${r.actual}`);
     }
   }
 }
@@ -264,7 +264,7 @@ async function testTaskCreation(): Promise<void> {
 }
 
 async function testHeartbeatExecution(): Promise<void> {
-  console.log('\n── Step 4: Heartbeat → Schedule → Execute ──');
+  console.log('\n── Step 4: Heartbeat �?Schedule �?Execute ──');
 
   // Clear captured events
   capturedEvents.length = 0;
@@ -276,7 +276,7 @@ async function testHeartbeatExecution(): Promise<void> {
   await sleep(500);
 
   // Check events were emitted
-  // Bridge converts successful task_executed → task_completed, failed → task_failed
+  // Bridge converts successful task_executed �?task_completed, failed �?task_failed
   const taskExecutedOrCompletedEvents = capturedEvents.filter(e => e.type === 'task_completed' || e.type === 'task_failed' || e.type === 'task_executed');
   assert(taskExecutedOrCompletedEvents.length >= 1, 'At least 1 execution event emitted (completed/failed/executed)', '>=1', String(taskExecutedOrCompletedEvents.length));
 
@@ -501,8 +501,8 @@ async function testPersistence(): Promise<void> {
 
 async function main(): Promise<void> {
   console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║  M3 Integration Test: Full Chain Verification               ║');
-  console.log('║  cron → register → schedule → execute → retry → alert       ║');
+  console.log('�? M3 Integration Test: Full Chain Verification               �?);
+  console.log('�? cron �?register �?schedule �?execute �?retry �?alert       �?);
   console.log('╚══════════════════════════════════════════════════════════════╝');
 
   setup();
