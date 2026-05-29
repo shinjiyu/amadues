@@ -1,5 +1,5 @@
 /**
- * Scheduled Tasks Module â€?barrel export.
+ * Scheduled Tasks Module â€” barrel export.
  *
  * Internal engine layer for scheduled tasks.
  * New production imports should prefer `src/scheduler/index.ts`, which is the

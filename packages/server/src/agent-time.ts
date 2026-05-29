@@ -43,3 +43,10 @@ export function formatAgentNowTag(date: Date = new Date(), timezone?: string): s
   }).format(date);
   return `【现在 ${hh} ${tz}】`;
 }
+
+/** 将 ISO 8601 时刻格式化为 agent 本地时间（工具 JSON 输出用，避免裸 UTC Z 误导 LLM） */
+export function formatAgentIsoLocal(iso: string, timezone?: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return formatAgentLocalDateTime(d, timezone ?? resolveAgentTimezone());
+}

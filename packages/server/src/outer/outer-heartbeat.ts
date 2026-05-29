@@ -29,7 +29,7 @@ import { loadSoul } from './soul.js';
 import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
 import type { OuterMemoryStore } from './outer-memory.js';
 import type { LogEntry } from './outer-brain.js';
-import { formatAgentLocalDateTime, resolveAgentTimezone } from '../agent-time.js';
+import { formatAgentIsoLocal, formatAgentLocalDateTime, resolveAgentTimezone } from '../agent-time.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { PerformanceGoalEngine } from '../performance-goals/engine.js';
@@ -244,7 +244,7 @@ function buildLiveBurstSummary(registry: InnerBrainRegistry | undefined): string
       asyncPart =
         ` async_waiting=${snap.is_async_waiting}` +
         ` post_complete=${snap.is_post_complete}` +
-        (snap.next_wake_at ? ` next_wake=${snap.next_wake_at}` : '') +
+        (snap.next_wake_at ? ` next_wake=${formatAgentIsoLocal(snap.next_wake_at)}` : '') +
         (snap.active_pendings?.length ? ` pendings=${snap.active_pendings.length}` : '');
     } catch {
       asyncPart = ' async=未知';
@@ -252,6 +252,7 @@ function buildLiveBurstSummary(registry: InnerBrainRegistry | undefined): string
     return (
       `- ${t.instanceId} [${t.status}]` +
       (t.kpiId ? ` kpi=${t.kpiId}` : '') +
+      ` started=${formatAgentIsoLocal(t.startedAt)}` +
       ` deliverables=${t.deliverableCount ?? 0}` +
       ` ticks=${t.ticks ?? 0}` +
       asyncPart +

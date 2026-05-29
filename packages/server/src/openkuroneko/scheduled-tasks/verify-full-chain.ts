@@ -4,7 +4,7 @@
  * Validates: cron registration -> scheduling -> execution -> retry -> alert -> complete lifecycle
  *
  * Run with: npx tsx packages/server/src/openkuroneko/scheduled-tasks/verify-full-chain.ts
- *   (from repo root)
+ *   (from D:\kuroneko root)
  *
  * Uses a temporary data directory; all state is cleaned up after verification.
  *

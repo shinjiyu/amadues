@@ -13,6 +13,7 @@ import {
   type IdentityRegistry,
   type LooseThreadStore,
 } from '@utlra/chat-ir';
+import { resolveAgentTimezone } from '../agent-time.js';
 
 const MAX_REPO_SESSIONS = 4;
 const MAX_CHARS_PER_ITEM = 600;
@@ -76,6 +77,7 @@ function retrieveFromThread(
     const raw = (data.messages[threadId] ?? []).slice(-maxMsgs);
     if (!raw.length) return '';
 
+    const tz = resolveAgentTimezone();
     const lines: string[] = [`### ${label}`];
     for (const m of raw) {
       const parsed = MessageRecordSchema.safeParse(m);
@@ -86,6 +88,7 @@ function retrieveFromThread(
           parsed.data,
           sender?.display_name ?? parsed.data.sender_sid,
           sender?.kind ?? 'human',
+          tz,
         ),
       );
     }
@@ -114,6 +117,7 @@ function retrieveCrossThread(
       .slice(0, 8);
     if (!keywords.length) return '';
 
+    const tz = resolveAgentTimezone();
     const hits: string[] = [];
     for (const [tid, msgs] of Object.entries(data.messages)) {
       if (tid === currentThreadId) continue;
@@ -134,6 +138,7 @@ function retrieveCrossThread(
               parsed.data,
               sender?.display_name ?? parsed.data.sender_sid,
               sender?.kind ?? 'human',
+              tz,
             ),
           );
           if (hits.length >= MAX_CROSS_THREAD_MSGS) break;

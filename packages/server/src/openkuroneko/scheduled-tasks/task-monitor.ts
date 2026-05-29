@@ -1,14 +1,14 @@
 /**
- * TaskMonitor �?定时任务状态监控与执行日志查询�?
+ * TaskMonitor — 定时任务状态监控与执行日志查询。
  *
- * 提供任务执行历史、运行状态摘要、统计信息的查询接口�?
- * �?M3 阶段集成到心跳机制中，通过 TaskMonitorBridge 暴露给外脑�?
+ * 提供任务执行历史、运行状态摘要、统计信息的查询接口。
+ * 在 M3 阶段集成到心跳机制中，通过 TaskMonitorBridge 暴露给外脑。
  *
- * 核心职责�?
+ * 核心职责：
  *   1. 查询任务执行历史（按 taskId、时间范围、状态过滤）
  *   2. 生成调度器运行摘要（活跃/暂停/失败任务数）
- *   3. 提供统计信息（成功率、平均执行时长等�?
- *   4. 生成文本格式的监控报�?
+ *   3. 提供统计信息（成功率、平均执行时长等）
+ *   4. 生成文本格式的监控报告
  */
 
 import type {
@@ -267,24 +267,24 @@ export class TaskMonitor {
     lines.push('');
 
     // Scheduler state
-    lines.push('--- 调度器状�?---');
-    lines.push(`状�? ${summary.state.schedulerStatus}`);
+    lines.push('--- 调度器状态 ---');
+    lines.push(`状态: ${summary.state.schedulerStatus}`);
     lines.push(`上次心跳: ${summary.state.lastHeartbeatAt ?? '从未运行'}`);
-    lines.push(`总执行次�? ${summary.state.totalExecutions}`);
+    lines.push(`总执行次数: ${summary.state.totalExecutions}`);
     lines.push('');
 
     // Task summary
     lines.push('--- 任务概览 ---');
     lines.push(`总任务数: ${summary.totalTaskCount}`);
-    lines.push(`活跃: ${summary.activeTaskCount} | 暂停: ${summary.pausedTaskCount} | 已挂�? ${summary.suspendedTaskCount} | 已完�? ${summary.completedTaskCount}`);
-    lines.push(`待执�? ${summary.dueTaskCount}`);
+    lines.push(`活跃: ${summary.activeTaskCount} | 暂停: ${summary.pausedTaskCount} | 已挂起: ${summary.suspendedTaskCount} | 已完成: ${summary.completedTaskCount}`);
+    lines.push(`待执行: ${summary.dueTaskCount}`);
     lines.push('');
 
     // Statistics
     lines.push('--- 执行统计 ---');
-    lines.push(`总执�? ${overallStats.totalExecutions}`);
+    lines.push(`总执行: ${overallStats.totalExecutions}`);
     lines.push(`成功: ${overallStats.successfulExecutions} | 失败: ${overallStats.failedExecutions} | 超时: ${overallStats.timedOutExecutions}`);
-    lines.push(`成功�? ${(overallStats.successRate * 100).toFixed(1)}%`);
+    lines.push(`成功率: ${(overallStats.successRate * 100).toFixed(1)}%`);
     if (overallStats.totalExecutions > 0) {
       lines.push(`平均耗时: ${overallStats.averageDurationMs}ms`);
       lines.push(`最大耗时: ${overallStats.maxDurationMs}ms | 最小耗时: ${overallStats.minDurationMs}ms`);
@@ -293,14 +293,14 @@ export class TaskMonitor {
 
     // Per-task status
     if (summary.tasks.length > 0) {
-      lines.push('--- 各任务状�?---');
+      lines.push('--- 各任务状态 ---');
       for (const t of summary.tasks) {
         const statusEmoji = t.status === 'active' ? '[OK]' : t.status === 'paused' ? '[PAUSED]' : '[DONE]';
-        lines.push(`    调度: ${t.scheduleType} | 下次执行: ${t.nextRunAt ?? '�?} | 连续失败: ${t.consecutiveFailures}`);
+        lines.push(`    调度: ${t.scheduleType} | 下次执行: ${t.nextRunAt ?? '无'} | 连续失败: ${t.consecutiveFailures}`);
         if (t.lastExecutedAt) {
           const resultPreview = t.lastResult
             ? (t.lastResult.length > 60 ? t.lastResult.slice(0, 60) + '...' : t.lastResult)
-            : '无结�?;
+            : '无结果';
           lines.push(`    上次执行: ${t.lastExecutedAt} | 结果: ${resultPreview}`);
         }
       }

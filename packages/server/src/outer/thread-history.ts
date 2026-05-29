@@ -7,6 +7,7 @@ import {
   type IdentityRegistry,
   type MessageRecord,
 } from '@utlra/chat-ir';
+import { resolveAgentTimezone } from '../agent-time.js';
 
 export interface ThreadHistoryOpts {
   /** 最多纳入几条消息（从尾部取） */
@@ -71,6 +72,7 @@ export function buildThreadHistoryPrefix(
     '<!-- utlra: IM thread history (outer brain context) -->\n\n## Thread history\n\n';
   usedChars = header.length;
 
+  const tz = resolveAgentTimezone();
   for (let i = window.length - 1; i >= 0; i--) {
     const msg = window[i]!;
     const sender = registry.get(msg.sender_sid);
@@ -78,6 +80,7 @@ export function buildThreadHistoryPrefix(
       msg,
       sender?.display_name ?? msg.sender_sid,
       sender?.kind ?? 'human',
+      tz,
     );
     const chunk = line + '\n\n';
     if (usedChars + chunk.length > opts.maxChars) break;
@@ -97,6 +100,7 @@ export function buildThreadHistoryPrefix(
         msg,
         sender?.display_name ?? msg.sender_sid,
         sender?.kind ?? 'human',
+        tz,
       );
     })
     .join('\n\n');

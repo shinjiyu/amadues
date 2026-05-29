@@ -88,7 +88,7 @@ export type BridgeEvent =
   | { type: 'scheduler_error'; error: string }
 
 /**
- * HeartbeatTaskBridge â€?unified engine facade for the scheduled-task subsystem.
+ * HeartbeatTaskBridge â€” unified engine facade for the scheduled-task subsystem.
  *
  * Wraps TaskScheduler, TaskMonitor, and AlertHandlerCore behind a single API.
  * All CRUD, monitoring, and alerting go through this bridge.
@@ -330,7 +330,7 @@ export class HeartbeatTaskBridge {
         if (event.status === 'failed') {
           return { type: 'task_failed', taskId: event.taskId, error: 'Task execution failed' };
         }
-        // Successful task_executed from SchedulerEvent â€?emit with a placeholder log
+        // Successful task_executed from SchedulerEvent â€” emit with a placeholder log
         // since the actual log is stored by the scheduler internally.
         return null; // Monitor will have the actual log via its own tracking
       }

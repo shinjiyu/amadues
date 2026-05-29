@@ -1,11 +1,11 @@
 /**
- * E2E Integration Test �?Scheduled Tasks Module (M3 Final)
+ * E2E Integration Test — Scheduled Tasks Module (M3 Final)
  *
- * Full chain: register task �?cron schedule �?execute callback �?
- *             timeout detection �?retry �?HeartbeatTaskBridge event mapping �?
+ * Full chain: register task → cron schedule → execute callback →
+ *             timeout detection → retry → HeartbeatTaskBridge event mapping →
  *             task unregister
  *
- * Run: cd packages/server && npx tsx src/openkuroneko/scheduled-tasks/__tests__/e2e-m3-test.ts
+ * Run: cd D:\kuroneko\packages\server && npx tsx src/openkuroneko/scheduled-tasks/__tests__/e2e-m3-test.ts
  *
  * API Signatures verified via Select-String (M3):
  *   - HeartbeatTaskBridge(config: HeartbeatTaskBridgeConfig, deps?: HeartbeatTaskBridgeDeps)
@@ -14,21 +14,21 @@
  *   - bridge.onHeartbeat(): Promise<void>
  *   - bridge.createTask(request: CreateTaskRequest): Promise<ScheduledTask>
  *   - bridge.getTask(taskId: string): Promise<ScheduledTask | null>
- *   - bridge.listTasks(filter?): Promise<ScheduledTask[]> �?async, MUST await
+ *   - bridge.listTasks(filter?): Promise<ScheduledTask[]> — async, MUST await
  *   - bridge.updateTask(taskId: string, updates: UpdateTaskRequest): Promise<ScheduledTask>
  *   - bridge.deleteTask(taskId: string): Promise<boolean>
  *   - bridge.pauseTask(taskId: string): Promise<ScheduledTask>
  *   - bridge.resumeTask(taskId: string): Promise<ScheduledTask>
  *   - bridge.triggerTask(taskId: string): Promise<ExecutionLog>
- *   - bridge.getTaskHistory(taskId: string, limit?): ExecutionLog[] �?sync, no await
+ *   - bridge.getTaskHistory(taskId: string, limit?): ExecutionLog[] — sync, no await
 
- *   - bridge.getSchedulerStatus(): SchedulerStatus �?sync
- *   - bridge.onEvent(callback: BridgeEventCallback): void �?NOT onBridgeEvent
- *   - validateCronExpression(expr): string | null �?NOT boolean
- *   - convertSchedulerEventToBridgeEvent: task_executed (success) �?null (no BridgeEvent)
- *   - TaskExecutionConfig.retryIntervalMs �?NOT retryDelayMs (default 30000ms)
- *   - CreateTaskRequest.createdBy: TaskCreator �?must include { type, id, name }
- *   - ToolCallAction.tool: string �?NOT toolName
+ *   - bridge.getSchedulerStatus(): SchedulerStatus — sync
+ *   - bridge.onEvent(callback: BridgeEventCallback): void — NOT onBridgeEvent
+ *   - validateCronExpression(expr): string | null — NOT boolean
+ *   - convertSchedulerEventToBridgeEvent: task_executed (success) → null (no BridgeEvent)
+ *   - TaskExecutionConfig.retryIntervalMs — NOT retryDelayMs (default 30000ms)
+ *   - CreateTaskRequest.createdBy: TaskCreator — must include { type, id, name }
+ *   - ToolCallAction.tool: string — NOT toolName
  *   - ExecutionLog: { executionId, taskId, status, startedAt, finishedAt?, durationMs?, result?, error?, isRetry, retryAttempt }
  *   - SchedulerStatus: { isRunning: boolean, ... }
  *   - SchedulerHealthSummary: { totalTaskCount, activeTaskCount, pausedTaskCount, suspendedTaskCount, completedTaskCount, dueTaskCount }
@@ -66,10 +66,10 @@ const failures: string[] = [];
 
 function assert(condition: boolean, label: string): void {
   if (condition) {
-    console.log(`  �?PASS: ${label}`);
+    console.log(`  ✓ PASS: ${label}`);
     passed++;
   } else {
-    console.log(`  �?FAIL: ${label}`);
+    console.log(`  ✗ FAIL: ${label}`);
     failed++;
     failures.push(label);
   }
@@ -81,10 +81,10 @@ function assertNotNull(value: unknown, label: string): void {
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
   if (actual === expected) {
-    console.log(`  �?PASS: ${label}`);
+    console.log(`  ✓ PASS: ${label}`);
     passed++;
   } else {
-    console.log(`  �?FAIL: ${label} �?expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    console.log(`  ✗ FAIL: ${label} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
     failed++;
     failures.push(label);
   }
@@ -92,10 +92,10 @@ function assertEqual<T>(actual: T, expected: T, label: string): void {
 
 function assertIncludes<T>(arr: T[], item: T, label: string): void {
   if (arr.includes(item)) {
-    console.log(`  �?PASS: ${label}`);
+    console.log(`  ✓ PASS: ${label}`);
     passed++;
   } else {
-    console.log(`  �?FAIL: ${label} �?${JSON.stringify(item)} not in [${arr.map(String).join(',')}]`);
+    console.log(`  ✗ FAIL: ${label} — ${JSON.stringify(item)} not in [${arr.map(String).join(',')}]`);
     failed++;
     failures.push(label);
   }
@@ -120,9 +120,9 @@ function findEvents(type: string): BridgeEvent[] {
 // ── Main Test ─────────────────────────────────────────────────────────────────
 
 async function runTests(): Promise<void> {
-  console.log('══════════════════════════════════════════════════════════�?);
-  console.log('   E2E Integration Test �?Scheduled Tasks Module (M3)    ');
-  console.log('══════════════════════════════════════════════════════════�?);
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('   E2E Integration Test — Scheduled Tasks Module (M3)    ');
+  console.log('═══════════════════════════════════════════════════════════');
 
   // Create temp dir for test data
   const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-m3-'));
@@ -232,9 +232,9 @@ async function runTests(): Promise<void> {
       assertEqual((taskCreatedEvents[taskCreatedEvents.length - 1] as { type: 'task_created'; taskId: string }).taskId, cronTask.id, 'Step 3.6: task_created event has correct taskId');
     }
 
-    // ── Step 4: Register a once task (prompt action) �?triggers immediately ──
+    // ── Step 4: Register a once task (prompt action) — triggers immediately ──
 
-    console.log('\n── Step 4: Register once task (past time �?immediate execution) ──');
+    console.log('\n── Step 4: Register once task (past time → immediate execution) ──');
 
     const pastDate = new Date(Date.now() - 60000); // 1 minute ago
     const onceTaskRequest: CreateTaskRequest = {
@@ -257,9 +257,9 @@ async function runTests(): Promise<void> {
     assertNotNull(onceTask.id, 'Step 4.1: Once task created with non-null id');
     assertEqual(onceTask.schedule.type, 'once', 'Step 4.2: Schedule type is once');
 
-    // ── Step 5: Heartbeat �?trigger execution ──────────────────────────────
+    // ── Step 5: Heartbeat → trigger execution ──────────────────────────────
 
-    console.log('\n── Step 5: First heartbeat �?execute due tasks ───────────');
+    console.log('\n── Step 5: First heartbeat → execute due tasks ───────────');
 
     bridgeEvents.length = 0; // Clear events to focus on execution events
 
@@ -279,7 +279,7 @@ async function runTests(): Promise<void> {
     const completedTaskIds = completedEvents.map(e => (e as { type: 'task_completed'; taskId: string }).taskId);
     assert(completedTaskIds.includes(onceTask.id), 'Step 5.3: task_completed for once task ID');
 
-    // task_executed (success) �?null (no BridgeEvent emitted)
+    // task_executed (success) → null (no BridgeEvent emitted)
     const executedBridgeEvents = findEvents('task_executed');
     assertEqual(executedBridgeEvents.length, 0, 'Step 5.4: No task_executed BridgeEvent for successful execution (returns null)');
 
@@ -291,7 +291,7 @@ async function runTests(): Promise<void> {
 
     console.log('\n── Step 6: Verify execution logs ──────────────────────────');
 
-    // getTaskHistory is SYNC �?no await
+    // getTaskHistory is SYNC — no await
     const onceLogs: ExecutionLog[] = bridge.getTaskHistory(onceTask.id, 10);
     assert(onceLogs.length >= 1, 'Step 6.1: Once task has execution logs');
     if (onceLogs.length > 0) {
@@ -354,7 +354,7 @@ async function runTests(): Promise<void> {
     const resumedEvents = findEvents('task_resumed');
     assert(resumedEvents.length >= 1, 'Step 8.4: task_resumed BridgeEvent received');
 
-    // ── Step 9: Retry mechanism �?register a failing task ──────────────────
+    // ── Step 9: Retry mechanism — register a failing task ──────────────────
 
     console.log('\n── Step 9: Retry mechanism (failing task with retryCount=2) ──');
 
@@ -402,7 +402,7 @@ async function runTests(): Promise<void> {
     console.log('\n── Step 10: List tasks with filter ──────────────────────────');
 
     const allTasks: ScheduledTask[] = await bridge.listTasks();
-    assert(allTasks.length >= 3, 'Step 10.1: listTasks() returns all tasks (�?)');
+    assert(allTasks.length >= 3, 'Step 10.1: listTasks() returns all tasks (≥3)');
 
     const activeFilter: TaskFilter = { status: 'active' };
     const activeTasks: ScheduledTask[] = await bridge.listTasks(activeFilter);
@@ -468,9 +468,9 @@ async function runTests(): Promise<void> {
 
     // ── Summary ──────────────────────────────────────────────────────────────
 
-    console.log('\n══════════════════════════════════════════════════════════�?);
+    console.log('\n═══════════════════════════════════════════════════════════');
     console.log(`   Results: ${passed} passed, ${failed} failed`);
-    console.log('══════════════════════════════════════════════════════════�?);
+    console.log('═══════════════════════════════════════════════════════════');
 
     if (failures.length > 0) {
       console.log('\nFailed assertions:');

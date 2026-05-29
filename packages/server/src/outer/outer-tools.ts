@@ -65,7 +65,7 @@ import {
 } from './autonomy-policy-store.js';
 import { loadPersonality, patchPersonality } from './personality.js';
 import type { AutonomyHardGates, AutonomyTaskTypeConfig } from './autonomy-types.js';
-import { formatAgentLocalDateTime } from '../agent-time.js';
+import { formatAgentLocalDateTime, formatAgentIsoLocal } from '../agent-time.js';
 
 // ── OpenAI-compatible tool schema ──────────────────────────────────────────
 
@@ -1335,8 +1335,8 @@ function execListInnerBrains(
       origin_user:   r.originUser,
       origin_thread: r.originThread ?? null,
       goal:          r.goal.slice(0, 100) + (r.goal.length > 100 ? '…' : ''),
-      started_at:    r.startedAt,
-      finished_at:   r.finishedAt ?? null,
+      started_at:    formatAgentIsoLocal(r.startedAt),
+      finished_at:   r.finishedAt ? formatAgentIsoLocal(r.finishedAt) : null,
       ticks:         r.ticks ?? null,
       error:         r.errorMessage ?? null,
       phase:         runtimeStatus?.['phase'] ?? null,
@@ -1348,7 +1348,9 @@ function execListInnerBrains(
         blocked_reason: asyncSnap.controller.blocked_reason,
         is_async_waiting: asyncSnap.is_async_waiting,
         is_post_complete: asyncSnap.is_post_complete,
-        next_wake_at: asyncSnap.next_wake_at,
+        next_wake_at: asyncSnap.next_wake_at
+          ? formatAgentIsoLocal(asyncSnap.next_wake_at)
+          : null,
         active_pendings: asyncSnap.active_pendings,
       },
     };
@@ -1516,7 +1518,9 @@ function execReadInnerStatus(
             blocked_reason: asyncSnap.controller.blocked_reason,
             is_async_waiting: asyncSnap.is_async_waiting,
             is_post_complete: asyncSnap.is_post_complete,
-            next_wake_at: asyncSnap.next_wake_at,
+            next_wake_at: asyncSnap.next_wake_at
+          ? formatAgentIsoLocal(asyncSnap.next_wake_at)
+          : null,
             active_pendings: asyncSnap.active_pendings,
           },
           selfUpdate: selfUpdate
@@ -1569,14 +1573,14 @@ function execReadInnerStatus(
         phase,
         lastAction,
         goal: r.goal.slice(0, 80) + (r.goal.length > 80 ? '…' : ''),
-        started_at: r.startedAt,
-        finished_at: r.finishedAt ?? null,
+        started_at: formatAgentIsoLocal(r.startedAt),
+        finished_at: r.finishedAt ? formatAgentIsoLocal(r.finishedAt) : null,
         deliverables_count: deliverablesCount,
         self_update_status: selfUpdateStatus,
         self_update_scope: selfUpdateScope,
         is_async_waiting: asyncWaiting,
         is_post_complete: postComplete,
-        next_wake_at: nextWakeAt,
+        next_wake_at: nextWakeAt ? formatAgentIsoLocal(nextWakeAt) : null,
       };
     });
     return { replied: false, output: JSON.stringify(summary, null, 2) };

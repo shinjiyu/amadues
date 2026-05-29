@@ -11,40 +11,81 @@
 import type { MessageRecord } from './schemas/message.js';
 import type { IdentityRecord } from './schemas/identity.js';
 
+export interface FormatMessageTimeOptions {
+  /** IANA 时区；默认 Asia/Shanghai（与 agent get_time 一致） */
+  timeZone?: string;
+  /** 用于「今天/昨天」比较的参考时刻 */
+  now?: Date;
+}
+
+const DEFAULT_MESSAGE_TIMEZONE = 'Asia/Shanghai';
+
+function datePartsInTimeZone(date: Date, timeZone: string) {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(date);
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return {
+    year: pick('year'),
+    month: Number(pick('month')),
+    day: Number(pick('day')),
+    hour: pick('hour'),
+    minute: pick('minute'),
+  };
+}
+
 /**
  * 格式化消息时间标签，让 LLM 感知对话的时间节奏。
  * 格式：绝对时间 + 相对时间，如 "今天 14:32（3分钟前）"、"4月5日 09:10（昨天）"。
+ *
+ * 使用显式 IANA 时区，避免进程 TZ=UTC 时把 UTC 钟点当成本地时间（典型 ±8h 偏差）。
  */
-export function formatMessageTime(sentAt: string): string {
+export function formatMessageTime(sentAt: string, options?: FormatMessageTimeOptions): string {
   const msgDate = new Date(sentAt);
   if (isNaN(msgDate.getTime())) return '';
 
-  const now    = new Date();
+  const timeZone = options?.timeZone ?? DEFAULT_MESSAGE_TIMEZONE;
+  const now = options?.now ?? new Date();
   const diffMs = now.getTime() - msgDate.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
-  const diffHr  = Math.floor(diffMs / 3_600_000);
+  const diffHr = Math.floor(diffMs / 3_600_000);
   const diffDay = Math.floor(diffMs / 86_400_000);
 
   let relative: string;
-  if (diffMs < 60_000)         relative = '刚刚';
-  else if (diffMin < 60)       relative = `${diffMin}分钟前`;
-  else if (diffHr  < 24)       relative = `${diffHr}小时前`;
-  else if (diffDay === 1)      relative = '昨天';
-  else if (diffDay < 30)       relative = `${diffDay}天前`;
-  else                         relative = `${Math.floor(diffDay / 30)}个月前`;
+  if (diffMs < 60_000) relative = '刚刚';
+  else if (diffMin < 60) relative = `${diffMin}分钟前`;
+  else if (diffHr < 24) relative = `${diffHr}小时前`;
+  else if (diffDay === 1) relative = '昨天';
+  else if (diffDay < 30) relative = `${diffDay}天前`;
+  else relative = `${Math.floor(diffDay / 30)}个月前`;
 
-  const hhmm    = `${String(msgDate.getHours()).padStart(2, '0')}:${String(msgDate.getMinutes()).padStart(2, '0')}`;
-  const isToday = msgDate.toDateString() === now.toDateString();
-  const abs     = isToday
+  const mp = datePartsInTimeZone(msgDate, timeZone);
+  const np = datePartsInTimeZone(now, timeZone);
+  const hhmm = `${mp.hour}:${mp.minute}`;
+  const isToday = mp.year === np.year && mp.month === np.month && mp.day === np.day;
+  const abs = isToday
     ? `今天 ${hhmm}`
-    : `${msgDate.getMonth() + 1}月${msgDate.getDate()}日 ${hhmm}`;
+    : `${mp.month}月${mp.day}日 ${hhmm}`;
 
   return `${abs}（${relative}）`;
 }
 
 /** 多说话者：每条消息带头（含时间标签）再序列化 parts */
-export function serializeMessageForLlm(msg: MessageRecord, senderDisplayName: string, senderKind: string): string {
-  const timeTag = msg.sent_at ? formatMessageTime(msg.sent_at) : '';
+export function serializeMessageForLlm(
+  msg: MessageRecord,
+  senderDisplayName: string,
+  senderKind: string,
+  timeZone?: string,
+): string {
+  const timeTag = msg.sent_at ? formatMessageTime(msg.sent_at, { timeZone }) : '';
   const timePart = timeTag ? `|${timeTag}` : '';
   const header = `[from:sid:${msg.sender_sid}|${senderDisplayName}(kind:${senderKind})${timePart}]`;
   const body = msg.parts

@@ -1,5 +1,5 @@
 /**
- * AlertHandler â€?Scheduled Task Alert Handler.
+ * AlertHandler â€” Scheduled Task Alert Handler.
  *
  * Produces alerts when task execution encounters anomalies:
  *   1. Task execution failure (single + consecutive)
@@ -9,10 +9,10 @@
  *   5. Scheduler state anomalies
  *
  * Alert channels:
- *   - Console logging â€?always enabled
- *   - IM message notification â€?via ChatIRChannel interface
- *   - Agent memory â€?write alert memory for Agent self-reflection
- *   - Custom callback â€?injected by integration layer
+ *   - Console logging â€” always enabled
+ *   - IM message notification â€” via ChatIRChannel interface
+ *   - Agent memory â€” write alert memory for Agent self-reflection
+ *   - Custom callback â€” injected by integration layer
  *
  * Alert levels:
  *   - info:     Normal event notification (task completed, resumed, etc.)
@@ -91,7 +91,7 @@ export interface ImAlertNotifierConfig {
   minLevel?: AlertLevel;
 }
 
-/** IM-based alert notifier â€?sends alerts as IM messages */
+/** IM-based alert notifier â€” sends alerts as IM messages */
 export class ImAlertNotifier implements AlertNotifier {
   readonly name = 'im';
 
@@ -105,7 +105,7 @@ export class ImAlertNotifier implements AlertNotifier {
     if (levelToNumber(alert.level) < this.minLevelNum) return;
 
     const prefix = alert.level === 'critical' ? 'ðŸš¨'
-      : alert.level === 'error' ? 'â?
+      : alert.level === 'error' ? 'âŒ'
       : alert.level === 'warning' ? 'âš ï¸'
       : 'â„¹ï¸';
 
@@ -123,7 +123,7 @@ export class ImAlertNotifier implements AlertNotifier {
   }
 }
 
-/** Console-based alert notifier â€?always active as baseline */
+/** Console-based alert notifier â€” always active as baseline */
 export class ConsoleAlertNotifier implements AlertNotifier {
   readonly name = 'console';
 
@@ -134,7 +134,7 @@ export class ConsoleAlertNotifier implements AlertNotifier {
   }
 }
 
-/** Callback-based alert notifier â€?for custom integration */
+/** Callback-based alert notifier â€” for custom integration */
 export class CallbackAlertNotifier implements AlertNotifier {
   readonly name = 'callback';
 
@@ -155,18 +155,18 @@ export interface AlertHandlerCoreConfig {
   maxHistory?: number;
   /** Notifiers to register */
   notifiers?: AlertNotifier[];
-  /** Throttle interval in ms â€?suppress duplicate alerts within this window (default: 60_000) */
+  /** Throttle interval in ms â€” suppress duplicate alerts within this window (default: 60_000) */
   throttleMs?: number;
 }
 
-/** Alert handler â€?manages alert dispatching to registered channels */
+/** Alert handler â€” manages alert dispatching to registered channels */
 export class AlertHandlerCore {
   private readonly notifiers: AlertNotifier[] = [];
   private readonly minLevelNum: number;
   private readonly maxHistory: number;
   private readonly throttleMs: number;
   private alertHistory: AlertNotification[] = [];
-  private readonly recentAlerts = new Map<string, number>(); // key â†?timestamp
+  private readonly recentAlerts = new Map<string, number>(); // key â†’ timestamp
 
   constructor(config?: AlertHandlerCoreConfig) {
     this.minLevelNum = levelToNumber(config?.minLevel ?? 'info');
