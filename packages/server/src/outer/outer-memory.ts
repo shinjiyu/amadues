@@ -17,6 +17,7 @@
 
 import { Mem9Client } from '../mem9/mem9-client.js';
 import { getDrive9Client } from '../drive9/drive9-client.js';
+import { formatAgentTimestampShort } from '../agent-time.js';
 import {
   BeliefRevisionStore,
   filterMemoriesByValidity,
@@ -91,7 +92,7 @@ export class OuterMemoryStore {
   /** 追加对话日志（fire-and-forget）。 */
   appendChatLog(entry: DailyLogEntry): void {
     if (!this.mem9) return;
-    const ts      = new Date().toISOString().slice(0, 16).replace('T', ' '); // 2026-04-08 14:30
+    const ts      = formatAgentTimestampShort();
     const content = `[${ts}] @${entry.userSid} (${entry.threadId}): ${entry.summary.slice(0, 120)}`;
     void this.mem9
       .store({ content, agentId: this.chatAgentId, metadata: { ts: new Date().toISOString() } })

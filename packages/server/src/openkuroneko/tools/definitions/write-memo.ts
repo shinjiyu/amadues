@@ -15,6 +15,7 @@
  *   - 客观环境事实（→ write_knowledge）
  */
 
+import { formatAgentTimestampShort } from '../../../agent-time.js';
 import { Mem9Client } from '../../../mem9/mem9-client.js';
 import type { Tool } from '../index.js';
 
@@ -63,7 +64,7 @@ export const writeMemoTool: Tool = {
       return { ok: false, output: 'MEM9_API_KEY 未配置，无法写入外脑记忆' };
     }
 
-    const ts      = new Date().toISOString().slice(0, 16).replace('T', ' '); // 2026-04-08 14:30
+    const ts      = formatAgentTimestampShort();
     const header  = `[内脑发现 ${ts}] ${summary}`;
     const content = detail ? `${header}\n\n${detail}` : header;
     const agentId = getOuterAgentId();

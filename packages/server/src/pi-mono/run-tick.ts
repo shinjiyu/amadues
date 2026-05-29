@@ -26,6 +26,10 @@ import { createFilesystemStore } from '../openkuroneko/archive/index.js';
 import { loadInnerLlmEnvFromProcess } from '../llm/inner-llm-step.js';
 import { getSelfUpdateAllowedDirs } from '../self-update/session.js';
 import { resolveDrive9Config } from '../drive9/drive9-client.js';
+import {
+  buildPeerWorkspaceEntries,
+  parsePeerWorkspaceIds,
+} from '../openkuroneko/tools/peer-workspace.js';
 
 let gate: Promise<void> = Promise.resolve();
 
@@ -63,6 +67,11 @@ async function createPiMonoController(params: {
   const outputPath = path.join(tempDir, 'output');
 
   toolsDefs.setWorkDirGuard(params.workDir, tempDir, getSelfUpdateAllowedDirs(params.workDir));
+  const workspacesRoot = process.env['INNER_WORKSPACES_ROOT']?.trim();
+  const peerIds = parsePeerWorkspaceIds(process.env['INNER_PEER_WORKSPACE_IDS']);
+  if (workspacesRoot && peerIds.length > 0) {
+    toolsDefs.setPeerWorkspaces(buildPeerWorkspaceEntries(workspacesRoot, peerIds));
+  }
   toolsDefs.setCapabilityGapTempDir(tempDir);
   toolsDefs.setDeliverablesTempDir(tempDir);
   toolsDefs.setAsyncWaitBrainDir(toolsDefs.brainDirFromWorkDir(params.workDir));
@@ -112,6 +121,11 @@ async function createPiMonoController(params: {
     toolsDefs.readFileTool,
     toolsDefs.writeFileTool,
     toolsDefs.editFileTool,
+    toolsDefs.searchFilesTool,
+    toolsDefs.listPeerWorkspacesTool,
+    toolsDefs.readPeerFileTool,
+    toolsDefs.listPeerFilesTool,
+    toolsDefs.searchPeerFilesTool,
     toolsDefs.shellExecTool,
     toolsDefs.shellExecBgTool,
     toolsDefs.shellReadOutputTool,

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isPathAllowed, pathSecurityError, getWorkDir } from './workdir-guard.js';
+import { isPathWritable, pathSecurityError, getWorkDir } from './workdir-guard.js';
 import type { Tool } from '../index.js';
 import { prepareSelfUpdateMutation } from '../../../self-update/session.js';
 
@@ -21,7 +21,7 @@ export const editFileTool: Tool = {
       return { ok: false, output: 'Missing required arguments: path, old_string' };
     }
     const abs = path.isAbsolute(filePath) ? filePath : path.join(getWorkDir(), filePath);
-    if (!isPathAllowed(abs)) return { ok: false, output: pathSecurityError(abs) };
+    if (!isPathWritable(abs)) return { ok: false, output: pathSecurityError(abs) };
     try {
       const prep = prepareSelfUpdateMutation(getWorkDir(), abs);
       if (!prep.ok) return { ok: false, output: prep.reason };

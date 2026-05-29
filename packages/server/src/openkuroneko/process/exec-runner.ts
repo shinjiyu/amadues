@@ -8,8 +8,7 @@
  * 协议文档：doc/protocols/shell-exec-bg.md
  */
 
-import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -40,6 +39,26 @@ const DEFAULT_TIMEOUT_MS         = 120_000;
 const DEFAULT_NO_OUTPUT_TIMEOUT  = 60_000;
 const DEFAULT_MAX_OUTPUT_BYTES   = 16 * 1024 * 1024;
 
+type SpawnShellOpts = {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  stdio: SpawnOptions['stdio'];
+};
+
+/** Windows 默认 PowerShell（Aoi 巡检建议）；UTLRA_SHELL=cmd 可回退 cmd。 */
+function spawnShellCommand(command: string, opts: SpawnShellOpts): ChildProcess {
+  const pref = process.env['UTLRA_SHELL']?.trim().toLowerCase();
+  const spawnOpts: SpawnOptions = {
+    cwd: opts.cwd,
+    env: opts.env ?? process.env,
+    stdio: opts.stdio,
+  };
+  if (process.platform === 'win32' && pref !== 'cmd') {
+    return spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], spawnOpts);
+  }
+  return spawn(command, { ...spawnOpts, shell: true });
+}
+
 /**
  * 执行 shell 命令并等待完成（async 版 execSync）。
  * 超时时发送 SIGKILL 并在 output 中包含已收集的输出。
@@ -62,12 +81,10 @@ export function runCommand(command: string, opts: RunOptions = {}): Promise<RunR
     let noOutputTimedOut = false;
     let noOutputTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const child = spawn(command, {
+    const child = spawnShellCommand(command, {
       cwd,
       env: env ?? process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
-      // 跨平台：Windows 走 cmd.exe /d /s /c，POSIX 走 sh -c。避免硬编码 'sh' 在 Windows 下 ENOENT。
-      shell: true,
     });
 
     const finish = (termination: string) => {
@@ -196,13 +213,10 @@ export function spawnBackground(command: string, opts: SpawnBgOptions): SpawnBgR
 
   let child: ChildProcess;
   try {
-    child = spawn(command, {
+    child = spawnShellCommand(command, {
       cwd,
       env: env ?? process.env,
       stdio: ['ignore', stdoutFd, stderrFd],
-      detached: false,
-      // 跨平台：Windows 走 cmd.exe /d /s /c，POSIX 走 sh -c。
-      shell: true,
     });
   } catch (e) {
     fs.closeSync(stdoutFd);

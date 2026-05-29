@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isPathAllowed, pathSecurityError, getWorkDir } from './workdir-guard.js';
+import { isPathReadable, pathSecurityError, getWorkDir } from './workdir-guard.js';
 import type { Tool } from '../index.js';
 
 export const readFileTool: Tool = {
@@ -14,7 +14,7 @@ export const readFileTool: Tool = {
     const filePath = String(args['path'] ?? '').trim();
     if (!filePath) return { ok: false, output: 'Missing required argument: path' };
     const abs = path.isAbsolute(filePath) ? filePath : path.join(getWorkDir(), filePath);
-    if (!isPathAllowed(abs)) return { ok: false, output: pathSecurityError(abs) };
+    if (!isPathReadable(abs)) return { ok: false, output: pathSecurityError(abs) };
     try {
       return { ok: true, output: fs.readFileSync(abs, 'utf8') };
     } catch (e) {

@@ -10,6 +10,7 @@
 import path from 'node:path';
 import { getWorkDir, getTempDir, isPathAllowed, pathSecurityError } from './workdir-guard.js';
 import { spawnBackground } from '../../process/exec-runner.js';
+import { formatAgentIsoLocal } from '../../../agent-time.js';
 import type { Tool } from '../index.js';
 
 export const shellExecBgTool: Tool = {
@@ -60,7 +61,7 @@ export const shellExecBgTool: Tool = {
         pid:         result.pid,
         stdout_file: result.stdoutFile,
         stderr_file: result.stderrFile,
-        started_at:  result.startedAt,
+        started_at:  result.startedAt ? formatAgentIsoLocal(result.startedAt) : null,
         hint:        '使用 shell_read_output 轮询输出，shell_kill 终止进程',
       }, null, 2),
     };

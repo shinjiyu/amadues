@@ -2,7 +2,8 @@
  * M8 · Work Agent 工具集
  *
  * 工具列表（按 SCL 原子能力）：
- *   read_file, write_file, edit_file, shell_exec,
+ *   read_file, write_file (overwrite|append), edit_file, search_files,
+ *   read_peer_file, list_peer_files, search_peer_files, shell_exec,
  *   web_search, get_time, reply_to_user, run_agent,
  *   read_write_structured_state, capability_gap_handler
  */

@@ -50,3 +50,23 @@ export function formatAgentIsoLocal(iso: string, timezone?: string): string {
   if (Number.isNaN(d.getTime())) return iso;
   return formatAgentLocalDateTime(d, timezone ?? resolveAgentTimezone());
 }
+
+/** YYYY-MM-DD HH:mm，agent 本地（mem9 前缀 / 对话日志） */
+export function formatAgentTimestampShort(
+  date: Date = new Date(),
+  timezone?: string,
+): string {
+  const tz = timezone ?? resolveAgentTimezone();
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}`;
+}

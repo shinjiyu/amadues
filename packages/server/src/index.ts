@@ -75,6 +75,7 @@ import {
   runOpenKuronekoPiMonoAuto,
   runOpenKuronekoPiMonoTick,
 } from './pi-mono/run-tick.js';
+import { formatAgentIsoLocal, resolveAgentTimezone } from './agent-time.js';
 import { buildBrainInspectorPayload } from './pi-mono/brain-snapshot.js';
 import {
   buildWorkspaceArtifactsPayload,
@@ -1315,15 +1316,15 @@ app.get('/api/inner-brains', (c) => {
       pid:             r.pid ?? null,
       pid_alive:       pidAlive,
       worker_phase:    workerPhase,
-      last_tick_at:    lastTickAt,
+      last_tick_at:    lastTickAt ? formatAgentIsoLocal(lastTickAt) : null,
       phase,
       lastAction,
       tickCount,
       goal:            r.goal.slice(0, 200),
       origin_user:     r.originUser,
       origin_thread:   r.originThread ?? null,
-      started_at:      r.startedAt,
-      finished_at:     r.finishedAt ?? null,
+      started_at:      formatAgentIsoLocal(r.startedAt),
+      finished_at:     r.finishedAt ? formatAgentIsoLocal(r.finishedAt) : null,
       ticks:           liveTicks,
       error:           r.errorMessage ?? null,
     };
@@ -1493,6 +1494,7 @@ app.post('/api/chat/demo-roundtrip', async (c) => {
     userMsg,
     user?.display_name ?? 'user',
     user?.kind ?? 'human',
+    resolveAgentTimezone(),
   );
   const replyParts =
     body.reply_parts?.length && Array.isArray(body.reply_parts)

@@ -364,9 +364,16 @@ const LogsView: React.FC<LogsViewProps> = ({ serviceId, logs, boxRef, onClose })
 
 function fmtTime(ms: number): string {
   const d = new Date(ms);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(
-    d.getMilliseconds(),
-  ).padStart(3, '0')}`;
+  const tz = 'Asia/Shanghai';
+  const base = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d);
+  const frac = String(d.getMilliseconds()).padStart(3, '0');
+  return `${base}.${frac}`;
 }
 
 function pad(n: number): string {

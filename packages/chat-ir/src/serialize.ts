@@ -18,7 +18,8 @@ export interface FormatMessageTimeOptions {
   now?: Date;
 }
 
-const DEFAULT_MESSAGE_TIMEZONE = 'Asia/Shanghai';
+export const DEFAULT_AGENT_TIMEZONE = 'Asia/Shanghai';
+const DEFAULT_MESSAGE_TIMEZONE = DEFAULT_AGENT_TIMEZONE;
 
 function datePartsInTimeZone(date: Date, timeZone: string) {
   const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -76,6 +77,56 @@ export function formatMessageTime(sentAt: string, options?: FormatMessageTimeOpt
     : `${mp.month}月${mp.day}日 ${hhmm}`;
 
   return `${abs}（${relative}）`;
+}
+
+export interface FormatWallClockTimeOptions {
+  /** IANA 时区；默认 Asia/Shanghai */
+  timeZone?: string;
+  /** 今天只显示 HH:mm；false 时始终带月/日 */
+  compactToday?: boolean;
+  /** 是否包含秒 */
+  withSeconds?: boolean;
+}
+
+/**
+ * 墙钟时间（UI / 日志），使用显式 IANA 时区。
+ * 接受 ISO 字符串、Date 或 epoch 毫秒。
+ */
+export function formatWallClockTime(
+  input: string | Date | number,
+  options?: FormatWallClockTimeOptions,
+): string {
+  const date =
+    typeof input === 'number'
+      ? new Date(input)
+      : typeof input === 'string'
+        ? new Date(input)
+        : input;
+  if (Number.isNaN(date.getTime())) return '';
+
+  const timeZone = options?.timeZone ?? DEFAULT_MESSAGE_TIMEZONE;
+  const mp = datePartsInTimeZone(date, timeZone);
+  const now = new Date();
+  const np = datePartsInTimeZone(now, timeZone);
+  let hhmm: string;
+  if (options?.withSeconds) {
+    hhmm = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
+  } else {
+    hhmm = `${mp.hour}:${mp.minute}`;
+  }
+  const compactToday = options?.compactToday ?? true;
+  if (compactToday) {
+    const isToday = mp.year === np.year && mp.month === np.month && mp.day === np.day;
+    if (isToday) return hhmm;
+    return `${mp.month}/${mp.day} ${hhmm}`;
+  }
+  return `${mp.year}-${mp.month}-${mp.day} ${hhmm}`;
 }
 
 /** 多说话者：每条消息带头（含时间标签）再序列化 parts */

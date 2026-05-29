@@ -7,6 +7,7 @@ import { addPending } from '../openkuroneko/pendings/index.js';
 import {
   POST_COMPLETE_REASON,
   buildBrainAsyncSnapshot,
+  formatBrainAsyncSnapshotForLlm,
   isBrainAwaitingAsync,
 } from './brain-async-snapshot.js';
 
@@ -60,5 +61,20 @@ describe('brain-async-snapshot', () => {
     expect(snap.is_post_complete).toBe(true);
     expect(snap.is_async_waiting).toBe(false);
     expect(isBrainAwaitingAsync(workDir)).toBe(false);
+  });
+
+  it('formatBrainAsyncSnapshotForLlm converts ISO times for LLM output', () => {
+    const workDir = mkWorkDir();
+    const brainDir = path.join(workDir, '.brain');
+    addPending(brainDir, {
+      kind: 'timer',
+      spec: { execute_at: '2026-05-17T10:00:00.000Z' },
+      source: 'tool:wait_timer(test)',
+    });
+    const raw = buildBrainAsyncSnapshot(workDir);
+    const formatted = formatBrainAsyncSnapshotForLlm(raw);
+    expect(formatted.next_wake_at).toContain('18:00');
+    expect(formatted.active_pendings[0]?.execute_at).toContain('18:00');
+    expect(raw.next_wake_at).toBe('2026-05-17T10:00:00.000Z');
   });
 });

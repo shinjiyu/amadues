@@ -1,4 +1,5 @@
 import type { Message, MessagePart } from '@utlra/webchat-protocol';
+import { formatWallClockTime } from '@utlra/chat-ir/serialize';
 import { FileAttachmentCard } from './FileAttachmentCard.js';
 
 interface Props {
@@ -84,21 +85,6 @@ function PartRenderer({ part, meUserId }: { part: MessagePart; meUserId: string 
 }
 
 function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const sameDay =
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate();
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    if (sameDay) return `${hh}:${mm}`;
-    const M = d.getMonth() + 1;
-    const D = d.getDate();
-    return `${M}/${D} ${hh}:${mm}`;
-  } catch {
-    return '';
-  }
+  return formatWallClockTime(iso);
 }
 

@@ -6,12 +6,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { formatAgentLocalDateTime } from '../../agent-time.js';
 
 /** 采集当前工作目录的环境快照，返回描述文本 */
 export function captureSnapshot(workDir: string): string {
   const lines: string[] = [];
   lines.push(`# 环境快照`);
-  lines.push(`时间：${new Date().toISOString()}`);
+  lines.push(`时间：${formatAgentLocalDateTime()}`);
   lines.push('');
 
   // 工作目录文件列表

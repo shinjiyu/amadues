@@ -8,6 +8,7 @@ import {
   listActivePendings,
   type PendingItem,
 } from '../openkuroneko/pendings/index.js';
+import { formatAgentIsoLocal } from '../agent-time.js';
 
 /** 与 controller.handleAllCompleted 一致 */
 export const POST_COMPLETE_REASON = '目标已完成，等待新目标';
@@ -123,6 +124,18 @@ export function buildBrainAsyncSnapshot(workDir: string): BrainAsyncSnapshot {
 /** burst 退出后是否应标 AWAITING（与 ChangeWatcher 续跑语义一致） */
 export function isBrainAwaitingAsync(workDir: string): boolean {
   return buildBrainAsyncSnapshot(workDir).is_async_waiting;
+}
+
+/** 将 async 快照中的 ISO 时刻转为 agent 本地时间，供 LLM 工具 JSON 输出 */
+export function formatBrainAsyncSnapshotForLlm(snap: BrainAsyncSnapshot): BrainAsyncSnapshot {
+  return {
+    ...snap,
+    next_wake_at: snap.next_wake_at ? formatAgentIsoLocal(snap.next_wake_at) : null,
+    active_pendings: snap.active_pendings.map((p) => ({
+      ...p,
+      execute_at: p.execute_at ? formatAgentIsoLocal(p.execute_at) : null,
+    })),
+  };
 }
 
 /** 写入外脑 system prompt（对话 + 心跳共用） */

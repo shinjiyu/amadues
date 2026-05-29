@@ -1,5 +1,6 @@
 import { parseJsonObjectFromLlmText } from '@utlra/chat-ir';
 import { randomUUID } from 'node:crypto';
+import { formatAgentIsoLocal } from '../agent-time.js';
 import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
 import { llmRawChatCompletion } from '../llm/raw.js';
 import type { OuterMemoryStore } from '../outer/outer-memory.js';
@@ -490,10 +491,10 @@ export class PerformanceGoalEngine {
         if (scorecard.suggestedInnerGoal) lines.push(`- 建议内脑任务: ${scorecard.suggestedInnerGoal}`);
         if (scorecard.lastActionAt) {
           lines.push(
-            `- 最近动作: ${scorecard.lastActionType ?? 'unknown'} / ${scorecard.lastActionStatus ?? 'unknown'} / ${scorecard.lastActionSummary ?? '无'} @ ${scorecard.lastActionAt}`,
+            `- 最近动作: ${scorecard.lastActionType ?? 'unknown'} / ${scorecard.lastActionStatus ?? 'unknown'} / ${scorecard.lastActionSummary ?? '无'} @ ${formatAgentIsoLocal(scorecard.lastActionAt)}`,
           );
         }
-        lines.push(`- 下次审阅: ${scorecard.nextReviewAt}`);
+        lines.push(`- 下次审阅: ${formatAgentIsoLocal(scorecard.nextReviewAt)}`);
       } else {
         lines.push('- 当前分数: 尚未审阅');
         lines.push(`- Rubric: ${goal.rubric.summary}`);

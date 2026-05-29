@@ -36,6 +36,7 @@ import {
 } from '../openkuroneko/pendings/index.js';
 import {
   buildBrainAsyncSnapshot,
+  formatBrainAsyncSnapshotForLlm,
   isBrainAwaitingAsync,
 } from './brain-async-snapshot.js';
 import { notifyInnerBrainTaskComplete } from './completion-notify.js';
@@ -159,6 +160,12 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           kpi_id: {
             type: 'string',
             description: '（可选）关联的 KPI ID。同一 KPI 的多次 burst 共享反思 / 失败记忆。',
+          },
+          peer_workspace_ids: {
+            type: 'string',
+            description:
+              '（可选）逗号分隔的 peer workspace_id，内脑可 read_peer_file 只读访问。' +
+              '留空则自动注入最近 5 个任务 workspace。',
           },
         },
         required: ['goal'],
@@ -761,8 +768,36 @@ async function execReplyToUser(
   return { replied: true, output: `已发送消息（${text.length} 字符${noteAttach}）${noteReject}` };
 }
 
+/** set_goal 时自动注入最近 N 个 peer workspace（只读），供内脑读上一轮产物 */
+function collectAutoPeerWorkspaceIds(
+  registry: InnerBrainRegistry,
+  excludeWorkspaceId: string,
+  limit = 5,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const rows = registry
+    .list()
+    .filter((r) => r.workspaceId !== excludeWorkspaceId && r.status !== 'ERROR')
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  for (const r of rows) {
+    if (seen.has(r.workspaceId)) continue;
+    seen.add(r.workspaceId);
+    out.push(r.workspaceId);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 async function execSetGoal(
-  args: { goal?: string; workspace_id?: string; origin_user?: string; origin_thread?: string; kpi_id?: string },
+  args: {
+    goal?: string;
+    workspace_id?: string;
+    origin_user?: string;
+    origin_thread?: string;
+    kpi_id?: string;
+    peer_workspace_ids?: string;
+  },
   ctx: OuterToolContext,
 ): Promise<ToolCallResult> {
   const goal = args.goal?.trim() ?? '';
@@ -833,6 +868,16 @@ async function execSetGoal(
 
     const maxTicks = Math.min(10_000, Math.max(1, Number(process.env['UTLRA_PI_AUTO_MAX_TICKS'] ?? 500)));
 
+    const workspacesRoot = path.join(ctx.dataRoot, 'workspaces');
+    const explicitPeers = args.peer_workspace_ids
+      ?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const peerWorkspaceIds =
+      explicitPeers && explicitPeers.length > 0
+        ? explicitPeers
+        : collectAutoPeerWorkspaceIds(registry, wsId, 5);
+
     // 注册任务（先注册再 spawn，确保 exit handler 能访问到记录）
     const taskRecord: TaskRecord = {
       instanceId,
@@ -859,6 +904,8 @@ async function execSetGoal(
         workDir,
         maxTicks,
         kpiId: resolvedKpiId,
+        peerWorkspaceIds,
+        workspacesRoot,
         onExit: (exitCode, signal) => {
           // 子进程退出时，从 worker 状态文件读取结果并更新注册表
           const workerStatus = readWorkerStatus(workDir);
@@ -1255,7 +1302,7 @@ function execViewKpi(
     ? '（暂无 reflexion）'
     : recent.map((r, i) => {
         return [
-          `第 ${i + 1} 次（${r.ts.slice(0, 16)}, verdict=${r.verdict}）`,
+          `第 ${i + 1} 次（${formatAgentIsoLocal(r.ts)}, verdict=${r.verdict}）`,
           r.hardFailures.length > 0 ? `  硬失败：${r.hardFailures.join('；')}` : '',
           r.softFailures.length > 0 ? `  软失败：${r.softFailures.join('；')}` : '',
           r.nextStrategy ? `  换向建议：${r.nextStrategy}` : '',
@@ -1326,7 +1373,7 @@ function execListInnerBrains(
         .filter((l) => l.trim().startsWith('[M'));
     }
 
-    const asyncSnap = buildBrainAsyncSnapshot(r.workDir);
+    const asyncSnap = formatBrainAsyncSnapshotForLlm(buildBrainAsyncSnapshot(r.workDir));
 
     return {
       instance_id:   r.instanceId,
@@ -1348,9 +1395,7 @@ function execListInnerBrains(
         blocked_reason: asyncSnap.controller.blocked_reason,
         is_async_waiting: asyncSnap.is_async_waiting,
         is_post_complete: asyncSnap.is_post_complete,
-        next_wake_at: asyncSnap.next_wake_at
-          ? formatAgentIsoLocal(asyncSnap.next_wake_at)
-          : null,
+        next_wake_at: asyncSnap.next_wake_at,
         active_pendings: asyncSnap.active_pendings,
       },
     };
@@ -1499,7 +1544,7 @@ function execReadInnerStatus(
       const status = ctx.getEngine(record.workspaceId).readStatus();
       if (!status) return { replied: false, output: `实例 ${instanceId} 尚无状态文件。` };
       const selfUpdate = readSelfUpdateSession(record.workDir);
-      const asyncSnap = buildBrainAsyncSnapshot(record.workDir);
+      const asyncSnap = formatBrainAsyncSnapshotForLlm(buildBrainAsyncSnapshot(record.workDir));
       return {
         replied: false,
         output: JSON.stringify({
@@ -1518,9 +1563,7 @@ function execReadInnerStatus(
             blocked_reason: asyncSnap.controller.blocked_reason,
             is_async_waiting: asyncSnap.is_async_waiting,
             is_post_complete: asyncSnap.is_post_complete,
-            next_wake_at: asyncSnap.next_wake_at
-          ? formatAgentIsoLocal(asyncSnap.next_wake_at)
-          : null,
+            next_wake_at: asyncSnap.next_wake_at,
             active_pendings: asyncSnap.active_pendings,
           },
           selfUpdate: selfUpdate
@@ -1655,9 +1698,10 @@ function execReadPerformanceGoals(ctx: OuterToolContext): ToolCallResult {
       lines.push(`  建议: ${scorecard.suggestedActionType} - ${scorecard.suggestedActionSummary}`);
       if (scorecard.lastActionAt) {
         lines.push(
-          `  最近动作: ${scorecard.lastActionType ?? 'unknown'} / ${scorecard.lastActionStatus ?? 'unknown'} / ${scorecard.lastActionSummary ?? '无'} @ ${scorecard.lastActionAt}`,
+          `  最近动作: ${scorecard.lastActionType ?? 'unknown'} / ${scorecard.lastActionStatus ?? 'unknown'} / ${scorecard.lastActionSummary ?? '无'} @ ${formatAgentIsoLocal(scorecard.lastActionAt)}`,
         );
       }
+      lines.push(`  下次审阅: ${formatAgentIsoLocal(scorecard.nextReviewAt)}`);
     } else {
       lines.push('  分数: 尚未审阅');
     }

@@ -2,6 +2,8 @@
  * 内脑实况 UI：对齐 openKuroneko chat-ui Monitor（模式徽章、里程碑、结构化日志）。
  */
 
+import { formatWallClockTime } from '@utlra/chat-ir/serialize';
+
 export type PiMonoTickExplained = {
   summary: string;
   modes: Array<{ mode: string; what: string }>;
@@ -205,7 +207,7 @@ export function InnerLiveDeck({
             </div>
             {lastAttr.ts != null && (
               <div className="inner-live-muted inner-live-attr-ts">
-                {new Date(String(lastAttr.ts)).toLocaleString()}
+                {formatWallClockTime(String(lastAttr.ts), { compactToday: false })}
               </div>
             )}
           </div>

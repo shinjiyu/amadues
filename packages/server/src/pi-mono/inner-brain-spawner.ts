@@ -54,6 +54,10 @@ export interface SpawnInnerBrainParams {
   kpiId?:      string;
   /** 子进程退出时的回调（exitCode: 0=正常, 1=错误, null=signal kill） */
   onExit?: (exitCode: number | null, signal: NodeJS.Signals | null) => void;
+  /** 可只读访问的其它 workspace id（跨内脑产物协议） */
+  peerWorkspaceIds?: string[];
+  /** workspaces 根目录，例如 <dataRoot>/workspaces */
+  workspacesRoot?: string;
 }
 
 /** 读取 worker 写入的状态文件 */
@@ -93,6 +97,10 @@ export function spawnInnerBrainWorker(params: SpawnInnerBrainParams): SpawnedWor
         INNER_WORK_DIR:     params.workDir,
         INNER_MAX_TICKS:    String(params.maxTicks),
         ...(params.kpiId ? { INNER_KPI_ID: params.kpiId } : {}),
+        ...(params.peerWorkspaceIds?.length
+          ? { INNER_PEER_WORKSPACE_IDS: params.peerWorkspaceIds.join(',') }
+          : {}),
+        ...(params.workspacesRoot ? { INNER_WORKSPACES_ROOT: params.workspacesRoot } : {}),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
