@@ -66,6 +66,7 @@ import {
 } from './autonomy-policy-store.js';
 import { loadPersonality, patchPersonality } from './personality.js';
 import type { AutonomyHardGates, AutonomyTaskTypeConfig } from './autonomy-types.js';
+import { formatAgentLocalDateTime } from '../agent-time.js';
 
 // ── OpenAI-compatible tool schema ──────────────────────────────────────────
 
@@ -81,6 +82,31 @@ export interface ToolDef {
     };
   };
 }
+
+/** 外脑强制收尾轮：仅允许向用户发消息（其它工具一律不可用）。 */
+export const OUTER_REPLY_ONLY_TOOL_DEFS: ToolDef[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'reply_to_user',
+      description:
+        '向用户发送消息（通过 chat IR 渠道，例如 Discord）。可多次调用追加多条消息。调用后消息立即发送。\n' +
+        '可选附件：通过 attach_asset_ids 传入逗号分隔的 asset id 列表（裸 UUID，可带 `asset:` 前缀），' +
+        '系统会自动转为附件并随消息发出。asset id 通常来自 read_inner_status 返回的 deliverables[].asset_id。',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: '要发送给用户的消息内容（Markdown 可用）' },
+          attach_asset_ids: {
+            type: 'string',
+            description: '可选；逗号分隔的 asset id 列表（来自 read_inner_status 的 deliverables[].asset_id）。无效 id 会被静默剔除。',
+          },
+        },
+        required: ['text'],
+      },
+    },
+  },
+];
 
 export const OUTER_TOOL_DEFS: ToolDef[] = [
   {
@@ -340,7 +366,9 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
     type: 'function',
     function: {
       name: 'get_time',
-      description: '获取当前时间（ISO 8601 格式）。',
+      description:
+        '获取当前时间（agent 配置时区的本地时间，含时区名；默认 Asia/Shanghai）。' +
+        '与内脑 started_at 等字段比较时请使用同一时区理解，勿把 UTC 的 Z 误当本地时间。',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -1887,7 +1915,7 @@ function execManagePerformanceGoal(
 // ── 新增工具执行函数 ─────────────────────────────────────────────────────────
 
 function execGetTime(): ToolCallResult {
-  return { replied: false, output: new Date().toISOString() };
+  return { replied: false, output: formatAgentLocalDateTime() };
 }
 
 function execSearchThread(
@@ -1927,7 +1955,7 @@ function execSearchThread(
   if (!recent.length) return { replied: false, output: `在 ${threadId} 中未找到匹配"${query}"的消息。` };
 
   const lines = recent.map((m) => {
-    const time = new Date(m.sent_at).toLocaleString('zh-CN');
+    const time = formatAgentLocalDateTime(new Date(m.sent_at));
     const text = m.parts
       .filter((p) => p.type === 'text')
       .map((p) => p.text ?? '')

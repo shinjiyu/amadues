@@ -33,6 +33,8 @@ import {
 
 const GLOBAL_THREAD_ID = 'global';
 const MOBILE_BREAKPOINT_PX = 768;
+/** typing.relay 收到后，若无新的 start/stop 刷新，多久自动清除指示器（兜底超时）。 */
+const TYPING_CLEAR_MS = 8000;
 
 type MobilePanel = 'sessions' | 'chat' | 'members';
 
@@ -142,13 +144,64 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
   const [highlightByThread, setHighlightByThread] = useState<Record<string, boolean>>({});
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // thread_id → (user_id → display_name)：当前在该线程「正在输入中」的用户。
+  const [typingByThread, setTypingByThread] = useState<Record<string, Record<string, string>>>({});
 
   const activeThreadIdRef = useRef(activeThreadId);
   activeThreadIdRef.current = activeThreadId;
 
   const wsRef = useRef<WebChatWs | null>(null);
+  // `${threadId}::${userId}` → 兜底清除 timer。
+  const typingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // 清除某线程某用户的输入指示器（含兜底 timer）。
+  const clearTyping = useCallback((threadId: string, userId: string): void => {
+    const key = `${threadId}::${userId}`;
+    const timer = typingTimersRef.current.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      typingTimersRef.current.delete(key);
+    }
+    setTypingByThread((prev) => {
+      const cur = prev[threadId];
+      if (!cur || !(userId in cur)) return prev;
+      const next = { ...cur };
+      delete next[userId];
+      if (Object.keys(next).length === 0) {
+        const copy = { ...prev };
+        delete copy[threadId];
+        return copy;
+      }
+      return { ...prev, [threadId]: next };
+    });
+  }, []);
+
+  const handleTypingRelay = useCallback(
+    (threadId: string, userId: string, displayName: string, state: 'start' | 'stop'): void => {
+      if (userId === identity.user_id) return;
+      if (state === 'stop') {
+        clearTyping(threadId, userId);
+        return;
+      }
+      const key = `${threadId}::${userId}`;
+      const existing = typingTimersRef.current.get(key);
+      if (existing) clearTimeout(existing);
+      typingTimersRef.current.set(
+        key,
+        setTimeout(() => clearTyping(threadId, userId), TYPING_CLEAR_MS),
+      );
+      setTypingByThread((prev) => {
+        const cur = prev[threadId] ?? {};
+        if (cur[userId] === displayName) return prev;
+        return { ...prev, [threadId]: { ...cur, [userId]: displayName } };
+      });
+    },
+    [identity.user_id, clearTyping],
+  );
 
   const handleIncomingMessage = useCallback((threadId: string, message: Message): void => {
+    // 对方一旦发出消息，立即撤掉其「正在输入」指示器
+    clearTyping(threadId, message.sender_user_id);
     setMessagesByThread((prev) => {
       const current = prev[threadId] ?? [];
       if (current.some((m) => m.id === message.id)) return prev;
@@ -161,7 +214,7 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
       }
     }
     wsRef.current?.updateCursor(threadId, message.id);
-  }, [identity.user_id]);
+  }, [identity.user_id, clearTyping]);
 
   // WS lifecycle
   useEffect(() => {
@@ -189,6 +242,13 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
           });
         } else if (ev.type === 'message.new') {
           handleIncomingMessage(ev.thread_id, ev.message);
+        } else if (ev.type === 'typing.relay') {
+          handleTypingRelay(
+            ev.thread_id,
+            ev.user_id,
+            ev.display_name ?? ev.user_id,
+            ev.state ?? 'start',
+          );
         } else if (ev.type === 'error') {
           setError(`[${ev.code}] ${ev.message}`);
         }
@@ -197,9 +257,12 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
     wsRef.current = ws;
     ws.connect();
     ws.subscribe(GLOBAL_THREAD_ID, null);
+    const timers = typingTimersRef.current;
     return () => {
       ws.close();
       wsRef.current = null;
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity.user_id]);
@@ -321,6 +384,10 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
     }
   }, [activeThreadId, handleUnauthorized]);
 
+  const handleTyping = useCallback((state: 'start' | 'stop'): void => {
+    wsRef.current?.sendTyping(activeThreadId, state);
+  }, [activeThreadId]);
+
   const handleUpload = useCallback(async (file: File): Promise<Attachment | null> => {
     try {
       const meta = await uploadFile(file);
@@ -342,6 +409,11 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
     () => threads.find((t) => t.id === activeThreadId),
     [threads, activeThreadId],
   );
+
+  const activeTypingNames = useMemo(() => {
+    const map = typingByThread[activeThreadId];
+    return map ? Object.values(map) : [];
+  }, [typingByThread, activeThreadId]);
 
   const usersById = useMemo(() => {
     const map = new Map<string, UserPresence>();
@@ -461,6 +533,7 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
               hasMore={hasMoreByThread[activeThreadId] ?? false}
               meUserId={identity.user_id}
               usersById={usersById}
+              typingNames={activeTypingNames}
               onLoadMore={handleLoadMore}
               onReply={(m) => setReplyingTo(m)}
             />
@@ -475,6 +548,7 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
               onCancelReply={() => setReplyingTo(null)}
               onSend={handleSend}
               onUpload={handleUpload}
+              onTyping={handleTyping}
             />
           )}
         </div>

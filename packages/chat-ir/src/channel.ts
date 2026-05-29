@@ -102,6 +102,24 @@ export interface ChatIRChannel {
    * 同样地，入站消息落库后也应调一次 `seenTracker.track(...)`——见 `seen-tracker.ts`。
    */
   postMessage(threadId: string, body: ChatIROutboundBody): Promise<void>;
+
+  /**
+   * 出站**活动信号**（瞬时，不落库、不进 mem9）：给对端「在场感」提示。
+   *
+   * - `kind: 'typing'`：开始/仍在思考-输入中（如外脑生成回复前调用）。
+   * - `kind: 'idle'`：明确停止（回复已发出 / 放弃回复）。
+   *
+   * 跨渠道语义：
+   * - WebChat：映射为 chat-server `typing.relay`（前端渲染「X 正在输入…」）。
+   * - Discord：可映射其 typing API（`POST /channels/:id/typing`），约 10s 自动消退。
+   *
+   * **可选方法**：渠道无对应能力时可不实现；调用方应以 `channel.sendActivity?.(...)`
+   * 形式调用并容忍 undefined。实现不应抛异常（best-effort，失败仅记日志）。
+   *
+   * 注意：typing 需周期重发（长生成时），重发节奏由调用方（外脑）负责，
+   * channel 只做无状态转发。
+   */
+  sendActivity?(threadId: string, kind: 'typing' | 'idle'): void;
 }
 
 /**

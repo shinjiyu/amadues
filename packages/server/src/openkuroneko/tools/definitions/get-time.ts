@@ -1,9 +1,11 @@
 import type { Tool } from '../index.js';
+import { formatAgentLocalDateTime } from '../../../agent-time.js';
 
 export const getTimeTool: Tool = {
   name: 'get_time',
-  description: 'Return the current UTC time as an ISO 8601 string.',
+  description:
+    'Return the current local time in the agent-configured timezone (default Asia/Shanghai), including timezone label.',
   async call(_args) {
-    return { ok: true, output: new Date().toISOString() };
+    return { ok: true, output: formatAgentLocalDateTime() };
   },
 };

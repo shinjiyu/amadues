@@ -18,7 +18,8 @@
 | **Kuroneko Agent** | `npm run dev:server`（`.env`） | API http://127.0.0.1:8787 |
 | **Shiro Agent** | `npm run dev:agent2`（`.env.agent2`） | API http://127.0.0.1:8788 |
 | **Gin Agent** | `npm run dev:gin`（`.env.gin`） | API http://127.0.0.1:8789 |
-| **Dashboard** | `npm run dev:dashboard` | http://127.0.0.1:5173（`/api`→8787，`/api2`→8788，`/api3`→8789） |
+| **Aoi Agent** | `npm run dev:aoi`（`.env.aoi`，GLM Coding Plan） | API http://127.0.0.1:8791 |
+| **Dashboard** | `npm run dev:dashboard` | http://127.0.0.1:5173（`/api`→8787，`/api2`→8788，`/api3`→8789，`/api4`→8791） |
 | **Chat Server** | `npm run dev:chat-server` | http://127.0.0.1:8790 |
 | **Web Chat H5** | `npm run dev:web-chat` | http://127.0.0.1:5180 |
 | **Ops Console** | `npm run dev:ops` | http://127.0.0.1:7779（三 Agent 日志） |
@@ -53,6 +54,7 @@ npm run dev          # 8787 + Dashboard
 npm run dev:server       # Kuroneko
 npm run dev:agent2       # Shiro（独立 data-shiro）
 npm run dev:gin          # Gin（独立 data-gin）
+npm run dev:aoi          # Aoi（独立 data-aoi，智谱 GLM Coding Plan）
 npm run dev:webchat-all  # chat-server + Web Chat H5
 npm run dev:ops          # Ops 日志台
 ```
@@ -101,7 +103,7 @@ Repository（执行轨 / 交互轨）：`POST /api/repository/:tenant/commit|ret
 
 接入说明：[`doc/channel-bridge-guide.md`](./doc/channel-bridge-guide.md)、[`doc/chat-ir-identity-design.md`](./doc/chat-ir-identity-design.md)。
 
-三 Agent 共用 chat-server 时：复制 `.env.chat-server.example` → `.env.chat-server`（`WEBCHAT_AGENT_USER_ID=kuroneko,shiro,gin`），再 `npm run dev:chat-server`。各 agent 的 `WEBCHAT_AGENT_SECRET` 须一致。
+三 Agent 共用 chat-server 时：复制 `.env.chat-server.example` → `.env.chat-server`（`WEBCHAT_AGENT_USER_ID=kuroneko,shiro,gin,aoi`），再 `npm run dev:chat-server`。各 agent 的 `WEBCHAT_AGENT_SECRET` 须一致。
 
 ## 测试与架构
 

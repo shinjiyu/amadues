@@ -1,7 +1,29 @@
 # Chat IR 用户状态协议（presence / typing「正在输入中」）
 
-> **状态：待实现（设计待定稿）**。优先级：中高——直接影响人机/多 agent 交互的「在场感」。
+> **状态：typing 已完成（2026-05-29）**；presence agent 在线态仍待补。
 > 从 [`doc/todo/README.md`](./README.md) 链入。
+
+## ✅ 已实现（typing 全链路，自底向上）
+
+| 层 | 改动 |
+|----|------|
+| `packages/webchat-protocol` | `ClientTyping` / `TypingRelay` 加 `state: 'start'\|'stop'`（relay 默认 start）+ relay 带 `display_name`；新增 REST `TypingRequestSchema` |
+| `apps/chat-server` | `WsHub.relayTyping(threadId, userId, state)` 公开方法（ws `typing` 与 REST 共用，带 display_name 扇出，排除发起者）；新增 REST `POST /threads/:id/typing` |
+| `packages/chat-ir` | `ChatIRChannel` 加**可选** `sendActivity(threadId, kind: 'typing'\|'idle')`（跨渠道活动信号出口，瞬时不落库） |
+| `packages/webchat-bridge` | `WebChatRestClient.sendTyping(threadId, state)`；`WebChatChannel.sendActivity` 映射 typing→start / idle→stop，best-effort |
+| `packages/server`（外脑） | `outer-brain.ts` 用 `withTypingActivity()` 包裹回复生成：开始发 `typing`、按 `UTLRA_OUTER_TYPING_REEMIT_MS`(默认 4s) 周期重发、`finally` 发 `idle` |
+| `apps/web-chat` | `ws.ts.sendTyping`；`App.tsx` 消费 `typing.relay`（按线程聚合 + 8s 兜底超时 + 收到对方消息即清除）；`MessageTimeline` 渲染「X 正在输入…」三点动画；`MessageInput` 输入时节流上报（4s 重发 start / 停顿 3s 或失焦/发送/卸载发 stop） |
+
+设计要点：typing 为**瞬时信号**，不写 `MessageRecord`、不进 mem9；显式 stop + 双端兜底超时；agent 长生成靠周期重发保活。Discord 渠道 `sendActivity` 暂未实现（接口可选，后续可映射 `POST /channels/:id/typing`）。
+
+## ⏳ 仍待补（presence 在线态）
+
+- agent 启动/退出广播在线态（agent 走 REST，`me()` 会上线，但缺少显式离线广播）。
+- 可作为独立小批接入，复用 presence.update。
+
+---
+
+## （以下为原始设计草案，保留备查）
 
 ## 背景与动机
 

@@ -69,6 +69,35 @@ export interface LogEntry {
 
 /** 行为日志最大保留条数（避免无限增长） */
 const MAX_ACTION_LOG_ENTRIES = 200;
+
+/** typing 信号重发间隔（ms）。需小于前端自动消退超时，保证长生成期间指示器不闪没。 */
+const TYPING_REEMIT_MS = Number(process.env['UTLRA_OUTER_TYPING_REEMIT_MS'] ?? '4000');
+
+/**
+ * 在「生成回复」期间持续向 channel 发 `typing` 活动信号，结束（成功/异常）发 `idle`。
+ *
+ * - channel 未实现 `sendActivity`（如 Discord/Null 暂未接）时直接透传，无副作用。
+ * - LLM 生成可能数十秒，单次 typing 会被前端超时消退，故按 {@link TYPING_REEMIT_MS} 周期重发。
+ * - typing 是瞬时信号，失败仅记日志，绝不影响主回复流程。
+ */
+async function withTypingActivity<T>(
+  imClient: ChatIRChannel,
+  threadId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (typeof imClient.sendActivity !== 'function') return fn();
+  const emit = (kind: 'typing' | 'idle'): void => {
+    try { imClient.sendActivity?.(threadId, kind); } catch { /* best-effort */ }
+  };
+  emit('typing');
+  const timer = setInterval(() => emit('typing'), Math.max(1000, TYPING_REEMIT_MS));
+  try {
+    return await fn();
+  } finally {
+    clearInterval(timer);
+    emit('idle');
+  }
+}
 // ── 入站事件 ─────────────────────────────────────────────────────────────────
 
 export interface ImInboundEvent {
@@ -517,7 +546,7 @@ export class OuterBrain {
     const triggerMessageId = ev.message.message_id;
     const freshCheck = makeFreshCheck(seenTracker, threadId, triggerMessageId);
 
-    const result = await runOuterConversationLoop({
+    const result = await withTypingActivity(imClient, threadId, () => runOuterConversationLoop({
       env: llmEnv,
       ctx: {
         threadId,
@@ -551,7 +580,7 @@ export class OuterBrain {
       knowledgeContext: fullContext,
       soul,
       longTermGoal,
-    });
+    }));
 
     const toolsChain = result.toolsUsed.length ? result.toolsUsed.join('→') : '(none)';
     const lastPreview =

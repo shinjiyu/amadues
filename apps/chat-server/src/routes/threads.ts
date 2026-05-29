@@ -4,6 +4,7 @@ import {
   CreateDmRequestSchema,
   ListMessagesQuerySchema,
   PostMessageRequestSchema,
+  TypingRequestSchema,
   type Attachment,
 } from '@utlra/webchat-protocol';
 import { identityMiddleware } from '../identity-mw.js';
@@ -128,6 +129,23 @@ export function buildThreadsRouter(deps: ThreadsRouterDeps): Hono {
     hub.notifyNewMessage(message, req.client_msg_id, userId);
 
     return c.json({ message });
+  });
+
+  // 输入活动（瞬时信号，不落库）。主要给 agent 链路（webchat-bridge）用：
+  // 回复生成前后上报 start / stop，hub 扇出 typing.relay 给线程订阅者。
+  r.post('/threads/:id/typing', auth, async (c) => {
+    const userId = c.get('userId');
+    const threadId = c.req.param('id') ?? '';
+    if (!threadId || !threads.canAccess(threadId, userId)) {
+      throw new HTTPException(403, { message: 'not a participant of this thread' });
+    }
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = TypingRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HTTPException(400, { message: parsed.error.message });
+    }
+    hub.relayTyping(threadId, userId, parsed.data.state ?? 'start');
+    return c.json({ ok: true });
   });
 
   return r;

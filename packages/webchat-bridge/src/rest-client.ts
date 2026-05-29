@@ -105,6 +105,19 @@ export class WebChatRestClient {
     return (await this.checkOk(res)).json();
   }
 
+  /**
+   * 上报输入活动（瞬时信号，不落库）。chat-server 收到后扇出 `typing.relay`
+   * 给线程订阅者，前端渲染「X 正在输入…」。失败不抛异常（best-effort）。
+   */
+  async sendTyping(threadId: string, state: 'start' | 'stop'): Promise<void> {
+    const res = await this.fetchFn(this.url(`/threads/${encodeURIComponent(threadId)}/typing`), {
+      method: 'POST',
+      headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ state }),
+    });
+    await this.checkOk(res);
+  }
+
   /** 下载附件二进制（用于 mirror_assets 模式把 chat-server URL 落到 ChatAssetStore）。 */
   async downloadAttachment(att: Attachment): Promise<{ bytes: Buffer; mime: string; name: string } | null> {
     const url = absoluteAttachmentUrl(this.opts.config.apiBase, att.url);

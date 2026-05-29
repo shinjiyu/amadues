@@ -27,6 +27,7 @@
 | POST | `/threads/dm` | body: `{ peer_user_id }` → 返回 DM 线程（已存在则返回原线程） |
 | GET | `/threads/:id/messages?before=&limit=` | 分页历史（默认 limit=50，最大 200） |
 | POST | `/threads/:id/messages` | 发送消息 |
+| POST | `/threads/:id/typing` | body: `{ state? }` → 上报输入活动（agent 链路用；瞬时不落库，扇出 `typing.relay`） |
 | POST | `/uploads` | multipart/form-data 上传附件 |
 | GET | `/uploads/:asset_id` | 下载附件 |
 
@@ -78,7 +79,7 @@
 | `hello` | `{ user_id, display_name }` | **首条**；不发就不算上线 |
 | `subscribe` | `{ thread_id }` | 加入线程订阅，收 `message.new` 等推送 |
 | `since` | `{ thread_id, cursor }` | 重连补拉；cursor=最后一条 message_id 或 null |
-| `typing` | `{ thread_id }` | 可选 |
+| `typing` | `{ thread_id, state? }` | 输入活动；`state: 'start' \| 'stop'`（省略=start）。瞬时，不落库 |
 
 ### 2.2 server → client
 
@@ -88,7 +89,7 @@
 | `presence.update` | `{ user_id, online }` | 增量 |
 | `message.new` | `{ thread_id, message }` | 新消息（订阅过该 thread 的所有 socket） |
 | `message.ack` | `{ client_msg_id, message_id }` | 发送回执（仅发回给原发送者） |
-| `typing.relay` | `{ thread_id, user_id }` | 中继 typing |
+| `typing.relay` | `{ thread_id, user_id, state, display_name? }` | 中继输入活动给线程订阅者（不含发起者）；`state: 'start'\|'stop'` |
 | `error` | `{ code, message }` | 协议/校验/权限错误 |
 
 ### 2.3 状态机

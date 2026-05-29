@@ -38,7 +38,7 @@ export interface UserPrincipal {
 
 export interface AgentPrincipal {
   kind: 'agent';
-  /** 由 `WEBCHAT_AGENT_USER_ID` 配置出来的保留 user_id（如 `kuroneko`）。 */
+  /** agent 自报的 user_id（如 `kuroneko`）；由正确 `WEBCHAT_AGENT_SECRET` 旁路认证。 */
   userId: string;
 }
 

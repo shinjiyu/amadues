@@ -56,11 +56,12 @@ export interface ChatServerConfig {
   dataRoot: string;
   globalThreadId: string;
   /**
-   * 保留 user_id 集合：声称这些 user_id 之一的 WS hello 必须携带 agentSecret。
-   * 空集 = 未启用保留（任意客户端可任意 user_id 上线）。
-   * 多 agent（如 Kuroneko + Shiro 共用同一 chat-server）通过逗号分隔配置：
-   *   WEBCHAT_AGENT_USER_ID=kuroneko,shiro,gin
-   * 多个 agent 共用一个 secret。
+   * 可选 agent user_id 收紧列表（**非必填**）。
+   *
+   * - **留空**（推荐）：`WEBCHAT_AGENT_SECRET` 正确即可，任意 user_id 作为 agent 登录；新增 robot 无需改服务端。
+   * - **非空**：在 secret 正确的基础上，仅允许列表内的 user_id（额外收紧，防 secret 泄露后冒用任意 id）。
+   *
+   * 多 agent 共用同一 secret 时无需在此枚举；该变量仅用于可选收紧或 dev 开放模式下的保留名保护。
    */
   agentUserIds: Set<string>;
   agentSecret: string | null;

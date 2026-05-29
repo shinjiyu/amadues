@@ -160,6 +160,19 @@ export class WebChatChannel implements ChatIRChannel {
     }
   }
 
+  /**
+   * 活动信号 → chat-server typing.relay。瞬时、不落库、best-effort。
+   * IR `typing` → REST `start`，`idle` → REST `stop`。
+   */
+  sendActivity(threadId: string, kind: 'typing' | 'idle'): void {
+    const webChatThreadId = irThreadToWebChat(threadId) ?? threadId;
+    const state = kind === 'typing' ? 'start' : 'stop';
+    void this.rest.sendTyping(webChatThreadId, state).catch((e) => {
+      // typing 是锦上添花信号，失败仅 debug 级别，不影响主流程
+      console.warn('[webchat-channel] sendTyping failed', webChatThreadId, state, String(e));
+    });
+  }
+
   private async bootstrap(): Promise<void> {
     try {
       await this.rest.me();

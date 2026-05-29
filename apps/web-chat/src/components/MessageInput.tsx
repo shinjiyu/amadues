@@ -14,6 +14,8 @@ interface Props {
     replyToId?: string;
   }) => Promise<void>;
   onUpload: (file: File) => Promise<Attachment | null>;
+  /** 输入活动上报：开始输入（节流重发）/ 停止（发送、清空、失焦）。 */
+  onTyping?: (state: 'start' | 'stop') => void;
 }
 
 interface InputAttachment {
@@ -24,7 +26,7 @@ interface InputAttachment {
   attachment?: Attachment;
 }
 
-export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSend, onUpload }: Props) {
+export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSend, onUpload, onTyping }: Props) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<InputAttachment[]>([]);
   const [sending, setSending] = useState(false);
@@ -32,6 +34,37 @@ export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSen
   const [popupActiveIdx, setPopupActiveIdx] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 输入活动节流：上次发 start 的时间戳（0 = 当前空闲）+ 停顿后自动 stop 的 timer。
+  const lastTypingStartRef = useRef(0);
+  const typingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopTyping = (): void => {
+    if (typingIdleTimerRef.current) {
+      clearTimeout(typingIdleTimerRef.current);
+      typingIdleTimerRef.current = null;
+    }
+    if (lastTypingStartRef.current !== 0) {
+      lastTypingStartRef.current = 0;
+      onTyping?.('stop');
+    }
+  };
+
+  const pingTyping = (): void => {
+    if (!onTyping) return;
+    const now = Date.now();
+    // 每 ~4s 重发一次 start，使接收端的输入指示器在持续输入时不会因超时消退
+    if (now - lastTypingStartRef.current > 4000) {
+      lastTypingStartRef.current = now;
+      onTyping('start');
+    }
+    if (typingIdleTimerRef.current) clearTimeout(typingIdleTimerRef.current);
+    typingIdleTimerRef.current = setTimeout(stopTyping, 3000);
+  };
+
+  // 卸载时收尾，确保发一次 stop（切线程 / 关页面）
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => stopTyping, []);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -47,6 +80,8 @@ export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSen
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     const value = e.target.value;
     setText(value);
+    if (value.trim().length > 0) pingTyping();
+    else stopTyping();
     const caret = e.target.selectionStart ?? value.length;
     const slice = value.slice(0, caret);
     const m = slice.match(/(?:^|\s)@([^\s@]*)$/);
@@ -138,6 +173,7 @@ export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSen
       });
       setText('');
       setAttachments([]);
+      stopTyping();
     } finally {
       setSending(false);
     }
@@ -266,6 +302,7 @@ export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSen
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
+            onBlur={stopTyping}
             placeholder="说点什么... (Enter 发送, Shift+Enter 换行, @ 提及)"
             rows={1}
           />

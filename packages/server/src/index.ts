@@ -1515,6 +1515,23 @@ app.post('/api/chat/demo-roundtrip', async (c) => {
 export { app, DATA_ROOT, REPO_ROOT };
 
 const port = Number(process.env['PORT'] ?? 8787);
+const AGENT_EXIT_LOG = path.join(DATA_ROOT, 'agent-process.log');
+
+function appendAgentExitLog(event: string, detail?: Record<string, unknown>): void {
+  try {
+    const line = JSON.stringify({
+      at: new Date().toISOString(),
+      pid: process.pid,
+      port,
+      agent: process.env['UTLRA_AGENT_NAME'] ?? process.env['UTLRA_AGENT_IM_SID'] ?? 'unknown',
+      event,
+      ...detail,
+    });
+    fs.appendFileSync(AGENT_EXIT_LOG, `${line}\n`, 'utf8');
+  } catch {
+    /* best-effort */
+  }
+}
 
 if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   console.log(`[utlra] bootstrap skipped (UTLRA_SKIP_AGENT_BOOTSTRAP=1)  DATA_ROOT=${DATA_ROOT}`);
@@ -1742,6 +1759,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   function gracefulShutdown(signal: string): void {
     if (shuttingDown) return;
     shuttingDown = true;
+    appendAgentExitLog('graceful_shutdown', { signal });
     console.log(`[utlra] ${signal} → graceful shutdown`);
     try {
       agentRuntime?.stopRegistryReconcile?.();
@@ -1759,13 +1777,22 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.once('SIGINT', () => gracefulShutdown('SIGINT'));
 
+  process.on('exit', (code) => {
+    appendAgentExitLog('process_exit', { code, graceful: shuttingDown });
+    if (code !== 0) {
+      console.error(`[utlra] process exit code=${code} (see ${AGENT_EXIT_LOG})`);
+    }
+  });
+
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.error(
         `[utlra] 端口 ${port} 已被占用。可执行: lsof -nP -iTCP:${port} -sTCP:LISTEN  或换端口: PORT=8788 npm run dev`,
       );
+      appendAgentExitLog('listen_error', { code: err.code, message: `port ${port} in use` });
     } else {
       console.error('[utlra] listen error:', err);
+      appendAgentExitLog('listen_error', { code: err.code, message: err.message });
     }
     process.exit(1);
   });

@@ -62,6 +62,12 @@ export class WebChatWs {
     }
   }
 
+  /** 上报输入活动（瞬时信号）。服务端扇出 typing.relay 给线程其它订阅者。 */
+  sendTyping(threadId: string, state: 'start' | 'stop'): void {
+    if (!this.isReady) return;
+    this.sendRaw({ type: 'typing', thread_id: threadId, state });
+  }
+
   /** 更新已记得的 cursor（每收到新消息时调用一次，重连时用于补拉） */
   updateCursor(threadId: string, lastSeen: string): void {
     if (this.subscriptions.has(threadId)) {

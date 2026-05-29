@@ -13,6 +13,7 @@ const AGENTS = [
   { label: 'Kuroneko（8787）', apiPrefix: '/api' },
   { label: 'Shiro（8788）', apiPrefix: '/api2' },
   { label: 'Gin（8789）', apiPrefix: '/api3' },
+  { label: 'Aoi（8791）', apiPrefix: '/api4' },
 ] as const;
 type AgentConfig = typeof AGENTS[number];
 

@@ -11,11 +11,13 @@ packages/server/data/
 # agent2 数据目录（含运行时 workspace 数据）
 packages/server/data-shiro/
 packages/server/data-gin/
+packages/server/data-aoi/
 # 任何 .env / .env.* 都视为本地敏感配置，但保留 .env.example 作为可入库模板
 .env
 .env.*
 !.env.example
 !.env.gin.example
+!.env.aoi.example
 !.env.chat-server.example
 .sandbox-data/
 # 便携 Node（Windows 上无 npm/node 时手工下载的运行时，不应入库）

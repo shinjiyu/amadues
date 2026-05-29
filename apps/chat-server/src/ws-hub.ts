@@ -136,7 +136,7 @@ export class WsHub {
     } else if (ev.type === 'since') {
       await this.onSince(state, ev.thread_id, ev.cursor);
     } else if (ev.type === 'typing') {
-      this.onTyping(state, ev.thread_id);
+      this.onTyping(state, ev.thread_id, ev.state ?? 'start');
     }
   }
 
@@ -172,18 +172,20 @@ export class WsHub {
         try { state.ws.close(4401, 'login required'); } catch { /* ignore */ }
         return;
       }
-      // 旧的兼容路径：声称是 agent 的，必须 hello 里带正确 secret（dev 也保留这条）
-      if (this.opts.agentUserIds.has(userId)) {
-        if (!this.opts.agentSecret) {
-          this.sendError(state.ws, 'not_authenticated', '服务器未配置 agent secret');
-          try { state.ws.close(4003, 'agent secret missing'); } catch { /* ignore */ }
-          return;
-        }
-        if (agentSecret !== this.opts.agentSecret) {
+      // 开发态兼容：
+      // - hello 显式带了 agent_secret → 必须匹配（agent 登录，任意 user_id）
+      // - 未带 secret 但 user_id 命中可选白名单 → 拒绝（防 dev 冒充已知名称）
+      // - 其余 → 旧版开放 dev（任意 user_id，无 secret）
+      if (agentSecret !== undefined && agentSecret !== '') {
+        if (!this.opts.agentSecret || agentSecret !== this.opts.agentSecret) {
           this.sendError(state.ws, 'not_authenticated', 'agent_secret 不匹配');
           try { state.ws.close(4003, 'agent secret mismatch'); } catch { /* ignore */ }
           return;
         }
+      } else if (this.opts.agentUserIds.size > 0 && this.opts.agentUserIds.has(userId)) {
+        this.sendError(state.ws, 'not_authenticated', '保留 agent user_id 需携带 agent_secret');
+        try { state.ws.close(4003, 'agent secret required'); } catch { /* ignore */ }
+        return;
       }
     }
 
@@ -254,15 +256,38 @@ export class WsHub {
     }
   }
 
-  private onTyping(state: ConnectionState, threadId: string): void {
+  private onTyping(
+    state: ConnectionState,
+    threadId: string,
+    typingState: 'start' | 'stop',
+  ): void {
     if (!state.userId) return;
-    if (!this.opts.threads.canAccess(threadId, state.userId)) return;
+    this.relayTyping(threadId, state.userId, typingState, state);
+  }
+
+  /**
+   * 外部入口：把某 user 的输入活动扇出给线程订阅者（不含发起者本人）。
+   *
+   * 既给 WS `typing` 事件用，也给 REST `POST /threads/:id/typing`（agent 链路）用——
+   * agent 走 REST + bridge，没有浏览器那种 ws `typing` 通路，靠此方法广播
+   * 「Shiro 正在输入…」。typing 是**瞬时信号**，不落库、不进历史。
+   */
+  relayTyping(
+    threadId: string,
+    userId: string,
+    typingState: 'start' | 'stop',
+    except?: ConnectionState,
+  ): void {
+    if (!this.opts.threads.canAccess(threadId, userId)) return;
+    const displayName = this.opts.users.get(userId)?.display_name;
     const payload: ServerEvent = {
       type: 'typing.relay',
       thread_id: threadId,
-      user_id: state.userId,
+      user_id: userId,
+      state: typingState,
+      ...(displayName ? { display_name: displayName } : {}),
     };
-    this.fanoutThread(threadId, payload, state);
+    this.fanoutThread(threadId, payload, except);
   }
 
   /**

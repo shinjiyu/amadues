@@ -36,6 +36,11 @@ export type ClientSince = z.infer<typeof ClientSinceSchema>;
 export const ClientTypingSchema = z.object({
   type: z.literal('typing'),
   thread_id: z.string().min(1),
+  /**
+   * 输入活动状态。`start` = 开始/仍在输入（前端应配合超时自动消退），
+   * `stop` = 明确停止（发送完成 / 清空输入框 / 失焦）。省略视为 `start`（向后兼容）。
+   */
+  state: z.enum(['start', 'stop']).optional(),
 });
 export type ClientTyping = z.infer<typeof ClientTypingSchema>;
 
@@ -80,6 +85,10 @@ export const TypingRelaySchema = z.object({
   type: z.literal('typing.relay'),
   thread_id: z.string().min(1),
   user_id: z.string().min(1),
+  /** 该用户当前是否在输入；`stop` 表示明确停止。省略/默认 `start`。 */
+  state: z.enum(['start', 'stop']).default('start'),
+  /** 发送者显示名（便于前端无需查 presence 即可渲染「X 正在输入…」）。 */
+  display_name: z.string().optional(),
 });
 export type TypingRelay = z.infer<typeof TypingRelaySchema>;
 

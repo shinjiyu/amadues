@@ -159,9 +159,9 @@ async function main(): Promise<void> {
   const httpServer = serve(
     { fetch: app.fetch, port: config.port },
     (info) => {
-      const reservedAgents = config.agentUserIds.size > 0
-        ? `reserved_agents=[${[...config.agentUserIds].join(',')}]`
-        : 'reserved_agents=<none>';
+      const reservedAgents = config.agentSecret
+        ? `agent_bypass=secret${config.agentUserIds.size > 0 ? ` allowlist=[${[...config.agentUserIds].join(',')}]` : ' (any user_id)'}`
+        : 'agent_bypass=<none>';
       const authState = config.auth.required
         ? `auth=required loginserver=${config.auth.loginServerUrl}`
         : 'auth=optional';

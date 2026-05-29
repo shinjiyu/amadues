@@ -8,7 +8,7 @@
 import type { IdentityRegistry } from '@utlra/chat-ir';
 import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
 import { llmRawChatCompletion } from '../llm/raw.js';
-import { OUTER_TOOL_DEFS, executeOuterTool } from './outer-tools.js';
+import { OUTER_REPLY_ONLY_TOOL_DEFS, OUTER_TOOL_DEFS, executeOuterTool } from './outer-tools.js';
 import type { OuterToolContext, ToolDef } from './outer-tools.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE } from './brain-async-snapshot.js';
 import {
@@ -16,6 +16,7 @@ import {
   recordOuterToolCall,
   recordOuterToolResult,
 } from './outer-tool-audit.js';
+import { formatAgentNowTag } from '../agent-time.js';
 
 // OpenAI-compatible 工具调用消息结构
 
@@ -42,16 +43,28 @@ export interface LlmToolCallResponse {
  * 缺省实现走 raw 模式（保留与既有 provider 兼容的 max_tokens / temperature / thinking / tool_choice 行为）；
  * 单测注入替身后即可完全绕开 HTTP。
  */
+export type LlmToolChoice =
+  | 'auto'
+  | 'required'
+  | { type: 'function'; function: { name: string } };
+
 export type LlmToolCallFn = (args: {
   env: InnerLlmEnv;
   messages: ConvMessage[];
   tools: ToolDef[];
   maxTokens: number;
+  toolChoice?: LlmToolChoice;
 }) => Promise<LlmToolCallResponse>;
 
 // ── 带工具调用的 LLM 调用 ────────────────────────────────────────────────────
 
-export const defaultOuterLlmToolCall: LlmToolCallFn = async ({ env, messages, tools, maxTokens }) => {
+export const defaultOuterLlmToolCall: LlmToolCallFn = async ({
+  env,
+  messages,
+  tools,
+  maxTokens,
+  toolChoice = 'auto',
+}) => {
   const { raw } = await llmRawChatCompletion<{
     choices?: Array<{
       message?: {
@@ -71,7 +84,7 @@ export const defaultOuterLlmToolCall: LlmToolCallFn = async ({ env, messages, to
       temperature: 0.6,
       thinking: { type: 'disabled' },
       tools,
-      tool_choice: 'auto',
+      tool_choice: toolChoice,
     },
   });
 
@@ -244,6 +257,194 @@ export interface ConversationLoopResult {
   lastContent: string | null;
   /** 本轮对话中调用过的工具名称列表（如 ["set_goal", "reply_to_user"]） */
   toolsUsed: string[];
+  /** 主循环未回复时触发了 reply_to_user 强制收尾轮 */
+  forcedReplyRecovery?: boolean;
+}
+
+const RECOVERY_FALLBACK_TEXT =
+  '抱歉，刚才处理久了点。我在这，你刚说的我收到了。';
+
+function pickRecoveryFallbackText(lastContent: string | null, messages: ConvMessage[]): string {
+  if (lastContent?.trim()) return lastContent.trim();
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
+      return m.content.trim();
+    }
+  }
+  return RECOVERY_FALLBACK_TEXT;
+}
+
+async function executeReplyToolCall(
+  tc: ToolCallEntry,
+  round: number,
+  ctx: OuterToolContext,
+  toolsUsed: string[],
+): Promise<{ replied: boolean; abortLoop: boolean; output: string }> {
+  recordOuterToolCall({
+    dataRoot: ctx.dataRoot,
+    agentSid: ctx.agentSid,
+    threadId: ctx.threadId,
+    round,
+    toolName: tc.function.name,
+    argsJson: tc.function.arguments,
+    actionLogStore: ctx.actionLogStore,
+  });
+
+  const t0 = Date.now();
+  let toolOut: { replied: boolean; output: string; abortLoop?: boolean };
+  try {
+    toolOut = await executeOuterTool(tc.function.name, tc.function.arguments, ctx);
+  } catch (e) {
+    toolOut = {
+      replied: false,
+      output: `工具执行错误：${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+  const ok = isToolOutputOk(toolOut.output);
+  recordOuterToolResult({
+    dataRoot: ctx.dataRoot,
+    agentSid: ctx.agentSid,
+    threadId: ctx.threadId,
+    round,
+    toolName: tc.function.name,
+    output: toolOut.output,
+    ok,
+    durationMs: Date.now() - t0,
+    actionLogStore: ctx.actionLogStore,
+  });
+
+  toolsUsed.push(tc.function.name);
+  console.log(
+    `[utlra][outer-loop] round ${round} tool=${tc.function.name} ok=${ok} toolReplied=${toolOut.replied} abort=${!!toolOut.abortLoop} out=${logSnippet(toolOut.output, 120)}`,
+  );
+
+  return { replied: toolOut.replied, abortLoop: !!toolOut.abortLoop, output: toolOut.output };
+}
+
+/**
+ * 主循环用尽轮次或 LLM 无工具返回却仍未 reply 时：禁掉其它工具，强制一轮 reply_to_user。
+ */
+async function runForcedReplyRecovery(opts: {
+  env: InnerLlmEnv;
+  ctx: OuterToolContext;
+  messages: ConvMessage[];
+  config: ConversationLoopConfig;
+  callLlm: LlmToolCallFn;
+  roundsUsed: number;
+  toolsUsed: string[];
+  lastContent: string | null;
+}): Promise<{ replied: boolean; roundsUsed: number; lastContent: string | null }> {
+  const { env, ctx, messages, config, callLlm } = opts;
+  let roundsUsed = opts.roundsUsed;
+  let lastContent = opts.lastContent;
+  let replied = false;
+
+  if (ctx.freshCheck) {
+    try {
+      if (await ctx.freshCheck()) {
+        console.log('[utlra][outer-loop] recovery skipped: another agent already replied');
+        return { replied: false, roundsUsed, lastContent };
+      }
+    } catch {
+      // 新鲜度检查失败不阻断强制回复
+    }
+  }
+
+  messages.push({
+    role: 'user',
+    content:
+      '【系统】你已使用多轮工具但仍未向用户发送消息（不允许静默结束）。' +
+      '现在**只能**调用 reply_to_user，根据上文已查到的信息用 1–3 句口语回复用户；禁止再调用其他任何工具。',
+  });
+
+  console.warn('[utlra][outer-loop] recovery: forcing reply_to_user-only round (other tools disabled)');
+
+  roundsUsed++;
+  let resp: LlmToolCallResponse;
+  try {
+    resp = await callLlm({
+      env,
+      messages,
+      tools: OUTER_REPLY_ONLY_TOOL_DEFS,
+      maxTokens: config.maxTokens,
+      toolChoice: { type: 'function', function: { name: 'reply_to_user' } },
+    });
+  } catch (e) {
+    console.error('[utlra][outer-loop] recovery LLM call failed', e);
+    resp = { content: null, tool_calls: [], raw: {} };
+  }
+
+  lastContent = resp.content ?? lastContent;
+
+  if (resp.tool_calls.length) {
+    messages.push({
+      role: 'assistant',
+      content: resp.content ?? null,
+      tool_calls: resp.tool_calls,
+    });
+
+    for (const tc of resp.tool_calls) {
+      if (tc.function.name !== 'reply_to_user') {
+        console.warn(`[utlra][outer-loop] recovery ignored disallowed tool=${tc.function.name}`);
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: '（本轮仅允许 reply_to_user，该工具已拒绝执行）',
+        });
+        continue;
+      }
+      const out = await executeReplyToolCall(tc, roundsUsed, ctx, opts.toolsUsed);
+      messages.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: out.output,
+      });
+      if (out.replied) replied = true;
+      if (out.abortLoop) return { replied, roundsUsed, lastContent };
+    }
+  }
+
+  if (!replied && resp.content?.trim()) {
+    const out = await executeReplyToolCall(
+      {
+        id: `recovery-content-${roundsUsed}`,
+        type: 'function',
+        function: {
+          name: 'reply_to_user',
+          arguments: JSON.stringify({ text: resp.content.trim() }),
+        },
+      },
+      roundsUsed,
+      ctx,
+      opts.toolsUsed,
+    );
+    if (out.replied) replied = true;
+    if (out.abortLoop) return { replied, roundsUsed, lastContent };
+  }
+
+  if (!replied) {
+    const fallbackText = pickRecoveryFallbackText(lastContent, messages);
+    console.warn(
+      `[utlra][outer-loop] recovery hard fallback reply_to_user text=${logSnippet(fallbackText, 80)}`,
+    );
+    const out = await executeReplyToolCall(
+      {
+        id: `recovery-fallback-${roundsUsed}`,
+        type: 'function',
+        function: {
+          name: 'reply_to_user',
+          arguments: JSON.stringify({ text: fallbackText }),
+        },
+      },
+      roundsUsed,
+      ctx,
+      opts.toolsUsed,
+    );
+    if (out.replied) replied = true;
+  }
+
+  return { replied, roundsUsed, lastContent };
 }
 
 export async function runOuterConversationLoop(
@@ -263,9 +464,7 @@ export async function runOuterConversationLoop(
   );
 
   // 当前时间标签：让 LLM 知道此刻是几点，感知时间节奏
-  const now    = new Date();
-  const hhmm   = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const nowTag = `【现在 ${hhmm}】`;
+  const nowTag = formatAgentNowTag();
 
   // 背景知识放在前面作为参考，用户消息明确标出，保持简洁
   const userContent = knowledgeContext
@@ -281,6 +480,7 @@ export async function runOuterConversationLoop(
   let roundsUsed = 0;
   let lastContent: string | null = null;
   const toolsUsed: string[] = [];
+  let abortedByFreshCheck = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     roundsUsed++;
@@ -392,6 +592,7 @@ export async function runOuterConversationLoop(
     // abortLoop：freshCheck 命中，另一个 agent 已接单，立即中止整个循环
     if (shouldAbort) {
       console.log('[utlra][outer-loop] abort: another agent claimed the task, stopping loop');
+      abortedByFreshCheck = true;
       break;
     }
 
@@ -401,10 +602,30 @@ export async function runOuterConversationLoop(
     }
   }
 
+  let forcedReplyRecovery = false;
+  if (!replied && !abortedByFreshCheck) {
+    forcedReplyRecovery = true;
+    const recovered = await runForcedReplyRecovery({
+      env,
+      ctx,
+      messages,
+      config,
+      callLlm,
+      roundsUsed,
+      toolsUsed,
+      lastContent,
+    });
+    replied = recovered.replied;
+    roundsUsed = recovered.roundsUsed;
+    lastContent = recovered.lastContent;
+  }
+
   const toolsChain = toolsUsed.length ? toolsUsed.join('→') : '(none)';
   console.log(
-    `[utlra][outer-loop] done: replied=${replied} rounds=${roundsUsed} tools=${toolsChain} lastContent=${logSnippet(lastContent)}`,
+    `[utlra][outer-loop] done: replied=${replied} rounds=${roundsUsed} tools=${toolsChain}` +
+      `${forcedReplyRecovery ? ' recovery=1' : ''}` +
+      `${!replied ? ` lastContent=${logSnippet(lastContent)}` : ''}`,
   );
 
-  return { replied, roundsUsed, lastContent, toolsUsed };
+  return { replied, roundsUsed, lastContent, toolsUsed, forcedReplyRecovery };
 }

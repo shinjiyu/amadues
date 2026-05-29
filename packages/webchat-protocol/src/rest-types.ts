@@ -97,6 +97,17 @@ export const CreateDmRequestSchema = z.object({
 });
 export type CreateDmRequest = z.infer<typeof CreateDmRequestSchema>;
 
+/**
+ * `POST /threads/:id/typing` 请求体 —— agent 链路上报「正在输入中」。
+ *
+ * 浏览器走 WS `typing` 事件；agent（webchat-bridge）走 REST 没有 ws 出口，
+ * 故用此端点把瞬时输入信号扇出给线程订阅者。state 省略视为 `start`。
+ */
+export const TypingRequestSchema = z.object({
+  state: z.enum(['start', 'stop']).optional(),
+});
+export type TypingRequest = z.infer<typeof TypingRequestSchema>;
+
 export const ListMessagesQuerySchema = z.object({
   before: z.string().optional(),
   limit: z

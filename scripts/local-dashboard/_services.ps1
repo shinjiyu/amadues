@@ -27,6 +27,14 @@ $script:KuronekoServices = @{
     OpenUrl        = $null
     StartupWaitSec = 120
   }
+  'agent-aoi' = @{
+    Label          = 'Agent: Aoi'
+    NpmScript      = 'dev:aoi'
+    Port           = 8791
+    HealthUrl      = 'http://127.0.0.1:8791/api/health'
+    OpenUrl        = $null
+    StartupWaitSec = 120
+  }
   'dashboard' = @{
     Label          = 'Dashboard'
     NpmScript      = 'dev:dashboard'

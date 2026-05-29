@@ -18,6 +18,7 @@
     "dev:dashboard": "npm run dev -w @utlra/dashboard",
     "dev:agent2": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run dev:agent2 -w @utlra/server",
     "dev:gin": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run dev:gin -w @utlra/server",
+    "dev:aoi": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run dev:aoi -w @utlra/server",
     "dev:ops": "npm run dev -w @utlra/ops-console",
     "dev:chat-server": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/chat-server",
     "dev:web-chat": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/web-chat",

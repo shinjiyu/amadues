@@ -39,7 +39,7 @@ services:
       # ── 子路径前缀（影响附件 URL）──────────────────────────
       - WEBCHAT_PUBLIC_BASE_PATH=${WEBCHAT_PUBLIC_BASE_PATH:-/webchat}
       # ── Agent 旁路（Kuroneko/Shiro/Gin 用同一 secret）──────
-      - WEBCHAT_AGENT_USER_ID=${WEBCHAT_AGENT_USER_ID:-kuroneko,shiro,gin}
+      - WEBCHAT_AGENT_USER_ID=${WEBCHAT_AGENT_USER_ID:-}
       - WEBCHAT_AGENT_SECRET=${WEBCHAT_AGENT_SECRET:-}
       # ── 业务参数 ────────────────────────────────────────────
       - WEBCHAT_GLOBAL_THREAD_ID=${WEBCHAT_GLOBAL_THREAD_ID:-global}

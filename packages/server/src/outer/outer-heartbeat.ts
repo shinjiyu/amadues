@@ -29,6 +29,7 @@ import { loadSoul } from './soul.js';
 import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
 import type { OuterMemoryStore } from './outer-memory.js';
 import type { LogEntry } from './outer-brain.js';
+import { formatAgentLocalDateTime, resolveAgentTimezone } from '../agent-time.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { PerformanceGoalEngine } from '../performance-goals/engine.js';
@@ -388,7 +389,7 @@ async function runHeartbeat(
   const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', hasAny: false };
   const memSection = memStore ? memStore.formatMemoryForLlm(memory) : '';
 
-  const userContent = `当前时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
+  const userContent = `当前时间：${formatAgentLocalDateTime(new Date(), resolveAgentTimezone())}
 
 ## 在途任务（跨所有 workspace，权威来源）
 ${liveBurstSummary}

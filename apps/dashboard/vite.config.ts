@@ -6,7 +6,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // 更长前缀优先（避免 /api 吞掉 /api2、/api3）
+      // 更长前缀优先（避免 /api 吞掉 /api2、/api3、/api4）
+      '/api4': {
+        target: 'http://127.0.0.1:8791',
+        changeOrigin: true,
+        rewrite: (p: string) => p.replace(/^\/api4/, '/api'),
+      },
       '/api3': {
         target: 'http://127.0.0.1:8789',
         changeOrigin: true,

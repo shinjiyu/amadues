@@ -27,6 +27,19 @@ if (Test-Path $pidFile) {
 
 Stop-KuronekoServicePorts $svc
 
+# 父 shell 若残留 agent 专用变量（如 Cursor 会话），会盖过各 agent 的 --env-file / .env。
+# 启动前清掉，让 dev:agent2 / dev:gin / dev:aoi 的 --env-file 与 index.ts dotenv 按预期生效。
+Remove-Item Env:UTLRA_DATA_ROOT -ErrorAction SilentlyContinue
+Remove-Item Env:LOCALMODULE_API_KEY -ErrorAction SilentlyContinue
+Remove-Item Env:KIMI_API_KEY -ErrorAction SilentlyContinue
+Remove-Item Env:ZHIPU_API_KEY -ErrorAction SilentlyContinue
+Remove-Item Env:UTLRA_INNER_LLM_PROVIDER -ErrorAction SilentlyContinue
+if ($svc.Port) {
+  $env:PORT = [string]$svc.Port
+} else {
+  Remove-Item Env:PORT -ErrorAction SilentlyContinue
+}
+
 $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
 if (-not $npm) { $npm = Get-Command npm -ErrorAction SilentlyContinue }
 if (-not $npm) {

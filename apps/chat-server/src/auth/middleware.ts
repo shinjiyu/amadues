@@ -2,7 +2,7 @@
  * Hono 中间件 —— 把 Principal 注入 `c.var.principal`，并把 user_id/display_name 同步到既有 ContextVariableMap。
  *
  * 解析顺序：
- *   1. `Authorization: Bearer <WEBCHAT_AGENT_SECRET>` + `X-User-Id` 命中保留 agent → AgentPrincipal
+ *   1. `Authorization: Bearer <WEBCHAT_AGENT_SECRET>` + `X-User-Id` → AgentPrincipal（secret 对即可，user_id 白名单可选）
  *   2. Cookie (`wc_token` / `wc_refresh`) → UserPrincipal（必要时刷新 access cookie）
  *   3. 否则 anonymous（路由可自行决定是否 401）
  *
@@ -15,6 +15,7 @@ import type { UserStore } from '../users.js';
 import { setAuthCookiesHono, isHonoRequestSecure } from './cookies.js';
 import type { AuthService } from './service.js';
 import type { Principal } from './types.js';
+import { extractBearerToken, resolveAgentPrincipal } from './agent-bypass.js';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -38,23 +39,21 @@ export function authMiddleware(opts: AuthMiddlewareOptions) {
     let principal: Principal = { kind: 'anonymous' };
 
     // ── 1) Agent secret 旁路 ───────────────────────────────────────
-    const auth = c.req.header('authorization');
     const claimedUserId = c.req.header('x-user-id')?.trim();
-    if (
-      agentSecret &&
-      auth &&
-      claimedUserId &&
-      auth.toLowerCase().startsWith('bearer ') &&
-      auth.slice(7).trim() === agentSecret &&
-      agentUserIds.has(claimedUserId)
-    ) {
-      principal = { kind: 'agent', userId: claimedUserId };
+    const agentPrincipal = resolveAgentPrincipal({
+      agentSecret,
+      agentUserIds,
+      claimedUserId,
+      providedSecret: extractBearerToken(c.req.header('authorization')),
+    });
+    if (agentPrincipal) {
+      principal = agentPrincipal;
       const queryName = c.req.query('display_name')?.trim();
-      const existing = users.get(claimedUserId);
-      const displayName = queryName || existing?.display_name || claimedUserId;
-      await users.upsert(claimedUserId, displayName);
+      const existing = users.get(agentPrincipal.userId);
+      const displayName = queryName || existing?.display_name || agentPrincipal.userId;
+      await users.upsert(agentPrincipal.userId, displayName);
       c.set('principal', principal);
-      c.set('userId', claimedUserId);
+      c.set('userId', agentPrincipal.userId);
       c.set('displayName', displayName);
       await next();
       return;

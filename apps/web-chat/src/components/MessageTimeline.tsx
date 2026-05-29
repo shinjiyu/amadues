@@ -8,8 +8,16 @@ interface Props {
   hasMore: boolean;
   meUserId: string;
   usersById: Map<string, UserPresence>;
+  /** 当前在本线程「正在输入中」的用户显示名（不含自己）。 */
+  typingNames?: string[];
   onLoadMore: () => void;
   onReply: (m: Message) => void;
+}
+
+function formatTyping(names: string[]): string {
+  if (names.length === 1) return `${names[0]} 正在输入`;
+  if (names.length === 2) return `${names[0]}、${names[1]} 正在输入`;
+  return `${names[0]} 等 ${names.length} 人正在输入`;
 }
 
 export function MessageTimeline({
@@ -18,6 +26,7 @@ export function MessageTimeline({
   hasMore,
   meUserId,
   usersById,
+  typingNames = [],
   onLoadMore,
   onReply,
 }: Props) {
@@ -66,6 +75,16 @@ export function MessageTimeline({
           onReply={() => onReply(m)}
         />
       ))}
+      {typingNames.length > 0 && (
+        <div className="typing-indicator" aria-live="polite">
+          <span className="typing-dots" aria-hidden>
+            <span />
+            <span />
+            <span />
+          </span>
+          <span className="typing-text">{formatTyping(typingNames)}</span>
+        </div>
+      )}
     </div>
   );
 }
