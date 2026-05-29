@@ -25,6 +25,7 @@ import { isInnerBrainStoppable, stopInnerBrainInstance } from './stop-inner-brai
 import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import { formatKpiReflexionBlock } from './kpi-registry.js';
+import { findLiveBurstForKpi } from './kpi-dispatch-guard.js';
 import { formatKpiDigest, suggestKpiAction, buildKpiBurstLinks } from './kpi-progress.js';
 import { ingestDeliverables } from './deliverables-ingest.js';
 import { processBurstExitForKpi } from './kpi-burst-hooks.js';
@@ -759,6 +760,18 @@ async function execSetGoal(
       console.warn(`[utlra][outer-tools] set_goal kpi_id=${kpiId} 不存在，本 burst 不挂 KPI`);
     }
     const resolvedKpiId = kpi ? kpi.kpiId : undefined;
+
+    if (resolvedKpiId) {
+      const liveBurst = findLiveBurstForKpi(registry, resolvedKpiId);
+      if (liveBurst) {
+        return {
+          replied: false,
+          output:
+            `（KPI ${resolvedKpiId} 已有在途 burst \`${liveBurst.instanceId}\`（${liveBurst.status}），` +
+            `跳过重复 set_goal；请等其完成或先 stop/restart）`,
+        };
+      }
+    }
 
     // 清除可能残留的停止信号
     clearStopSignal(workDir);

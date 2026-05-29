@@ -77,7 +77,7 @@ REM ----- Step 4: Verify feature branches are merged -----
 echo.
 echo ----- Step 4: Verifying feature branch merge status -----
 set UNMERGED=0
-for %%f in (feature/heartbeat-integration feature/heartbeat-prototype feature/heartbeat-python feature/scheduled-tasks) do (
+for %%f in (feature/heartbeat-prototype feature/heartbeat-python feature/scheduled-tasks) do (
     git branch --merged main | findstr /x "  %%f" >nul 2>&1
     if errorlevel 1 (
         echo [NOT MERGED] %%f
@@ -92,7 +92,7 @@ if %UNMERGED%==1 (
     echo [WARN] Some feature branches are not yet merged into main.
     set /p MERGE_CHOICE="Merge unmerged branches now? (y/n): "
     if /i "!MERGE_CHOICE!"=="y" (
-        for %%f in (feature/heartbeat-integration feature/heartbeat-prototype feature/heartbeat-python feature/scheduled-tasks) do (
+        for %%f in (feature/heartbeat-prototype feature/heartbeat-python feature/scheduled-tasks) do (
             git branch --merged main | findstr /x "  %%f" >nul 2>&1
             if errorlevel 1 (
                 echo Merging %%f ...

@@ -81,6 +81,8 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
     imClient: deps.imClient,
     toolCtx,
     getLlmEnv: deps.getLlmEnv,
+    getEngine: deps.getEngine,
+    memoryStore: deps.memoryStore,
   };
 
   const dispatch = await dispatchAutonomyTasks(dispatchDeps, snapshot, verdict);

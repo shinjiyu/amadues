@@ -702,6 +702,37 @@ input, textarea {
   cursor: not-allowed;
 }
 
+.input-row .send-btn {
+  min-width: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input-row .send-btn.sending {
+  background: #30363d;
+  cursor: wait;
+}
+
+.input-row .send-btn.sending:hover {
+  background: #30363d;
+}
+
+.send-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #6e7681;
+  border-top-color: #c9d1d9;
+  border-radius: 50%;
+  animation: send-spin 0.7s linear infinite;
+}
+
+@keyframes send-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .icon-btn {
   background: #21262d !important;
   color: #c9d1d9 !important;
@@ -814,7 +845,7 @@ input, textarea {
   font-size: 12px;
 }
 
-/* Admin page (whitelist π‹¿Ì) */
+/* Admin page (whitelist ùùùù) */
 .admin-page {
   height: 100%;
   overflow: auto;

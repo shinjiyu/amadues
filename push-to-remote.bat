@@ -62,7 +62,6 @@ set /p CLEANUP=Delete local feature branches? (YES/no):
 if "%CLEANUP%"=="YES" (
     git branch -d feature/heartbeat-prototype 2>nul
     git branch -d feature/heartbeat-python 2>nul
-    git branch -d feature/heartbeat-integration 2>nul
     git branch -d feature/scheduled-tasks 2>nul
     echo [OK] Local feature branches deleted.
 )

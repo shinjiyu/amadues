@@ -18,6 +18,13 @@ import {
 import { loadPersonality } from './personality.js';
 import { logAutonomyDispatch } from './autonomy-action-log.js';
 import {
+  evaluateKpiAutonomyDispatch,
+  findLiveBurstForKpi,
+} from './kpi-dispatch-guard.js';
+import type { InnerBrainEngine } from '../workspace-kit/index.js';
+import { buildKpiGoalPlannerContext } from './kpi-goal-context.js';
+import type { OuterMemoryStore } from './outer-memory.js';
+import {
   isTaskOnCooldown,
   isTaskOverDailyLimit,
   recordTaskDispatch,
@@ -41,6 +48,8 @@ export interface AutonomyDispatchDeps {
   imClient: ChatIRChannel | null;
   toolCtx: OuterToolContext;
   getLlmEnv: () => InnerLlmEnv | null;
+  getEngine?: (workspaceId: string) => InnerBrainEngine;
+  memoryStore?: OuterMemoryStore;
 }
 
 function taskConfig(policy: AutonomyPolicy, id: AutonomyTaskType) {
@@ -77,17 +86,23 @@ function taskEligible(
 
 async function draftKpiGoal(
   env: InnerLlmEnv,
-  kpiRegistry: KpiRegistry,
-  soul: string,
+  deps: AutonomyDispatchDeps,
+  snapshot: ResourceSnapshot,
 ): Promise<{ goal: string; kpiId: string } | null> {
-  const kpis = kpiRegistry.list({ status: 'active' });
+  const kpis = deps.kpiRegistry.list({ status: 'active' });
   if (kpis.length === 0) return null;
   const kpi = kpis[0]!;
-  const trail = kpiRegistry.recentReflexions(kpi.kpiId, 2);
-  const trailText =
-    trail.length > 0
-      ? trail.map((t) => `- ${t.verdict}: ${t.nextStrategy}`).join('\n')
-      : '（无历史反思）';
+
+  const soul = loadSoul(deps.dataRoot);
+  const plannerContext = await buildKpiGoalPlannerContext({
+    dataRoot: deps.dataRoot,
+    kpi,
+    kpiRegistry: deps.kpiRegistry,
+    registry: deps.registry,
+    snapshot,
+    getEngine: deps.getEngine ?? deps.toolCtx.getEngine,
+    memoryStore: deps.memoryStore ?? deps.toolCtx.memoryStore,
+  });
 
   const { raw } = await llmRawChatCompletion<{ choices?: Array<{ message?: { content?: string } }> }>({
     provider: env.provider,
@@ -95,18 +110,20 @@ async function draftKpiGoal(
     baseUrl: env.baseUrl,
     body: {
       model: env.textModel,
-      temperature: 0.4,
-      max_tokens: 800,
+      temperature: 0.35,
+      max_tokens: 1200,
       thinking: { type: 'disabled' },
       messages: [
         {
           role: 'system',
           content:
-            `${soul}\n\n你是外脑规划器。根据 KPI 设计一条**可执行**的内脑 goal（Markdown，≤400 字）。只输出 goal 正文，不要解释。`,
+            `${soul}\n\n你是外脑 KPI 规划器。根据下方完整上下文，设计**一条**可执行的内脑 goal。` +
+            `只输出 goal 正文（Markdown），不要解释、不要 JSON、不要「好的」类前言。` +
+            `必须避免与在途 burst 或最近已完成 burst 重复同一任务主题。`,
         },
         {
           role: 'user',
-          content: `KPI：${kpi.description}\n最近反思：\n${trailText}\n\n请给出下一轮内脑目标。`,
+          content: plannerContext,
         },
       ],
     },
@@ -116,12 +133,14 @@ async function draftKpiGoal(
   return { goal, kpiId: kpi.kpiId };
 }
 
-async function executeKpiInnerGoal(deps: AutonomyDispatchDeps): Promise<AutonomyDispatchResult> {
+async function executeKpiInnerGoal(
+  deps: AutonomyDispatchDeps,
+  snapshot: ResourceSnapshot,
+): Promise<AutonomyDispatchResult> {
   const env = deps.getLlmEnv();
   if (!env) return { dispatched: false, reason: 'no_llm_env' };
 
-  const soul = loadSoul(deps.dataRoot);
-  const draft = await draftKpiGoal(env, deps.kpiRegistry, soul);
+  const draft = await draftKpiGoal(env, deps, snapshot);
   if (!draft) return { dispatched: false, reason: 'kpi_goal_draft_failed' };
 
   const toolOut = await executeOuterTool(
@@ -239,17 +258,31 @@ export async function dispatchAutonomyTasks(
   const policy = loadAutonomyPolicy(deps.dataRoot);
   const personality = loadPersonality(deps.dataRoot);
 
-  // 1. KPI 优先
+  // 1. KPI 优先（同 KPI 已有 RUNNING/AWAITING/BLOCKED 时绝不重复派发）
   if (hasActiveKpi(deps.kpiRegistry) && canSpawnInner(snapshot, deps.registry, policy)) {
-    const elig = taskEligible(deps.dataRoot, policy, 'kpi_inner_goal');
-    if (elig.ok) {
-      const result = await executeKpiInnerGoal(deps);
-      logAutonomyDispatch(deps.dataRoot, snapshot, result);
-      if (result.dispatched) {
-        recordTaskDispatch(deps.dataRoot, 'kpi_inner_goal');
-        markAutonomousAction(deps.dataRoot);
+    const activeKpi = deps.kpiRegistry.list({ status: 'active' })[0]!;
+    const kpiDecision = evaluateKpiAutonomyDispatch(
+      deps.kpiRegistry,
+      deps.registry,
+      activeKpi.kpiId,
+    );
+    if (!kpiDecision.ok) {
+      const live = findLiveBurstForKpi(deps.registry, activeKpi.kpiId);
+      console.log(
+        `[utlra][autonomy] skip kpi_inner_goal: ${kpiDecision.reason}` +
+          (live ? ` live=${live.instanceId} status=${live.status}` : ''),
+      );
+    } else {
+      const elig = taskEligible(deps.dataRoot, policy, 'kpi_inner_goal');
+      if (elig.ok) {
+        const result = await executeKpiInnerGoal(deps, snapshot);
+        logAutonomyDispatch(deps.dataRoot, snapshot, result);
+        if (result.dispatched) {
+          recordTaskDispatch(deps.dataRoot, 'kpi_inner_goal');
+          markAutonomousAction(deps.dataRoot);
+        }
+        return result;
       }
-      return result;
     }
   }
 

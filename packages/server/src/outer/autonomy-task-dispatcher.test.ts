@@ -100,6 +100,57 @@ describe('autonomy-task-dispatcher', () => {
     root.cleanup();
   });
 
+  it('skips kpi_inner_goal when same KPI already RUNNING', async () => {
+    const root = createTestDataRoot('aut-kpi-dup-');
+    patchAutonomyPolicy(root.dataRoot, { enabled: true });
+    const registry = new InnerBrainRegistry(root.dataRoot);
+    const kpiRegistry = new KpiRegistry(root.dataRoot);
+    const kpi = kpiRegistry.create({ description: '测试 KPI', createdBy: 'test' });
+
+    registry.register({
+      instanceId: 'ib-running-dup',
+      workspaceId: 'task-ib-running-dup',
+      workDir: `${root.dataRoot}/workspaces/task-ib-running-dup`,
+      goal: '已在跑的任务',
+      originUser: 'test',
+      status: 'RUNNING',
+      startedAt: new Date().toISOString(),
+      kpiId: kpi.kpiId,
+    });
+    kpiRegistry.attachBurst(kpi.kpiId, 'ib-running-dup');
+
+    const setGoalSpy = vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
+      replied: false,
+      output: '已向内脑派发任务 instance-should-not',
+    });
+
+    const deps: AutonomyDispatchDeps = {
+      dataRoot: root.dataRoot,
+      agentSid: 'agent-test',
+      workspaceId: 'default',
+      defaultThreadId: '',
+      registry,
+      kpiRegistry,
+      imClient: null,
+      toolCtx: {
+        dataRoot: root.dataRoot,
+        innerBrainRegistry: registry,
+        kpiRegistry,
+      } as AutonomyDispatchDeps['toolCtx'],
+      getLlmEnv: () => ({
+        provider: 'kimi',
+        apiKey: 'test',
+        baseUrl: 'http://localhost',
+        textModel: 'test-model',
+      }),
+    };
+
+    const result = await dispatchAutonomyTasks(deps, baseSnapshot(), idleVerdict());
+    expect(result.dispatched).toBe(false);
+    expect(setGoalSpy).not.toHaveBeenCalled();
+    root.cleanup();
+  });
+
   it('no KPI + high chat probability → may dispatch casual_chat', async () => {
     const root = createTestDataRoot('aut-chat-');
     patchAutonomyPolicy(root.dataRoot, { enabled: true });

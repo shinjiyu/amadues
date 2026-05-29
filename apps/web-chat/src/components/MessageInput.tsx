@@ -27,6 +27,7 @@ interface InputAttachment {
 export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSend, onUpload }: Props) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<InputAttachment[]>([]);
+  const [sending, setSending] = useState(false);
   const [mentionPopup, setMentionPopup] = useState<{ query: string; index: number } | null>(null);
   const [popupActiveIdx, setPopupActiveIdx] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -101,7 +102,7 @@ export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSen
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      void doSend();
+      if (!sending) void doSend();
     }
   };
 
@@ -121,20 +122,31 @@ export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSen
   };
 
   const doSend = async (): Promise<void> => {
+    if (sending) return;
     const trimmed = text.trim();
     const doneAttachments = attachments.filter((a) => a.status === 'done' && a.attachment);
     if (attachments.some((a) => a.status === 'uploading')) return;
     if (!trimmed && doneAttachments.length === 0) return;
 
-    await onSend({
-      text: trimmed,
-      mentionUserIds: collectMentions(),
-      attachmentIds: doneAttachments.map((a) => a.attachment!.asset_id),
-      ...(replyingTo ? { replyToId: replyingTo.id } : {}),
-    });
-    setText('');
-    setAttachments([]);
+    setSending(true);
+    try {
+      await onSend({
+        text: trimmed,
+        mentionUserIds: collectMentions(),
+        attachmentIds: doneAttachments.map((a) => a.attachment!.asset_id),
+        ...(replyingTo ? { replyToId: replyingTo.id } : {}),
+      });
+      setText('');
+      setAttachments([]);
+    } finally {
+      setSending(false);
+    }
   };
+
+  const canSend =
+    !sending &&
+    (text.trim().length > 0 || attachments.some((a) => a.status === 'done')) &&
+    !attachments.some((a) => a.status === 'uploading');
 
   const handleFiles = async (files: FileList | null): Promise<void> => {
     if (!files || files.length === 0) return;
@@ -257,10 +269,16 @@ export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSen
             placeholder="说点什么... (Enter 发送, Shift+Enter 换行, @ 提及)"
             rows={1}
           />
-          <button type="button" onClick={() => void doSend()} disabled={
-            (!text.trim() && attachments.length === 0) ||
-            attachments.some((a) => a.status === 'uploading')
-          }>发送</button>
+          <button
+            type="button"
+            className={`send-btn${sending ? ' sending' : ''}`}
+            onClick={() => void doSend()}
+            disabled={!canSend}
+            aria-busy={sending}
+            title={sending ? '发送中…' : '发送'}
+          >
+            {sending ? <span className="send-spinner" aria-hidden /> : '发送'}
+          </button>
         </div>
       </div>
     </div>
