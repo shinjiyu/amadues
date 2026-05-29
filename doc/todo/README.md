@@ -11,6 +11,7 @@
 | [`memory-blocks-framework.md`](./memory-blocks-framework.md) | **B0–B2 已完成** | Memory Block + keychain + B2 解耦 awaiting/bind |
 | [`outer-brain-web-search-tool.md`](./outer-brain-web-search-tool.md) | **待实现** | 外脑专用 Web Search 工具（与内脑 playwright 分离） |
 | [`resource-awareness-autonomy.md`](./resource-awareness-autonomy.md) | **ADL 已定稿** | 资源感知 + 心跳闲忙判定 + 自主任务（闲聊 / KPI 内脑 goal） |
+| [`chat-ir-presence-typing.md`](./chat-ir-presence-typing.md) | **待实现** | chat IR 用户/agent 状态协议（「正在输入中」/ presence），现仅 WebChat 传输层有半套 |
 
 **已实现（非 backlog）**：Dashboard **参与策略 Lab** — 外脑「是否回复/插嘴」策略调试台，见下文说明。
 

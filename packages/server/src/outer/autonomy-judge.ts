@@ -29,9 +29,7 @@ export function evaluateHardGates(
   if (snapshot.innerBrains.running >= g.maxRunningInnerBrains) {
     return busy(`running_inner=${snapshot.innerBrains.running}>=${g.maxRunningInnerBrains}`, reasons, nowMs);
   }
-  if (snapshot.innerBrains.awaiting >= g.maxAwaitingInnerBrains) {
-    return busy(`awaiting_inner=${snapshot.innerBrains.awaiting}>=${g.maxAwaitingInnerBrains}`, reasons, nowMs);
-  }
+  // AWAITING 不计入自动派发容量（仅 RUNNING 占槽位）
   if (snapshot.llm.inFlight >= g.maxLlmInFlight) {
     return busy(`llm_in_flight=${snapshot.llm.inFlight}>=${g.maxLlmInFlight}`, reasons, nowMs);
   }

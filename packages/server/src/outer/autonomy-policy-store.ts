@@ -17,7 +17,7 @@ export function defaultAutonomyPolicy(now = new Date().toISOString()): AutonomyP
     version: 1,
     enabled: envChatP !== '0',
     hardGates: {
-      maxRunningInnerBrains: 1,
+      maxRunningInnerBrains: 3,
       maxAwaitingInnerBrains: 3,
       maxLlmInFlight: 2,
       maxTokensPerHour: null,

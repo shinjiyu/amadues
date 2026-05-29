@@ -32,7 +32,7 @@ import type { LogEntry } from './outer-brain.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { PerformanceGoalEngine } from '../performance-goals/engine.js';
-import { OUTER_ASYNC_ORCHESTRATION_GUIDE } from './brain-async-snapshot.js';
+import { OUTER_ASYNC_ORCHESTRATION_GUIDE, buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
 import { runAutonomyPipeline } from './autonomy-pipeline.js';
 import type { ResourceProbeDeps } from './resource-probe.js';
 
@@ -51,6 +51,17 @@ export interface HeartbeatConfig {
   defaultThreadId: string;
 }
 
+function resolveHeartbeatDefaultThreadId(env: NodeJS.ProcessEnv): string {
+  const explicit = env['UTLRA_OUTER_HEARTBEAT_THREAD_ID']?.trim();
+  if (explicit) return explicit;
+  const channel = env['UTLRA_CHAT_CHANNEL']?.trim().toLowerCase();
+  const globalId = env['WEBCHAT_GLOBAL_THREAD_ID']?.trim();
+  if (channel === 'webchat' && globalId) {
+    return globalId.startsWith('webchat:') ? globalId : `webchat:${globalId}`;
+  }
+  return '';
+}
+
 export function loadHeartbeatConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): HeartbeatConfig {
@@ -60,7 +71,7 @@ export function loadHeartbeatConfigFromEnv(
     agentName: env['UTLRA_AGENT_NAME']?.trim() || 'Kuroneko',
     enabled: env['UTLRA_OUTER_HEARTBEAT_ENABLED'] !== 'false',
     intervalMs: Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : DEFAULT_INTERVAL_MS,
-    defaultThreadId: env['UTLRA_OUTER_HEARTBEAT_THREAD_ID']?.trim() || '',
+    defaultThreadId: resolveHeartbeatDefaultThreadId(env),
   };
 }
 
@@ -114,6 +125,23 @@ function buildHeartbeatToolDefs(hasImClient: boolean): ToolDef[] {
       },
     },
   ];
+
+  tools.unshift({
+    type: 'function',
+    function: {
+      name: 'list_inner_brains',
+      description:
+        '列出**所有**内脑任务实例（跨 workspace）。含 registry_status、阶段、里程碑，' +
+        '以及 async 字段（is_async_waiting、next_wake_at、active_pendings、is_post_complete）。' +
+        '心跳判断「是否还有任务在跑 / 是否需要派新任务」时**必须先调用本工具**，' +
+        '不要只看 default workspace 的状态。',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  });
 
   if (hasImClient) {
     tools.unshift({
@@ -193,6 +221,45 @@ async function callLlmWithTools(
   return { content: msg?.content ?? null, tool_calls: msg?.tool_calls ?? [] };
 }
 
+// ── 跨 workspace 在途任务汇总（避免心跳只看 default workspace 误判） ──────────
+
+/**
+ * 汇总 registry 中所有「占用推进槽位」的 burst（RUNNING/AWAITING/BLOCKED），
+ * 供心跳上下文注入。心跳此前只读 default workspace status，多内脑场景下会把
+ * 实际在跑的 burst 误判为「无任务」。
+ */
+function buildLiveBurstSummary(registry: InnerBrainRegistry | undefined): string {
+  if (!registry) return '（多内脑注册表未启用）';
+  const live = registry
+    .list()
+    .filter((t) => t.status === 'RUNNING' || t.status === 'AWAITING' || t.status === 'BLOCKED');
+  if (live.length === 0) {
+    return '当前没有任何在途 burst（RUNNING/AWAITING/BLOCKED 均为 0）。';
+  }
+  const lines = live.map((t) => {
+    let asyncPart = '';
+    try {
+      const snap = buildBrainAsyncSnapshot(t.workDir);
+      asyncPart =
+        ` async_waiting=${snap.is_async_waiting}` +
+        ` post_complete=${snap.is_post_complete}` +
+        (snap.next_wake_at ? ` next_wake=${snap.next_wake_at}` : '') +
+        (snap.active_pendings?.length ? ` pendings=${snap.active_pendings.length}` : '');
+    } catch {
+      asyncPart = ' async=未知';
+    }
+    return (
+      `- ${t.instanceId} [${t.status}]` +
+      (t.kpiId ? ` kpi=${t.kpiId}` : '') +
+      ` deliverables=${t.deliverableCount ?? 0}` +
+      ` ticks=${t.ticks ?? 0}` +
+      asyncPart +
+      `\n  goal: ${t.goal.replace(/\s+/g, ' ').slice(0, 80)}`
+    );
+  });
+  return `当前在途 burst ${live.length} 个：\n${lines.join('\n')}`;
+}
+
 // ── 心跳系统提示 ──────────────────────────────────────────────────────────────
 
 function buildHeartbeatSystemPrompt(
@@ -223,15 +290,29 @@ ${goalSection}
 ## 可用工具
 ${imSection}
 - set_goal：向内脑派发任务
-- read_inner_status：查询内脑当前状态
+- list_inner_brains：列出**所有** workspace 的内脑实例（判断任务状态的**唯一权威来源**）
+- read_inner_status：查询**单个** workspace 的内脑状态（只反映该 workspace，**不要**用它判断「有没有任务在跑」）
 
-## 行动原则
-1. **先观察**：read_inner_status / list_inner_brains，看 async.is_async_waiting 与 next_wake_at
-2. **有依据才行动**：对照长期目标，有明确理由才发消息或创建任务
-3. **克制**：内脑已在等定时（is_async_waiting）或已完成（is_post_complete）时 **不要** set_goal
-4. **每次最多**：发 1 条 IM 消息，创建 1 个内脑任务
-5. **消息要简短**：发 IM 时 1-2 句话，有实质信息
-6. **关联绩效目标**：推进绩效目标时把 goal_id 填入 performance_goal_id
+## 状态判断原则（重要，先读再判断）
+1. **先调 list_inner_brains 看全量在途任务**。上方「在途任务」已给出汇总，但行动前应再确认。
+2. **正确理解状态**，不要把「在跑」误判为「无产出该停掉」：
+   - RUNNING = 正在干活，**让它继续**，绝不要因为「还没出结果」就 stop。
+   - AWAITING + is_async_waiting=true = 在等定时/外部事件，**正常**，不要 stop、不要催。
+   - AWAITING 但无 next_wake_at 且 active_pendings 为空 = 可能真卡住，才考虑处理。
+   - is_post_complete=true = 已完成收尾，不要再 set_goal 同一任务。
+3. **不要为了「确认要不要继续」而向用户提问**。任务在正常推进时，用户无需被打扰。
+
+## 行动原则（优先推进，而非提问）
+1. **容量没满就主动推进**：若长期目标/KPI 仍未达成，且在途 burst 未占满槽位，
+   应**派发一个与现有在途任务不重复的新角度任务**（set_goal）来推进目标，
+   而**不是**发消息问用户「要不要继续 / 要不要换思路」。
+2. **避免重复**：派新任务前对照「在途任务」的 goal，新任务必须是**不同的子方向/角度**，
+   不要重复已在跑或已完成的工作。
+3. **post_to_im 仅用于**：任务真正完成需要汇报、出现需要用户决策的硬阻塞（缺凭据/需授权）、
+   或发现重大信息。**不要**用它问「要不要继续」「要不要暂停」这类本应自己决策的问题。
+4. **克制**：内脑已在等定时（is_async_waiting）或已完成（is_post_complete）时 **不要** set_goal 同一任务。
+5. **每次最多**：发 1 条 IM 消息，创建 1 个内脑任务。
+6. **关联绩效目标**：推进绩效目标时把 goal_id 填入 performance_goal_id。
 
 ${OUTER_ASYNC_ORCHESTRATION_GUIDE}`;
 }
@@ -299,6 +380,9 @@ async function runHeartbeat(
     innerStatusText = '无法读取内脑状态';
   }
 
+  // 跨 workspace 在途任务汇总（权威来源，优先于 default workspace 单点状态）
+  const liveBurstSummary = buildLiveBurstSummary(ctx.innerBrainRegistry);
+
   // 读取记忆层（daily-log + tasks）注入心跳上下文
   const memStore = ctx.memoryStore;
   const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', hasAny: false };
@@ -306,11 +390,14 @@ async function runHeartbeat(
 
   const userContent = `当前时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
 
-## 内脑当前状态
+## 在途任务（跨所有 workspace，权威来源）
+${liveBurstSummary}
+
+## default workspace 状态（仅供参考，不代表全部任务）
 ${innerStatusText}
 ${memSection ? `\n${memSection}\n` : ''}
 ${performanceBlock ? `\n${performanceBlock}\n` : ''}
-请对照长期目标，判断现在是否需要主动行动。`;
+请对照长期目标与上方「在途任务」，判断现在是否需要主动行动。`;
 
   const messages: ConvMessage[] = [
     { role: 'system', content: systemPrompt },

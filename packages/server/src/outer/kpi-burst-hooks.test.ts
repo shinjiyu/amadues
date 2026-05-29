@@ -47,4 +47,22 @@ describe('shouldRecordKpiIdle', () => {
       reflexion: null,
     })).toBe(true);
   });
+
+  it('ERROR 退出但有 deliverable 不计 idle', () => {
+    expect(shouldRecordKpiIdle({
+      exitedWithError: true,
+      stoppedBy: 'stop_signal',
+      deliverableCount: 2,
+      reflexion: null,
+    })).toBe(false);
+  });
+
+  it('ERROR 退出且无 deliverable 计 idle', () => {
+    expect(shouldRecordKpiIdle({
+      exitedWithError: true,
+      stoppedBy: 'idle',
+      deliverableCount: 0,
+      reflexion: null,
+    })).toBe(true);
+  });
 });

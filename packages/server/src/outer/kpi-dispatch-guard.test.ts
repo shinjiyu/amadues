@@ -1,66 +1,123 @@
-import { describe, expect, it } from 'vitest';
-
-import { createTestDataRoot } from '../testing/temp-data-root.js';
-import { InnerBrainRegistry } from './inner-brain-registry.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { evaluateKpiAutonomyDispatch } from './kpi-dispatch-guard.js';
 import { KpiRegistry } from './kpi-registry.js';
-import {
-  evaluateKpiAutonomyDispatch,
-  findLiveBurstForKpi,
-  hasLiveWorkForKpi,
-} from './kpi-dispatch-guard.js';
+import { InnerBrainRegistry } from './inner-brain-registry.js';
+import type { TaskRecord } from './inner-brain-registry.js';
+import { createTestDataRoot, type TestDataRoot } from '../testing/temp-data-root.js';
 
-describe('kpi-dispatch-guard', () => {
-  it('detects live burst for KPI', () => {
-    const root = createTestDataRoot('kpi-guard-');
-    const registry = new InnerBrainRegistry(root.dataRoot);
-    const kpiRegistry = new KpiRegistry(root.dataRoot);
-    const kpi = kpiRegistry.create({ description: '测试 KPI', createdBy: 'test' });
+describe('evaluateKpiAutonomyDispatch', () => {
+  let root: TestDataRoot;
+  let kpiRegistry: KpiRegistry;
+  let innerBrainRegistry: InnerBrainRegistry;
 
-    registry.register({
-      instanceId: 'ib-live-0001',
-      workspaceId: 'task-ib-live-0001',
-      workDir: `${root.dataRoot}/workspaces/task-ib-live-0001`,
-      goal: '正在跑',
-      originUser: 'test',
-      status: 'RUNNING',
-      startedAt: new Date().toISOString(),
-      kpiId: kpi.kpiId,
-    });
-
-    expect(hasLiveWorkForKpi(registry, kpi.kpiId)).toBe(true);
-    expect(findLiveBurstForKpi(registry, kpi.kpiId)?.instanceId).toBe('ib-live-0001');
-
-    const decision = evaluateKpiAutonomyDispatch(kpiRegistry, registry, kpi.kpiId);
-    expect(decision.ok).toBe(false);
-    expect(decision.reason).toBe('kpi_burst_in_progress');
-
-    root.cleanup();
+  afterEach(() => {
+    root?.cleanup();
   });
 
-  it('allows dispatch when latest burst is terminal', () => {
-    const root = createTestDataRoot('kpi-guard-done-');
-    const registry = new InnerBrainRegistry(root.dataRoot);
-    const kpiRegistry = new KpiRegistry(root.dataRoot);
-    const kpi = kpiRegistry.create({ description: '测试 KPI', createdBy: 'test' });
-    kpiRegistry.attachBurst(kpi.kpiId, 'ib-done-0001');
+  function setup() {
+    root = createTestDataRoot('kpi-dispatch-guard-');
+    kpiRegistry = new KpiRegistry(root.dataRoot);
+    innerBrainRegistry = new InnerBrainRegistry(root.dataRoot);
+  }
 
-    registry.register({
-      instanceId: 'ib-done-0001',
-      workspaceId: 'task-ib-done-0001',
-      workDir: `${root.dataRoot}/workspaces/task-ib-done-0001`,
-      goal: '已完成',
-      originUser: 'test',
-      status: 'DONE',
+  function registerBurst(
+    rec: Partial<TaskRecord> & Pick<TaskRecord, 'instanceId' | 'kpiId' | 'status'>,
+  ) {
+    innerBrainRegistry.register({
+      workspaceId: `task-${rec.instanceId}`,
+      workDir: `${root.workspacesDir}/task-${rec.instanceId}`,
+      goal: 'test',
+      originUser: 'idp:agent:shiro',
       startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      kpiId: kpi.kpiId,
+      ...rec,
+    } as TaskRecord);
+  }
+
+  it('无 burst 时可派 first_burst', () => {
+    setup();
+    const kpiId = kpiRegistry.create({
+      description: 'test kpi',
+      createdBy: 'idp:agent:shiro',
+    }).kpiId;
+    const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
+    expect(d.ok).toBe(true);
+    expect(d.reason).toBe('first_burst');
+  });
+
+  it('有 RUNNING burst 时仍允许并行派发（容量由 canSpawnInner 把关）', () => {
+    setup();
+    const kpiId = kpiRegistry.create({
+      description: 'test kpi',
+      createdBy: 'idp:agent:shiro',
+    }).kpiId;
+    kpiRegistry.attachBurst(kpiId, 'ib-live');
+    registerBurst({
+      instanceId: 'ib-live',
+      kpiId,
+      status: 'RUNNING',
     });
+    const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
+    expect(d.ok).toBe(true);
+    expect(d.reason).toBe('parallel_next_burst');
+    expect(d.liveInstanceId).toBe('ib-live');
+  });
 
-    expect(hasLiveWorkForKpi(registry, kpi.kpiId)).toBe(false);
-    const decision = evaluateKpiAutonomyDispatch(kpiRegistry, registry, kpi.kpiId);
-    expect(decision.ok).toBe(false);
-    expect(decision.reason).toContain('kpi_continue');
+  it('有 AWAITING burst 时仍允许并行派发不重复任务', () => {
+    setup();
+    const kpiId = kpiRegistry.create({
+      description: 'test kpi',
+      createdBy: 'idp:agent:shiro',
+    }).kpiId;
+    kpiRegistry.attachBurst(kpiId, 'ib-await');
+    registerBurst({
+      instanceId: 'ib-await',
+      kpiId,
+      status: 'AWAITING',
+    });
+    const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
+    expect(d.ok).toBe(true);
+    expect(d.reason).toBe('parallel_next_burst');
+  });
 
-    root.cleanup();
+  it('ERROR 后有 deliverable、idle streak=1 时允许续派', () => {
+    setup();
+    const kpiId = kpiRegistry.create({
+      description: 'test kpi',
+      createdBy: 'idp:agent:shiro',
+    }).kpiId;
+    kpiRegistry.attachBurst(kpiId, 'ib-done');
+    kpiRegistry.recordIdle(kpiId);
+    registerBurst({
+      instanceId: 'ib-done',
+      kpiId,
+      status: 'ERROR',
+      deliverableCount: 2,
+      finishedAt: new Date().toISOString(),
+    });
+    const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
+    expect(d.ok).toBe(true);
+    expect(d.reason).toMatch(/next_burst|ok/);
+  });
+
+  it('idle streak 达阈值时拒绝并走反思路径', () => {
+    setup();
+    const kpiId = kpiRegistry.create({
+      description: 'test kpi',
+      createdBy: 'idp:agent:shiro',
+    }).kpiId;
+    kpiRegistry.attachBurst(kpiId, 'ib-idle-3');
+    kpiRegistry.recordIdle(kpiId);
+    kpiRegistry.recordIdle(kpiId);
+    kpiRegistry.recordIdle(kpiId);
+    registerBurst({
+      instanceId: 'ib-idle-3',
+      kpiId,
+      status: 'ERROR',
+      deliverableCount: 0,
+      finishedAt: new Date().toISOString(),
+    });
+    const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
+    expect(d.ok).toBe(false);
+    expect(d.reason).toMatch(/kpi_stuck_reflexion/);
   });
 });

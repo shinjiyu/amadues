@@ -26,6 +26,8 @@ import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import { formatKpiReflexionBlock } from './kpi-registry.js';
 import { findLiveBurstForKpi } from './kpi-dispatch-guard.js';
+import { loadAutonomyPolicy } from './autonomy-policy-store.js';
+import { checkRunningInnerBrainCapacity } from './inner-brain-capacity.js';
 import { formatKpiDigest, suggestKpiAction, buildKpiBurstLinks } from './kpi-progress.js';
 import { ingestDeliverables } from './deliverables-ingest.js';
 import { processBurstExitForKpi } from './kpi-burst-hooks.js';
@@ -627,6 +629,11 @@ export interface OuterToolContext {
   knowledgeDrive9Store?: KnowledgeDrive9Store;
   /** Memory Block 存储（keychain 等结构化长期记忆） */
   memoryBlockStore?: MemoryBlockStore;
+  /**
+   * 当前对话由 IM 人类入站触发（webchat/discord 等）。
+   * 此上下文内 set_goal **不受** maxRunningInnerBrains 槽位限制（用户直派优先）。
+   */
+  inboundHumanSid?: string;
 }
 
 export interface ToolCallResult {
@@ -750,7 +757,7 @@ async function execSetGoal(
     const wsId = `task-${instanceId}`;
     ctx.workspaceStore.ensureWorkspace(wsId);
     const workDir = path.join(ctx.dataRoot, 'workspaces', wsId);
-    const originUser = args.origin_user?.trim() || ctx.agentSid;
+    const originUser = args.origin_user?.trim() || ctx.inboundHumanSid || ctx.agentSid;
     const originThread = args.origin_thread?.trim() || ctx.threadId;
 
     // KPI 关联（可选）：校验 kpi_id 有效再挂；无效则忽略不报错，避免误用阻塞任务派发
@@ -761,14 +768,16 @@ async function execSetGoal(
     }
     const resolvedKpiId = kpi ? kpi.kpiId : undefined;
 
-    if (resolvedKpiId) {
-      const liveBurst = findLiveBurstForKpi(registry, resolvedKpiId);
-      if (liveBurst) {
+    // 运行槽位：仅 RUNNING 计数；AWAITING 不计入。IM 用户直派不限槽位。
+    if (!ctx.inboundHumanSid) {
+      const cap = checkRunningInnerBrainCapacity(registry, ctx.dataRoot);
+      if (!cap.ok) {
+        const live = resolvedKpiId ? findLiveBurstForKpi(registry, resolvedKpiId) : undefined;
         return {
           replied: false,
           output:
-            `（KPI ${resolvedKpiId} 已有在途 burst \`${liveBurst.instanceId}\`（${liveBurst.status}），` +
-            `跳过重复 set_goal；请等其完成或先 stop/restart）`,
+            `（${cap.reason}，本次 set_goal 跳过` +
+            `${live ? `；同 KPI 在途 burst \`${live.instanceId}\`（${live.status}）` : ''}）`,
         };
       }
     }

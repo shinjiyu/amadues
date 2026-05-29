@@ -12,7 +12,7 @@ import path from 'node:path';
 import type { KpiRegistry, ReflexionSummary } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
-import { shouldAutoAchieveKpi } from './kpi-progress.js';
+import { buildKpiBurstLinks, shouldAutoAchieveKpi, suggestKpiAction } from './kpi-progress.js';
 
 /** 读取 burst 工作目录下 reflexion.json 并标准化为 ReflexionSummary */
 export function readReflexionFromWorkspace(
@@ -53,7 +53,9 @@ export function shouldRecordKpiIdle(input: {
   /** 是否处于 AWAITING（等外部事件）。等外部不算 idle 不算进展，需要单独处理 */
   isAwaiting?: boolean;
 }): boolean {
-  if (input.exitedWithError) return true;
+  if (input.exitedWithError) {
+    return input.deliverableCount === 0;
+  }
 
   // AWAITING:agent 等待外部输入,而非"卡死"——既不算 idle 也不算成功
   // 不增 streak（保留当前 streak）
@@ -210,11 +212,33 @@ export function processBurstExitForKpi(
     autoAchieved = true;
   }
 
+  // 5) 真任务 burst 结束 → 可选立即续跑（UTLRA_KPI_AUTO_NEXT_BURST=1）
+  let nextKpiBurstId: string | null = null;
+  const kpiAfter = deps.kpiRegistry.get(input.kpiId);
+  if (
+    !input.isReflexionBurst &&
+    !input.isAwaiting &&
+    !autoAchieved &&
+    kpiAfter?.status === 'active' &&
+    streak < threshold &&
+    deps.scheduleNextKpiBurst &&
+    isKpiAutoNextBurstEnabled()
+  ) {
+    const { action } = suggestKpiAction(
+      kpiAfter,
+      buildKpiBurstLinks(kpiAfter, deps.innerBrainRegistry),
+      threshold,
+    );
+    if (action !== 'achieved' && action !== 'follow_up') {
+      nextKpiBurstId = deps.scheduleNextKpiBurst(input.kpiId);
+    }
+  }
+
   return {
     deliverableCount,
     reflexion,
     reflexionBurstId,
-    nextKpiBurstId: null,
+    nextKpiBurstId,
     idleStreak: streak,
     autoAchieved,
   };

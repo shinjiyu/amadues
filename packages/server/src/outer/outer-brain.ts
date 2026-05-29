@@ -543,6 +543,7 @@ export class OuterBrain {
         skillDrive9Store:     this.deps.skillDrive9Store,
         knowledgeDrive9Store: this.deps.knowledgeDrive9Store,
         memoryBlockStore:     this.deps.memoryBlockStore,
+        inboundHumanSid: isHumanSender(senderSid) ? senderSid : undefined,
       },
       registry,
       threadSids,

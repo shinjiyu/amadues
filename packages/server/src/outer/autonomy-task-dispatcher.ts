@@ -10,7 +10,6 @@ import type { KpiRegistry } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { executeOuterTool, type OuterToolContext } from './outer-tools.js';
 import { loadSoul } from './soul.js';
-import { anyInnerBrainAsyncWaiting } from './resource-probe.js';
 import {
   loadAutonomyPolicy,
   markAutonomousAction,
@@ -60,11 +59,10 @@ function hasActiveKpi(kpiRegistry: KpiRegistry): boolean {
   return kpiRegistry.list({ status: 'active' }).length > 0;
 }
 
-function canSpawnInner(snapshot: ResourceSnapshot, registry: InnerBrainRegistry, policy: AutonomyPolicy): boolean {
+function canSpawnInner(snapshot: ResourceSnapshot, _registry: InnerBrainRegistry, policy: AutonomyPolicy): boolean {
   const g = policy.hardGates;
+  // 仅 RUNNING 占槽位；AWAITING 不计入（用户可在有挂起任务时仍由心跳/autonomy 派新 burst）
   if (snapshot.innerBrains.running >= g.maxRunningInnerBrains) return false;
-  if (snapshot.innerBrains.awaiting >= g.maxAwaitingInnerBrains) return false;
-  if (anyInnerBrainAsyncWaiting(registry)) return false;
   return true;
 }
 
