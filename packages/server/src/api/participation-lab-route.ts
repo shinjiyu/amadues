@@ -8,6 +8,7 @@ import {
   type InboundConfig,
   type LlmChatFn,
   type OuterInboundMeta,
+  type ParticipationAgentContext,
 } from '../outer/inbound-policy.js';
 import { resetGroupParticipationState } from '../outer/participation-state.js';
 import { loadInnerLlmEnvFromProcess } from '../llm/inner-llm-step.js';
@@ -20,6 +21,7 @@ export interface ParticipationEvaluateBody {
   proactiveLevel: number;
   threadHistoryPrefix?: string;
   innerStatusSummary?: string;
+  agentContext?: ParticipationAgentContext;
   config?: Partial<InboundConfig>;
   /**
    * @deprecated 由 llmMode 决定：none=仅同步；mock/real=Lab 强制调 LLM
@@ -109,8 +111,10 @@ export async function evaluateParticipation(body: ParticipationEvaluateBody) {
       resetGroupParticipationState(threadId);
     }
 
+    const agentContext: ParticipationAgentContext | undefined = body.agentContext;
+
     const sync = shouldReplySyncRules(
-      { threadId, content, meta, proactiveLevel: effectiveLevel },
+      { threadId, content, meta, proactiveLevel: effectiveLevel, agentContext },
       config,
     );
 
@@ -152,6 +156,7 @@ export async function evaluateParticipation(body: ParticipationEvaluateBody) {
         threadHistoryPrefix: body.threadHistoryPrefix ?? '',
         innerStatusSummary: body.innerStatusSummary ?? '',
         proactiveLevel: effectiveLevel,
+        agentContext,
       },
       capturingChat,
     );
@@ -171,6 +176,7 @@ export async function evaluateParticipation(body: ParticipationEvaluateBody) {
       llmEnv,
       llmChat: baseLlmChat,
       config: labConfig,
+      agentContext,
     });
 
     const path: string[] = [

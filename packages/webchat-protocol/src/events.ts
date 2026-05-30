@@ -81,6 +81,14 @@ export const MessageAckSchema = z.object({
 });
 export type MessageAck = z.infer<typeof MessageAckSchema>;
 
+export const MessagesClearedSchema = z.object({
+  type: z.literal('messages.cleared'),
+  thread_id: z.string().min(1),
+  cleared_by_user_id: z.string().min(1),
+  deleted_count: z.number().int().nonnegative(),
+});
+export type MessagesCleared = z.infer<typeof MessagesClearedSchema>;
+
 export const TypingRelaySchema = z.object({
   type: z.literal('typing.relay'),
   thread_id: z.string().min(1),
@@ -113,6 +121,7 @@ export const ServerEventSchema = z.discriminatedUnion('type', [
   PresenceUpdateSchema,
   MessageNewSchema,
   MessageAckSchema,
+  MessagesClearedSchema,
   TypingRelaySchema,
   ServerErrorSchema,
 ]);

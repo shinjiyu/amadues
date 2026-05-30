@@ -58,7 +58,7 @@ describe('integration: inbound policy table', () => {
 
   it('群聊 needs_llm + FakeLLM SILENT → group_llm_silent', async () => {
     const llm = createFakeLLM([
-      { match: '群聊中的一员', reply: { content: 'SILENT' } },
+      { match: '是在对谁说', reply: { content: 'SILENT' } },
     ]);
     const llmChat: LlmChatFn = async (opts) => {
       const system = String(opts.messages.find((m) => m.role === 'system')?.content ?? '');

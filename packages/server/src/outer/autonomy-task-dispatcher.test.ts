@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { IdentityRegistry, MessageRecordSchema } from '@utlra/chat-ir';
+import path from 'node:path';
 import { createTestDataRoot } from '../testing/temp-data-root.js';
 import { InnerBrainRegistry } from './inner-brain-registry.js';
 import { KpiRegistry } from './kpi-registry.js';
@@ -169,12 +171,25 @@ describe('autonomy-task-dispatcher', () => {
     const postMessage = vi.fn().mockResolvedValue(undefined);
     const registry = new InnerBrainRegistry(root.dataRoot);
     const kpiRegistry = new KpiRegistry(root.dataRoot);
+    const identityRegistry = new IdentityRegistry(path.join(root.dataRoot, 'identities.json'));
+    identityRegistry.upsert({ sid: 'human:u1', display_name: 'Alice', kind: 'human' });
+    identityRegistry.upsert({ sid: 'agent-test', display_name: 'Bot', kind: 'agent' });
+
+    const threadId = 'thread-im';
+    const humanMsg = MessageRecordSchema.parse({
+      schema: 'message.v1',
+      message_id: 'msg:1',
+      thread_id: threadId,
+      sender_sid: 'human:u1',
+      sent_at: '2026-05-29T10:00:00.000Z',
+      parts: [{ type: 'text', text: '你觉得这个方向怎么样？' }],
+    });
 
     const deps: AutonomyDispatchDeps = {
       dataRoot: root.dataRoot,
       agentSid: 'agent-test',
       workspaceId: 'default',
-      defaultThreadId: 'thread-im',
+      defaultThreadId: threadId,
       registry,
       kpiRegistry,
       imClient: { postMessage } as never,
@@ -185,6 +200,8 @@ describe('autonomy-task-dispatcher', () => {
         baseUrl: 'http://localhost',
         textModel: 'test-model',
       }),
+      loadThreads: () => ({ threads: [], messages: { [threadId]: [humanMsg] } }),
+      identityRegistry,
     };
 
     const result = await dispatchAutonomyTasks(deps, baseSnapshot(), idleVerdict());

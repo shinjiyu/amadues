@@ -3,6 +3,7 @@
  */
 import type { ChatIRChannel } from '@utlra/chat-ir';
 import type { ChatAssetStore } from '@utlra/chat-ir';
+import type { IdentityRegistry, LooseThreadStore } from '@utlra/chat-ir';
 import type { FilesystemRepositoryStore, FilesystemWorkspaceStore, InnerBrainEngine } from '../workspace-kit/index.js';
 import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
 import type { OuterMemoryStore } from './outer-memory.js';
@@ -33,6 +34,8 @@ export interface AutonomyPipelineDeps {
   getOrchestratorStats?: ResourceProbeDeps['getOrchestratorStats'];
   scheduleReflexionBurst?: (kpiId: string) => string | null;
   scheduleNextKpiBurst?: (kpiId: string) => string | null;
+  loadThreads?: () => LooseThreadStore;
+  identityRegistry?: IdentityRegistry;
 }
 
 export interface AutonomyPipelineResult {
@@ -83,6 +86,8 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
     getLlmEnv: deps.getLlmEnv,
     getEngine: deps.getEngine,
     memoryStore: deps.memoryStore,
+    loadThreads: deps.loadThreads,
+    identityRegistry: deps.identityRegistry,
   };
 
   const dispatch = await dispatchAutonomyTasks(dispatchDeps, snapshot, verdict);

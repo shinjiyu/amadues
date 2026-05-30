@@ -18,6 +18,9 @@ import {
   isDmEmptyOrPlaceholderContent,
   loadInboundConfigFromEnv,
   shouldReplySyncRules,
+  contentMentionsAgent,
+  contentRelatesToAgentKpi,
+  looksLikeQuestion,
 } from './inbound-policy.js';
 import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
 
@@ -154,7 +157,7 @@ describe('inbound-policy · shouldReplySyncRules · group', () => {
     expect(r.reason).toBe('group_proactive_level_0');
   });
 
-  it('level 1 非问句 → 不回', () => {
+  it('level 1 非问句 → needs_llm（不再同步接话）', () => {
     const r = shouldReplySyncRules(
       {
         threadId: uniqueThread('group-l1-not-q'),
@@ -165,10 +168,10 @@ describe('inbound-policy · shouldReplySyncRules · group', () => {
       makeConfig({ proactiveLevel: 1 }),
     );
     expect(r.shouldReply).toBe(false);
-    expect(r.reason).toBe('group_level1_not_question');
+    expect(r.reason).toBe('needs_llm');
   });
 
-  it('level 2 短消息 → group_min_length', () => {
+  it('level 2 短消息 → needs_llm（不再 group_min_length 拦截）', () => {
     const r = shouldReplySyncRules(
       {
         threadId: uniqueThread('group-min'),
@@ -179,10 +182,10 @@ describe('inbound-policy · shouldReplySyncRules · group', () => {
       makeConfig(),
     );
     expect(r.shouldReply).toBe(false);
-    expect(r.reason).toBe('group_min_length');
+    expect(r.reason).toBe('needs_llm');
   });
 
-  it('level 3 "你们俩说说" 群邀请 → 立即回', () => {
+  it('level 3 "你们俩说说" → needs_llm（不再同步群邀请接话）', () => {
     const r = shouldReplySyncRules(
       {
         threadId: uniqueThread('group-invite'),
@@ -192,8 +195,8 @@ describe('inbound-policy · shouldReplySyncRules · group', () => {
       },
       makeConfig({ proactiveLevel: 3 }),
     );
-    expect(r.shouldReply).toBe(true);
-    expect(r.reason).toBe('group_rule_group_invite');
+    expect(r.shouldReply).toBe(false);
+    expect(r.reason).toBe('needs_llm');
   });
 
   it('level 2 一般陈述句 → needs_llm', () => {
@@ -208,6 +211,71 @@ describe('inbound-policy · shouldReplySyncRules · group', () => {
     );
     expect(r.shouldReply).toBe(false);
     expect(r.reason).toBe('needs_llm');
+  });
+
+  it('口头点名 + 问句 → needs_llm（不再同步 shortcut）', () => {
+    const r = shouldReplySyncRules(
+      {
+        threadId: uniqueThread('group-addressed'),
+        content: 'Gin 你觉得 health 端点正常吗？',
+        meta: { threadKind: 'group', isMentionAgent: false, mentionsOthers: false, skipParticipationCheck: false },
+        proactiveLevel: 2,
+        agentContext: { agentName: 'Gin', activeKpiDescriptions: [] },
+      },
+      makeConfig(),
+    );
+    expect(r).toEqual({ shouldReply: false, reason: 'needs_llm' });
+  });
+
+  it('KPI 关键词命中 → needs_llm（不再同步 shortcut）', () => {
+    const r = shouldReplySyncRules(
+      {
+        threadId: uniqueThread('group-kpi'),
+        content: 'chat-server staging 的 health 端点谁看过',
+        meta: { threadKind: 'group', isMentionAgent: false, mentionsOthers: false, skipParticipationCheck: false },
+        proactiveLevel: 2,
+        agentContext: {
+          agentName: 'Gin',
+          activeKpiDescriptions: ['维护 chat-server staging 部署与 health 监控'],
+        },
+      },
+      makeConfig(),
+    );
+    expect(r).toEqual({ shouldReply: false, reason: 'needs_llm' });
+  });
+
+  it('「你那边/你刚」类问句 → needs_llm（不再同步 shortcut）', () => {
+    const r = shouldReplySyncRules(
+      {
+        threadId: uniqueThread('group-you'),
+        content: '你那边部署完了吗？',
+        meta: { threadKind: 'group', isMentionAgent: false, mentionsOthers: false, skipParticipationCheck: false },
+        proactiveLevel: 2,
+        agentContext: { agentName: 'Gin' },
+      },
+      makeConfig(),
+    );
+    expect(r).toEqual({ shouldReply: false, reason: 'needs_llm' });
+  });
+});
+
+describe('inbound-policy · participation helpers', () => {
+  it('looksLikeQuestion 识别问句与求助', () => {
+    expect(looksLikeQuestion('health 正常吗？')).toBe(true);
+    expect(looksLikeQuestion('谁能帮看下')).toBe(true);
+    expect(looksLikeQuestion('今天天气不错')).toBe(false);
+  });
+
+  it('contentMentionsAgent 大小写不敏感', () => {
+    expect(contentMentionsAgent('gin 在吗', 'Gin')).toBe(true);
+    expect(contentMentionsAgent('@gin 看下', 'Gin')).toBe(true);
+  });
+
+  it('contentRelatesToAgentKpi 匹配 KPI 描述片段', () => {
+    expect(
+      contentRelatesToAgentKpi('staging health 挂了', ['维护 chat-server staging 部署']),
+    ).toBe(true);
+    expect(contentRelatesToAgentKpi('今晚吃火锅', ['维护 chat-server staging 部署'])).toBe(false);
   });
 });
 
@@ -255,7 +323,7 @@ describe('inbound-policy · decideOuterShouldReply', () => {
     });
     expect(called).toBe(0);
     expect(r.shouldReply).toBe(false);
-    expect(r.reason).toBe('participation_llm_disabled_or_no_key');
+    expect(r.reason).toBe('group_no_mention_no_llm');
   });
 
   it('LLM 抛错 → 兜底不回（不抛给上游）', async () => {

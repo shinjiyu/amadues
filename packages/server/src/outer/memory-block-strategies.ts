@@ -65,7 +65,7 @@ function parseTags(v: unknown): string[] {
 
 export const kvSecretStrategy: BlockStrategy<KvSecretEntry> = {
   id: 'kv_secret',
-  redactInOuterPrompt: true,
+  redactInOuterPrompt: false,
   normalizePut(key, payload, updatedBy) {
     return {
       key,
@@ -137,8 +137,8 @@ export function isSystemBlockId(blockId: string): boolean {
 const SYSTEM_BLOCKS: BlockDefinition[] = [
   {
     blockId: 'keychain',
-    strategy: 'kv_secret',
-    description: 'Credentials (Cookie, Token, API keys); values never in outer prompt',
+    strategy: 'notebook',
+    description: 'Named long-term entries (Cookie, Token, notes); same CRUD as other blocks',
     title: '钥匙串',
     system: true,
   },

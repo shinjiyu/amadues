@@ -7,6 +7,7 @@ import {
   TypingRequestSchema,
   type Attachment,
 } from '@utlra/webchat-protocol';
+import { principalIsAdmin } from '../auth/types.js';
 import { identityMiddleware } from '../identity-mw.js';
 import type { UserStore } from '../users.js';
 import type { ThreadStore } from '../threads.js';
@@ -133,6 +134,25 @@ export function buildThreadsRouter(deps: ThreadsRouterDeps): Hono {
 
   // 输入活动（瞬时信号，不落库）。主要给 agent 链路（webchat-bridge）用：
   // 回复生成前后上报 start / stop，hub 扇出 typing.relay 给线程订阅者。
+  /** 清空当前线程全部聊天记录（不可恢复）。大群仅 admin；DM 任一方参与者可清。 */
+  r.delete('/threads/:id/messages', auth, async (c) => {
+    const userId = c.get('userId');
+    const threadId = c.req.param('id') ?? '';
+    if (!threadId || !threads.canAccess(threadId, userId)) {
+      throw new HTTPException(403, { message: 'not a participant of this thread' });
+    }
+    const thread = threads.get(threadId);
+    if (!thread) {
+      throw new HTTPException(404, { message: `thread not found: ${threadId}` });
+    }
+    if (thread.kind === 'group' && !principalIsAdmin(c.var.principal)) {
+      throw new HTTPException(403, { message: 'admin role required to clear group chat history' });
+    }
+    const deletedCount = await threads.clearMessages(threadId);
+    hub.notifyMessagesCleared(threadId, userId, deletedCount);
+    return c.json({ ok: true, thread_id: threadId, deleted_count: deletedCount });
+  });
+
   r.post('/threads/:id/typing', auth, async (c) => {
     const userId = c.get('userId');
     const threadId = c.req.param('id') ?? '';

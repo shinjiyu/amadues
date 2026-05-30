@@ -10,17 +10,6 @@ import path from 'node:path';
 import type { IActionLogStore } from '../heartbeat/types.js';
 import { toolNameToOperationType, writeActionEvent } from '../heartbeat/agent-behavior-log.js';
 
-const SECRET_ARG_KEYS = new Set([
-  'value',
-  'body',
-  'api_key',
-  'apiKey',
-  'password',
-  'token',
-  'cookie',
-  'cookies',
-]);
-
 export interface OuterToolAuditEntry {
   schema: 'outer-tool-audit.v1';
   log_id: string;
@@ -50,24 +39,15 @@ function appendJsonl(dataRoot: string, agentSid: string, entry: OuterToolAuditEn
   fs.appendFileSync(fp, JSON.stringify(entry) + '\n', 'utf8');
 }
 
-/** 工具参数脱敏（keychain / secret 字段不写入明文） */
+/** 工具参数脱敏（长文本截断；memory block 与 keychain 不再隐藏 value） */
 export function redactToolArgs(
-  toolName: string,
+  _toolName: string,
   args: Record<string, unknown>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const isSecretTool =
-    toolName === 'keychain_put' ||
-    toolName.startsWith('memory_block_') ||
-    toolName.includes('keychain');
 
   for (const [k, v] of Object.entries(args)) {
     if (v === undefined || v === null) continue;
-    if (isSecretTool && SECRET_ARG_KEYS.has(k)) {
-      const s = typeof v === 'string' ? v : JSON.stringify(v);
-      out[k] = `[REDACTED len=${s.length}]`;
-      continue;
-    }
     if (k === 'text' && typeof v === 'string' && v.length > 200) {
       out[k] = `${v.slice(0, 200)}…[len=${v.length}]`;
       continue;

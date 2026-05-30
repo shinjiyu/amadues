@@ -1,0 +1,154 @@
+version: "3.8"
+
+# 双环境 WebChat（独立 data 卷 + 独立子路径）
+#
+# 在仓库根目录执行：
+#   docker compose -f deploy/webchat/docker-compose.webchat.dual.yml \
+#     --env-file deploy/webchat/.env.main \
+#     --env-file deploy/webchat/.env.lab up -d --build
+#
+# 主群  https://kuroneko.chat/webchat/       → 8790 / 8791
+# 实验  https://kuroneko.chat/webchat-lab/   → 8794 / 8795
+
+services:
+  chat-server-main:
+    build:
+      context: ../..
+      dockerfile: apps/chat-server/Dockerfile
+    image: utlra/chat-server:main
+    container_name: utlra-chat-server
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=8790
+      - TZ=Asia/Shanghai
+      - CHAT_SERVER_DATA_ROOT=/data
+      - WEBCHAT_AUTH_DATA_FILE=/data/auth.json
+      - WEBCHAT_AUTH_REQUIRED=1
+      - WEBCHAT_LOGIN_SERVER_URL=${MAIN_WEBCHAT_LOGIN_SERVER_URL:-http://host.docker.internal:5001}
+      - WEBCHAT_LOGIN_PAGE_URL=${MAIN_WEBCHAT_LOGIN_PAGE_URL:-/login}
+      - WEBCHAT_LOGIN_RETURN_PARAM=${MAIN_WEBCHAT_LOGIN_RETURN_PARAM:-redirect}
+      - WEBCHAT_LOGIN_TOKEN_STORAGE_KEY=${MAIN_WEBCHAT_LOGIN_TOKEN_STORAGE_KEY:-access_token}
+      - WEBCHAT_LOGIN_REFRESH_STORAGE_KEY=${MAIN_WEBCHAT_LOGIN_REFRESH_STORAGE_KEY:-refresh_token}
+      - WEBCHAT_LOGIN_USER_STORAGE_KEY=${MAIN_WEBCHAT_LOGIN_USER_STORAGE_KEY:-user}
+      - WEBCHAT_LOGOUT_PAGE_URL=${MAIN_WEBCHAT_LOGOUT_PAGE_URL:-}
+      - WEBCHAT_ADMIN_EMAILS=${MAIN_WEBCHAT_ADMIN_EMAILS:-}
+      - WEBCHAT_COOKIE_SECURE=${MAIN_WEBCHAT_COOKIE_SECURE:-auto}
+      - WEBCHAT_COOKIE_DOMAIN=${MAIN_WEBCHAT_COOKIE_DOMAIN:-}
+      - CHAT_SERVER_CORS_ORIGIN=${MAIN_CHAT_SERVER_CORS_ORIGIN:-https://kuroneko.chat}
+      - WEBCHAT_PUBLIC_BASE_PATH=${MAIN_WEBCHAT_PUBLIC_BASE_PATH:-/webchat}
+      - WEBCHAT_AGENT_USER_ID=${MAIN_WEBCHAT_AGENT_USER_ID:-}
+      - WEBCHAT_AGENT_SECRET=${MAIN_WEBCHAT_AGENT_SECRET:-}
+      - WEBCHAT_GLOBAL_THREAD_ID=${MAIN_WEBCHAT_GLOBAL_THREAD_ID:-global}
+      - CHAT_SERVER_MAX_UPLOAD_SIZE=${MAIN_CHAT_SERVER_MAX_UPLOAD_SIZE:-26214400}
+    volumes:
+      - ./data-main:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - utlra-webchat
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8790/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    ports:
+      - "127.0.0.1:8790:8790"
+
+  web-chat-main:
+    build:
+      context: ../..
+      dockerfile: apps/web-chat/Dockerfile
+      args:
+        VITE_BASE: ${MAIN_VITE_BASE:-/webchat/}
+    image: utlra/web-chat:main
+    container_name: utlra-web-chat
+    restart: unless-stopped
+    depends_on:
+      chat-server-main:
+        condition: service_healthy
+    networks:
+      - utlra-webchat
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "127.0.0.1:8791:8080"
+
+  chat-server-lab:
+    build:
+      context: ../..
+      dockerfile: apps/chat-server/Dockerfile
+    image: utlra/chat-server:lab
+    container_name: utlra-chat-server-lab
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=8790
+      - TZ=Asia/Shanghai
+      - CHAT_SERVER_DATA_ROOT=/data
+      - WEBCHAT_AUTH_DATA_FILE=/data/auth.json
+      - WEBCHAT_AUTH_REQUIRED=1
+      - WEBCHAT_LOGIN_SERVER_URL=${LAB_WEBCHAT_LOGIN_SERVER_URL:-http://host.docker.internal:5001}
+      - WEBCHAT_LOGIN_PAGE_URL=${LAB_WEBCHAT_LOGIN_PAGE_URL:-/login}
+      - WEBCHAT_LOGIN_RETURN_PARAM=${LAB_WEBCHAT_LOGIN_RETURN_PARAM:-redirect}
+      - WEBCHAT_LOGIN_TOKEN_STORAGE_KEY=${LAB_WEBCHAT_LOGIN_TOKEN_STORAGE_KEY:-access_token}
+      - WEBCHAT_LOGIN_REFRESH_STORAGE_KEY=${LAB_WEBCHAT_LOGIN_REFRESH_STORAGE_KEY:-refresh_token}
+      - WEBCHAT_LOGIN_USER_STORAGE_KEY=${LAB_WEBCHAT_LOGIN_USER_STORAGE_KEY:-user}
+      - WEBCHAT_LOGOUT_PAGE_URL=${LAB_WEBCHAT_LOGOUT_PAGE_URL:-}
+      - WEBCHAT_ADMIN_EMAILS=${LAB_WEBCHAT_ADMIN_EMAILS:-}
+      - WEBCHAT_COOKIE_SECURE=${LAB_WEBCHAT_COOKIE_SECURE:-auto}
+      - WEBCHAT_COOKIE_DOMAIN=${LAB_WEBCHAT_COOKIE_DOMAIN:-}
+      - CHAT_SERVER_CORS_ORIGIN=${LAB_CHAT_SERVER_CORS_ORIGIN:-https://kuroneko.chat}
+      - WEBCHAT_PUBLIC_BASE_PATH=${LAB_WEBCHAT_PUBLIC_BASE_PATH:-/webchat-lab}
+      - WEBCHAT_AGENT_USER_ID=${LAB_WEBCHAT_AGENT_USER_ID:-}
+      - WEBCHAT_AGENT_SECRET=${LAB_WEBCHAT_AGENT_SECRET:-}
+      - WEBCHAT_GLOBAL_THREAD_ID=${LAB_WEBCHAT_GLOBAL_THREAD_ID:-global}
+      - CHAT_SERVER_MAX_UPLOAD_SIZE=${LAB_CHAT_SERVER_MAX_UPLOAD_SIZE:-26214400}
+    volumes:
+      - ./data-lab:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - utlra-webchat-lab
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8790/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    ports:
+      - "127.0.0.1:8794:8790"
+
+  web-chat-lab:
+    build:
+      context: ../..
+      dockerfile: apps/web-chat/Dockerfile
+      args:
+        VITE_BASE: ${LAB_VITE_BASE:-/webchat-lab/}
+    image: utlra/web-chat:lab
+    container_name: utlra-web-chat-lab
+    restart: unless-stopped
+    depends_on:
+      chat-server-lab:
+        condition: service_healthy
+    networks:
+      - utlra-webchat-lab
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "127.0.0.1:8795:8080"
+
+networks:
+  utlra-webchat:
+    driver: bridge
+  utlra-webchat-lab:
+    driver: bridge

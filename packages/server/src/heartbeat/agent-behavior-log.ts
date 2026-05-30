@@ -92,6 +92,7 @@ const TOOL_NAME_TO_OPERATION_TYPE: Record<string, string> = {
   manage_performance_goal: 'performance_goal_manage',
   post_to_im: 'message_send',
   keychain_put: 'credential_write',
+  keychain_get: 'credential_read',
   keychain_entries: 'credential_read',
   memory_block_list: 'memory_block_read',
   memory_block_create: 'memory_block_write',

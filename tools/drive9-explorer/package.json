@@ -1,0 +1,30 @@
+{
+  "name": "@utlra/drive9-explorer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Drive9 可视化文件浏览器 — Dropbox 风格界面",
+  "scripts": {
+    "server": "tsx src/server.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "dev": "concurrently -n d9-srv,d9-web -c cyan,magenta \"npm run server\" \"npm run dev:web\"",
+    "build": "vite build --config web/vite.config.ts",
+    "preview": "vite preview --config web/vite.config.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.4.0"
+  }
+}

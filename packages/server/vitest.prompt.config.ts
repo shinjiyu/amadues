@@ -14,17 +14,19 @@ import { defineConfig } from 'vitest/config';
  * - 单次断言用语义匹配（包含 / 不包含某 token）而非精确字符串。
  *
  * env 加载顺序（仅当对应变量**尚未**在 process.env 中时才覆写，遵循 dotenv 默认）：
- *   1. 仓库根 `.env`
+ *   1. 仓库根 `.env.kuroneko`（Kuroneko agent；兼容旧 `.env`）
  *   2. 仓库根 `.env.local`（若存在，本机覆盖）
  *
  * timeout 拉大到 120s 以容忍冷启动与首 token 等待。
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../..');
-const envPath = resolve(repoRoot, '.env');
+const envKuroneko = resolve(repoRoot, '.env.kuroneko');
+const envLegacy = resolve(repoRoot, '.env');
 const envLocal = resolve(repoRoot, '.env.local');
 
-if (existsSync(envPath)) dotenv.config({ path: envPath });
+if (existsSync(envKuroneko)) dotenv.config({ path: envKuroneko });
+else if (existsSync(envLegacy)) dotenv.config({ path: envLegacy });
 if (existsSync(envLocal)) dotenv.config({ path: envLocal, override: true });
 
 // Prompt 套件：缩短流式空闲超时与重试，避免单测挂到 120s 才失败

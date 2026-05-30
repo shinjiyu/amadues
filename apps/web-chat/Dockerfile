@@ -13,14 +13,17 @@ ENV VITE_BASE=$VITE_BASE
 
 COPY package.json package-lock.json* tsconfig.base.json ./
 COPY packages/webchat-protocol/package.json packages/webchat-protocol/
+COPY packages/chat-ir/package.json packages/chat-ir/
 COPY apps/web-chat/package.json apps/web-chat/
 
-RUN npm install --include=dev --workspace=@utlra/webchat-protocol --workspace=@utlra/web-chat --include-workspace-root
+RUN npm install --include=dev --workspace=@utlra/webchat-protocol --workspace=@utlra/chat-ir --workspace=@utlra/web-chat --include-workspace-root
 
 COPY packages/webchat-protocol packages/webchat-protocol
+COPY packages/chat-ir packages/chat-ir
 COPY apps/web-chat apps/web-chat
 
 RUN npm run build -w @utlra/webchat-protocol \
+ && npm run build -w @utlra/chat-ir \
  && VITE_BASE=$VITE_BASE npm run build -w @utlra/web-chat
 
 # ── 运行镜像 ──────────────────────────────────────────────────────

@@ -24,10 +24,26 @@ function Get-AgentDockerComposeFile([string]$RepoRoot) {
 }
 
 $script:AgentLegacyEnvMap = @{
-  kuroneko = '.env'
-  shiro    = '.env.agent2'
+  kuroneko = '.env.kuroneko'
+  shiro    = '.env.shiro'
   gin      = '.env.gin'
   aoi      = '.env.aoi'
+}
+
+# Legacy root env filenames (migrated once into .env.<agent>)
+$script:AgentObsoleteRootEnvMap = @{
+  kuroneko = '.env'
+  shiro    = '.env.agent2'
+}
+
+function Sync-AgentEnvRootAlias {
+  param(
+    [Parameter(Mandatory = $true)][string]$RepoRoot,
+    [Parameter(Mandatory = $true)][string]$Name
+  )
+  $src = Join-Path (Get-AgentEnvDir $RepoRoot) "$Name.env"
+  if (-not (Test-Path $src)) { return }
+  Copy-Item -Force $src (Join-Path $RepoRoot ".env.$Name")
 }
 
 function Repair-AgentEnvFileContent([string]$EnvPath) {
@@ -50,9 +66,14 @@ function Ensure-AgentInstanceEnvFile([string]$RepoRoot, [string]$Name) {
   if (-not (Test-Path $envPath)) {
     $legacy = $script:AgentLegacyEnvMap[$Name]
     $legacyPath = if ($legacy) { Join-Path $RepoRoot $legacy } else { $null }
+    $obsolete = $script:AgentObsoleteRootEnvMap[$Name]
+    $obsoletePath = if ($obsolete) { Join-Path $RepoRoot $obsolete } else { $null }
     if ($legacyPath -and (Test-Path $legacyPath)) {
       Copy-Item $legacyPath $envPath
-      Write-Warning "已从旧版 $legacy 迁移到 deploy/agent/env/$Name.env"
+      Write-Warning "已从 $legacy 迁移到 deploy/agent/env/$Name.env"
+    } elseif ($obsoletePath -and (Test-Path $obsoletePath)) {
+      Copy-Item $obsoletePath $envPath
+      Write-Warning "已从旧版 $obsolete 迁移到 deploy/agent/env/$Name.env"
     } elseif (Test-Path $examplePath) {
       Copy-Item $examplePath $envPath
       Write-Warning "已创建 deploy/agent/env/$Name.env — 请填入 ZHIPU_API_KEY 与 WEBCHAT_AGENT_SECRET"
@@ -62,6 +83,7 @@ function Ensure-AgentInstanceEnvFile([string]$RepoRoot, [string]$Name) {
     }
   }
   Repair-AgentEnvFileContent $envPath
+  Sync-AgentEnvRootAlias -RepoRoot $RepoRoot -Name $Name
 }
 
 function Ensure-AllAgentEnvFiles([string]$RepoRoot) {

@@ -111,6 +111,17 @@ export async function postMessage(
   return (await checkOk(res)).json();
 }
 
+/** 清空线程全部聊天记录（大群需 admin）。 */
+export async function clearThreadMessages(
+  threadId: string,
+): Promise<{ ok: boolean; thread_id: string; deleted_count: number }> {
+  const res = await fetch(
+    `${API_BASE}/threads/${encodeURIComponent(threadId)}/messages`,
+    defaultInit({ method: 'DELETE' }),
+  );
+  return (await checkOk(res)).json();
+}
+
 export async function uploadFile(file: File): Promise<UploadResponse> {
   const fd = new FormData();
   fd.append('file', file);

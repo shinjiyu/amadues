@@ -20,8 +20,7 @@
 | **Gin Agent** | `npm run docker:agents:up:gin` | API http://127.0.0.1:8789 |
 | **Aoi Agent** | `npm run docker:agents:up:aoi` | API http://127.0.0.1:8791 |
 | **Dashboard** | `npm run dev:dashboard` | http://127.0.0.1:5173（`/api`→8787，`/api2`→8788，`/api3`→8789，`/api4`→8791） |
-| **Chat Server** | `npm run dev:chat-server` | http://127.0.0.1:8790 |
-| **Web Chat H5** | `npm run dev:web-chat` | http://127.0.0.1:5180 |
+| **Drive9 Explorer** | `npm run dev:drive9` | http://127.0.0.1:7782 |
 | **Ops Console** | `npm run dev:ops` | http://127.0.0.1:7779（三 Agent 日志） |
 | **local-dashboard** | 见下「9780 总控」 | http://127.0.0.1:9780/?page=kuroneko（**启停**上面各项进程） |
 
@@ -62,9 +61,18 @@ npm run dev:ops                   # Ops 日志台
 
 **离线调试**（未配渠道时）：`POST http://127.0.0.1:8787/api/outer/roundtrip` 触发外脑 roundtrip，写入 `<UTLRA_DATA_ROOT>/chat/threads.json`。
 
-## LLM 配置（`.env` / `.env.agent2`）
+## LLM / mem9 配置（`.env.kuroneko` … `.env.aoi`）
 
-至少配置 **一种** 文本模型（详见 [`.env.example`](./.env.example)）：
+四 Agent 各一份 env，**文件名与 agent 名一致**：
+
+| Agent | Docker 权威路径 | 仓库根别名 |
+|-------|-----------------|------------|
+| Kuroneko | `deploy/agent/env/kuroneko.env` | `.env.kuroneko` |
+| Shiro | `deploy/agent/env/shiro.env` | `.env.shiro` |
+| Gin | `deploy/agent/env/gin.env` | `.env.gin` |
+| Aoi | `deploy/agent/env/aoi.env` | `.env.aoi` |
+
+至少配置 **一种** 文本模型（模板见 `deploy/agent/env/*.example` 与 [`.env.example`](./.env.example)）：
 
 | Provider | 典型变量 | 说明 |
 |----------|----------|------|
@@ -72,7 +80,9 @@ npm run dev:ops                   # Ops 日志台
 | **LocalModule** | `LOCALMODULE_API_KEY`、`UTLRA_INNER_LLM_PROVIDER=localmodule` | OpenAI 兼容端点 |
 | **Kimi** | `KIMI_API_KEY` | Moonshot OpenAI 兼容 |
 
-**切勿**把 `.env` / `.env.agent2` 提交到 Git；Key 泄露请在控制台立即轮换。
+另需 `MEM9_API_KEY`、`DRIVE9_API_KEY`（见各 agent env 注释）。旧名 `.env` / `.env.agent2` 已废弃。
+
+**切勿**把 `deploy/agent/env/*.env` 或根目录 `.env.*` 提交到 Git；Key 泄露请在控制台立即轮换。
 
 自测：`npm run smoke:zhipu` / `npm run smoke:zhipu:vision`。
 

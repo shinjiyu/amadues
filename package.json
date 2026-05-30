@@ -4,7 +4,8 @@
   "description": "Greenfield agent stack (data plane + chat IR + inner runtime) — see ../doc/",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "tools/*"
   ],
   "scripts": {
     "build": "npm run build -w @utlra/chat-ir && npm run build -w @utlra/discord-bridge && npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/webchat-bridge && npm run build -w @utlra/server && npm run build -w @utlra/dashboard && npm run build -w @utlra/ops-console",
@@ -23,6 +24,7 @@
     "dev": "npm run dev:dashboard",
     "dev:dashboard": "npm run dev -w @utlra/dashboard",
     "dev:ops": "npm run dev -w @utlra/ops-console",
+    "dev:drive9": "npm run dev -w @utlra/drive9-explorer",
     "dev:chat-server": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/chat-server",
     "dev:web-chat": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/web-chat",
     "dev:webchat-all": "npm run build -w @utlra/webchat-protocol && concurrently -n chat-server,web-chat -c cyan,green \"npm run dev -w @utlra/chat-server\" \"npm run dev -w @utlra/web-chat\"",

@@ -29,6 +29,13 @@ export interface OuterInboundMeta {
 /** LLM 调用注入点（doc/testing-strategy.md §S3）；签名与 `llmChatCompletion` 完全一致。 */
 export type LlmChatFn = (opts: LlmChatOptions) => Promise<LlmChatResult>;
 
+/** 参与决策时供同步规则 / SPEAK prompt 使用的 agent 上下文 */
+export interface ParticipationAgentContext {
+  agentName: string;
+  /** active KPI 的自然语言描述（用于 KPI 相关判定） */
+  activeKpiDescriptions?: string[];
+}
+
 /** 入站决策的全部可调参数（一律来源于 env，单测可替换） */
 export interface InboundConfig {
   /** 主动发言强度（0 静默 → 3 积极） */
@@ -93,6 +100,81 @@ export function resolveParticipationUseLlm(): boolean {
   return loadInboundConfigFromEnv().useLlmForParticipation;
 }
 
+export function resolveParticipationAgentContextFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  activeKpiDescriptions?: string[],
+): ParticipationAgentContext {
+  return {
+    agentName: env['UTLRA_AGENT_NAME']?.trim() || 'Kuroneko',
+    activeKpiDescriptions,
+  };
+}
+
+/** 消息是否像在向某人提问或求助 */
+export function looksLikeQuestion(content: string): boolean {
+  const t = content.trim();
+  if (!t) return false;
+  if (t.endsWith('?') || t.endsWith('？')) return true;
+  return (
+    /^(请问|问一下|谁能|谁可以|有没有|谁知道|帮忙|帮(我|忙)|能否|可不可以)/.test(t) ||
+    /(你觉得|你怎么看|你(知道|在吗|有空吗)|是吗|对不对|有没有问题)/.test(t)
+  );
+}
+
+export function contentMentionsAgent(content: string, agentName: string): boolean {
+  const name = agentName.trim().toLowerCase();
+  if (!name) return false;
+  const t = content.toLowerCase();
+  return t.includes(name) || t.includes(`@${name}`);
+}
+
+/** 消息主题是否与某条 KPI 描述有明显重叠 */
+export function contentRelatesToAgentKpi(content: string, descriptions: string[]): boolean {
+  const t = content.trim().toLowerCase();
+  if (!t || descriptions.length === 0) return false;
+  for (const desc of descriptions) {
+    const d = desc.trim().toLowerCase();
+    if (!d) continue;
+    const anchor = d.slice(0, Math.min(24, d.length));
+    if (anchor.length >= 4 && t.includes(anchor)) return true;
+    for (const seg of d.split(/[，,。；;、\s/|]+/)) {
+      const s = seg.trim();
+      if (s.length >= 4 && t.includes(s)) return true;
+    }
+  }
+  return false;
+}
+
+export function buildParticipationSpeakSystemPrompt(
+  _proactiveLevel: number,
+  agentContext?: ParticipationAgentContext,
+): string {
+  const agentName = agentContext?.agentName?.trim() || '本 agent';
+
+  return `你是 ${agentName}，群聊中的外脑 agent。
+当前消息**没有 @ 你**，也**没有 @ 其他人**。
+
+你的任务：判断这条消息**是在对谁说**。
+
+**输出 SPEAK**（仅当满足以下全部条件）：
+- 消息明确是在对你（${agentName}）说话：口头叫你名字、向你提问、或上下文表明在等你回答
+- 不是在对群里其他人说话，也不是大家闲聊/广播
+
+**输出 SILENT**（以下任一条即 SILENT）：
+- 在对其他群成员说话（即使没写 @）
+- 群友之间的私事、寒暄、与你不相关的讨论
+- 只是陈述/分享，没有指向你、也没有在等你回应
+- 不确定是不是在对你说 → 默认 SILENT
+
+不要因为话题有趣或与你 KPI 略有关联就插嘴；只有确定「在对你说」才 SPEAK。
+
+请只输出 SPEAK 或 SILENT，不要有其他内容。`;
+}
+
+function shouldRecordProactiveSpeak(reason: string): boolean {
+  return reason === 'group_llm_speak';
+}
+
 // ── 决策函数 ──────────────────────────────────────────────────────────────────
 
 export interface ShouldReplySyncResult {
@@ -112,6 +194,7 @@ export function shouldReplySyncRules(
     content: string;
     meta: OuterInboundMeta;
     proactiveLevel: number;
+    agentContext?: ParticipationAgentContext;
   },
   config: InboundConfig = loadInboundConfigFromEnv(),
 ): ShouldReplySyncResult {
@@ -130,56 +213,26 @@ export function shouldReplySyncRules(
   }
 
   // —— 群聊 ——
+  // 1) @ 本 agent → 立即接话
   if (meta.isMentionAgent) {
     return { shouldReply: true, reason: 'group_mention_agent' };
   }
 
+  // 2) @ 他人（不含本 agent）→ 不插嘴
   if (meta.mentionsOthers) {
     return { shouldReply: false, reason: 'group_mention_others' };
   }
 
+  // 3) 未 @ 任何人：同步阶段一律不接话；proactiveLevel=0 时也不走 LLM
   if (level === 0) {
     return { shouldReply: false, reason: 'group_proactive_level_0' };
   }
 
-  const state = getGroupParticipationState(threadId);
-  const now = Date.now();
-
-  if (now - state.lastProactiveAt < config.speakCooldownMs) {
-    return { shouldReply: false, reason: 'group_cooldown' };
+  if (!config.useLlmForParticipation) {
+    return { shouldReply: false, reason: 'group_no_mention_no_llm' };
   }
 
-  if (now - state.proactiveCountResetAt > 5 * 60 * 1000) {
-    state.proactiveCount5min = 0;
-    state.proactiveCountResetAt = now;
-  }
-  if (state.proactiveCount5min >= config.maxProactivePer5Min) {
-    return { shouldReply: false, reason: 'group_max_proactive_5min' };
-  }
-
-  if (level === 1) {
-    const t = content.trim();
-    const isQ = t.endsWith('?') || t.endsWith('？');
-    if (!isQ) {
-      return { shouldReply: false, reason: 'group_level1_not_question' };
-    }
-  }
-
-  const minLen = level >= 3 ? 2 : 3;
-  if (content.trim().length < minLen) {
-    return { shouldReply: false, reason: 'group_min_length' };
-  }
-
-  if (level >= 3) {
-    const t = content.trim();
-    if (
-      /你们俩|你们俩先|大家.*(说|来|发表|商量|认识)|怎么都不说话|我让你们说话|都不说话了|都别不说话/.test(t) ||
-      /我们来讨论|每人说一下|各自发表|先互相认识/.test(t)
-    ) {
-      return { shouldReply: true, reason: 'group_rule_group_invite' };
-    }
-  }
-
+  // 4) 交给 LLM 判断「是否在对我说」（口头点名等也走此路径，不再同步 shortcut）
   return { shouldReply: false, reason: 'needs_llm' };
 }
 
@@ -195,25 +248,14 @@ export async function participationSpeakLlm(
     threadHistoryPrefix: string;
     innerStatusSummary: string;
     proactiveLevel: number;
+    agentContext?: ParticipationAgentContext;
   },
   llmChat: LlmChatFn = llmChatCompletion,
 ): Promise<boolean> {
-  const level = input.proactiveLevel;
-  const aggressiveness =
-    level >= 3
-      ? '像群成员一样自然参与'
-      : level >= 2
-        ? '正常参与：有贡献或话题相关时再发言'
-        : '谨慎：只接直接问题';
-
-  const systemPrompt = `你是群聊中的一员（外脑 agent）。当前消息**没有 @ 你**。
-参与策略：${aggressiveness}。
-
-必须保持沉默的情况（优先级最高）：
-- 两人在聊与你无关的私事
-- 话题完全与你无关且你无话可说
-
-请只输出 SPEAK 或 SILENT，不要有其他内容。`;
+  const systemPrompt = buildParticipationSpeakSystemPrompt(
+    input.proactiveLevel,
+    input.agentContext,
+  );
 
   const userPrompt = `当前内脑状态摘要：
 ${input.innerStatusSummary.slice(0, 4000)}
@@ -258,6 +300,7 @@ export async function decideOuterShouldReply(params: {
   threadHistoryPrefix: string;
   innerStatusSummary: string;
   llmEnv: InnerLlmEnv | null;
+  agentContext?: ParticipationAgentContext;
   /** 注入：见 `LlmChatFn` */
   llmChat?: LlmChatFn;
   /** 注入：见 `InboundConfig` */
@@ -266,25 +309,40 @@ export async function decideOuterShouldReply(params: {
   const config = params.config ?? loadInboundConfigFromEnv();
   const llmChat = params.llmChat ?? llmChatCompletion;
 
+  const agentContext =
+    params.agentContext ??
+    resolveParticipationAgentContextFromEnv(process.env);
+
   const sync = shouldReplySyncRules(
     {
       threadId: params.threadId,
       content: params.content,
       meta: params.meta,
       proactiveLevel: params.proactiveLevel,
+      agentContext,
     },
     config,
   );
 
   if (sync.shouldReply || sync.reason !== 'needs_llm') {
-    if (sync.shouldReply && sync.reason === 'group_rule_group_invite') {
-      recordProactiveSpeak(params.threadId);
-    }
     return { shouldReply: sync.shouldReply, reason: sync.reason };
   }
 
-  if (!config.useLlmForParticipation || !params.llmEnv) {
+  if (!params.llmEnv) {
     return { shouldReply: false, reason: 'participation_llm_disabled_or_no_key' };
+  }
+
+  const state = getGroupParticipationState(params.threadId);
+  const now = Date.now();
+  if (now - state.lastProactiveAt < config.speakCooldownMs) {
+    return { shouldReply: false, reason: 'group_cooldown' };
+  }
+  if (now - state.proactiveCountResetAt > 5 * 60 * 1000) {
+    state.proactiveCount5min = 0;
+    state.proactiveCountResetAt = now;
+  }
+  if (state.proactiveCount5min >= config.maxProactivePer5Min) {
+    return { shouldReply: false, reason: 'group_max_proactive_5min' };
   }
 
   try {
@@ -295,6 +353,7 @@ export async function decideOuterShouldReply(params: {
         threadHistoryPrefix: params.threadHistoryPrefix,
         innerStatusSummary: params.innerStatusSummary,
         proactiveLevel: params.proactiveLevel,
+        agentContext,
       },
       llmChat,
     );

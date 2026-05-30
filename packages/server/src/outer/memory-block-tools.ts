@@ -87,8 +87,7 @@ export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
     type: 'function',
     function: {
       name: 'memory_block_get',
-      description:
-        '读取 block 条目。notebook 返回 title/body；keychain 外脑仅 metadata（无 value 明文）。',
+      description: '读取 block 条目（含 keychain 正文）。',
       parameters: {
         type: 'object',
         properties: {
@@ -104,7 +103,7 @@ export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'memory_block_put',
       description:
-        '写入或更新条目。notebook：body（必填）+ 可选 title/tags；keychain：kind + value（Cookie/Token）。禁止写入 mem9。',
+        '写入或更新条目。notebook/keychain：body 或 value + 可选 title/tags。',
       parameters: {
         type: 'object',
         properties: {
@@ -135,23 +134,50 @@ export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'keychain_put',
+      description: '写入 keychain 块条目（等同 memory_block_put block_id=keychain）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'entry key' },
+          body: { type: 'string', description: '正文' },
+          value: { type: 'string', description: 'body 别名' },
+          title: { type: 'string', description: '可选标题' },
+          tags: { type: 'string', description: '可选标签' },
+        },
+        required: ['key'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'keychain_get',
+      description: '读取 keychain 块条目（等同 memory_block_get block_id=keychain）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'entry key' },
+        },
+        required: ['key'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'keychain_entries',
+      description: '列出 keychain 块全部 entry key。',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
 ];
 
 function requireStore(ctx: OuterToolContext): MemoryBlockStore | null {
   return ctx.memoryBlockStore ?? null;
-}
-
-/** keychain 写入后读回校验，防止「声称已存但磁盘为空」 */
-async function verifyKeychainEntryWritten(
-  store: MemoryBlockStore,
-  key: string,
-): Promise<string> {
-  const full = await store.get('keychain', key, { includeValue: true });
-  const value = full?.value;
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error(`keychain/${key} verify failed: empty after put`);
-  }
-  return value;
 }
 
 function parseStrategy(raw: unknown): BlockStrategyId {
@@ -295,18 +321,6 @@ export async function execMemoryBlockPut(
         ? { body: content, title: args.title, tags: args.tags }
         : { kind: args.kind ?? 'generic', value: content };
     const meta = await store.put(blockId, key, payload, ctx.agentSid);
-    if (blockId === 'keychain' && block.strategy === 'kv_secret') {
-      const verified = await verifyKeychainEntryWritten(store, key);
-      console.log(
-        `[utlra][memory-block] keychain put verified key=${key} len=${verified.length} by=${ctx.agentSid}`,
-      );
-      return {
-        replied: false,
-        output:
-          `已写入并校验 ${blockId}/${key}（${block.strategy}，value ${verified.length} 字符）。\n` +
-          `${JSON.stringify(meta, null, 2)}`,
-      };
-    }
     return {
       replied: false,
       output: `已写入 ${blockId}/${key}（${block.strategy}）。\n${JSON.stringify(meta, null, 2)}`,
@@ -345,6 +359,13 @@ export async function execKeychainPut(
 
 export async function execKeychainEntries(ctx: OuterToolContext): Promise<ToolCallResult> {
   return execMemoryBlockEntries({ block_id: 'keychain' }, ctx);
+}
+
+export async function execKeychainGet(
+  args: { key?: string },
+  ctx: OuterToolContext,
+): Promise<ToolCallResult> {
+  return execMemoryBlockGet({ block_id: 'keychain', key: args.key }, ctx);
 }
 
 export async function dispatchMemoryBlockTool(
@@ -390,6 +411,8 @@ export async function dispatchMemoryBlockTool(
       return execKeychainPut(args as { key?: string; kind?: string; value?: string }, ctx);
     case 'keychain_entries':
       return execKeychainEntries(ctx);
+    case 'keychain_get':
+      return execKeychainGet(args as { key?: string }, ctx);
     default:
       return null;
   }

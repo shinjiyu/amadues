@@ -176,6 +176,14 @@ export class ThreadStore {
    * - `next_before` 是再往前翻页时应当传入的值（= 当前返回页中第一条的 id）；
    *   没有更多消息时为 `null`。
    */
+  /** 清空线程全部消息（保留线程元数据）。返回删除条数。 */
+  async clearMessages(threadId: string): Promise<number> {
+    const list = await this.loadMessages(threadId);
+    const count = list.length;
+    await this.persistMessages(threadId, []);
+    return count;
+  }
+
   async listMessages(
     threadId: string,
     before: string | undefined,

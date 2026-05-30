@@ -6,9 +6,9 @@
 
 | 面板 | 地址 | 干什么 |
 |------|------|--------|
-| **local-dashboard** | `http://127.0.0.1:9780/?page=kuroneko` | **启停进程**：四 Agent（Docker）、chat-server、业务 Dashboard、WebChat、Ops |
+| **local-dashboard** | `http://127.0.0.1:9780/?page=kuroneko` | **启停**：Dashboard（5173）、Drive9 Explorer |
 | **Dashboard（业务）** | http://127.0.0.1:5173 | **看内脑/外脑状态**（只读监控），顶栏切换 Kuroneko / Shiro / Gin / Aoi |
-| **Ops Console** | http://127.0.0.1:7779 | **看 Agent 启停日志**（compose 输出；容器内日志用 `docker logs`） |
+| **Ops Console** | http://127.0.0.1:7779 | Agent 启停日志（`npm run dev:ops`；不在 9780 注册） |
 
 改了 `scripts/kuroneko-utlra.bundle.json` 后，在 **本仓库根**执行一次同步，9780 里才会出现最新服务项。
 
@@ -32,18 +32,12 @@ cd <repo-root>
 
 ## 已注册服务（分组 `kuroneko`）
 
-与 [`apps/ops-console/src/service-registry.ts`](../../apps/ops-console/src/service-registry.ts) 一致：
+local-dashboard 仅托管 **Dashboard** 与 **Drive9 Explorer**；四 Agent / Ops 请用 `npm run docker:agents:*` 或命令行单独启停（见 [`agent-docker.md`](./agent-docker.md)）。
 
 | ID | 说明 | 端口 |
 |----|------|------|
-| `kuroneko-agent-kuroneko` | 主 Agent（Docker） | 8787 |
-| `kuroneko-agent-shiro` | Shiro Agent（Docker） | 8788 |
-| `kuroneko-agent-gin` | Gin Agent（Docker） | 8789 |
-| `kuroneko-agent-aoi` | Aoi Agent（Docker） | 8791 |
 | `kuroneko-dashboard` | 业务控制台 H5 | 5173 |
-| `kuroneko-chat-server` | WebChat 后端 | 8790 |
-| `kuroneko-web-chat` | WebChat 前端 | 5180 |
-| `kuroneko-ops-console` | Ops 日志台 | 7779（API 7777） |
+| `kuroneko-drive9-explorer` | Drive9 文件浏览器 | 7782（API 7780） |
 
 启停脚本：`scripts/local-dashboard/{start,stop,health}.ps1`。仓库根目录可用环境变量 **`KURONEKO_ROOT`** 覆盖（默认从脚本位置自动解析）。
 

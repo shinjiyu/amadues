@@ -27,6 +27,7 @@ import {
   fetchUsers,
   listMessages,
   postMessage,
+  clearThreadMessages,
   uploadFile,
   createDm,
 } from './api.js';
@@ -143,6 +144,7 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
   const [unreadByThread, setUnreadByThread] = useState<Record<string, number>>({});
   const [highlightByThread, setHighlightByThread] = useState<Record<string, boolean>>({});
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [clearingThread, setClearingThread] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // thread_id → (user_id → display_name)：当前在该线程「正在输入中」的用户。
   const [typingByThread, setTypingByThread] = useState<Record<string, Record<string, string>>>({});
@@ -199,6 +201,15 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
     [identity.user_id, clearTyping],
   );
 
+  const applyThreadCleared = useCallback((threadId: string): void => {
+    setMessagesByThread((prev) => ({ ...prev, [threadId]: [] }));
+    setHasMoreByThread((prev) => ({ ...prev, [threadId]: false }));
+    setUnreadByThread((prev) => ({ ...prev, [threadId]: 0 }));
+    setHighlightByThread((prev) => ({ ...prev, [threadId]: false }));
+    setReplyingTo((prev) => (prev?.thread_id === threadId ? null : prev));
+    wsRef.current?.subscribe(threadId, null);
+  }, []);
+
   const handleIncomingMessage = useCallback((threadId: string, message: Message): void => {
     // 对方一旦发出消息，立即撤掉其「正在输入」指示器
     clearTyping(threadId, message.sender_user_id);
@@ -242,6 +253,8 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
           });
         } else if (ev.type === 'message.new') {
           handleIncomingMessage(ev.thread_id, ev.message);
+        } else if (ev.type === 'messages.cleared') {
+          applyThreadCleared(ev.thread_id);
         } else if (ev.type === 'typing.relay') {
           handleTypingRelay(
             ev.thread_id,
@@ -410,6 +423,36 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
     [threads, activeThreadId],
   );
 
+  const canClearActiveThread = useMemo(() => {
+    if (!activeThread) return false;
+    if (activeThread.kind === 'dm') return true;
+    return identity.role === 'admin';
+  }, [activeThread, identity.role]);
+
+  const handleClearThread = useCallback(async (): Promise<void> => {
+    if (!activeThread || !canClearActiveThread) return;
+    const label = activeThread.kind === 'group' ? '大群' : '私聊';
+    const ok = window.confirm(`确定清空${label}的全部聊天记录？此操作不可恢复。`);
+    if (!ok) return;
+    setClearingThread(true);
+    try {
+      await clearThreadMessages(activeThreadId);
+      applyThreadCleared(activeThreadId);
+      setError(null);
+    } catch (e) {
+      if (handleUnauthorized(e)) return;
+      setError((e as Error).message);
+    } finally {
+      setClearingThread(false);
+    }
+  }, [
+    activeThread,
+    activeThreadId,
+    applyThreadCleared,
+    canClearActiveThread,
+    handleUnauthorized,
+  ]);
+
   const activeTypingNames = useMemo(() => {
     const map = typingByThread[activeThreadId];
     return map ? Object.values(map) : [];
@@ -517,6 +560,17 @@ function MainScreen({ identity, onLogout }: { identity: ClientIdentity; onLogout
                   {peerForDm?.online ? '在线' : '离线'}
                 </span>
               </>
+            )}
+            {canClearActiveThread && (
+              <button
+                type="button"
+                className="thread-clear-btn"
+                disabled={clearingThread}
+                title={activeThread.kind === 'group' ? '管理员：清空大群聊天记录' : '清空私聊记录'}
+                onClick={() => void handleClearThread()}
+              >
+                {clearingThread ? '清空中…' : '清空记录'}
+              </button>
             )}
           </div>
         )}

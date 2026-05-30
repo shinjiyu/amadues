@@ -6,7 +6,9 @@ import { config as loadEnv } from 'dotenv';
 import { serve } from '@hono/node-server';
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: path.join(__serverDir, '../../../.env.kuroneko') });
 loadEnv({ path: path.join(__serverDir, '../../../.env') });
+loadEnv({ path: path.join(process.cwd(), '.env.kuroneko') });
 loadEnv({ path: path.join(process.cwd(), '.env') });
 
 // 全局兜底：第三方桥（Discord 等）抛出的 unhandledRejection / uncaughtException
@@ -58,6 +60,10 @@ import { initSkillDrive9Store, type SkillDrive9Store } from './drive9/skill-driv
 import { initKnowledgeDrive9Store, type KnowledgeDrive9Store } from './drive9/knowledge-drive9-store.js';
 import { getDrive9Client, resolveDrive9Config } from './drive9/drive9-client.js';
 import { InnerBrainRegistry, type TaskRecord, type TaskStatus } from './outer/inner-brain-registry.js';
+import {
+  enrichInnerBrainInstanceRow,
+  parseInnerBrainListPagination,
+} from './outer/list-inner-brain-instances.js';
 import { KpiRegistry, formatKpiReflexionBlock } from './outer/kpi-registry.js';
 import { processBurstExitForKpi } from './outer/kpi-burst-hooks.js';
 import { readWorkerStatus, isPidAlive, spawnInnerBrainWorker } from './pi-mono/inner-brain-spawner.js';
@@ -88,6 +94,7 @@ import { PerformanceGoalEngine } from './performance-goals/engine.js';
 import { renderPerformanceDashboard } from './performance-goals/dashboard.js';
 import { registerHealthRoute } from './api/health-route.js';
 import { registerParticipationLabRoutes } from './api/participation-lab-route.js';
+import { buildLogTimeline, listLogSessions } from './api/log-explorer.js';
 
 import { resolveDataRoot } from './data-root.js';
 
@@ -785,6 +792,33 @@ app.get('/api/inner/:ws/pi-logs', (c) => {
   return c.json({ entries, source: filePath, count: entries.length });
 });
 
+/** 日志浏览器：最近会话列表（内脑实例 + 外脑线程） */
+app.get('/api/logs/sessions', (c) => {
+  const limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 40)));
+  const sessions = listLogSessions(DATA_ROOT, innerBrainRegistry, undefined, limit);
+  return c.json({ sessions });
+});
+
+/** 日志浏览器：统一时间线（IM + 外脑 audit + 内脑 pi-mono + autonomy + trace） */
+app.get('/api/logs/timeline', (c) => {
+  const threadId = c.req.query('thread_id')?.trim();
+  const instanceId = c.req.query('instance_id')?.trim();
+  const limit = Number(c.req.query('limit') ?? 800);
+  if (!threadId && !instanceId) {
+    return c.json({ error: 'thread_id or instance_id required' }, 400);
+  }
+  const result = buildLogTimeline({
+    dataRoot: DATA_ROOT,
+    registry: innerBrainRegistry,
+    registryIdentity: registry,
+    loadThreads,
+    threadId,
+    instanceId,
+    limit,
+  });
+  return c.json(result);
+});
+
 /** 当前 LLM 配置探测（不含 API Key） */
 app.get('/api/llm/config', (c) => {
   const env = loadInnerLlmEnvFromProcess();
@@ -998,7 +1032,7 @@ app.post('/api/outer/memory/tasks', async (c) => {
   return c.json({ ok: true });
 });
 
-/** Memory Block 列表（Dashboard / 运维只读；secret 块不返回 entry 明文） */
+/** Memory Block 列表（Dashboard 只读） */
 app.get('/api/memory/blocks', async (c) => {
   const store = globalMemoryBlockStore;
   if (!store) return c.json({ ok: true, blocks: [] });
@@ -1012,7 +1046,7 @@ app.get('/api/memory/blocks', async (c) => {
   return c.json({ ok: true, blocks: enriched });
 });
 
-/** 某块的 entry 列表（metadata；keychain 无 value） */
+/** 某块的 entry 列表（含正文） */
 app.get('/api/memory/blocks/:blockId/entries', async (c) => {
   const store = globalMemoryBlockStore;
   if (!store) return c.json({ ok: true, entries: [] });
@@ -1267,69 +1301,25 @@ app.post('/api/outer/workspace/:ws/shutdown', async (c) => {
 
 // ── 多内脑实例管理 API ──────────────────────────────────────────────────────
 
-/** 列出所有内脑任务实例 */
+/** 列出内脑任务实例（分页；仅 enrich 当前页以减轻负载） */
 app.get('/api/inner-brains', (c) => {
-  const all = innerBrainRegistry.list();
-  const now = Date.now();
-  // RUNNING 任务超过此毫秒数没有 tick 则标记为"可能卡住"
-  const STUCK_THRESHOLD_MS = 5 * 60 * 1000; // 5 分钟
-
-  const result = all.map((r) => {
-    // 读取 workspace 运行时状态
-    let phase: string | null = null;
-    let lastAction: string | null = null;
-    let tickCount: number | null = null;
-    try {
-      const st = getEngine(r.workspaceId).readStatus();
-      phase = st?.phase ?? null;
-      lastAction = st?.lastAction ?? null;
-      tickCount = st?.tickCount ?? null;
-    } catch { /* workspace 可能还未初始化 */ }
-
-    // 从 worker 状态文件获取实时进度（比注册表更新鲜）
-    const workerStatus = r.status === 'RUNNING' ? readWorkerStatus(r.workDir) : null;
-    const lastTickAt = workerStatus?.lastTickAt ?? r.lastTickAt ?? null;
-    const liveTicks = workerStatus?.ticks ?? r.ticks ?? null;
-    const workerPhase = workerStatus?.phase ?? null;
-
-    // pid 存活检测（仅对 RUNNING 有意义）
-    const pidAlive = (r.status === 'RUNNING' && r.pid != null) ? isPidAlive(r.pid) : null;
-
-    // 计算 liveness
-    let liveness: 'active' | 'stuck' | 'dead' | null = null;
-    if (r.status === 'RUNNING') {
-      if (pidAlive === false) {
-        // 子进程已死但注册表还是 RUNNING（异常状态，exit handler 未触发）
-        liveness = 'dead';
-      } else {
-        const anchor = lastTickAt ?? r.startedAt;
-        const sinceAnchor = now - new Date(anchor).getTime();
-        liveness = sinceAnchor > STUCK_THRESHOLD_MS ? 'stuck' : 'active';
-      }
-    }
-
-    return {
-      instance_id:     r.instanceId,
-      workspace_id:    r.workspaceId,
-      registry_status: r.status,
-      liveness,
-      pid:             r.pid ?? null,
-      pid_alive:       pidAlive,
-      worker_phase:    workerPhase,
-      last_tick_at:    lastTickAt ? formatAgentIsoLocal(lastTickAt) : null,
-      phase,
-      lastAction,
-      tickCount,
-      goal:            r.goal.slice(0, 200),
-      origin_user:     r.originUser,
-      origin_thread:   r.originThread ?? null,
-      started_at:      formatAgentIsoLocal(r.startedAt),
-      finished_at:     r.finishedAt ? formatAgentIsoLocal(r.finishedAt) : null,
-      ticks:           liveTicks,
-      error:           r.errorMessage ?? null,
-    };
+  const { page, pageSize } = parseInnerBrainListPagination({
+    page: c.req.query('page'),
+    pageSize: c.req.query('pageSize'),
   });
-  return c.json({ instances: result });
+  const all = innerBrainRegistry.list();
+  const total = all.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * pageSize;
+  const slice = all.slice(start, start + pageSize);
+  const now = Date.now();
+
+  const instances = slice.map((r) =>
+    enrichInnerBrainInstanceRow(r, getEngine, formatAgentIsoLocal, now),
+  );
+
+  return c.json({ instances, total, page: safePage, pageSize, totalPages });
 });
 
 /** 查询指定实例详情 */
@@ -1746,6 +1736,8 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     scheduleNextKpiBurst,
     getOrchestratorStats: () => outerBrain.getOrchestratorStats(),
     config: loadHeartbeatConfigFromEnv(),
+    loadThreads,
+    identityRegistry: registry,
   });
   heartbeat.start();
 

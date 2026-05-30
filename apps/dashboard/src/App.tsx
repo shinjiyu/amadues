@@ -3,8 +3,9 @@ import { InnerLiveDeck, type BrainInspector, type PiLogsResponse } from './inner
 import { OuterPanel } from './outer-panel.js';
 import { ParticipationLabPanel } from './participation-lab.js';
 import { MemoryBlocksPanel } from './memory-blocks-panel.js';
+import { LogExplorerPanel } from './log-explorer.js';
 
-type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation';
+type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation' | 'logs';
 
 const TENANT = 'default';
 
@@ -172,12 +173,16 @@ export function App() {
           <button type="button" className={tab === 'participation' ? 'active' : ''} onClick={() => setTab('participation')}>
             参与策略
           </button>
+          <button type="button" className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>
+            日志
+          </button>
         </div>
         {tab === 'data' && <DataPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'inner' && <InnerBrainPoolPanel apiPrefix={apiPrefix} />}
         {tab === 'outer' && <OuterPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'memory' && <MemoryPanel apiPrefix={apiPrefix} />}
         {tab === 'participation' && <ParticipationLabPanel apiPrefix={apiPrefix} />}
+        {tab === 'logs' && <LogExplorerPanel apiPrefix={apiPrefix} />}
       </div>
     </div>
   );
@@ -749,6 +754,8 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hr / 24)}d 前`;
 }
 
+const INNER_BRAIN_PAGE_SIZE = 20;
+
 function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
   const [instances, setInstances] = useState<InstanceRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -756,10 +763,17 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
   const [selected, setSelected] = useState<string | null>(null); // workspaceId
   const [stopping, setStopping] = useState<string | null>(null);
   const [restarting, setRestarting] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const refresh = useCallback(async () => {
     try {
-      const r = await fetch(`${apiPrefix}/inner-brains`);
+      const qs = new URLSearchParams({
+        page: String(page),
+        pageSize: String(INNER_BRAIN_PAGE_SIZE),
+      });
+      const r = await fetch(`${apiPrefix}/inner-brains?${qs}`);
       if (!r.ok) {
         const hint = r.status === 502 || r.status === 503
           ? '（Agent 可能未启动：对应端口无进程）'
@@ -770,15 +784,34 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
       if (!text.trim()) {
         throw new Error('空响应（Agent 未启动或 Vite 代理失败）');
       }
-      const j = JSON.parse(text) as { instances?: InstanceRow[] };
-      setInstances(j.instances ?? []);
+      const j = JSON.parse(text) as {
+        instances?: InstanceRow[];
+        total?: number;
+        page?: number;
+        totalPages?: number;
+      };
+      const rows = j.instances ?? [];
+      const tp = Math.max(1, j.totalPages ?? 1);
+      const t = j.total ?? rows.length;
+
+      if (rows.length === 0 && t > 0 && page > tp) {
+        setPage(tp);
+        return;
+      }
+
+      setInstances(rows);
+      setTotal(t);
+      setTotalPages(tp);
+      if (typeof j.page === 'number' && j.page !== page) {
+        setPage(j.page);
+      }
       setErr(null);
     } catch (e) {
       setErr(String(e));
     } finally {
       setLoading(false);
     }
-  }, [apiPrefix]);
+  }, [apiPrefix, page]);
 
   useEffect(() => {
     void refresh();
@@ -826,7 +859,11 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
           <strong style={{ fontSize: 15 }}>内脑池</strong>
           <span style={{ fontSize: 12, color: '#8b92a8' }}>
-            {loading ? '加载中…' : `共 ${instances.length} 个实例`}
+            {loading
+              ? '加载中…'
+              : total <= INNER_BRAIN_PAGE_SIZE
+                ? `共 ${total} 个实例`
+                : `共 ${total} 个实例 · 第 ${page}/${totalPages} 页`}
           </span>
           <button type="button" style={{ marginLeft: 'auto', fontSize: 12 }} onClick={() => void refresh()}>
             刷新
@@ -943,6 +980,40 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+        {!loading && totalPages > 1 && (
+          <div
+            className="inner-brain-pagination"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 10,
+              marginTop: 12,
+              fontSize: 12,
+              color: '#8b92a8',
+            }}
+          >
+            <button
+              type="button"
+              style={{ fontSize: 12 }}
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              上一页
+            </button>
+            <span>
+              第 {page} / {totalPages} 页（每页 {INNER_BRAIN_PAGE_SIZE} 条）
+            </span>
+            <button
+              type="button"
+              style={{ fontSize: 12 }}
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              下一页
+            </button>
           </div>
         )}
       </div>

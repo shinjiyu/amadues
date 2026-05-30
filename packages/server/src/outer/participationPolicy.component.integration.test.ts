@@ -106,6 +106,6 @@ describe('component: participationPolicy', () => {
       llmChat,
     });
     expect(r.shouldReply).toBe(true);
-    expect(r.reason).toMatch(/group_llm_speak|group_invite/);
+    expect(r.reason).toBe('group_llm_speak');
   });
 });

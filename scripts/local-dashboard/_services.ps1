@@ -47,22 +47,15 @@ $script:KuronekoServices = @{
     OpenUrl        = 'http://127.0.0.1:5173/'
     StartupWaitSec = 60
   }
-  'chat-server' = @{
-    Label          = 'Chat Server'
-    NpmScript      = 'dev:chat-server'
-    Port           = 8790
-    HealthUrl      = 'http://127.0.0.1:8790/healthz'
-    OpenUrl        = $null
-    StartupWaitSec = 90
-  }
-  'web-chat' = @{
-    Label          = 'Web Chat H5'
-    NpmScript      = 'dev:web-chat'
-    Port           = 5180
-    ExtraPorts     = @(5181)
-    HealthUrl      = $null
-    OpenUrl        = 'http://127.0.0.1:5180/'
-    StartupWaitSec = 120
+  'drive9-explorer' = @{
+    Label            = 'Drive9 Explorer'
+    NpmScript        = 'dev:drive9'
+    Port             = 7782
+    ExtraPorts       = @(7780)
+    HealthUrl        = 'http://127.0.0.1:7780/api/status'
+    HealthJsonField  = 'ok'
+    OpenUrl          = 'http://127.0.0.1:7782/'
+    StartupWaitSec   = 90
   }
   'ops-console' = @{
     Label            = 'Ops Console'
@@ -117,6 +110,11 @@ function Test-KuronekoHealth([hashtable]$Svc) {
       try {
         $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 8
         if (-not ($r.StatusCode -ge 200 -and $r.StatusCode -lt 400)) { return $false }
+        if ($Svc.HealthJsonField -and $url -eq $Svc.HealthUrl) {
+          $body = $r.Content | ConvertFrom-Json
+          $field = $Svc.HealthJsonField
+          if (-not $body.$field) { return $false }
+        }
       } catch {
         return $false
       }

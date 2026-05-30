@@ -294,6 +294,15 @@ export class WsHub {
    * 外部入口：REST `POST /threads/:id/messages` 后调用，向所有 thread 订阅者推 `message.new`，
    * 并向发送者本人推 `message.ack`（如果带了 client_msg_id）。
    */
+  notifyMessagesCleared(threadId: string, clearedByUserId: string, deletedCount: number): void {
+    this.fanoutThread(threadId, {
+      type: 'messages.cleared',
+      thread_id: threadId,
+      cleared_by_user_id: clearedByUserId,
+      deleted_count: deletedCount,
+    });
+  }
+
   notifyNewMessage(message: Message, clientMsgId: string | undefined, senderUserId: string): void {
     const event: ServerEvent = {
       type: 'message.new',

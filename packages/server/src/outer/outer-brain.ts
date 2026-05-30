@@ -12,12 +12,13 @@ import type {
   FilesystemWorkspaceStore,
   InnerBrainEngine,
 } from '../workspace-kit/index.js';
-import type {
-  ChatAssetStore,
-  ChatIRChannel,
-  ChatIRSeenTracker,
-  IdentityRegistry,
-  LooseThreadStore,
+import {
+  ThreadRecordSchema,
+  type ChatAssetStore,
+  type ChatIRChannel,
+  type ChatIRSeenTracker,
+  type IdentityRegistry,
+  type LooseThreadStore,
 } from '@utlra/chat-ir';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
@@ -31,6 +32,7 @@ import {
   decideOuterShouldReply,
   isDmEmptyOrPlaceholderContent,
   participationSpeakLlm,
+  resolveParticipationAgentContextFromEnv,
   resolveParticipationUseLlm,
   resolveProactiveLevel,
   type OuterInboundMeta,
@@ -210,6 +212,47 @@ function resolveThreadSids(
  *   - dm：始终 true（1:1 对话不需要 @）
  *   - group：必须消息中有 @agentSid / @agentName / @助手
  */
+function findThreadRecord(
+  threadId: string,
+  loadThreads: () => LooseThreadStore,
+): { kind: 'dm' | 'group'; participant_sids: string[] } | undefined {
+  try {
+    const data = loadThreads();
+    for (const raw of data.threads) {
+      const parsed = ThreadRecordSchema.safeParse(raw);
+      if (parsed.success && parsed.data.thread_id === threadId) {
+        return {
+          kind: parsed.data.kind,
+          participant_sids: parsed.data.participant_sids,
+        };
+      }
+    }
+  } catch {
+    // threads.json 不存在时保持原判断
+  }
+  return undefined;
+}
+
+function resolveThreadKind(
+  threadId: string,
+  loadThreads: () => LooseThreadStore,
+  participantSids?: string[],
+): 'dm' | 'group' {
+  if (threadId.includes('group')) return 'group';
+
+  const record = findThreadRecord(threadId, loadThreads);
+  if (record?.kind === 'group') return 'group';
+  if (record?.kind === 'dm') return 'dm';
+
+  // WebChat 全局房：IR id 为 webchat:global，不含 "group" 字样
+  if (threadId.endsWith(':global')) return 'group';
+
+  if (participantSids && participantSids.length >= 3) return 'group';
+  if (record?.participant_sids && record.participant_sids.length >= 3) return 'group';
+
+  return 'dm';
+}
+
 function resolveThreadMeta(
   threadId: string,
   agentSid: string,
@@ -219,28 +262,7 @@ function resolveThreadMeta(
   participantSids?: string[],
 ): OuterInboundMeta {
   const agentName = process.env['UTLRA_AGENT_NAME']?.trim() || 'Kuroneko';
-
-  // 先用 thread_id 快速判断
-  let threadKind: 'dm' | 'group' = threadId.includes('group') ? 'group' : 'dm';
-
-  if (threadKind === 'dm') {
-    // 优先用 WS 广播携带的 participant_sids（最权威，实时）
-    if (participantSids && participantSids.length >= 3) {
-      threadKind = 'group';
-    } else {
-      // 降级：读本地 threads.json（可能有延迟或缺失）
-      try {
-        const data = loadThreads();
-        const thread = (data.threads as Array<{ thread_id?: string; participant_sids?: string[] }>)
-          .find((t) => t.thread_id === threadId);
-        if (thread?.participant_sids && thread.participant_sids.length >= 3) {
-          threadKind = 'group';
-        }
-      } catch {
-        // threads.json 不存在时保持原判断
-      }
-    }
-  }
+  const threadKind = resolveThreadKind(threadId, loadThreads, participantSids);
 
   // 优先看 IR 结构化 mention parts —— webchat-bridge 的 inbound.ts 已把 webchat
   // user_id 翻译成 agentSid，所以 target_sid === agentSid 是权威匹配。
@@ -473,6 +495,13 @@ export class OuterBrain {
     const senderIsAgent =
       /^(idp:)?agent:/i.test(senderSid) || registry.get(senderSid)?.kind === 'agent';
 
+    const agentContext = resolveParticipationAgentContextFromEnv(
+      process.env,
+      this.deps.kpiRegistry
+        ? this.deps.kpiRegistry.list({ status: 'active' }).map((k) => k.description)
+        : undefined,
+    );
+
     const { shouldReply, reason } = await decideOuterShouldReply({
       threadId,
       content,
@@ -481,6 +510,7 @@ export class OuterBrain {
       threadHistoryPrefix: knowledgeContext.slice(0, 8000),
       innerStatusSummary,
       llmEnv,
+      agentContext,
     });
 
     console.log(`[utlra][outer-brain] SPEAK decision: ${shouldReply} (${reason})`);
@@ -492,14 +522,16 @@ export class OuterBrain {
     if (senderIsAgent && chainLen >= AGENT_CHAIN_TOPIC_CHECK_THRESHOLD && llmEnv && resolveParticipationUseLlm()) {
       const chainContext =
         `【当前为 agent 对话链，已有 ${chainLen} 条连续 agent 消息】` +
-        `若该话题已充分讨论、观点已完整表达、继续回复只是重复或寒暄，请输出 SILENT。` +
-        `若话题仍有实质内容可补充，请输出 SPEAK。`;
+        `判断这条消息是否明确在对你说（${agentContext.agentName}）。` +
+        `只有在对你说、且话题仍有实质内容可补充时才 SPEAK。` +
+        `若在对其他 agent 说话、话题已充分讨论、或只是重复/寒暄，请输出 SILENT。`;
       try {
         const stillSpeak = await participationSpeakLlm(llmEnv, {
           content,
           threadHistoryPrefix: knowledgeContext.slice(0, 8000),
           innerStatusSummary: chainContext,
           proactiveLevel,
+          agentContext,
         });
         if (!stillSpeak) {
           console.log(

@@ -888,7 +888,28 @@ input, textarea {
   font-size: 12px;
 }
 
-/* Admin page (whitelist ) */
+.thread-clear-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+  background: transparent;
+  color: #f85149;
+  cursor: pointer;
+}
+
+.thread-clear-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.thread-clear-btn:hover:not(:disabled) {
+  background: rgba(248, 81, 73, 0.12);
+  border-color: #f85149;
+}
+
+/* Admin page (whitelist ï¿½ï¿½ï¿½ï¿½) */
 .admin-page {
   height: 100%;
   overflow: auto;

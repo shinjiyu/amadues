@@ -16,9 +16,12 @@ deploy/agent/env/
 
 首次 `npm run docker:agents:up` 时，若缺少 `*.env` 会：
 
-1. 优先从仓库根旧文件迁移（`.env` / `.env.agent2` / `.env.gin` / `.env.aoi`）
-2. 否则从 `*.env.example` 复制
-3. 去掉 `PORT` / `UTLRA_DATA_ROOT`（由 compose 注入 `/data` 与 `8787`）
+1. 优先从仓库根 `.env.<agent>` 复制（如 `.env.kuroneko`、`.env.shiro`）
+2. 再尝试旧名（`.env` → kuroneko，`.env.agent2` → shiro）
+3. 否则从 `*.env.example` 复制
+4. 去掉 `PORT` / `UTLRA_DATA_ROOT`（由 compose 注入 `/data` 与 `8787`）
+
+同步：修改 `deploy/agent/env/<name>.env` 后，根目录 `.env.<name>` 会在下次 `docker:agents:up` 时被覆盖为相同内容。
 
 **务必**在各自 `*.env` 中填入 LLM 密钥与渠道配置（如 `WEBCHAT_AGENT_SECRET`）。
 

@@ -130,14 +130,14 @@ export class MemoryBlockStore {
   async get(
     blockId: string,
     key: string,
-    opts: { includeValue?: boolean } = {},
+    _opts: { includeValue?: boolean } = {},
   ): Promise<Record<string, unknown> | null> {
     const block = this.resolveBlock(blockId);
     const strategy = resolveStrategy(block.strategy);
     const raw = this.readEntryJson(block.blockId, key);
     if (!raw) return null;
-    const redact = strategy.redactInOuterPrompt && !opts.includeValue;
-    return strategy.toPublicMeta(raw as KvSecretEntry & NotebookEntry, redact);
+    const entry = coerceEntryForStrategy(raw, block.strategy);
+    return strategy.toPublicMeta(entry as KvSecretEntry & NotebookEntry, false);
   }
 
   async put(
@@ -151,7 +151,7 @@ export class MemoryBlockStore {
     const safeKey = pathSafeKey(key);
     const entry = strategy.normalizePut(safeKey, payload, updatedBy ?? this.agentId);
     this.writeEntryJson(block.blockId, safeKey, entry);
-    return strategy.toPublicMeta(entry, strategy.redactInOuterPrompt);
+    return strategy.toPublicMeta(entry, false);
   }
 
   async deleteEntry(blockId: string, key: string): Promise<boolean> {
@@ -232,4 +232,26 @@ function loadUserBlocks(dataRoot: string): BlockDefinition[] {
 
 export function createMemoryBlockStore(dataRoot: string, agentId?: string): MemoryBlockStore {
   return new MemoryBlockStore({ dataRoot, agentId });
+}
+
+/** Legacy kv_secret JSON on disk → notebook shape for keychain migration */
+function coerceEntryForStrategy(raw: unknown, strategyId: BlockStrategyId): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const r = raw as Record<string, unknown>;
+  if (strategyId !== 'notebook') return raw;
+  if (typeof r.body === 'string') return raw;
+  if (typeof r.value !== 'string') return raw;
+  const tags = Array.isArray(r.tags)
+    ? r.tags.filter((t): t is string => typeof t === 'string')
+    : typeof r.kind === 'string'
+      ? [r.kind]
+      : [];
+  return {
+    key: typeof r.key === 'string' ? r.key : '',
+    title: typeof r.title === 'string' ? r.title : typeof r.key === 'string' ? r.key : '',
+    body: r.value,
+    tags,
+    updated_at: typeof r.updated_at === 'string' ? r.updated_at : '',
+    updated_by: typeof r.updated_by === 'string' ? r.updated_by : '',
+  } satisfies NotebookEntry;
 }

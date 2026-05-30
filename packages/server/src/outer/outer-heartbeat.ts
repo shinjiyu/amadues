@@ -36,6 +36,8 @@ import { PerformanceGoalEngine } from '../performance-goals/engine.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE, buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
 import { runAutonomyPipeline } from './autonomy-pipeline.js';
 import type { ResourceProbeDeps } from './resource-probe.js';
+import { formatRecentThreadMessagesForLlm } from './thread-history.js';
+import type { IdentityRegistry, LooseThreadStore } from '@utlra/chat-ir';
 
 // ── 配置（统一经 loadHeartbeatConfigFromEnv() 解析，唯一的 env 读取点） ──────
 
@@ -151,8 +153,9 @@ function buildHeartbeatToolDefs(hasImClient: boolean): ToolDef[] {
         name: 'post_to_im',
         description:
           '主动向 IM 线程发送一条消息。' +
-          '只在有实质内容时使用（如：任务完成通知、需要用户决策的阻塞、发现了重要信息）。' +
-          '禁止发送无意义的"正在思考""稍等"等填充消息。',
+          '仅在与**本 agent 自己的 KPI/在途任务**直接相关时使用：完成汇报、硬阻塞需用户决策、本 KPI 关键进展。' +
+          '禁止替其他 agent 传话、汇总他人进度、对群聊里别人的任务插嘴。' +
+          '必须紧扣当前 IM 最近内容；无实质价值则不要发。',
         parameters: {
           type: 'object',
           properties: {
@@ -271,7 +274,7 @@ function buildHeartbeatSystemPrompt(
   hasImCapability: boolean,
 ): string {
   const imSection = hasImCapability
-    ? `- post_to_im：主动向 IM 发消息（仅在有实质内容时，克制使用）`
+    ? `- post_to_im：主动发 IM（仅本 agent KPI/任务相关，禁止管别人闲事）`
     : `- （当前无 IM 发送能力，UTLRA_OUTER_HEARTBEAT_THREAD_ID 未配置）`;
 
   const goalSection = longTermGoal
@@ -285,36 +288,49 @@ ${soul}
 
 ${goalSection}
 
+## 职责边界（最重要）
+- **只管自己的事**：优先推进**本 agent 绑定的 KPI / 在途 burst / 长期目标**。
+- **不要当群管家**：不替 Kuroneko/Gin/Shiro/Aoi 盯进度、不汇总他人任务、不帮别人派 set_goal、不对别人的 blocker 主动插嘴。
+- 群聊里在讨论**别人的**小说/空投/内脑/VPS 等，与你 KPI 无关时 → **不要 post_to_im**，本轮保持沉默即可。
+- 只有人类 **@你**、或阻塞**你自己的** KPI/内脑、或**你自己的**任务完成需汇报时，才考虑发消息。
+
+## 接话判定（必须回复）
+满足以下**任一条**就必须接话（post_to_im 或响应），不可因「别人也在聊别的」而沉默：
+1. **在询问你**：@你、口头点名你、或明显等你回答。
+2. **与你的 KPI 有关**：话题涉及你正在推进的 KPI 目标、交付、进度或 blocker。
+3. **只有你能答**：问题指向只有你掌握的信息（你的内脑状态、你负责的任务/部署/改动）。
+
 ## 心跳模式说明
 你不是在回应某人，而是在进行定期的自我检查和规划。
-对照长期目标，判断现在是否需要主动做什么。
+对照**自己的**长期目标与 KPI，判断现在是否需要主动做什么。
 
 ## 可用工具
 ${imSection}
-- set_goal：向内脑派发任务
+- set_goal：向内脑派发任务（仅推进**本 agent** 目标，勿替他人派活）
 - list_inner_brains：列出**所有** workspace 的内脑实例（判断任务状态的**唯一权威来源**）
 - read_inner_status：查询**单个** workspace 的内脑状态（只反映该 workspace，**不要**用它判断「有没有任务在跑」）
 
 ## 状态判断原则（重要，先读再判断）
 1. **先调 list_inner_brains 看全量在途任务**。上方「在途任务」已给出汇总，但行动前应再确认。
-2. **正确理解状态**，不要把「在跑」误判为「无产出该停掉」：
+2. **只关心与本 agent 相关的 burst**（goal/kpi 属于你在推进的目标）。别人在跑的内脑，默认不管。
+3. **正确理解状态**，不要把「在跑」误判为「无产出该停掉」：
    - RUNNING = 正在干活，**让它继续**，绝不要因为「还没出结果」就 stop。
    - AWAITING + is_async_waiting=true = 在等定时/外部事件，**正常**，不要 stop、不要催。
    - AWAITING 但无 next_wake_at 且 active_pendings 为空 = 可能真卡住，才考虑处理。
    - is_post_complete=true = 已完成收尾，不要再 set_goal 同一任务。
-3. **不要为了「确认要不要继续」而向用户提问**。任务在正常推进时，用户无需被打扰。
+4. **不要为了「确认要不要继续」而向用户提问**。任务在正常推进时，用户无需被打扰。
 
-## 行动原则（优先推进，而非提问）
-1. **容量没满就主动推进**：若长期目标/KPI 仍未达成，且在途 burst 未占满槽位，
-   应**派发一个与现有在途任务不重复的新角度任务**（set_goal）来推进目标，
-   而**不是**发消息问用户「要不要继续 / 要不要换思路」。
-2. **避免重复**：派新任务前对照「在途任务」的 goal，新任务必须是**不同的子方向/角度**，
-   不要重复已在跑或已完成的工作。
-3. **post_to_im 仅用于**：任务真正完成需要汇报、出现需要用户决策的硬阻塞（缺凭据/需授权）、
-   或发现重大信息。**不要**用它问「要不要继续」「要不要暂停」这类本应自己决策的问题。
-4. **克制**：内脑已在等定时（is_async_waiting）或已完成（is_post_complete）时 **不要** set_goal 同一任务。
-5. **每次最多**：发 1 条 IM 消息，创建 1 个内脑任务。
-6. **关联绩效目标**：推进绩效目标时把 goal_id 填入 performance_goal_id。
+## 行动原则（KPI 优先，而非到处参与）
+1. **KPI 优先**：有 active KPI 且槽位未满 → 优先 set_goal 推进**自己的** KPI，而不是在群里聊天或评论他人工作。
+2. **容量没满就主动推进**：若**你的** KPI/长期目标仍未达成，且在途 burst 未占满槽位，
+   应派发与现有在途任务**不重复**的新角度 set_goal，**而不是**发消息问用户「要不要继续」。
+3. **避免重复**：派新任务前对照「在途任务」的 goal，新任务必须是**不同的子方向/角度**。
+4. **post_to_im 仅用于**：**你自己的**任务完成汇报、**你自己的**硬阻塞（缺凭据/需授权）、**与你 KPI 直接相关**的关键信息。
+   **禁止**：替他人传 cookie/文件、催别人进度、对无关群聊接话、问「要不要继续」。
+   发消息前必须阅读「当前 IM 对话」：仅在与**你**相关时接话，否则不发。
+5. **克制**：内脑已在等定时（is_async_waiting）或已完成（is_post_complete）时 **不要** set_goal 同一任务。
+6. **每次最多**：发 1 条 IM 消息，创建 1 个内脑任务。
+7. **关联绩效目标**：推进绩效目标时把 goal_id 填入 performance_goal_id。
 
 ${OUTER_ASYNC_ORCHESTRATION_GUIDE}`;
 }
@@ -357,6 +373,7 @@ async function runHeartbeat(
   performanceEngine: PerformanceGoalEngine,
   config: HeartbeatConfig,
   performanceBlock?: string,
+  threadContext?: { threadId: string; text: string },
 ): Promise<void> {
   const { agentName, defaultThreadId } = config;
   const hasImCapability = !!imClient;
@@ -390,8 +407,13 @@ async function runHeartbeat(
   const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', hasAny: false };
   const memSection = memStore ? memStore.formatMemoryForLlm(memory) : '';
 
-  const userContent = `当前时间：${formatAgentLocalDateTime(new Date(), resolveAgentTimezone())}
+  const threadSection =
+    threadContext?.text.trim()
+      ? `\n## 当前 IM 对话（${threadContext.threadId}）\n${threadContext.text}\n`
+      : '';
 
+  const userContent = `当前时间：${formatAgentLocalDateTime(new Date(), resolveAgentTimezone())}
+${threadSection}
 ## 在途任务（跨所有 workspace，权威来源）
 ${liveBurstSummary}
 
@@ -399,7 +421,7 @@ ${liveBurstSummary}
 ${innerStatusText}
 ${memSection ? `\n${memSection}\n` : ''}
 ${performanceBlock ? `\n${performanceBlock}\n` : ''}
-请对照长期目标与上方「在途任务」，判断现在是否需要主动行动。`;
+请对照**你自己的**长期目标、KPI 与在途 burst${threadSection ? '，以及当前 IM 对话（仅在与你相关时接话）' : ''}，判断现在是否需要主动行动。与别人 KPI 无关时不要 post_to_im。`;
 
   const messages: ConvMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -564,6 +586,8 @@ export interface HeartbeatDeps {
    * 测试时显式注入即可绕开 env，且 enabled/intervalMs/agentName 均可控制。
    */
   config?: HeartbeatConfig;
+  loadThreads?: () => LooseThreadStore;
+  identityRegistry?: IdentityRegistry;
 }
 
 export class OuterHeartbeat {
@@ -730,6 +754,8 @@ export class OuterHeartbeat {
           getOrchestratorStats: this.deps.getOrchestratorStats,
           scheduleReflexionBurst: this.deps.scheduleReflexionBurst,
           scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
+          loadThreads: this.deps.loadThreads,
+          identityRegistry: this.deps.identityRegistry,
         });
 
         if (autonomy.skippedLegacyHeartbeat) {
@@ -768,6 +794,20 @@ export class OuterHeartbeat {
       };
 
       this.deps.workspaceStore.ensureWorkspace(workspaceId);
+
+      let threadContext: { threadId: string; text: string } | undefined;
+      const hbThreadId = this.config.defaultThreadId.trim();
+      if (hbThreadId && this.deps.loadThreads && this.deps.identityRegistry) {
+        const recent = formatRecentThreadMessagesForLlm(
+          hbThreadId,
+          this.deps.loadThreads,
+          this.deps.identityRegistry,
+        );
+        if (recent.text) {
+          threadContext = { threadId: hbThreadId, text: recent.text };
+        }
+      }
+
       await runHeartbeat(
         env,
         ctx,
@@ -777,6 +817,7 @@ export class OuterHeartbeat {
         this.performanceEngine,
         this.config,
         performanceBlock,
+        threadContext,
       );
       console.log('[utlra][heartbeat] tick done');
     } catch (e) {

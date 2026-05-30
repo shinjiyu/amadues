@@ -5,6 +5,7 @@ import {
   MessageRecordSchema,
   serializeMessageForLlm,
   type IdentityRegistry,
+  type LooseThreadStore,
   type MessageRecord,
 } from '@utlra/chat-ir';
 import { resolveAgentTimezone } from '../agent-time.js';
@@ -107,4 +108,74 @@ export function buildThreadHistoryPrefix(
 
   const prefix = `${header}${body}\n\n---\n\n## Current assignment (outer → inner)\n\n`;
   return { prefix, messagesIncluded: picked.length, truncated };
+}
+
+/** 心跳闲聊 / post_to_im 默认纳入的最近消息条数 */
+export const HEARTBEAT_THREAD_MSG_LIMIT = 12;
+/** 心跳闲聊 / post_to_im 默认历史字符上限 */
+export const HEARTBEAT_THREAD_MAX_CHARS = 6_000;
+
+export interface RecentThreadMessagesResult {
+  /** 空串表示线程无可用历史 */
+  text: string;
+  messageCount: number;
+  lastSenderSid: string | null;
+  /** 纳入窗口内是否有人类消息 */
+  hasHumanMessage: boolean;
+}
+
+/**
+ * 从落库线程读取最近消息，格式化为 LLM 可读的对话块（心跳闲聊、post_to_im 决策用）。
+ */
+export function formatRecentThreadMessagesForLlm(
+  threadId: string,
+  loadThreads: () => LooseThreadStore,
+  registry: IdentityRegistry,
+  override?: Partial<ThreadHistoryOpts>,
+): RecentThreadMessagesResult {
+  const opts = resolveThreadHistoryOpts({
+    messageLimit: override?.messageLimit ?? HEARTBEAT_THREAD_MSG_LIMIT,
+    maxChars: override?.maxChars ?? HEARTBEAT_THREAD_MAX_CHARS,
+  });
+  if (!threadId.trim() || opts.messageLimit <= 0 || opts.maxChars <= 0) {
+    return { text: '', messageCount: 0, lastSenderSid: null, hasHumanMessage: false };
+  }
+
+  const raw = (loadThreads().messages[threadId] ?? []).slice(-opts.messageLimit);
+  const built = buildThreadHistoryPrefix(raw, registry, opts);
+  if (built.messagesIncluded === 0) {
+    return { text: '', messageCount: 0, lastSenderSid: null, hasHumanMessage: false };
+  }
+
+  const parsed: MessageRecord[] = [];
+  for (const m of raw) {
+    const p = MessageRecordSchema.safeParse(m);
+    if (p.success) parsed.push(p.data);
+  }
+  const window = parsed.slice(-built.messagesIncluded);
+  const last = window[window.length - 1] ?? null;
+  const tz = resolveAgentTimezone();
+  const body = window
+    .map((msg) => {
+      const sender = registry.get(msg.sender_sid);
+      return serializeMessageForLlm(
+        msg,
+        sender?.display_name ?? msg.sender_sid,
+        sender?.kind ?? 'human',
+        tz,
+      );
+    })
+    .join('\n\n');
+
+  const hasHumanMessage = window.some((msg) => {
+    const kind = registry.get(msg.sender_sid)?.kind ?? 'human';
+    return kind === 'human';
+  });
+
+  return {
+    text: body,
+    messageCount: window.length,
+    lastSenderSid: last?.sender_sid ?? null,
+    hasHumanMessage,
+  };
 }
