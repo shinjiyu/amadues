@@ -27,6 +27,7 @@ import type { KpiRegistry } from './kpi-registry.js';
 import { formatKpiReflexionBlock } from './kpi-registry.js';
 import { findLiveBurstForKpi } from './kpi-dispatch-guard.js';
 import { checkRunningInnerBrainCapacity } from './inner-brain-capacity.js';
+import { resolveTaskOriginThread } from './default-im-thread.js';
 import { formatKpiDigest, suggestKpiAction, buildKpiBurstLinks } from './kpi-progress.js';
 import { ingestDeliverables } from './deliverables-ingest.js';
 import { processBurstExitForKpi } from './kpi-burst-hooks.js';
@@ -820,7 +821,7 @@ async function execSetGoal(
     ctx.workspaceStore.ensureWorkspace(wsId);
     const workDir = path.join(ctx.dataRoot, 'workspaces', wsId);
     const originUser = args.origin_user?.trim() || ctx.inboundHumanSid || ctx.agentSid;
-    const originThread = args.origin_thread?.trim() || ctx.threadId;
+    const originThread = resolveTaskOriginThread(args.origin_thread, ctx.threadId);
 
     // KPI 关联（可选）：校验 kpi_id 有效再挂；无效则忽略不报错，避免误用阻塞任务派发
     const kpiId = args.kpi_id?.trim() || undefined;
@@ -1112,7 +1113,7 @@ async function execStartSelfUpdate(
   ctx.workspaceStore.ensureWorkspace(wsId);
   const workDir = path.join(ctx.dataRoot, 'workspaces', wsId);
   const originUser = args.origin_user?.trim() || ctx.agentSid;
-  const originThread = args.origin_thread?.trim() || ctx.threadId;
+  const originThread = resolveTaskOriginThread(args.origin_thread, ctx.threadId);
 
   clearStopSignal(workDir);
   initSelfUpdateSession(workDir, {

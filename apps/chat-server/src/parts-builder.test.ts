@@ -34,7 +34,7 @@ describe('buildParts', () => {
     expect(r.parts).toEqual([
       { type: 'text', text: 'hello ' },
       { type: 'mention', user_id: 'bob', display_name: 'Bob' },
-      { type: 'text', text: ', how are you' },
+      { type: 'text', text: ' how are you' },
     ]);
     expect(r.mentions).toEqual([{ user_id: 'bob', display_name: 'Bob' }]);
   });
@@ -77,5 +77,25 @@ describe('buildParts', () => {
     });
     expect(r.parts).toHaveLength(3);
     expect(r.parts[2]).toEqual({ type: 'mention', user_id: 'alice', display_name: 'Alice' });
+  });
+
+  it('does not treat @Kuroneko as @Kuro when both are in mention_user_ids', () => {
+    const extended = [
+      ...users,
+      { user_id: 'kuroneko', display_name: 'Kuroneko', created_at: '2026-01-01T00:00:00.000Z' },
+      { user_id: 'kuro', display_name: 'Kuro', created_at: '2026-01-01T00:00:00.000Z' },
+    ];
+    const resolveExtended = (uid: string): User | undefined =>
+      extended.find((u) => u.user_id === uid);
+
+    const r = buildParts({
+      text: '@Kuroneko 你好',
+      parts: undefined,
+      mentionUserIds: ['kuroneko', 'kuro'],
+      attachments: [],
+      resolveUser: resolveExtended,
+    });
+    expect(r.mentions).toEqual([{ user_id: 'kuroneko', display_name: 'Kuroneko' }]);
+    expect(r.parts.filter((p) => p.type === 'mention')).toHaveLength(1);
   });
 });

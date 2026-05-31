@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Attachment, Message, UserPresence } from '@utlra/webchat-protocol';
+import { resolveMentionUserIdsFromText } from '@utlra/webchat-protocol';
 import { filterMentionCandidates } from '../mention-users.js';
 
 interface Props {
@@ -141,20 +142,8 @@ export function MessageInput({ users, meUserId, replyingTo, onCancelReply, onSen
     }
   };
 
-  const collectMentions = (): string[] => {
-    const ids: string[] = [];
-    const seen = new Set<string>();
-    for (const u of users) {
-      if (u.user_id === meUserId) continue;
-      if (text.includes(`@${u.display_name}`) || text.includes(`@${u.user_id}`)) {
-        if (!seen.has(u.user_id)) {
-          seen.add(u.user_id);
-          ids.push(u.user_id);
-        }
-      }
-    }
-    return ids;
-  };
+  const collectMentions = (): string[] =>
+    resolveMentionUserIdsFromText(text, users, meUserId);
 
   const doSend = async (): Promise<void> => {
     if (sending) return;

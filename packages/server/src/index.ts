@@ -74,6 +74,7 @@ import { isBrainAwaitingAsync } from './outer/brain-async-snapshot.js';
 import { notifyInnerBrainTaskComplete, type CompletionNotifyDeps } from './outer/completion-notify.js';
 import { PushLoop } from './outer/push-loop.js';
 import { OuterHeartbeat, loadHeartbeatConfigFromEnv } from './outer/outer-heartbeat.js';
+import { resolveKpiBurstOriginThread } from './outer/default-im-thread.js';
 import { loadInnerLlmEnvFromProcess, runInnerLlmStep } from './llm/inner-llm-step.js';
 import { llmRawChatCompletion } from './llm/raw.js';
 import {
@@ -361,6 +362,8 @@ ${trailDigest}
 
   fs.writeFileSync(path.join(workDir, '.brain', 'goal.md'), goal, 'utf8');
 
+  const originThread = resolveKpiBurstOriginThread(kpi.bursts, innerBrainRegistry);
+
   // 注册到 inner-brain registry
   const record: TaskRecord = {
     instanceId,
@@ -368,7 +371,7 @@ ${trailDigest}
     workDir,
     goal,
     originUser: kpi.createdBy,
-    originThread: undefined,
+    originThread,
     status: 'RUNNING',
     startedAt: new Date().toISOString(),
     kpiId,
@@ -411,12 +414,15 @@ function scheduleNextKpiBurst(kpiId: string): string | null {
 
   fs.writeFileSync(path.join(workDir, '.brain', 'goal.md'), goal, 'utf8');
 
+  const originThread = resolveKpiBurstOriginThread(kpi.bursts, innerBrainRegistry);
+
   const record: TaskRecord = {
     instanceId,
     workspaceId,
     workDir,
     goal,
     originUser: kpi.createdBy,
+    originThread,
     status: 'RUNNING',
     startedAt: new Date().toISOString(),
     kpiId,

@@ -54,15 +54,10 @@ export interface HeartbeatConfig {
   defaultThreadId: string;
 }
 
+import { resolveDefaultImThreadId } from './default-im-thread.js';
+
 function resolveHeartbeatDefaultThreadId(env: NodeJS.ProcessEnv): string {
-  const explicit = env['UTLRA_OUTER_HEARTBEAT_THREAD_ID']?.trim();
-  if (explicit) return explicit;
-  const channel = env['UTLRA_CHAT_CHANNEL']?.trim().toLowerCase();
-  const globalId = env['WEBCHAT_GLOBAL_THREAD_ID']?.trim();
-  if (channel === 'webchat' && globalId) {
-    return globalId.startsWith('webchat:') ? globalId : `webchat:${globalId}`;
-  }
-  return '';
+  return resolveDefaultImThreadId(env);
 }
 
 export function loadHeartbeatConfigFromEnv(
@@ -774,7 +769,7 @@ export class OuterHeartbeat {
       );
 
       const ctx: OuterToolContext = {
-        threadId: '',
+        threadId: this.config.defaultThreadId,
         agentSid,
         workspaceId,
         repoRoot: this.deps.repoRoot,

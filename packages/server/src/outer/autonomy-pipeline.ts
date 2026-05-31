@@ -57,7 +57,7 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
   const verdict = evaluateAutonomyVerdict(snapshot, policy);
 
   const toolCtx: OuterToolContext = {
-    threadId: '',
+    threadId: deps.defaultThreadId.trim(),
     agentSid,
     workspaceId,
     repoRoot: deps.repoRoot,

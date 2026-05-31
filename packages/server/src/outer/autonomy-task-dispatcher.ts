@@ -154,6 +154,7 @@ async function executeKpiInnerGoal(
       goal: draft.goal,
       workspace_id: deps.workspaceId,
       kpi_id: draft.kpiId,
+      origin_thread: deps.defaultThreadId.trim() || undefined,
     }),
     deps.toolCtx,
   );

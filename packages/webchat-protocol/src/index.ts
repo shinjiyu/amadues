@@ -14,3 +14,4 @@
 export * from './rest-types.js';
 export * from './events.js';
 export * from './ids.js';
+export * from './mention-tokens.js';
