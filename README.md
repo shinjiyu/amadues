@@ -23,6 +23,10 @@ npm run build
 
 👉 **[doc/deploy/agent-quickstart.md](./doc/deploy/agent-quickstart.md)**
 
+**mem9 / drive9**（语义记忆与技能库，推荐配置）：
+
+👉 **[doc/deploy/mem9-drive9-credentials.md](./doc/deploy/mem9-drive9-credentials.md)** · [mem9.ai](https://mem9.ai/) · [drive9.ai](https://drive9.ai/)
+
 ## 仓库结构
 
 | 路径 | 说明 |

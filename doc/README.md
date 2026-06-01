@@ -11,6 +11,7 @@
 |--------|------|
 | 了解产品 | [`intro.md`](./intro.md) |
 | **部署 Agent（一键）** | **[`deploy/agent-quickstart.md`](./deploy/agent-quickstart.md)** |
+| **申请 mem9 / drive9 Key** | **[`deploy/mem9-drive9-credentials.md`](./deploy/mem9-drive9-credentials.md)** |
 | 架构总览 | [`architecture.md`](./architecture.md) · [`structurizr/docs/overview.md`](./structurizr/docs/overview.md) |
 | 外脑 ↔ 内脑 | [`inner-outer-protocol.md`](./inner-outer-protocol.md) |
 | 接 Discord / WebChat | [`channel-bridge-guide.md`](./channel-bridge-guide.md) |
@@ -27,6 +28,7 @@
 |------|------|
 | [`intro.md`](./intro.md) | 产品定位与核心能力 |
 | [`deploy/agent-quickstart.md`](./deploy/agent-quickstart.md) | Agent Docker 一键部署 |
+| [`deploy/mem9-drive9-credentials.md`](./deploy/mem9-drive9-credentials.md) | mem9 / drive9 官方申请与 env 配置 |
 | [`agent-integration-guide.md`](./agent-integration-guide.md) | 工具、入站/出站、多实例协作 |
 
 ---

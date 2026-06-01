@@ -11,6 +11,7 @@ English summary: copy `agent.env.example`, set LLM + channel secrets, pick a Com
 - Docker Engine（或 Docker Desktop）与 Compose v2
 - 本仓库已 `npm install` 且 `npm run build`（构建镜像时会用到）
 - 至少一种 LLM API Key（智谱 / OpenAI 兼容端点等）
+- **推荐** [mem9](https://mem9.ai/) + [drive9](https://drive9.ai/) API Key（语义记忆与技能库；申请步骤见 **[mem9-drive9-credentials.md](./mem9-drive9-credentials.md)**）
 - 若接 WebChat：已部署 `apps/chat-server`，并持有与 server 一致的 `WEBCHAT_AGENT_SECRET`
 
 ---
@@ -29,7 +30,7 @@ cp deploy/agent/env/agent.env.example deploy/agent/env/my-instance.env
 | `UTLRA_AGENT_IM_SID` | 稳定身份 ID，如 `idp:agent:my-instance` |
 | `UTLRA_AGENT_NAME` | 对外显示名（IM / 日志） |
 | `ZHIPU_API_KEY` 或 `LOCALMODULE_*` / `KIMI_*` | 至少一种文本模型 |
-| `MEM9_API_KEY` / `DRIVE9_API_KEY` | 可选；语义记忆与技能库 |
+| `MEM9_API_KEY` / `DRIVE9_API_KEY` | **推荐**；语义记忆与技能库（[如何申请](./mem9-drive9-credentials.md)） |
 | `UTLRA_CHAT_CHANNEL` | `webchat` · `discord` · `none` |
 | `WEBCHAT_*` | 接 WebChat 时必填（见 example 内注释） |
 | `DISCORD_BOT_TOKEN` | 接 Discord 时必填 |
@@ -121,6 +122,7 @@ Dashboard 通过 Vite 代理访问各实例 HTTP API；代理端口在 `apps/das
 
 ## 相关文档
 
+- **[mem9 / drive9 密钥申请](./mem9-drive9-credentials.md)**（官方链接 + curl 开通示例）
 - [Agent 接入指南](../agent-integration-guide.md)
 - [渠道桥接](../channel-bridge-guide.md)
 - [内外脑协议](../inner-outer-protocol.md)

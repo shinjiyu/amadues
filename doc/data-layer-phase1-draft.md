@@ -327,6 +327,8 @@ source: agent-sid
 
 ### 14.5 配置
 
+申请步骤与官方链接：**[`deploy/mem9-drive9-credentials.md`](./deploy/mem9-drive9-credentials.md)**
+
 | 环境变量 | 用途 |
 |----------|------|
 | `DRIVE9_API_KEY` | drive9 鉴权（`dat9_...` 格式） |
