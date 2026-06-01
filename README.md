@@ -19,13 +19,15 @@ npm install
 npm run build
 ```
 
-**部署单个 Agent 实例**（Docker + 环境变量 + 渠道密钥）见：
+**部署顺序（WebChat 必读）：先聊天服务器，再 Agent。** 二者是独立模块，与 OpenClaw 一体化 Web UI 不同：
 
-👉 **[doc/deploy/agent-quickstart.md](./doc/deploy/agent-quickstart.md)**
+👉 **[doc/deploy/startup-order.md](./doc/deploy/startup-order.md)** — 模块划分 · 启动顺序 · 常见错误
 
-**mem9 / drive9**（语义记忆与技能库，推荐配置）：
-
-👉 **[doc/deploy/mem9-drive9-credentials.md](./doc/deploy/mem9-drive9-credentials.md)** · [mem9.ai](https://mem9.ai/) · [drive9.ai](https://drive9.ai/)
+| 步骤 | 文档 |
+|------|------|
+| ① 启动 `chat-server` + `web-chat` | [doc/ops/webchat-deploy.md](./doc/ops/webchat-deploy.md) |
+| ② 启动 Agent 容器 | [doc/deploy/agent-quickstart.md](./doc/deploy/agent-quickstart.md) |
+| mem9 / drive9 Key（推荐） | [doc/deploy/mem9-drive9-credentials.md](./doc/deploy/mem9-drive9-credentials.md) |
 
 ## 仓库结构
 

@@ -2,6 +2,8 @@
 
 每个 Agent **一个容器、一份 env、一个数据卷**。实例名称由你在 `deploy/agent/docker-compose.agent.yml` 中定义的 **Compose profile** 决定，而非固定角色名。
 
+> WebChat：**先** [webchat-deploy.md](../ops/webchat-deploy.md) / [startup-order.md](../deploy/startup-order.md) 启 chat-server，**再**启 Agent。
+
 一键流程见 **[../deploy/agent-quickstart.md](../deploy/agent-quickstart.md)**。
 
 ---

@@ -1,6 +1,6 @@
 # Amadues · 项目简介
 
-**English summary:** Amadues is a long-running digital-worker stack: outer brain for dialogue and tools, inner brain (Pi-mono) for execution, Chat IR for channels, and optional WebChat / Discord. See [deploy/agent-quickstart.md](./deploy/agent-quickstart.md) to run one instance.
+**English summary:** Amadues is a long-running digital-worker stack: outer brain for dialogue and tools, inner brain (Pi-mono) for execution, Chat IR for channels, and optional WebChat / Discord. **WebChat:** start [chat-server](../ops/webchat-deploy.md) first, then [Agent](../deploy/agent-quickstart.md)—see [startup-order.md](../deploy/startup-order.md) (not an OpenClaw-style all-in-one UI).
 
 一个真正能在工程环境中长期工作的 AI 员工系统。
 

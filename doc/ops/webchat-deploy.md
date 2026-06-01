@@ -2,7 +2,9 @@
 
 将 `apps/chat-server` + `apps/web-chat` 以子路径（如 `/webchat/`）挂在现有 HTTPS 站点后。
 
-**English summary:** build dual containers (API + static H5), set `WEBCHAT_PUBLIC_BASE_PATH` and nginx `location` blocks, align agent env `WEBCHAT_*` with server secret and agent user ids.
+> **这是聊天服务器，不是 Agent。** 必须先部署并运行 chat-server，再启动 Agent 容器。模块划分与 OpenClaw 一体化 Web UI 不同，见 **[startup-order.md](../deploy/startup-order.md)**。
+
+**English summary:** build dual containers (API + static H5), set `WEBCHAT_PUBLIC_BASE_PATH` and nginx `location` blocks, align agent env `WEBCHAT_*` with server secret and agent user ids. **Start this before agents.**
 
 ---
 
@@ -16,7 +18,7 @@ Browser ──► HTTPS reverse proxy
               └── /webchat/uploads/ → chat-server uploads
 ```
 
-Agent 容器通过公网或内网 URL 连接同一 chat-server（见 [agent-quickstart.md](../deploy/agent-quickstart.md)）。
+Agent 容器通过公网或内网 URL 连接同一 chat-server（**chat-server 须先就绪**，见 [startup-order.md](../deploy/startup-order.md)、[agent-quickstart.md](../deploy/agent-quickstart.md)）。
 
 ---
 

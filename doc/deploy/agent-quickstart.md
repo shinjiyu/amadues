@@ -2,7 +2,20 @@
 
 面向运维与 Agent 集成：**一个 Docker 容器 = 一个 Agent 实例**。不假设固定主机名、端口或角色名称；实例身份由环境变量定义。
 
-English summary: copy `agent.env.example`, set LLM + channel secrets, pick a Compose **profile**, `up -d`. Health at `GET /api/health`.
+> **WebChat 用户请先读**：[startup-order.md](./startup-order.md) — **先启动 chat-server，再启动 Agent**；聊天 UI 与 Agent 是不同模块，不是 OpenClaw 那种一体化 Web UI。
+
+English summary: for WebChat, **start chat-server first**, then copy `agent.env.example`, set LLM + channel secrets, pick a Compose **profile**, `up -d`. Health at `GET /api/health`.
+
+---
+
+## 0. 启动顺序（WebChat）
+
+1. [部署 chat-server + web-chat](../ops/webchat-deploy.md) 并确认 H5 / API 可用  
+2. 配置本节 env（`WEBCHAT_*` 指向已运行的 chat-server）  
+3. 再 `docker compose ... up` 启动 Agent  
+4. 可选：[Dashboard](../ops/local-dashboard.md) 仅运维监控，**不能**聊天  
+
+完整说明：[startup-order.md](./startup-order.md)
 
 ---
 
@@ -12,7 +25,7 @@ English summary: copy `agent.env.example`, set LLM + channel secrets, pick a Com
 - 本仓库已 `npm install` 且 `npm run build`（构建镜像时会用到）
 - 至少一种 LLM API Key（智谱 / OpenAI 兼容端点等）
 - **推荐** [mem9](https://mem9.ai/) + [drive9](https://drive9.ai/) API Key（语义记忆与技能库；申请步骤见 **[mem9-drive9-credentials.md](./mem9-drive9-credentials.md)**）
-- 若接 WebChat：已部署 `apps/chat-server`，并持有与 server 一致的 `WEBCHAT_AGENT_SECRET`
+- 若接 WebChat：**必须先**部署并运行 `apps/chat-server`（见 [startup-order.md](../deploy/startup-order.md)、[webchat-deploy.md](./webchat-deploy.md)），再启动 Agent
 
 ---
 
@@ -122,6 +135,7 @@ Dashboard 通过 Vite 代理访问各实例 HTTP API；代理端口在 `apps/das
 
 ## 相关文档
 
+- **[部署顺序（先 chat-server，再 Agent）](./startup-order.md)**
 - **[mem9 / drive9 密钥申请](./mem9-drive9-credentials.md)**（官方链接 + curl 开通示例）
 - [Agent 接入指南](../agent-integration-guide.md)
 - [渠道桥接](../channel-bridge-guide.md)
