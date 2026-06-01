@@ -147,6 +147,13 @@ interface TestClient {
 }
 
 async function connectClient(port: number, userId: string, displayName: string): Promise<TestClient> {
+  return connectClientWithHello(port, { user_id: userId, display_name: displayName });
+}
+
+async function connectClientWithHello(
+  port: number,
+  hello: { user_id: string; display_name: string; agent_secret?: string },
+): Promise<TestClient> {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
   const events: ServerEvent[] = [];
   const listeners = new Set<(ev: ServerEvent) => void>();
@@ -161,7 +168,7 @@ async function connectClient(port: number, userId: string, displayName: string):
       for (const l of listeners) l(ev);
     } catch { /* ignore */ }
   });
-  ws.send(JSON.stringify({ type: 'hello', user_id: userId, display_name: displayName }));
+  ws.send(JSON.stringify({ type: 'hello', ...hello }));
   // wait for ready
   await new Promise<void>((resolve, reject) => {
     const tid = setTimeout(() => reject(new Error('hello ack timeout')), 5000);
@@ -255,6 +262,36 @@ describe('WebChat e2e — §9 验收', () => {
     alice.close();
     bob.close();
     charlie.close();
+  });
+
+  it('§9.3b DM 推送给在线 agent 参与者（无需先 subscribe）', async () => {
+    const agent = await connectClientWithHello(srv.port, {
+      user_id: 'agent',
+      display_name: 'Kuroneko',
+      agent_secret: 'shh',
+    });
+    // 故意不 subscribe dm 线程
+    agent.ws.send(JSON.stringify({ type: 'subscribe', thread_id: 'global' }));
+    await new Promise((r) => setTimeout(r, 100));
+
+    await connectClient(srv.port, 'alice', 'Alice');
+    const dmRes = await rest(srv.port, 'alice', 'POST', '/threads/dm', { peer_user_id: 'agent' });
+    expect(dmRes.status).toBe(200);
+    const threadId = (dmRes.body as { thread: { id: string } }).thread.id;
+    const post = await rest(srv.port, 'alice', 'POST', `/threads/${threadId}/messages`, {
+      text: 'dm without subscribe',
+    });
+    expect(post.status).toBe(200);
+
+    const ev = await agent.waitFor(
+      (e) =>
+        e.type === 'message.new' &&
+        e.thread_id === threadId &&
+        e.message.text === 'dm without subscribe',
+      3000,
+    );
+    expect(ev.type).toBe('message.new');
+    agent.close();
   });
 
   it('§9.4 @ mention 持久化为结构化 part', async () => {

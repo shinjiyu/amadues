@@ -1,6 +1,8 @@
-# Agent Docker 隔离部署
+# Agent Docker 部署
 
-每个 agent **一个容器、一份 env 文件、一个身份**（容器内都是「单 agent」实例）。
+每个 Agent **一个容器、一份 env、一个数据卷**。实例名称由你在 `deploy/agent/docker-compose.agent.yml` 中定义的 **Compose profile** 决定，而非固定角色名。
+
+一键流程见 **[../deploy/agent-quickstart.md](../deploy/agent-quickstart.md)**。
 
 ---
 
@@ -8,69 +10,69 @@
 
 ```text
 deploy/agent/env/
-  kuroneko.env.example  → 复制为 kuroneko.env
-  shiro.env.example     →  shiro.env
-  gin.env.example       →  gin.env
-  aoi.env.example       →  aoi.env
+  agent.env.example     → 通用模板（推荐新实例从此复制）
+  <instance>.env        → 你的实例密钥（gitignore）
 ```
 
-首次 `npm run docker:agents:up` 时，若缺少 `*.env` 会：
+首次启动脚本会：
 
-1. 优先从仓库根 `.env.<agent>` 复制（如 `.env.kuroneko`、`.env.shiro`）
-2. 再尝试旧名（`.env` → kuroneko，`.env.agent2` → shiro）
-3. 否则从 `*.env.example` 复制
-4. 去掉 `PORT` / `UTLRA_DATA_ROOT`（由 compose 注入 `/data` 与 `8787`）
+1. 若缺少 `<instance>.env`，尝试从仓库根 `.env.<instance>` 或 `*.env.example` 复制
+2. 去掉 `PORT` / `UTLRA_DATA_ROOT`（由 compose 注入）
 
-同步：修改 `deploy/agent/env/<name>.env` 后，根目录 `.env.<name>` 会在下次 `docker:agents:up` 时被覆盖为相同内容。
-
-**务必**在各自 `*.env` 中填入 LLM 密钥与渠道配置（如 `WEBCHAT_AGENT_SECRET`）。
+**务必**填入 LLM 密钥与渠道配置（如 `WEBCHAT_AGENT_SECRET`）。
 
 ---
 
 ## 启动
 
 ```bash
-npm run docker:agents:up          # 四实例
-npm run docker:agents:up:aoi      # 单个
-npm run docker:agents:down
+npm run docker:agents:build
+
+docker compose -f deploy/agent/docker-compose.agent.yml \
+  --profile <instance> up -d --build
 ```
 
-| 实例 | 宿主机 API | 数据目录 | env 文件 |
-|------|-----------|----------|----------|
-| Kuroneko | 8787 | `packages/server/data` | `env/kuroneko.env` |
-| Shiro | 8788 | `data-shiro` | `env/shiro.env` |
-| Gin | 8789 | `data-gin` | `env/gin.env` |
-| Aoi | 8791 | `data-aoi` | `env/aoi.env` |
+停止：
 
-Dashboard `5173` 仍通过 `/api`–`/api4` 代理到上述端口（只读监控）。
+```bash
+docker compose -f deploy/agent/docker-compose.agent.yml \
+  --profile <instance> stop
+```
 
-容器使用 `restart: unless-stopped`：Docker 守护进程重启后，**未手动 stop** 的容器会自动起来。
+仓库 `package.json` 中的 `docker:agents:up:*` 脚本是对上述命令的 PowerShell 包装；profile 名以 compose 文件为准。
 
 ---
 
-## 已移除：本机 agent 模式
+## 数据卷
 
-不再有 `npm run dev:server` / `dev:agent2` / `dev:gin` / `dev:aoi`。  
-Agent 进程 **仅** Docker；开发 server 包请用单测 / `UTLRA_SKIP_AGENT_BOOTSTRAP=1`。
+每个 service 挂载 `packages/server/data-<instance>:/data`（路径在 compose 中配置）。运行时 chat、registry、workspaces 均在此目录，**已在 `.gitignore`**。
 
 ---
 
-## WebChat
+## WebChat 连接
 
-**本地联调**（chat-server 在宿主机 8790）：
-
-```env
-WEBCHAT_API_BASE=http://host.docker.internal:8790/api
-WEBCHAT_WS_URL=ws://host.docker.internal:8790/ws
-```
-
-（Linux Docker 可用 `http://172.17.0.1:8790` 或 compose `extra_hosts`。）
-
-**生产 / 远程 chat-server**：改为你的公网或内网地址，例如：
+容器内访问宿主机或远程 chat-server：
 
 ```env
-WEBCHAT_API_BASE=https://your-chat-host/webchat/api
-WEBCHAT_WS_URL=wss://your-chat-host/webchat/ws
+WEBCHAT_API_BASE=https://<host>/<path>/api
+WEBCHAT_WS_URL=wss://<host>/<path>/ws
+WEBCHAT_AGENT_USER_ID=<your-agent-user-id>
+WEBCHAT_AGENT_SECRET=<shared-secret>
 ```
 
-`WEBCHAT_AGENT_SECRET` 须与 chat-server 端一致。
+`WEBCHAT_AGENT_SECRET` 必须与 chat-server 端一致。多实例时各 env 的 `WEBCHAT_AGENT_USER_ID` 不同，server 端注册多个保留 id。
+
+本地联调常用 `host.docker.internal`（Docker Desktop）；Linux 可用网关 IP 或 compose `extra_hosts`。
+
+---
+
+## 运行模式说明
+
+- Agent 服务端 **推荐仅通过 Docker 运行**（`packages/server/Dockerfile`）。
+- 包内开发与单测可使用 `UTLRA_SKIP_AGENT_BOOTSTRAP=1` 等，见测试文档。
+
+---
+
+## 监控
+
+可选：`npm run dev:dashboard` 启动只读 UI；在 `apps/dashboard/vite.config.ts` 中为各实例 HTTP 端口配置反向代理前缀。

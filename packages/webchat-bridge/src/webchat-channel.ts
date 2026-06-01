@@ -35,6 +35,7 @@ import type { WebChatBridgeConfig } from './config.js';
 import { WebChatRestClient, absoluteAttachmentUrl } from './rest-client.js';
 import { WebChatWsClient, type ConnectionStatus } from './ws-client.js';
 import { handleWebChatInbound } from './inbound.js';
+import { webChatUserToSid } from './identity-mapper.js';
 import {
   irThreadToWebChat,
   webChatMessageIdToIr,
@@ -54,6 +55,18 @@ export interface WebChatChannelOptions {
   seenTracker: ChatIRSeenTracker;
   onAgentMessage: (ev: ChatIRInboundEvent) => Promise<void>;
   fetchImpl?: typeof fetch;
+}
+
+function agentParticipatesInThread(
+  participantSids: string[],
+  agentSid: string,
+  agentUserId: string,
+): boolean {
+  if (participantSids.length === 0) return true;
+  if (participantSids.includes(agentSid)) return true;
+  const primaryUserId = agentUserId.split(',')[0]?.trim();
+  if (primaryUserId && participantSids.includes(webChatUserToSid(primaryUserId))) return true;
+  return false;
 }
 
 export class WebChatChannel implements ChatIRChannel {
@@ -260,7 +273,13 @@ export class WebChatChannel implements ChatIRChannel {
             ),
           });
           if (ev.senderSid === this.opts.agentSid) return;
-          if (ev.participantSids.length > 0 && !ev.participantSids.includes(this.opts.agentSid)) {
+          if (
+            !agentParticipatesInThread(
+              ev.participantSids,
+              this.opts.agentSid,
+              this.opts.config.agentUserId,
+            )
+          ) {
             return;
           }
           await this.opts.onAgentMessage({

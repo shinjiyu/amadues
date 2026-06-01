@@ -9,7 +9,10 @@
  *
  * 广播策略：
  * - presence.update：广播到所有已 hello 的 socket。
- * - message.new：仅扇出到该 thread 的订阅者，且适用 thread 访问权限（DM 仅参与者）。
+ * - message.new / typing / cleared：
+ *   - **大群**：仅扇出到已 subscribe 的 socket（需客户端主动订阅）。
+ *   - **DM**：扇出到所有在线且 canAccess 的参与者（无需先 subscribe；收到后自动 subscribe，
+ *     以便 agent bridge 在用户新建私聊后仍能收到首条消息）。
  */
 import type { WebSocket } from 'ws';
 import {
@@ -324,14 +327,19 @@ export class WsHub {
     }
   }
 
-  /** 向订阅了 threadId 的所有 socket 广播（按 thread 访问权限再次过滤）。 */
+  /** 向 thread 相关 socket 广播（大群需 subscribe；DM 推给全部在线参与者）。 */
   private fanoutThread(threadId: string, event: ServerEvent, except?: ConnectionState): void {
+    const thread = this.opts.threads.get(threadId);
+    const isDm = thread?.kind === 'dm';
     for (const conn of this.conns) {
       if (conn === except) continue;
       if (!conn.userId) continue;
-      if (!conn.subscriptions.has(threadId)) continue;
       if (!this.opts.threads.canAccess(threadId, conn.userId)) continue;
+      if (!isDm && !conn.subscriptions.has(threadId)) continue;
       this.send(conn.ws, event);
+      if (isDm) {
+        conn.subscriptions.add(threadId);
+      }
     }
   }
 

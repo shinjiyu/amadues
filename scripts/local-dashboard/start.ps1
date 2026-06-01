@@ -61,7 +61,12 @@ if (-not $npm) {
   exit 1
 }
 
-$argLine = "npm run $($svc.NpmScript)"
+$logDir = Join-Path $KuronekoRepoRoot 'scripts\local-dashboard\.logs'
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$logFile = Join-Path $logDir "$Service.log"
+Set-Content -Path $logFile -Value "[$((Get-Date).ToString('o'))] start $Service -> npm run $($svc.NpmScript)" -Encoding utf8
+
+$argLine = "npm run $($svc.NpmScript) 1>> `"$logFile`" 2>&1"
 $p = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', $argLine) -WorkingDirectory $KuronekoRepoRoot -WindowStyle Hidden -PassThru
 
 if (-not $p) { exit 1 }
@@ -71,5 +76,5 @@ if (Wait-KuronekoHealthy $svc) {
   exit 0
 }
 
-Write-Error "Service '$Service' did not become healthy on port/URL within $($svc.StartupWaitSec)s"
+Write-Error "Service '$Service' did not become healthy on port/URL within $($svc.StartupWaitSec)s. See log: $logFile"
 exit 1

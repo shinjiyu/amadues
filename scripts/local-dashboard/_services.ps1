@@ -39,6 +39,15 @@ $script:KuronekoServices = @{
     OpenUrl        = $null
     StartupWaitSec = 180
   }
+  'agent-yuanbao' = @{
+    Label          = 'Agent: 元宝 / webchat-lab (Docker)'
+    DockerProfile  = 'yuanbao'
+    ContainerName  = 'utlra-agent-yuanbao'
+    Port           = 8793
+    HealthUrl      = 'http://127.0.0.1:8793/api/health'
+    OpenUrl        = $null
+    StartupWaitSec = 180
+  }
   'dashboard' = @{
     Label          = 'Dashboard'
     NpmScript      = 'dev:dashboard'
@@ -52,8 +61,9 @@ $script:KuronekoServices = @{
     NpmScript        = 'dev:drive9'
     Port             = 7782
     ExtraPorts       = @(7780)
-    HealthUrl        = 'http://127.0.0.1:7780/api/status'
-    HealthJsonField  = 'ok'
+    # 只探 HTTP 200：Drive9 未配置时 /api/status 仍返回 200（ok:false），UI 可提示配置
+    HealthUrl        = 'http://127.0.0.1:7782/'
+    ExtraHealthUrls  = @('http://127.0.0.1:7780/api/status')
     OpenUrl          = 'http://127.0.0.1:7782/'
     StartupWaitSec   = 90
   }

@@ -108,12 +108,22 @@ export async function handleWebChatInbound(
     });
     store.threads.push(threadRecord);
     if (!store.messages[irThreadId]) store.messages[irThreadId] = [];
-  } else if (!threadRecord.participant_sids.includes(senderSid)) {
-    threadRecord = {
-      ...threadRecord,
-      participant_sids: [...threadRecord.participant_sids, senderSid],
-    };
-    replaceThreadInStore(store, threadRecord);
+  } else {
+    let ps = threadRecord.participant_sids;
+    let changed = false;
+    if (!ps.includes(senderSid)) {
+      ps = [...ps, senderSid];
+      changed = true;
+    }
+    // agent IR sid 与 webchat:user:<agentUserId> 并存；下游 onAgentMessage 用 agentSid 判定参与
+    if (!ps.includes(deps.agentSid)) {
+      ps = [...ps, deps.agentSid];
+      changed = true;
+    }
+    if (changed) {
+      threadRecord = { ...threadRecord, participant_sids: dedupe(ps) };
+      replaceThreadInStore(store, threadRecord);
+    }
   }
 
   const parts: MessagePart[] = [];

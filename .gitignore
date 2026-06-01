@@ -12,6 +12,7 @@ packages/server/data/
 packages/server/data-shiro/
 packages/server/data-gin/
 packages/server/data-aoi/
+packages/server/data-yuanbao/
 # 任何 .env / .env.* 都视为本地敏感配置，但保留 .env.example 作为可入库模板
 .env
 .env.*
@@ -32,6 +33,11 @@ kuronekopackagesserverdata*workspaces*_m3out_*.txt
 packages/server/m3-*.txt
 # local-dashboard 启停脚本记录的 PID
 scripts/local-dashboard/.pids/
+scripts/local-dashboard/.logs/
+
+# 本机运维笔记（域名、端口、VPS 等 — 不提交）
+doc/ops/local/*
+!doc/ops/local/README.example.md
 # 各包 / app 本地测试与运行产物
 .tool-outputs/
 **/.tool-outputs/

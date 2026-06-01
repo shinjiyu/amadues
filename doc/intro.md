@@ -1,4 +1,6 @@
-# 依莉雅（Ilya）· 项目简介
+# Amadues · 项目简介
+
+**English summary:** Amadues is a long-running digital-worker stack: outer brain for dialogue and tools, inner brain (Pi-mono) for execution, Chat IR for channels, and optional WebChat / Discord. See [deploy/agent-quickstart.md](./deploy/agent-quickstart.md) to run one instance.
 
 一个真正能在工程环境中长期工作的 AI 员工系统。
 
