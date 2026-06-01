@@ -28,6 +28,7 @@ $script:AgentLegacyEnvMap = @{
   shiro    = '.env.shiro'
   gin      = '.env.gin'
   aoi      = '.env.aoi'
+  yuanbao  = '.env.yuanbao'
 }
 
 # Legacy root env filenames (migrated once into .env.<agent>)
@@ -130,6 +131,7 @@ function Start-AgentDockerService {
     'shiro'    { 'utlra-agent-shiro' }
     'gin'      { 'utlra-agent-gin' }
     'aoi'      { 'utlra-agent-aoi' }
+    'yuanbao'  { 'utlra-agent-yuanbao' }
     default    { $null }
   }
   while ((Get-Date) -lt $deadline) {

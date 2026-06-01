@@ -75,3 +75,17 @@ services:
       <<: *agent-runtime
     volumes:
       - ../../packages/server/data-aoi:/data
+
+  agent-yuanbao:
+    <<: *agent-common
+    container_name: utlra-agent-yuanbao
+    profiles: ["yuanbao"]
+    env_file:
+      - path: env/yuanbao.env
+        required: true
+    ports:
+      - "127.0.0.1:8793:8787"
+    environment:
+      <<: *agent-runtime
+    volumes:
+      - ../../packages/server/data-yuanbao:/data
