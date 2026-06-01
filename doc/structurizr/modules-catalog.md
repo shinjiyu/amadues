@@ -42,7 +42,8 @@
 | changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | bootstrap + pendings 到期/解封 → spawn |
 | llmGateway | LLM 调用 | `llm/` | messages → text/tools |
 | **outerHeartbeat** | **定时心跳 + 死亡检测** | `outer/outer-heartbeat.ts` | tick → post_to_im / set_goal |
-| **llmUsageTracker** | **LLM token/并发计量** | `outer/llm-usage-tracker.ts` | completion → 滚动 usage |
+| **llmUsageTracker** | **LLM token/并发计量** | `outer/llm-usage-tracker.ts` | completion → 滚动 usage + journal |
+| **llmUsageJournal** | **Token 统计持久化** | `outer/llm-usage-journal.ts` | entry → `usage/llm-usage.jsonl` + summary API |
 | **resourceProbe** | **资源感知快照** | `outer/resource-probe.ts` | registry/tracker → ResourceSnapshot |
 | **autonomyPolicyStore** | **闲忙规则（可聊天改）** | `outer/autonomy-policy-store.ts` | policy.json + rubric.md |
 | **autonomyJudge** | **闲忙判定（hard gates）** | `outer/autonomy-judge.ts` | snapshot+policy → idle/busy |

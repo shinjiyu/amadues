@@ -29,7 +29,7 @@
 ## P2 — 增强
 
 - [ ] soft LLM 闲忙（`policy-rubric.md`）
-- [ ] Dashboard / Lab
+- [x] Dashboard **用量** Tab（`UsagePanel` + `GET /api/usage/summary`）— 见 [`LLM-USAGE-JOURNAL.md`](../structurizr/LLM-USAGE-JOURNAL.md)
 - [ ] 更多 `AutonomyTaskHandler`
 
 ## 参考

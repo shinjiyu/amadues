@@ -292,11 +292,24 @@
                     tags "Outer-Module" "Autonomy"
                     properties {
                         "path" "packages/server/src/outer/llm-usage-tracker.ts"
-                        "horizon.intention" "resourceProbe 的 token/并发数据源"
-                        "horizon.in" "llmRawChatCompletion 完成事件"
+                        "horizon.intention" "resourceProbe 的 token/并发数据源；完成时委托 journal 落盘"
+                        "horizon.in" "llmRawChatCompletion / pi-mono adapter 完成事件"
                         "horizon.out" "LlmUsageSnapshot"
-                        "horizon.deps" "llmGateway"
-                        "horizon.note" "待实现 P0"
+                        "horizon.deps" "llmGateway; llmUsageJournal"
+                        "horizon.test.unit" "llm-usage-tracker.test.ts"
+                    }
+                }
+
+                llmUsageJournal = component "LLM Usage Journal" "【Token 统计】usage/llm-usage.jsonl 持久化 + 按 source/model 聚合" "TypeScript" {
+                    tags "Outer-Module" "Observability"
+                    properties {
+                        "path" "packages/server/src/outer/llm-usage-journal.ts"
+                        "horizon.intention" "Agent token 账单：持久化每次 LLM 调用的 usage"
+                        "horizon.in" "LlmUsageJournalEntry"
+                        "horizon.out" "LlmUsageSummary; GET /api/usage/summary"
+                        "horizon.test.unit" "llm-usage-journal.test.ts"
+                        "horizon.test.integration" "llmUsageJournal.component.integration.test.ts"
+                        "horizon.note" "见 LLM-USAGE-JOURNAL.md"
                     }
                 }
 

@@ -113,6 +113,7 @@ async function draftKpiGoal(
     provider: env.provider,
     apiKey: env.apiKey,
     baseUrl: env.baseUrl,
+    usageMeta: { source: 'autonomy', model: env.textModel, provider: env.provider },
     body: {
       model: env.textModel,
       temperature: 0.35,
@@ -202,6 +203,7 @@ async function draftCasualChatText(
     provider: env.provider,
     apiKey: env.apiKey,
     baseUrl: env.baseUrl,
+    usageMeta: { source: 'autonomy', model: env.textModel, provider: env.provider },
     body: {
       model: env.textModel,
       temperature: 0.55,

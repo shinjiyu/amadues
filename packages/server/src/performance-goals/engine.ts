@@ -412,6 +412,7 @@ export class PerformanceGoalEngine {
         provider: env.provider,
         apiKey: env.apiKey,
         baseUrl: env.baseUrl,
+        usageMeta: { source: 'performance_goal', model: env.textModel, provider: env.provider },
         body: {
           model: env.textModel,
           messages: [

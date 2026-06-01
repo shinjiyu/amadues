@@ -1,4 +1,5 @@
 import type { LLMAdapter, LLMResult, StreamChunk, Message, ContentBlock } from './index.js';
+import { recordLlmUsageFromResponse } from '../../outer/llm-usage-tracker.js';
 
 // ── OpenAI wire types ─────────────────────────────────────────────────────────
 
@@ -9,6 +10,12 @@ interface OAIStreamDelta {
 
 interface OAIStreamChunk {
   choices: Array<{ delta: OAIStreamDelta; finish_reason: string | null }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    completion_tokens_details?: { reasoning_tokens?: number };
+  };
 }
 
 /**
@@ -272,6 +279,7 @@ export function createOpenAIAdapter(options?: {
 
     let fullContent = '';
     const toolCallAccum: Map<number, { id: string; name: string; args: string }> = new Map();
+    let streamUsage: OAIStreamChunk['usage'];
 
     let buf = '';
     // eslint-disable-next-line no-constant-condition
@@ -293,6 +301,7 @@ export function createOpenAIAdapter(options?: {
         }
         try {
           const chunk = JSON.parse(json) as OAIStreamChunk;
+          if (chunk.usage) streamUsage = chunk.usage;
           const choice = chunk.choices[0];
           if (!choice) continue;
 
@@ -338,6 +347,20 @@ export function createOpenAIAdapter(options?: {
         })(),
       };
     });
+
+    if (streamUsage) {
+      recordLlmUsageFromResponse(
+        { usage: streamUsage, model },
+        {
+          source: 'inner_pi_mono',
+          model,
+          provider: 'openai_compat',
+          workspaceId: process.env['INNER_WORKSPACE_ID']?.trim() || undefined,
+          instanceId: process.env['INNER_INSTANCE_ID']?.trim() || undefined,
+        },
+        { ok: true },
+      );
+    }
 
     return { content: fullContent, toolCalls };
   }

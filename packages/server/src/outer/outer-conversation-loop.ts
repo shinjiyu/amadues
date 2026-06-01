@@ -77,6 +77,7 @@ export const defaultOuterLlmToolCall: LlmToolCallFn = async ({
     provider: env.provider,
     apiKey: env.apiKey,
     baseUrl: env.baseUrl,
+    usageMeta: { source: 'outer_conversation', model: env.textModel, provider: env.provider },
     body: {
       model: env.textModel,
       messages,

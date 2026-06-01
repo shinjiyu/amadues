@@ -488,6 +488,9 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.llmUsageTracker -> kuroneko.agentServer.llmGateway "wrap chat/completions" "in-process" {
             tags "import"
         }
+        kuroneko.agentServer.llmUsageTracker -> kuroneko.agentServer.llmUsageJournal "persist usage entries" "in-process" {
+            tags "import"
+        }
         kuroneko.agentServer.autonomyJudge -> kuroneko.agentServer.autonomyPolicyStore "hardGates" "in-process" {
             tags "import"
         }

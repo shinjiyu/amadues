@@ -96,12 +96,22 @@ import { renderPerformanceDashboard } from './performance-goals/dashboard.js';
 import { registerHealthRoute } from './api/health-route.js';
 import { registerParticipationLabRoutes } from './api/participation-lab-route.js';
 import { buildLogTimeline, listLogSessions } from './api/log-explorer.js';
+import { buildLlmUsageSummary } from './outer/llm-usage-journal.js';
+import {
+  configureLlmUsageTracker,
+  getLlmUsageSnapshot,
+} from './outer/llm-usage-tracker.js';
 
 import { resolveDataRoot } from './data-root.js';
 
 // repo root = packages/server/src → ../../..
 const REPO_ROOT = path.resolve(__serverDir, '..', '..', '..');
 const DATA_ROOT = resolveDataRoot(REPO_ROOT, __serverDir, process.env['UTLRA_DATA_ROOT']);
+const AGENT_ID =
+  process.env['UTLRA_AGENT_NAME']?.trim() ||
+  process.env['UTLRA_AGENT_IM_SID']?.trim() ||
+  'unknown';
+configureLlmUsageTracker({ dataRoot: DATA_ROOT, agentId: AGENT_ID });
 const WORKSPACES = path.join(DATA_ROOT, 'workspaces');
 const IDENTITY_FILE = path.join(DATA_ROOT, 'identities.json');
 const CHAT_DIR = path.join(DATA_ROOT, 'chat');
@@ -846,6 +856,14 @@ app.get('/api/llm/config', (c) => {
   });
 });
 
+/** LLM token 用量汇总（持久化 journal + 运行时滚动窗口） */
+app.get('/api/usage/summary', (c) => {
+  const hoursRaw = Number(c.req.query('hours') ?? 24);
+  const hours = Number.isFinite(hoursRaw) ? Math.min(168, Math.max(1, hoursRaw)) : 24;
+  const summary = buildLlmUsageSummary(DATA_ROOT, AGENT_ID, hours, getLlmUsageSnapshot());
+  return c.json(summary);
+});
+
 /**
  * 模型探针：对指定模型发一条简短请求，返回延迟、回复内容。
  * body: { model: string, prompt?: string, maxTokens?: number }
@@ -871,6 +889,7 @@ app.post('/api/models/probe', async (c) => {
       provider: env.provider,
       apiKey: env.apiKey,
       baseUrl: env.baseUrl,
+      usageMeta: { source: 'probe', model, provider: env.provider },
       body: {
         model,
         messages: [{ role: 'user', content: prompt }],

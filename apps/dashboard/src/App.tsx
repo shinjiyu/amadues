@@ -4,8 +4,9 @@ import { OuterPanel } from './outer-panel.js';
 import { ParticipationLabPanel } from './participation-lab.js';
 import { MemoryBlocksPanel } from './memory-blocks-panel.js';
 import { LogExplorerPanel } from './log-explorer.js';
+import { UsagePanel } from './usage-panel.js';
 
-type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation' | 'logs';
+type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation' | 'logs' | 'usage';
 
 const TENANT = 'default';
 
@@ -15,6 +16,7 @@ const AGENTS = [
   { label: 'Shiro（8788）', apiPrefix: '/api2' },
   { label: 'Gin（8789）', apiPrefix: '/api3' },
   { label: 'Aoi（8791）', apiPrefix: '/api4' },
+  { label: '元宝 / Lab（8793）', apiPrefix: '/api5' },
 ] as const;
 type AgentConfig = typeof AGENTS[number];
 
@@ -176,6 +178,9 @@ export function App() {
           <button type="button" className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>
             日志
           </button>
+          <button type="button" className={tab === 'usage' ? 'active' : ''} onClick={() => setTab('usage')}>
+            用量
+          </button>
         </div>
         {tab === 'data' && <DataPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'inner' && <InnerBrainPoolPanel apiPrefix={apiPrefix} />}
@@ -183,6 +188,7 @@ export function App() {
         {tab === 'memory' && <MemoryPanel apiPrefix={apiPrefix} />}
         {tab === 'participation' && <ParticipationLabPanel apiPrefix={apiPrefix} />}
         {tab === 'logs' && <LogExplorerPanel apiPrefix={apiPrefix} />}
+        {tab === 'usage' && <UsagePanel apiPrefix={apiPrefix} />}
       </div>
     </div>
   );

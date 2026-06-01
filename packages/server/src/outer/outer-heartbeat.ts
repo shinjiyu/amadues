@@ -205,10 +205,8 @@ async function callLlmWithTools(
     provider: env.provider,
     apiKey: env.apiKey,
     baseUrl: env.baseUrl,
+    usageMeta: { source: 'outer_heartbeat', model: env.textModel, provider: env.provider },
     body: {
-      model: env.textModel,
-      messages,
-      max_tokens: 2048,
       temperature: 0.5,
       thinking: { type: 'disabled' },
       tools,
