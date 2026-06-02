@@ -64,8 +64,15 @@ import {
   enrichInnerBrainInstanceRow,
   parseInnerBrainListPagination,
 } from './outer/list-inner-brain-instances.js';
-import { KpiRegistry, formatKpiReflexionBlock } from './outer/kpi-registry.js';
+import { KpiRegistry } from './outer/kpi-registry.js';
 import { processBurstExitForKpi } from './outer/kpi-burst-hooks.js';
+import {
+  findCanonicalBurstForKpi,
+  buildKpiMetaReflexionGoal,
+  buildKpiContinuationGoal,
+  patchCanonicalForContinuation,
+} from './outer/inner-brain-kpi-reuse.js';
+import { collectPeerWorkspaceIds, prepareKpiPeerHandoff } from './outer/workspace-inbox.js';
 import { readWorkerStatus, isPidAlive, spawnInnerBrainWorker } from './pi-mono/inner-brain-spawner.js';
 import { isInnerBrainStoppable, stopInnerBrainInstance } from './outer/stop-inner-brain.js';
 import { createChangeWatcher, type ChangeWatcher } from './pi-mono/change-watcher.js';
@@ -84,6 +91,11 @@ import {
 } from './pi-mono/run-tick.js';
 import { formatAgentIsoLocal, resolveAgentTimezone } from './agent-time.js';
 import { buildBrainInspectorPayload } from './pi-mono/brain-snapshot.js';
+import {
+  evaluateInnerBrainRestart,
+  restartEligibilityErrorMessage,
+} from './outer/inner-brain-restart-policy.js';
+import { findLiveBurstForKpi } from './outer/kpi-dispatch-guard.js';
 import {
   buildWorkspaceArtifactsPayload,
   revealWorkspaceAllowed,
@@ -217,12 +229,25 @@ function spawnAndAttachWorker(
   innerBrainRegistry.update(id, patch);
 
   try {
+    const workspacesRoot = path.join(DATA_ROOT, 'workspaces');
+    const peerWorkspaceIds = collectPeerWorkspaceIds({
+      registry: innerBrainRegistry,
+      excludeWorkspaceId: record.workspaceId,
+      kpiId: record.kpiId,
+      kpiRegistry,
+    });
+    if (peerWorkspaceIds.length > 0) {
+      prepareKpiPeerHandoff(record.workDir, workspacesRoot, innerBrainRegistry, peerWorkspaceIds);
+    }
+
     const { pid } = spawnInnerBrainWorker({
       instanceId:  record.instanceId,
       workspaceId: record.workspaceId,
       workDir:     record.workDir,
       maxTicks,
       kpiId:       record.kpiId,
+      peerWorkspaceIds,
+      workspacesRoot,
       onExit: (exitCode, signal) => {
         const workerStatus = readWorkerStatus(record.workDir);
         const ticks = workerStatus?.ticks ?? 0;
@@ -306,153 +331,97 @@ function spawnAndAttachWorker(
 }
 
 /**
- * 派发一个针对 KPI 的"反思 burst"——progress detector 在 idle streak 达阈值时调用。
- *
- * 反思 burst 与普通 burst 的区别：
- *   - goal.md 是 meta 级的："请评估 KPI 卡死原因 / 提出换向策略 / 必要时建议 abandon"
- *   - max_ticks 短（UTLRA_KPI_REFLEXION_MAX_TICKS，默认 20）
- *   - 不算入 KPI 的 idleStreak（防止"反思失败 → 又触发反思"死循环）
- *   - 仍然挂在 KPI 上（kpi.bursts 会记录），但 isReflexionBurst=true
- *
- * 反思 burst 跑出的 reflexion.json 会被这个 burst 自己的 onExit 写入 kpi.reflexionTrail，
- * 下一次"真"burst 的 decomposer 会读到这份 meta 反思（同 KPI 检索路径）。
- *
- * 返回新 burst 的 instanceId；失败返回 null。
+ * Meta 反思周期：在 **同一 canonical 内脑** 上换 goal 续跑（不新开 workspace）。
  */
 function scheduleReflexionBurst(kpiId: string): string | null {
   const kpi = kpiRegistry.get(kpiId);
   if (!kpi) return null;
 
-  // 用 KpiRegistry 自带 ID 生成器避免和 inner-brain instanceId 撞
-  const instanceId = innerBrainRegistry.generateInstanceId();
-  const workspaceId = `task-${instanceId}`;
-  const workDir = path.join(DATA_ROOT, 'workspaces', workspaceId);
-  fs.mkdirSync(path.join(workDir, '.brain'), { recursive: true });
+  if (findLiveBurstForKpi(innerBrainRegistry, kpiId)) {
+    console.warn(`[utlra][kpi] reflexion skipped: burst in flight for ${kpiId}`);
+    return null;
+  }
 
-  // 反思 burst 的 goal：让 agent 自己评估 KPI 卡点
-  const recentReflexions = kpiRegistry.recentReflexions(kpiId, 5);
-  const trailDigest = recentReflexions.length === 0
-    ? '（暂无 reflexion 记录）'
-    : recentReflexions.map((r, i) => {
-        const lines = [
-          `### 第 ${recentReflexions.length - i} 次（${r.ts.slice(0, 16)}, verdict=${r.verdict}）`,
-          r.hardFailures.length > 0 ? `- 硬失败：\n${r.hardFailures.map((f) => `  - ${f}`).join('\n')}` : '',
-          r.softFailures.length > 0 ? `- 软失败：\n${r.softFailures.map((f) => `  - ${f}`).join('\n')}` : '',
-          r.nextStrategy ? `- 上轮建议：${r.nextStrategy}` : '',
-        ].filter(Boolean);
-        return lines.join('\n');
-      }).join('\n\n');
+  const canonical = findCanonicalBurstForKpi(innerBrainRegistry, kpiRegistry, kpiId);
+  if (!canonical) {
+    console.warn(`[utlra][kpi] reflexion skipped: no canonical inner brain for ${kpiId}`);
+    return null;
+  }
 
-  const goal = `# KPI 卡点反思（meta-burst）
-
-origin_user: ${kpi.createdBy}
-
-## KPI
-${kpi.description}
-
-## 状态
-- 已连续 ${kpi.consecutiveIdleBursts} 次 burst idle 且无产出
-- 已派发 ${kpi.bursts.length} 个 burst
-- 已记录 ${kpi.reflexionTrail.length} 条反思
-
-## 历次反思摘要（最近 5 条）
-${trailDigest}
-
-## 你的任务
-**不要再执行 KPI 本身**——这是一次 meta 反思 burst。
-请评估：
-1. 这个 KPI 是否已陷入"重复撞墙"模式？哪些方向已经死了？
-2. 还有什么**手段层面未尝试**的方向？（社工 / 内部渠道 / 公开数据拼接 / 侧信道 / ...）
-3. 这个 KPI 是否**根本不可达**？如果是，建议直接放弃，不要再耗资源。
-
-请将分析结论写入 knowledge.md / constraints.md；burst 结束时会由 runReflexion 写入
-.brain/reflexion.json 并进入 KPI reflexionTrail（见 kpi-reflexion-design.md）。
-
-输出格式约束：保持原样输出 markdown，不要包 markdown 代码块。`;
-
-  fs.writeFileSync(path.join(workDir, '.brain', 'goal.md'), goal, 'utf8');
-
+  const goal = buildKpiMetaReflexionGoal(kpi, kpiRegistry.recentReflexions(kpiId, 5));
   const originThread = resolveKpiBurstOriginThread(kpi.bursts, innerBrainRegistry);
-
-  // 注册到 inner-brain registry
-  const record: TaskRecord = {
-    instanceId,
-    workspaceId,
-    workDir,
+  patchCanonicalForContinuation(innerBrainRegistry, canonical.instanceId, canonical.workDir, {
     goal,
-    originUser: kpi.createdBy,
+    isReflexionBurst: true,
+    originThread,
+  });
+
+  const record: TaskRecord = {
+    ...canonical,
+    goal,
     originThread,
     status: 'RUNNING',
-    startedAt: new Date().toISOString(),
-    kpiId,
     isReflexionBurst: true,
   };
-  innerBrainRegistry.register(record);
-  kpiRegistry.attachBurst(kpiId, instanceId);
 
   const res = spawnAndAttachWorker(record);
   if (!res.ok) {
-    innerBrainRegistry.update(instanceId, {
+    innerBrainRegistry.update(canonical.instanceId, {
       status: 'ERROR',
       finishedAt: new Date().toISOString(),
-      errorMessage: `反思 burst spawn 失败: ${res.error}`,
+      errorMessage: `反思续跑 spawn 失败: ${res.error}`,
     });
     return null;
   }
-  return instanceId;
+  return canonical.instanceId;
 }
 
 /**
- * meta 反思 burst 结束后（且 UTLRA_KPI_AUTO_NEXT_BURST=1）自动派下一发**真任务** burst。
- * goal 注入 KPI 描述 + reflexionTrail，并重置 idle streak。
+ * 自动续跑真任务：复用 canonical instance，注入 KPI + reflexionTrail。
  */
 function scheduleNextKpiBurst(kpiId: string): string | null {
   const kpi = kpiRegistry.get(kpiId);
   if (!kpi || kpi.status !== 'active') return null;
 
-  const instanceId = innerBrainRegistry.generateInstanceId();
-  const workspaceId = `task-${instanceId}`;
-  const workDir = path.join(DATA_ROOT, 'workspaces', workspaceId);
-  fs.mkdirSync(path.join(workDir, '.brain'), { recursive: true });
+  if (findLiveBurstForKpi(innerBrainRegistry, kpiId)) {
+    console.warn(`[utlra][kpi] auto next skipped: burst in flight for ${kpiId}`);
+    return null;
+  }
 
-  const trailBlock = formatKpiReflexionBlock(kpiRegistry.recentReflexions(kpiId, 5));
-  const goal =
-    `# KPI 续跑（自动派发）\n\n` +
-    `origin_user: ${kpi.createdBy}\n\n` +
-    `## KPI\n${kpi.description}\n` +
-    (trailBlock || '\n（暂无 reflexion trail，请根据 KPI 描述规划）\n');
+  const canonical = findCanonicalBurstForKpi(innerBrainRegistry, kpiRegistry, kpiId);
+  if (!canonical) {
+    console.warn(`[utlra][kpi] auto next skipped: no canonical inner brain for ${kpiId}`);
+    return null;
+  }
 
-  fs.writeFileSync(path.join(workDir, '.brain', 'goal.md'), goal, 'utf8');
-
+  const goal = buildKpiContinuationGoal(kpi, kpiRegistry.recentReflexions(kpiId, 5));
   const originThread = resolveKpiBurstOriginThread(kpi.bursts, innerBrainRegistry);
+  patchCanonicalForContinuation(innerBrainRegistry, canonical.instanceId, canonical.workDir, {
+    goal,
+    isReflexionBurst: false,
+    originThread,
+  });
+  kpiRegistry.resetIdle(kpiId);
 
   const record: TaskRecord = {
-    instanceId,
-    workspaceId,
-    workDir,
+    ...canonical,
     goal,
-    originUser: kpi.createdBy,
     originThread,
     status: 'RUNNING',
-    startedAt: new Date().toISOString(),
-    kpiId,
     isReflexionBurst: false,
   };
-  innerBrainRegistry.register(record);
-  kpiRegistry.attachBurst(kpiId, instanceId);
-  kpiRegistry.resetIdle(kpiId);
 
   const res = spawnAndAttachWorker(record);
   if (!res.ok) {
-    innerBrainRegistry.update(instanceId, {
+    innerBrainRegistry.update(canonical.instanceId, {
       status: 'ERROR',
       finishedAt: new Date().toISOString(),
       errorMessage: `自动续跑 spawn 失败: ${res.error}`,
     });
     return null;
   }
-  console.log(`[utlra][kpi] auto next burst ${instanceId} for ${kpiId}`);
-  return instanceId;
+  console.log(`[utlra][kpi] auto continue on ${canonical.instanceId} for ${kpiId}`);
+  return canonical.instanceId;
 }
 
 /**
@@ -1379,14 +1348,15 @@ app.post('/api/inner-brains/:id/stop', (c) => {
 
 /**
  * 重启指定实例 — 利用 Pi-mono 的磁盘持久化特性，从上一次成功 tick 后继续。
- * 只有非 RUNNING 状态的实例可以重启。
+ * RUNNING 且 pid 仍存活 → 409；RUNNING 但进程已死 → 允许 respawn（DyFlow/legacy 续跑）。
  */
 app.post('/api/inner-brains/:id/restart', async (c) => {
   const id = c.req.param('id');
   const record = innerBrainRegistry.get(id);
   if (!record) return c.json({ error: `实例 ${id} 不存在` }, 404);
-  if (record.status === 'RUNNING') {
-    return c.json({ error: `实例 ${id} 正在运行中，无需重启` }, 409);
+  const eligibility = evaluateInnerBrainRestart(record);
+  if (!eligibility.allowed) {
+    return c.json({ error: restartEligibilityErrorMessage(id, eligibility) }, 409);
   }
 
   // 手动 restart 不算 auto-resume，不增加 resumeCount

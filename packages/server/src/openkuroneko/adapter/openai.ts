@@ -1,5 +1,9 @@
 import type { LLMAdapter, LLMResult, StreamChunk, Message, ContentBlock } from './index.js';
-import { recordLlmUsageFromResponse } from '../../outer/llm-usage-tracker.js';
+import {
+  beginLlmCall,
+  endLlmCall,
+  recordLlmUsageFromResponse,
+} from '../../outer/llm-usage-tracker.js';
 
 // ── OpenAI wire types ─────────────────────────────────────────────────────────
 
@@ -248,10 +252,30 @@ export function createOpenAIAdapter(options?: {
       body['tools'] = tools;
       body['tool_choice'] = 'auto';
     }
+    if (stream && process.env['LLM_STREAM_INCLUDE_USAGE'] !== '0') {
+      body['stream_options'] = { include_usage: true };
+    }
     if (baseUrl.includes('moonshot') && body['thinking'] === undefined) {
       body['thinking'] = { type: 'disabled' };
     }
     return JSON.stringify(body);
+  }
+
+  function recordInnerPiMonoUsage(
+    streamUsage: OAIStreamChunk['usage'] | undefined,
+    opts: { ok: boolean; durationMs: number },
+  ): void {
+    recordLlmUsageFromResponse(
+      streamUsage ? { usage: streamUsage, model } : { model },
+      {
+        source: 'inner_pi_mono',
+        model,
+        provider: 'openai_compat',
+        workspaceId: process.env['INNER_WORKSPACE_ID']?.trim() || undefined,
+        instanceId: process.env['INNER_INSTANCE_ID']?.trim() || undefined,
+      },
+      { ok: opts.ok, durationMs: opts.durationMs, recordWithoutUsage: !streamUsage },
+    );
   }
 
   /**
@@ -263,106 +287,102 @@ export function createOpenAIAdapter(options?: {
     tools: object[] | undefined,
     onChunk?: (chunk: StreamChunk) => void,
   ): Promise<LLMResult> {
-    const res = await fetchWithRetry(
-      `${baseUrl}/chat/completions`,
-      {
-        method: 'POST',
-        headers,
-        body: buildBody(systemPrompt, messages, tools, true),
-      },
-      'chat-stream',
-    );
-    if (!res.body) throw new Error('No response body for streaming');
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-
-    let fullContent = '';
-    const toolCallAccum: Map<number, { id: string; name: string; args: string }> = new Map();
+    beginLlmCall();
+    const startMs = Date.now();
     let streamUsage: OAIStreamChunk['usage'];
-
-    let buf = '';
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { done, value } = await readNextStreamChunk(reader, LLM_STREAM_IDLE_MS);
-      if (done) break;
-
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop() ?? '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const json = trimmed.slice(5).trim();
-        if (json === '[DONE]') {
-          onChunk?.({ delta: '', done: true });
-          continue;
-        }
-        try {
-          const chunk = JSON.parse(json) as OAIStreamChunk;
-          if (chunk.usage) streamUsage = chunk.usage;
-          const choice = chunk.choices[0];
-          if (!choice) continue;
-
-          const delta = choice.delta;
-
-          if (delta.content) {
-            fullContent += delta.content;
-            onChunk?.({ delta: delta.content, done: false });
-          }
-
-          if (delta.tool_calls) {
-            for (const tc of delta.tool_calls) {
-              const existing = toolCallAccum.get(tc.index) ?? { id: '', name: '', args: '' };
-              if (tc.id) existing.id = tc.id;
-              existing.name += tc.function.name ?? '';
-              existing.args += tc.function.arguments ?? '';
-              toolCallAccum.set(tc.index, existing);
-            }
-          }
-        } catch { /* malformed JSON chunk — skip */ }
-      }
-    }
-
-    if (process.env['DEBUG_LLM'] === '1' && toolCallAccum.size > 0) {
-      console.warn('[DEBUG_LLM] stream tool_calls:', [...toolCallAccum.entries()]);
-    }
-
-    const toolCalls = [...toolCallAccum.values()].map((tc, idx) => {
-      const rawId = tc.id?.trim();
-      const id = rawId || `call_${Math.random().toString(36).slice(2)}`;
-      if (!rawId && process.env['DEBUG_LLM'] === '1') {
-        console.warn('[DEBUG_LLM] stream tool_calls[' + idx + '] had no id, using fallback:', id);
-      }
-      return {
-        id,
-        name: tc.name,
-        args: (() => {
-          try {
-            return JSON.parse(tc.args) as Record<string, unknown>;
-          } catch {
-            return {} as Record<string, unknown>;
-          }
-        })(),
-      };
-    });
-
-    if (streamUsage) {
-      recordLlmUsageFromResponse(
-        { usage: streamUsage, model },
+    try {
+      const res = await fetchWithRetry(
+        `${baseUrl}/chat/completions`,
         {
-          source: 'inner_pi_mono',
-          model,
-          provider: 'openai_compat',
-          workspaceId: process.env['INNER_WORKSPACE_ID']?.trim() || undefined,
-          instanceId: process.env['INNER_INSTANCE_ID']?.trim() || undefined,
+          method: 'POST',
+          headers,
+          body: buildBody(systemPrompt, messages, tools, true),
         },
-        { ok: true },
+        'chat-stream',
       );
-    }
+      if (!res.body) throw new Error('No response body for streaming');
 
-    return { content: fullContent, toolCalls };
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      let fullContent = '';
+      const toolCallAccum: Map<number, { id: string; name: string; args: string }> = new Map();
+
+      let buf = '';
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await readNextStreamChunk(reader, LLM_STREAM_IDLE_MS);
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const json = trimmed.slice(5).trim();
+          if (json === '[DONE]') {
+            onChunk?.({ delta: '', done: true });
+            continue;
+          }
+          try {
+            const chunk = JSON.parse(json) as OAIStreamChunk;
+            if (chunk.usage) streamUsage = chunk.usage;
+            const choice = chunk.choices[0];
+            if (!choice) continue;
+
+            const delta = choice.delta;
+
+            if (delta.content) {
+              fullContent += delta.content;
+              onChunk?.({ delta: delta.content, done: false });
+            }
+
+            if (delta.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const existing = toolCallAccum.get(tc.index) ?? { id: '', name: '', args: '' };
+                if (tc.id) existing.id = tc.id;
+                existing.name += tc.function.name ?? '';
+                existing.args += tc.function.arguments ?? '';
+                toolCallAccum.set(tc.index, existing);
+              }
+            }
+          } catch { /* malformed JSON chunk — skip */ }
+        }
+      }
+
+      if (process.env['DEBUG_LLM'] === '1' && toolCallAccum.size > 0) {
+        console.warn('[DEBUG_LLM] stream tool_calls:', [...toolCallAccum.entries()]);
+      }
+
+      const toolCalls = [...toolCallAccum.values()].map((tc, idx) => {
+        const rawId = tc.id?.trim();
+        const id = rawId || `call_${Math.random().toString(36).slice(2)}`;
+        if (!rawId && process.env['DEBUG_LLM'] === '1') {
+          console.warn('[DEBUG_LLM] stream tool_calls[' + idx + '] had no id, using fallback:', id);
+        }
+        return {
+          id,
+          name: tc.name,
+          args: (() => {
+            try {
+              return JSON.parse(tc.args) as Record<string, unknown>;
+            } catch {
+              return {} as Record<string, unknown>;
+            }
+          })(),
+        };
+      });
+
+      recordInnerPiMonoUsage(streamUsage, { ok: true, durationMs: Date.now() - startMs });
+      return { content: fullContent, toolCalls };
+    } catch (e) {
+      recordInnerPiMonoUsage(streamUsage, { ok: false, durationMs: Date.now() - startMs });
+      throw e;
+    } finally {
+      endLlmCall();
+    }
   }
 
   async function chat(

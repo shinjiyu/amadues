@@ -282,6 +282,7 @@ ${input.content.slice(0, 8000)}`;
     maxTokens: 1024,
     temperature: 0.2,
     thinking: 'disabled',
+    usageMeta: { source: 'outer_conversation', model: env.textModel, provider: env.provider },
   });
 
   return content.trim().toUpperCase().includes('SPEAK');

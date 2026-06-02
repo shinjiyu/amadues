@@ -13,6 +13,7 @@ import { collectResourceSnapshot, type ResourceProbeDeps } from './resource-prob
 import { evaluateAutonomyVerdict } from './autonomy-judge.js';
 import { loadAutonomyPolicy } from './autonomy-policy-store.js';
 import { dispatchAutonomyTasks, type AutonomyDispatchDeps } from './autonomy-task-dispatcher.js';
+import { isKpiSprintInProgress } from './kpi-dispatch-guard.js';
 import type { AutonomyDispatchResult, ResourceSnapshot } from './autonomy-types.js';
 import { resolveAgentSid, resolveWorkspaceId, type OuterToolContext } from './outer-tools.js';
 
@@ -106,9 +107,11 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
     console.log(`[utlra][autonomy] idle no dispatch: ${dispatch.reason}`);
   }
 
+  const kpiSprintHold = isKpiSprintInProgress(deps.registry, deps.kpiRegistry);
+
   return {
     snapshot,
     dispatch,
-    skippedLegacyHeartbeat: dispatch.dispatched,
+    skippedLegacyHeartbeat: dispatch.dispatched || kpiSprintHold,
   };
 }

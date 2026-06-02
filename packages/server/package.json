@@ -13,18 +13,21 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:prompt": "vitest run --config vitest.prompt.config.ts",
     "test:watch": "vitest",
-    "bench:mem9": "node --import tsx/esm src/mem9/mem9-latency.bench.ts"
+    "bench:mem9": "node --import tsx/esm src/mem9/mem9-latency.bench.ts",
+    "benchmark:framework": "node --import tsx/esm src/benchmark/run-framework-benchmark.ts",
+    "benchmark:framework:bump": "node --import tsx/esm src/benchmark/run-framework-benchmark.ts --bump"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@utlra/chat-ir": "*",
     "@utlra/discord-bridge": "*",
-    "zod": "^3.23.8",
     "dotenv": "^16.4.5",
     "hono": "^4.6.0",
     "isomorphic-git": "^1.38.0",
     "nodemailer": "^8.0.7",
-    "playwright": "^1.58.2"
+    "playwright": "^1.58.2",
+    "tesseract.js": "^7.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

@@ -5,6 +5,7 @@ import {
   recordLlmUsageFromResponse,
 } from '../outer/llm-usage-tracker.js';
 import type { LlmUsageRecordMeta } from '../outer/llm-usage-types.js';
+import { parseLlmUsageFromResponse } from '../outer/llm-usage-types.js';
 
 interface RawLlmErrorShape {
   error?: { message?: string; code?: string };
@@ -50,6 +51,8 @@ export async function llmRawChatCompletion<T extends RawLlmErrorShape = RawLlmEr
 
     const raw = (await res.json()) as T;
     const model = typeof body.model === 'string' ? body.model : undefined;
+    const durationMs = Date.now() - startMs;
+    const hasUsage = parseLlmUsageFromResponse(raw) != null;
     recordLlmUsageFromResponse(
       raw,
       {
@@ -61,7 +64,7 @@ export async function llmRawChatCompletion<T extends RawLlmErrorShape = RawLlmEr
         instanceId: opts.usageMeta?.instanceId,
         threadId: opts.usageMeta?.threadId,
       },
-      { ok: res.ok, durationMs: Date.now() - startMs },
+      { ok: res.ok, durationMs, recordWithoutUsage: !hasUsage },
     );
     if (!res.ok) {
       const msg = raw.error?.message ?? res.statusText;

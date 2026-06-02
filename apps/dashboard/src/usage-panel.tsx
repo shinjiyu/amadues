@@ -124,6 +124,11 @@ export function UsagePanel({ apiPrefix }: { apiPrefix: string }) {
     setError(null);
     try {
       const r = await fetch(`${apiPrefix}/usage/summary?hours=${hours}`);
+      if (r.status === 404) {
+        throw new Error(
+          'HTTP 404 — 该 Agent 容器镜像过旧（无 /api/usage/summary）。请在仓库根执行 npm run docker:agents:build 后重启对应 agent。',
+        );
+      }
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setSummary((await r.json()) as UsageSummary);
     } catch (e) {

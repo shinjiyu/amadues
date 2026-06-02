@@ -13,6 +13,8 @@ packages/server/data-shiro/
 packages/server/data-gin/
 packages/server/data-aoi/
 packages/server/data-yuanbao/
+packages/server/data-bot1/
+packages/server/data-bot2/
 # 任何 .env / .env.* 都视为本地敏感配置，但保留 .env.example 作为可入库模板
 .env
 .env.*
@@ -51,3 +53,9 @@ deploy/webchat/data/
 commit-msg*.txt
 tmp/
 packages/server/supabase/
+# 观测分析落盘（首选 ../kuroneko-observations；本地 fallback）
+.observations/
+# 本地 gin/实验日志导出（不入库）
+exports/
+packages/server/*.jsonl
+packages/server/ou_battle_log.json

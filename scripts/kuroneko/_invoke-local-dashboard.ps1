@@ -7,17 +7,7 @@ param(
   [string]$ServiceId
 )
 
-function Get-KuronekoRepoRoot {
-  if ($env:KURONEKO_ROOT -and (Test-Path $env:KURONEKO_ROOT)) {
-    return $env:KURONEKO_ROOT
-  }
-  $candidate = (Resolve-Path (Join-Path $PSScriptRoot '..\..') -ErrorAction SilentlyContinue).Path
-  if ($candidate -and (Test-Path (Join-Path $candidate 'scripts\local-dashboard\health.ps1'))) {
-    return $candidate
-  }
-  Write-Error "Cannot resolve repo root from $script"
-  exit 2
-}
+. "$PSScriptRoot\_repo-root.ps1"
 
 $root = Get-KuronekoRepoRoot
 $script = Join-Path $root "scripts\local-dashboard\$Action.ps1"

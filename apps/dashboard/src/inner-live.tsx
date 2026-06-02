@@ -10,7 +10,31 @@ export type PiMonoTickExplained = {
   note: string;
 };
 
+export type DyflowInspectorPayload = {
+  engine: 'dyflow';
+  state: { mode: string; burstId?: string } | null;
+  dag: {
+    nodeCount: number;
+    nodes: Array<{ id: string; ref: string; instructionPreview: string }>;
+  } | null;
+  memory: {
+    goal: string | null;
+    factsCount: number;
+    constraintsCount: number;
+    lastFailure: {
+      summary: string;
+      transient?: boolean;
+      localRef?: string;
+      nodeInstId?: string;
+    } | null;
+    nodeResults: Array<{ id: string; ref: string; ok: boolean }>;
+  } | null;
+  localNodes: Array<{ id: string; kind: string; description: string }>;
+};
+
 export type BrainInspector = {
+  engine?: 'dyflow' | 'legacy';
+  dyflow?: DyflowInspectorPayload | null;
   controllerState: Record<string, unknown> | null;
   goalText: string;
   milestonesText: string;
@@ -26,8 +50,12 @@ export type BrainInspector = {
     lastAttributor: { ts?: unknown; flag?: unknown; reason?: unknown } | null;
     lastDecomposer: { ts?: unknown; data?: unknown } | null;
     lastControllerTickStart: { ts?: unknown; data?: unknown } | null;
+    lastDyflowTickStart?: { ts?: unknown; data?: unknown } | null;
+    lastBaseNode?: { ts?: unknown; event?: unknown; data?: unknown } | null;
+    lastDesigner?: { ts?: unknown; event?: unknown; data?: unknown } | null;
   };
   piMonoTickExplained?: PiMonoTickExplained;
+  dyflowTickExplained?: { summary: string; modes: Array<{ mode: string; what: string }> };
 };
 
 export type PiLogsResponse = {
@@ -122,6 +150,25 @@ export function describePiLogEntry(e: Record<string, unknown>): string {
   if (mod === 'controller' && ev.includes('decompose')) return `控制器：${ev}`;
   if (mod === 'controller' && ev.includes('blocked')) return `控制器：阻塞 — ${ev}`;
 
+  if (mod === 'dyflow-controller' && ev === 'tick.start') {
+    const mode = data?.['mode'];
+    return `DyFlow 控制器：tick（${String(mode ?? '?')}）`;
+  }
+  if (mod === 'designer') {
+    if (ev === 'design.committed') return 'Designer：已提交 local_dag';
+    if (ev === 'design.done') return 'Designer：宣告完成';
+    if (ev === 'design.start') return 'Designer：规划中…';
+    if (ev === 'design.giveup') return 'Designer：放弃本轮规划';
+  }
+  if (mod === 'base-node') {
+    if (ev === 'start') return `baseNode：开始（${String(data?.['nodeInstId'] ?? '')}）`;
+    if (ev === 'done') return `baseNode：完成（${data?.['rounds'] ?? '?'} 轮）`;
+    if (ev === 'fail_fast') return 'baseNode：连续无进展，上交 Designer';
+    if (ev === 'safety_cap') return 'baseNode：达到轮次上限';
+    if (ev === 'terminal_failure') return 'baseNode：CANNOT_CONTINUE';
+  }
+  if (mod === 'runner' && ev.includes('run')) return `Runner：${ev}`;
+
   if (mod === 'attributor') {
     if (ev === 'attribute.done') {
       const flag = data?.['flag'];
@@ -136,6 +183,127 @@ export function describePiLogEntry(e: Record<string, unknown>): string {
   return `${mod} · ${ev}`;
 }
 
+function DyflowLiveSection({ dyflow, brain }: { dyflow: DyflowInspectorPayload; brain: BrainInspector }) {
+  const mode = dyflow.state?.mode ?? '—';
+  const modeClass = ['DESIGN', 'RUN', 'AWAITING', 'DONE'].includes(mode) ? mode : 'unknown';
+  const mem = dyflow.memory;
+  const lh = brain.logHighlights;
+  const explained = brain.dyflowTickExplained;
+
+  return (
+    <>
+      <div className="inner-live-mode-strip">
+        <div className={`pi-mode pi-mode-${modeClass}`} style={{ background: '#4c1d95' }}>
+          DyFlow · {mode}
+        </div>
+        {dyflow.state?.burstId && (
+          <span className="inner-live-muted inline">burst {dyflow.state.burstId}</span>
+        )}
+      </div>
+
+      <div className="inner-live-section-title">当前 DAG</div>
+      {dyflow.dag && dyflow.dag.nodes.length > 0 ? (
+        <div className="inner-live-ms inner-live-ms-prominent">
+          {dyflow.dag.nodes.map((n) => (
+            <div key={n.id} className="inner-live-ms-row ms-Pending">
+              <div className="inner-live-ms-row-head">
+                <span className="inner-live-ms-id">{n.id}</span>
+                <code style={{ fontSize: 10, marginRight: 6 }}>{n.ref}</code>
+              </div>
+              {n.instructionPreview && (
+                <pre style={{ fontSize: 11, margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>
+                  {n.instructionPreview}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="inner-live-muted">尚无 local_dag（DESIGN 阶段或未 commit）</div>
+      )}
+
+      <div className="inner-live-section-title" style={{ marginTop: 14 }}>
+        last_failure
+      </div>
+      {mem?.lastFailure ? (
+        <div className="inner-live-attr inner-live-attr-prominent">
+          <code>{mem.lastFailure.localRef ?? '—'}</code>
+          {mem.lastFailure.transient && (
+            <span className="inner-live-replan inline">transient</span>
+          )}
+          <pre>{mem.lastFailure.summary}</pre>
+        </div>
+      ) : (
+        <div className="inner-live-muted">（无）</div>
+      )}
+
+      <div className="inner-live-section-title" style={{ marginTop: 14 }}>
+        node_results（{mem?.nodeResults.length ?? 0}）
+      </div>
+      <div className="inner-live-ms">
+        {(mem?.nodeResults ?? []).length === 0 ? (
+          <div className="inner-live-muted">尚无完成节点</div>
+        ) : (
+          mem!.nodeResults.map((r) => (
+            <div key={r.id} className={`inner-live-ms-row ms-${r.ok ? 'Completed' : 'Active'}`}>
+              <span className="inner-live-ms-id">{r.id}</span>
+              <code style={{ fontSize: 10 }}>{r.ref}</code>
+              <span style={{ marginLeft: 8 }}>{r.ok ? '✓ ok' : '✗'}</span>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="inner-live-section-title" style={{ marginTop: 14 }}>
+        LocalNode 库（{dyflow.localNodes.length}）
+      </div>
+      <div className="inner-live-ms" style={{ maxHeight: 160, overflowY: 'auto' }}>
+        {dyflow.localNodes.map((n) => (
+          <div key={n.id} className="inner-live-ms-row ms-Pending">
+            <code style={{ fontSize: 10 }}>{n.id}</code>
+            <span className="inner-live-ms-title">{n.description || n.kind}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="inner-live-section-title" style={{ marginTop: 14 }}>
+        memory 摘要
+      </div>
+      <div className="inner-live-muted">
+        facts {mem?.factsCount ?? 0} · constraints {mem?.constraintsCount ?? 0}
+      </div>
+      <pre className="inner-live-goal inner-live-goal-prominent">
+        {(mem?.goal ?? brain.goalText)?.trim()?.slice(0, 1200) || '（空）'}
+      </pre>
+
+      {lh?.lastDyflowTickStart?.data != null && (
+        <>
+          <div className="inner-live-section-title" style={{ marginTop: 12 }}>
+            最近 DyFlow tick
+          </div>
+          <pre className="inner-live-json-snippet">
+            {JSON.stringify(lh.lastDyflowTickStart.data, null, 2)}
+          </pre>
+        </>
+      )}
+
+      {explained && (
+        <details className="inner-live-details inner-live-tech" style={{ marginTop: 12 }}>
+          <summary>DyFlow 说明</summary>
+          <p className="inner-live-details-summary">{explained.summary}</p>
+          <ul className="inner-live-details-modes">
+            {explained.modes.map((row) => (
+              <li key={row.mode}>
+                <strong>{row.mode}</strong> — {row.what}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
+  );
+}
+
 export function InnerLiveDeck({
   brain,
   logs,
@@ -148,6 +316,7 @@ export function InnerLiveDeck({
   /** 首次 brain-inspector / pi-logs 请求尚未结束 */
   insightLoading?: boolean;
 }) {
+  const isDyflow = brain?.engine === 'dyflow' && brain.dyflow;
   const st = brain?.controllerState;
   const rawMode = String(st?.['mode'] ?? '—');
   const piModes = ['DECOMPOSE', 'EXECUTE', 'ATTRIBUTE', 'BLOCKED', 'SLEEPING'];
@@ -172,7 +341,9 @@ export function InnerLiveDeck({
     <div className="card inner-live">
       <div className="inner-live-title-row">
         <strong className="inner-live-title">内脑实况</strong>
-        <span className="inner-live-title-tag">模式 · 归因 · 里程碑 · Goal</span>
+        <span className="inner-live-title-tag">
+          {isDyflow ? 'DyFlow · DAG · failure · node_results' : '模式 · 归因 · 里程碑 · Goal'}
+        </span>
       </div>
       {insightLoading && <div className="inner-live-loading">正在拉取状态…</div>}
       <p className="inner-live-hint inner-live-hint-short">
@@ -187,6 +358,10 @@ export function InnerLiveDeck({
       </div>
 
       <div className="inner-live-core-flow">
+        {isDyflow ? (
+          <DyflowLiveSection dyflow={brain!.dyflow!} brain={brain!} />
+        ) : (
+          <>
         <div className="inner-live-mode-strip">
           <div className={`pi-mode pi-mode-${modeClass}`}>{mode}</div>
           {replanCount > 0 && <span className="inner-live-replan inline">REPLAN ×{replanCount}</span>}
@@ -254,6 +429,15 @@ export function InnerLiveDeck({
           当前进度
         </div>
         <div className="inner-live-current-big">{lastHuman}</div>
+          </>
+        )}
+
+        {isDyflow && (
+          <div className="inner-live-section-title" style={{ marginTop: 14 }}>
+            当前进度（日志）
+          </div>
+        )}
+        {isDyflow && <div className="inner-live-current-big">{lastHuman}</div>}
       </div>
 
       <details className="inner-live-details inner-live-tech">

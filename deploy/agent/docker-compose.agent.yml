@@ -89,3 +89,31 @@ services:
       <<: *agent-runtime
     volumes:
       - ../../packages/server/data-yuanbao:/data
+
+  agent-bot1:
+    <<: *agent-common
+    container_name: utlra-agent-bot1
+    profiles: ["bot1"]
+    env_file:
+      - path: env/bot1.env
+        required: true
+    ports:
+      - "127.0.0.1:8796:8787"
+    environment:
+      <<: *agent-runtime
+    volumes:
+      - ../../packages/server/data-bot1:/data
+
+  agent-bot2:
+    <<: *agent-common
+    container_name: utlra-agent-bot2
+    profiles: ["bot2"]
+    env_file:
+      - path: env/bot2.env
+        required: true
+    ports:
+      - "127.0.0.1:8797:8787"
+    environment:
+      <<: *agent-runtime
+    volumes:
+      - ../../packages/server/data-bot2:/data

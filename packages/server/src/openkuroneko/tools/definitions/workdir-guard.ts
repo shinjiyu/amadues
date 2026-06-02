@@ -61,9 +61,16 @@ export function isPathReadable(targetPath: string): boolean {
   return isPathAllowed(abs) || isPeerPathReadable(abs);
 }
 
-/** 仅本 workspace 可写；peer 永远不可写 */
+function isUnderInbox(abs: string): boolean {
+  const inboxRoot = path.join(_workDir, '.inbox');
+  return abs === inboxRoot || abs.startsWith(inboxRoot + path.sep);
+}
+
+/** 仅本 workspace 可写；peer 与 `.inbox/` 永远不可写 */
 export function isPathWritable(targetPath: string): boolean {
-  return isPathAllowed(targetPath);
+  const abs = path.resolve(targetPath);
+  if (isUnderInbox(abs)) return false;
+  return isPathAllowed(abs);
 }
 
 export function getWorkDir(): string {

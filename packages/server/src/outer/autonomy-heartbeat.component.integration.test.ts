@@ -162,4 +162,64 @@ describe('component: autonomyHeartbeat', () => {
     expect(llmBodies.length).toBe(1);
     expect(llmBodies[0]?.['tools']).toBeUndefined();
   });
+
+  it('KPI 在途 AWAITING burst → autonomy hold + 跳过 legacy LLM', async () => {
+    root = createTestDataRoot('aut-hb-kpi-sprint-');
+    patchAutonomyPolicy(root.dataRoot, {
+      enabled: true,
+      hardGates: { minMsSinceLastAutonomousAction: 0, maxLlmInFlight: 5 },
+      taskTypes: { kpi_inner_goal: { enabled: true, cooldownMs: 0, maxPerDay: 99 } },
+    });
+
+    const registry = new InnerBrainRegistry(root.dataRoot);
+    const kpiRegistry = new KpiRegistry(root.dataRoot);
+    const kpiId = kpiRegistry.create({
+      description: 'sprint kpi',
+      createdBy: 'idp:agent:test',
+    }).kpiId;
+    kpiRegistry.attachBurst(kpiId, 'ib-await');
+    registry.register({
+      instanceId: 'ib-await',
+      workspaceId: 'task-ib-await',
+      workDir: `${root.workspacesDir}/task-ib-await`,
+      goal: 'in flight',
+      originUser: 'idp:agent:test',
+      startedAt: new Date().toISOString(),
+      status: 'AWAITING',
+      kpiId,
+    });
+
+    const llmBodies: Record<string, unknown>[] = [];
+    vi.spyOn(llmRaw, 'llmRawChatCompletion').mockImplementation(async (opts) => {
+      llmBodies.push(opts.body);
+      return { raw: { choices: [{ message: { content: '不应执行' } }] }, status: 200 };
+    });
+
+    const pipeline = await runAutonomyPipeline({
+      dataRoot: root.dataRoot,
+      defaultThreadId: 'thread-1',
+      registry,
+      kpiRegistry,
+      imClient: null,
+      assetStore: new ChatAssetStore(path.join(root.dataRoot, 'uploads')),
+      getEngine: () => createNoopEngine(),
+      workspaceStore: new FilesystemWorkspaceStore(root.workspacesDir),
+      repoStore: new FilesystemRepositoryStore(root.dataRoot),
+      getLlmEnv: () => ({
+        provider: 'kimi',
+        apiKey: 'test',
+        baseUrl: 'http://localhost',
+        textModel: 'test-model',
+        visionModel: 'test-model',
+        maxTokensText: 256,
+        maxTokensMultimodal: 256,
+        thinking: 'disabled',
+      }),
+    });
+
+    expect(pipeline.dispatch.dispatched).toBe(false);
+    expect(pipeline.dispatch.reason).toBe('kpi_sprint_in_progress');
+    expect(pipeline.skippedLegacyHeartbeat).toBe(true);
+    expect(llmBodies.length).toBe(0);
+  });
 });

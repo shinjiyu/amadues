@@ -21,25 +21,30 @@ function formatSearchHits(hits: ReturnType<typeof searchFilesUnderRoot>): string
 export const listPeerWorkspacesTool: Tool = {
   name: 'list_peer_workspaces',
   description:
-    'List other inner-brain workspaces this burst may read (read-only). ' +
-    'Use before read_peer_file / search_peer_files when chaining tasks.',
+    'List same-KPI peer workspaces (read-only, fully transparent). ' +
+    'See `.inbox/README.md` for deliverable names + summaries; use read_peer_file for full content.',
   parameters: {},
   required: [],
   async call(): Promise<{ ok: boolean; output: string }> {
     const peers = listPeerWorkspaces();
     if (peers.length === 0) {
-      return { ok: true, output: '（当前无 peer workspace；外脑 set_goal 时会自动注入最近任务）' };
+      return { ok: true, output: '（当前无 peer workspace；挂 kpi_id 时默认同 KPI sibling 互读）' };
     }
     const lines = peers.map((p) => `- ${p.workspace_id} → ${p.work_dir}`);
     return { ok: true, output: lines.join('\n') };
   },
 };
 
+const DEFAULT_PEER_READ_MAX_BYTES = Math.max(
+  512 * 1024,
+  Number(process.env['UTLRA_PEER_READ_MAX_BYTES'] ?? 25 * 1024 * 1024),
+);
+
 export const readPeerFileTool: Tool = {
   name: 'read_peer_file',
   description:
-    'Read a text file from a peer inner-brain workspace (read-only). ' +
-    'Use list_peer_workspaces for valid workspace_id values.',
+    'Read a text file from a same-KPI peer workspace (read-only). ' +
+    'Check `.inbox/README.md` for names/summaries first; fetch full content here on demand.',
   parameters: {
     workspace_id: { type: 'string', description: 'Peer workspace id, e.g. task-ib-mpqmx0v5-9a32' },
     path: { type: 'string', description: 'Path relative to that workspace root' },
@@ -54,8 +59,11 @@ export const readPeerFileTool: Tool = {
     try {
       const st = fs.statSync(abs);
       if (!st.isFile()) return { ok: false, output: `Not a file: ${abs}` };
-      if (st.size > 512 * 1024) {
-        return { ok: false, output: `File too large (${st.size} bytes); max 512KB for read_peer_file` };
+      if (st.size > DEFAULT_PEER_READ_MAX_BYTES) {
+        return {
+          ok: false,
+          output: `File too large (${st.size} bytes); max ${DEFAULT_PEER_READ_MAX_BYTES} for read_peer_file`,
+        };
       }
       return { ok: true, output: fs.readFileSync(abs, 'utf8') };
     } catch (e) {

@@ -1,5 +1,7 @@
 /** Provider-neutral OpenAI-compatible chat types. */
 
+import type { LlmUsageRecordMeta } from '../outer/llm-usage-types.js';
+
 export type LlmProvider = 'zhipu' | 'kimi' | 'localmodule';
 
 export type TextPart = { type: 'text'; text: string };
@@ -21,6 +23,8 @@ export interface LlmChatOptions {
   maxTokens: number;
   temperature?: number;
   thinking: 'enabled' | 'disabled';
+  /** Token 统计分桶；缺省 inner_llm_step */
+  usageMeta?: Partial<LlmUsageRecordMeta>;
 }
 
 export interface LlmEnv {

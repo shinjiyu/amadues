@@ -5,7 +5,7 @@ import type { Tool } from '../index.js';
 
 export const readFileTool: Tool = {
   name: 'read_file',
-  description: 'Read a file from the working directory or agent temp directory. Returns its text content.',
+  description: 'Read a file from the working directory or agent temp directory. Peer deliverable catalog: `.inbox/README.md`.',
   parameters: {
     path: { type: 'string', description: 'File path to read' },
   },

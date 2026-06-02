@@ -17,6 +17,8 @@ const AGENTS = [
   { label: 'Gin（8789）', apiPrefix: '/api3' },
   { label: 'Aoi（8791）', apiPrefix: '/api4' },
   { label: '元宝 / Lab（8793）', apiPrefix: '/api5' },
+  { label: 'Bot1 / Coding（8796）', apiPrefix: '/api6' },
+  { label: 'Bot2 / FP8（8797）', apiPrefix: '/api7' },
 ] as const;
 type AgentConfig = typeof AGENTS[number];
 
@@ -739,6 +741,10 @@ type InstanceRow = {
   finished_at: string | null;
   ticks: number | null;
   error: string | null;
+  engine?: 'dyflow' | 'legacy' | null;
+  dyflow_mode?: string | null;
+  dyflow_dag_nodes?: number | null;
+  dyflow_failure?: string | null;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -924,7 +930,18 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
                             ● 执行中{inst.pid ? ` (pid ${inst.pid})` : ''}
                           </span>
                         )}
-                        {inst.phase && (
+                        {inst.engine === 'dyflow' && inst.dyflow_mode && (
+                          <span style={{ color: '#a78bfa', fontSize: 11, display: 'block', fontWeight: 600 }}>
+                            DyFlow · {inst.dyflow_mode}
+                            {inst.dyflow_dag_nodes != null ? ` · DAG×${inst.dyflow_dag_nodes}` : ''}
+                          </span>
+                        )}
+                        {inst.dyflow_failure && (
+                          <span style={{ color: '#fb923c', fontSize: 10, display: 'block' }} title={inst.dyflow_failure}>
+                            ⚠ {inst.dyflow_failure}
+                          </span>
+                        )}
+                        {inst.phase && inst.engine !== 'dyflow' && (
                           <span style={{ color: '#8b92a8', fontSize: 11, display: 'block' }}>
                             {inst.phase}
                           </span>
@@ -969,15 +986,17 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
                             {stopping === inst.instance_id ? '停止中…' : '停止'}
                           </button>
                         )}
-                        {(inst.registry_status === 'STOPPED' || inst.registry_status === 'ERROR') && (
+                        {(inst.registry_status === 'STOPPED' ||
+                          inst.registry_status === 'ERROR' ||
+                          (inst.registry_status === 'RUNNING' && inst.liveness === 'dead')) && (
                           <button
                             type="button"
                             style={{ fontSize: 11, background: '#1e3a5f', borderColor: '#3b6ea5' }}
                             disabled={restarting === inst.instance_id}
-                            title="从上次完成的 tick 后继续（Pi-mono 状态已持久化到磁盘）"
+                            title="从磁盘状态续跑（dyflow-state / controller-state + memory）"
                             onClick={() => void restartInstance(inst.instance_id)}
                           >
-                            {restarting === inst.instance_id ? '重启中…' : '继续'}
+                            {restarting === inst.instance_id ? '续跑中…' : inst.liveness === 'dead' ? '续跑' : '继续'}
                           </button>
                         )}
                       </td>
@@ -1136,7 +1155,7 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
       {err && <div className="card" style={{ color: '#f0a8a8' }}>{err}</div>}
       {insightErr && (
         <div className="card" style={{ color: '#f0a8a8', borderColor: '#6b3030' }}>
-          内脑实况接口失败：{insightErr}（请确认已重启 API、且代理指向 8787）
+          内脑实况接口失败：{insightErr}（请确认 Agent 已启动、且 vite 代理端口与当前 Agent 一致）
         </div>
       )}
       <InnerLiveDeck

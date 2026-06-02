@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { resolveDataRoot } from './data-root.js';
+import { resolveDataRoot, resolveStoredWorkDir } from './data-root.js';
 
 describe('resolveDataRoot', () => {
   const repo = '/repo';
@@ -18,5 +18,20 @@ describe('resolveDataRoot', () => {
 
   it('keeps absolute UTLRA_DATA_ROOT (Docker volume /data)', () => {
     expect(resolveDataRoot(repo, serverDir, '/data')).toBe('/data');
+  });
+});
+
+describe('resolveStoredWorkDir', () => {
+  const localRoot = path.resolve('D:/kuroneko/packages/server/data-yuanbao');
+
+  it('remaps /data/workspaces/... to current DATA_ROOT', () => {
+    expect(resolveStoredWorkDir('/data/workspaces/task-ib-abc', localRoot)).toBe(
+      path.join(localRoot, 'workspaces', 'task-ib-abc'),
+    );
+  });
+
+  it('leaves native absolute paths unchanged', () => {
+    const native = path.join(localRoot, 'workspaces', 'task-ib-abc');
+    expect(resolveStoredWorkDir(native, localRoot)).toBe(native);
   });
 });

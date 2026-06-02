@@ -1,7 +1,14 @@
-# 资源感知与心跳自主调度（ADL）
+# 资源感知与心跳自主调度（ADL · P0 形态）
+
+> **后继文档（P1 起）**：
+> - 环境模型（替代 `resourceProbe` 扁平 snapshot）：[`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)
+> - 战略规划层（dispatcher 退化为按 strategy 派遣 + 杀僵尸）：[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)
+>
+> 本文为 P0 形态留档；模块边界与触发器演进在后继 ADL 中说明。
 
 > 与 `workspace.dsl` 视图 **`11-L3-Outer-Autonomy`**、`components/agent-server.dsl` 同步。  
-> 实现待办：[`doc/todo/resource-awareness-autonomy.md`](../todo/resource-awareness-autonomy.md)
+> 实现待办：[`doc/todo/resource-awareness-autonomy.md`](../todo/resource-awareness-autonomy.md)  
+> **心跳质控职责**（验收内脑效果、卡死/restart 把控）见 [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)——本文档只覆盖 **闲忙判定 → 自主派活** 管道。
 
 ## 1. 动机
 
@@ -345,9 +352,18 @@ flowchart TD
 
 **意图**：根据 **kpiRegistry** 与 **performanceGoalEngine** 选一个方向，**设计一条内脑 goal**，`set_goal` 派发。
 
+**KPI 全力冲刺（串行）**：同 KPI 已有 `RUNNING` / `AWAITING` / `BLOCKED` 在途 burst 时：
+
+- `evaluateKpiAutonomyDispatch` → `kpi_burst_in_flight`，**不**再并行 `set_goal`
+- `dispatchAutonomyTasks` → `kpi_sprint_in_progress`，**不** fall through 到闲聊
+- `runAutonomyPipeline` → `skippedLegacyHeartbeat=true`，**跳过** legacy LLM 心跳（避免 LLM 误派）
+- `set_goal`（非 IM 用户直派）→ 硬拒绝同 KPI 在途 burst
+
+上一 burst 结束（`DONE`/`STOPPED`/`ERROR`）且 idle streak 未达反思阈值后，才续派下一角度。
+
 流程：
 
-1. 检查 enabled + cooldown；`read_inner_status` / registry：**无** `is_async_waiting`  
+1. 检查 enabled + cooldown；**无**同 KPI 在途 burst（`findLiveBurstForKpi`）  
 2. LLM 输入：活跃 KPI 列表、最近 reflexionTrail 摘要、performance goal scorecards  
 3. 输出：`goal` markdown + 可选 `kpi_id` / `performance_goal_id`  
 4. `set_goal` → registry + spawn  

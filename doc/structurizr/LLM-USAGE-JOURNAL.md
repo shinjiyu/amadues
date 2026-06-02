@@ -30,8 +30,12 @@
 | `autonomy` | `outer/autonomy-task-dispatcher.ts` |
 | `performance_goal` | `performance-goals/engine.ts` |
 | `inner_llm_step` | `llm/raw.ts`（经 provider） |
-| `inner_pi_mono` | `openkuroneko/adapter/openai.ts`（流式末 chunk usage） |
+| `inner_pi_mono` | `openkuroneko/adapter/openai.ts`（流式；`stream_options.include_usage` + 无 usage 时仍记 call） |
 | `probe` | `index.ts` `/api/models/probe` |
+
+内脑子进程启动时 `inner-brain-worker.ts` 会 `configureLlmUsageTracker`（继承 `UTLRA_DATA_ROOT`），保证 journal 写入 agent 级 `usage/llm-usage.jsonl`。
+
+流式请求默认带 `stream_options: { include_usage: true }`；若网关不支持可设 `LLM_STREAM_INCLUDE_USAGE=0`（仍记 call 次数，token 可能为 0）。
 
 ## 5. HTTP
 

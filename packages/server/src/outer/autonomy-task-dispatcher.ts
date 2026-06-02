@@ -21,6 +21,7 @@ import {
   evaluateKpiAutonomyDispatch,
   findLiveBurstForKpi,
 } from './kpi-dispatch-guard.js';
+import { isSetGoalDispatched } from './inner-brain-kpi-reuse.js';
 import type { InnerBrainEngine } from '../workspace-kit/index.js';
 import { buildKpiGoalPlannerContext } from './kpi-goal-context.js';
 import type { OuterMemoryStore } from './outer-memory.js';
@@ -65,7 +66,7 @@ function hasActiveKpi(kpiRegistry: KpiRegistry): boolean {
 
 function canSpawnInner(snapshot: ResourceSnapshot, _registry: InnerBrainRegistry, policy: AutonomyPolicy): boolean {
   const g = policy.hardGates;
-  // 仅 RUNNING 占槽位；AWAITING 不计入（用户可在有挂起任务时仍由心跳/autonomy 派新 burst）
+  // 仅 RUNNING 占槽位；AWAITING 不计入。同 KPI 在途 burst 由 evaluateKpiAutonomyDispatch / isKpiSprintInProgress 串行把关。
   if (snapshot.innerBrains.running >= g.maxRunningInnerBrains) return false;
   return true;
 }
@@ -160,7 +161,7 @@ async function executeKpiInnerGoal(
     deps.toolCtx,
   );
 
-  if (!toolOut.output.startsWith('已向内脑派发任务')) {
+  if (!isSetGoalDispatched(toolOut.output)) {
     return { dispatched: false, reason: 'set_goal_failed', detail: toolOut.output.slice(0, 200) };
   }
 
@@ -333,6 +334,23 @@ export async function dispatchAutonomyTasks(
   const personality = loadPersonality(deps.dataRoot);
 
   // 1. KPI 优先（同 KPI 已有 RUNNING/AWAITING/BLOCKED 时绝不重复派发）
+  if (hasActiveKpi(deps.kpiRegistry)) {
+    const activeKpi = deps.kpiRegistry.list({ status: 'active' })[0]!;
+    const live = findLiveBurstForKpi(deps.registry, activeKpi.kpiId);
+    if (live) {
+      const result: AutonomyDispatchResult = {
+        dispatched: false,
+        reason: 'kpi_sprint_in_progress',
+        detail: `${live.instanceId}:${live.status}`,
+      };
+      console.log(
+        `[utlra][autonomy] hold: kpi sprint in flight live=${live.instanceId} status=${live.status}`,
+      );
+      logAutonomyDispatch(deps.dataRoot, snapshot, result);
+      return result;
+    }
+  }
+
   if (hasActiveKpi(deps.kpiRegistry) && canSpawnInner(snapshot, deps.registry, policy)) {
     const activeKpi = deps.kpiRegistry.list({ status: 'active' })[0]!;
     const kpiDecision = evaluateKpiAutonomyDispatch(
@@ -341,11 +359,14 @@ export async function dispatchAutonomyTasks(
       activeKpi.kpiId,
     );
     if (!kpiDecision.ok) {
-      const live = findLiveBurstForKpi(deps.registry, activeKpi.kpiId);
-      console.log(
-        `[utlra][autonomy] skip kpi_inner_goal: ${kpiDecision.reason}` +
-          (live ? ` live=${live.instanceId} status=${live.status}` : ''),
-      );
+      console.log(`[utlra][autonomy] skip kpi_inner_goal: ${kpiDecision.reason}`);
+      const result: AutonomyDispatchResult = {
+        dispatched: false,
+        reason: kpiDecision.reason,
+        detail: kpiDecision.liveInstanceId,
+      };
+      logAutonomyDispatch(deps.dataRoot, snapshot, result);
+      return result;
     } else {
       const elig = taskEligible(deps.dataRoot, policy, 'kpi_inner_goal');
       if (elig.ok) {

@@ -1,12 +1,16 @@
 /**
- * loginserver（Flask）HTTP 客户端，与 `D:/UGit/remote-console` 复用同样的 API：
+ * loginserver（Flask）HTTP 客户端，与 `D:/UGit/loginserver` 复用同样的 API：
  *
  *   POST /api/auth/login   { email, password } -> { success, data: { access_token, refresh_token, user } }
  *   GET  /api/auth/verify  Authorization: Bearer <token> -> { success, data: { user_id, email, type, exp, iat } }
  *   POST /api/auth/refresh { refresh_token } -> { success, data: { access_token } }
  *
- * 不做缓存/重试；上层若超时可降级匿名（见 middleware）。
+ * `verify()`：配置了 `WEBCHAT_LOGIN_JWT_SECRET`（= loginserver `JWT_SECRET_KEY`）时 **本地 HS256 验签**，
+ * 不再 HTTP 调 `/api/auth/verify`。未配置密钥时回退远程 verify（兼容旧部署）。
+ *
+ * `refresh()` 仍走 HTTP（需 loginserver 签发新 access token）。
  */
+import { verifyAccessTokenLocally } from './jwt-local.js';
 
 export interface LoginUser {
   id: string;
@@ -39,11 +43,28 @@ export class LoginServerError extends Error {
   }
 }
 
+export interface LoginServerClientOptions {
+  /** 与 loginserver `JWT_SECRET_KEY` 相同；有则 verify 走本地 HS256。 */
+  jwtSecret?: string | null;
+}
+
 export class LoginServerClient {
-  constructor(private readonly baseUrl: string) {
+  private readonly jwtSecret: string | null;
+
+  constructor(
+    private readonly baseUrl: string,
+    opts: LoginServerClientOptions = {},
+  ) {
     if (!baseUrl) {
       throw new Error('LoginServerClient: baseUrl is required');
     }
+    const raw = opts.jwtSecret?.trim();
+    this.jwtSecret = raw && raw.length > 0 ? raw : null;
+  }
+
+  /** true = access token 本地验签，不依赖 loginserver HTTP。 */
+  usesLocalJwtVerify(): boolean {
+    return this.jwtSecret !== null;
   }
 
   async login(email: string, password: string): Promise<LoginSuccess> {
@@ -62,6 +83,13 @@ export class LoginServerClient {
   }
 
   async verify(accessToken: string): Promise<VerifiedPayload | null> {
+    if (this.jwtSecret) {
+      return verifyAccessTokenLocally(accessToken, this.jwtSecret);
+    }
+    return this.verifyRemote(accessToken);
+  }
+
+  private async verifyRemote(accessToken: string): Promise<VerifiedPayload | null> {
     const res = await fetch(joinUrl(this.baseUrl, '/api/auth/verify'), {
       method: 'GET',
       headers: { Authorization: `Bearer ${accessToken}` },

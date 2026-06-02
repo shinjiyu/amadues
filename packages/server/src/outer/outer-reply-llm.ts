@@ -71,6 +71,7 @@ export async function draftOuterStructuredReplyPayload(
     maxTokens: 4096,
     temperature: 0.25,
     thinking: env.thinking,
+    usageMeta: { source: 'outer_conversation', model: env.textModel, provider: env.provider },
   });
 
   let parsed: unknown;

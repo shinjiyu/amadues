@@ -124,4 +124,24 @@ describe('llm-usage-tracker', () => {
     expect(entries[0]?.source).toBe('probe');
     expect(entries[0]?.model).toBe('test-model');
   });
+
+  it('records call count even when provider omits usage', () => {
+    const tmp = createTestDataRoot('llm-usage-no-usage-');
+    cleanup = tmp.cleanup;
+    configureLlmUsageTracker({ dataRoot: tmp.dataRoot, agentId: 'bot2' });
+
+    recordLlmUsageFromResponse(
+      { model: 'glm-5.1' },
+      { source: 'inner_pi_mono', model: 'glm-5.1' },
+      { recordWithoutUsage: true },
+    );
+
+    const snap = getLlmUsageSnapshot();
+    expect(snap.callsLast1h).toBe(1);
+    expect(snap.tokensLast1h.total).toBe(0);
+
+    const entries = readLlmUsageJournalEntries(tmp.dataRoot);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.totalTokens).toBe(0);
+  });
 });

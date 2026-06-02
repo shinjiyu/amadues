@@ -34,10 +34,8 @@ export interface KpiAutonomyDispatchDecision {
 /**
  * autonomy 定时器是否应为该 KPI 再派一发 burst。
  *
- * 并行语义（relax_parallel）：不再因「已有在途 burst」一票否决。容量是否充足由调用方的
- * `canSpawnInner`（running/awaiting 槽位）负责；本函数只判断 KPI 自身语义——已达成、
- * idle 卡死该转反思等。这样在某 burst 正 RUNNING/AWAITING 时，只要槽位没满，仍可派发
- * **不重复角度**的新 burst（去重靠注入的在途任务上下文让规划器自行规避）。
+ * KPI 全力冲刺语义：同 KPI 已有 RUNNING/AWAITING/BLOCKED 在途 burst 时 **不再** 并行派发；
+ * 等当前 burst 结束后再由 idle streak / reflexion 路径续派下一条。
  */
 export function evaluateKpiAutonomyDispatch(
   kpiRegistry: KpiRegistry,
@@ -47,6 +45,15 @@ export function evaluateKpiAutonomyDispatch(
   const kpi = kpiRegistry.get(kpiId);
   if (!kpi || kpi.status !== 'active') {
     return { ok: false, reason: 'kpi_not_active' };
+  }
+
+  const live = findLiveBurstForKpi(registry, kpiId);
+  if (live) {
+    return {
+      ok: false,
+      reason: 'kpi_burst_in_flight',
+      liveInstanceId: live.instanceId,
+    };
   }
 
   if (kpi.bursts.length === 0) {
@@ -68,11 +75,13 @@ export function evaluateKpiAutonomyDispatch(
     return { ok: false, reason: `kpi_${action}:${reason}` };
   }
 
-  // continue / follow_up / sub-threshold streak 均允许并行派发（容量由 canSpawnInner 把关）
-  const live = findLiveBurstForKpi(registry, kpiId);
-  return {
-    ok: true,
-    reason: live ? 'parallel_next_burst' : 'next_burst',
-    ...(live ? { liveInstanceId: live.instanceId } : {}),
-  };
+  return { ok: true, reason: 'next_burst' };
+}
+
+/** 任一 active KPI 仍有在途 burst → 心跳应 hold（不派新 burst、跳过 legacy LLM 心跳） */
+export function isKpiSprintInProgress(
+  registry: InnerBrainRegistry,
+  kpiRegistry: KpiRegistry,
+): boolean {
+  return kpiRegistry.list({ status: 'active' }).some((kpi) => hasLiveWorkForKpi(registry, kpi.kpiId));
 }

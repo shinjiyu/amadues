@@ -16,6 +16,15 @@ if (Test-KuronekoHealth $svc) {
   exit 0
 }
 
+if ($svc.LocalAgent) {
+  . (Join-Path $KuronekoRepoRoot 'scripts\kuroneko\_agent-local.ps1')
+  $la = $svc.LocalAgent
+  $watch = $false
+  if ($la.Watch) { $watch = $true }
+  Start-AgentLocalProcess -Name $la.Name -Port ([int]$la.Port) -DataDirRel $la.DataDirRel -Watch:$watch
+  exit 0
+}
+
 if ($svc.DockerProfile) {
   . (Join-Path $KuronekoRepoRoot 'scripts\kuroneko\_agent-docker.ps1')
   if (Test-Path $pidFile) { Remove-Item $pidFile -Force -ErrorAction SilentlyContinue }

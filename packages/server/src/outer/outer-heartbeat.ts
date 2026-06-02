@@ -25,6 +25,7 @@ import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
 import { llmRawChatCompletion } from '../llm/raw.js';
 import { executeOuterTool, resolveAgentSid, resolveWorkspaceId } from './outer-tools.js';
 import type { OuterToolContext, ToolDef } from './outer-tools.js';
+import { isSetGoalDispatched } from './inner-brain-kpi-reuse.js';
 import { loadSoul } from './soul.js';
 import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
 import type { OuterMemoryStore } from './outer-memory.js';
@@ -36,6 +37,11 @@ import { PerformanceGoalEngine } from '../performance-goals/engine.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE, buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
 import { runAutonomyPipeline } from './autonomy-pipeline.js';
 import type { ResourceProbeDeps } from './resource-probe.js';
+import { OUTER_TOOL_DEFS } from './outer-tools.js';
+import {
+  formatKpiCompletionBlock,
+  sweepKpiCompletions,
+} from './kpi-completion-judge.js';
 import { formatRecentThreadMessagesForLlm } from './thread-history.js';
 import type { IdentityRegistry, LooseThreadStore } from '@utlra/chat-ir';
 
@@ -74,6 +80,8 @@ export function loadHeartbeatConfigFromEnv(
 }
 
 // ── 心跳专用工具集 ────────────────────────────────────────────────────────────
+
+const HEARTBEAT_KPI_TOOL_NAMES = ['list_kpis', 'view_kpi', 'achieve_kpi'] as const;
 
 function buildHeartbeatToolDefs(hasImClient: boolean): ToolDef[] {
   const tools: ToolDef[] = [
@@ -123,6 +131,11 @@ function buildHeartbeatToolDefs(hasImClient: boolean): ToolDef[] {
       },
     },
   ];
+
+  for (const name of HEARTBEAT_KPI_TOOL_NAMES) {
+    const def = OUTER_TOOL_DEFS.find((t) => t.function.name === name);
+    if (def) tools.push(def);
+  }
 
   tools.unshift({
     type: 'function',
@@ -281,7 +294,19 @@ ${soul}
 
 ${goalSection}
 
-## 职责边界（最重要）
+## 宏观战略（WHY + HOW，不可被质控替代）
+- **先 WHY**：对照长期目标与 KPI，这些方向**还值不值得推**？reflexion/lesson 是否推翻原有假设？若不值得 → 暂停或换 KPI，不要硬派 set_goal。
+- **再 HOW**：在 WHY 成立前提下，下一 burst **什么角度**、优先级如何；避免无记忆的「每 tick 随机挑一条 KPI」。
+- P1 起读 \`strategy/current.json\`（theory / whyNow / focusOrder）；未落地前由本心跳承担同等 WHY+HOW 思考，**不能**只做 liveness/deliverable 战术判断。
+- 跨 KPI 取舍、AWAITING 战略 cull 属战略层（见 STRATEGY-PLANNING-LAYER）；下文质控只管**在途 burst 做得怎样**。
+
+## 质控职责（战术层，与战略并列）
+- **KPI 完成判定**：每 tick 先核对 active KPI 是否应 achieved（list_kpis / view_kpi 看建议动作）。程序化 sweep 可能已自动结案；若 digest 建议 achieved 但仍 active → achieve_kpi（附 evidence）。**不要**对已 achieved KPI 再 set_goal。
+- **验收内脑效果**：用 list_inner_brains / read_inner_status 看 deliverables、ticks、reflexion 是否在向 KPI **实质靠近**；勿因单 tick 产出少就判失败（内脑可能是增量靠近）。
+- **卡死与重启把控**：区分 AWAITING 正常等待 vs RUNNING 长期无 tick（liveness=stuck）/ pid dead；idle streak 无产出时优先反思 burst，真 stuck 才考虑 directive 或告知人类需 /restart。
+- **方向干预**：效果不对 → 换角度 set_goal 或触发反思；不要替内脑完成 milestone 级验收（那是 Attributor 的事）。
+
+## 职责边界
 - **只管自己的事**：优先推进**本 agent 绑定的 KPI / 在途 burst / 长期目标**。
 - **不要当群管家**：不替 Kuroneko/Gin/Shiro/Aoi 盯进度、不汇总他人任务、不帮别人派 set_goal、不对别人的 blocker 主动插嘴。
 - 群聊里在讨论**别人的**小说/空投/内脑/VPS 等，与你 KPI 无关时 → **不要 post_to_im**，本轮保持沉默即可。
@@ -294,8 +319,8 @@ ${goalSection}
 3. **只有你能答**：问题指向只有你掌握的信息（你的内脑状态、你负责的任务/部署/改动）。
 
 ## 心跳模式说明
-你不是在回应某人，而是在进行定期的自我检查和规划。
-对照**自己的**长期目标与 KPI，判断现在是否需要主动做什么。
+你不是在回应某人，而是在进行定期的**战略自检（WHY+HOW）**与**在途质控**。
+对照**自己的**长期目标与 KPI：先判断方向是否仍对，再判断是否需要派活或干预。
 
 ## 可用工具
 ${imSection}
@@ -314,9 +339,8 @@ ${imSection}
 4. **不要为了「确认要不要继续」而向用户提问**。任务在正常推进时，用户无需被打扰。
 
 ## 行动原则（KPI 优先，而非到处参与）
-1. **KPI 优先**：有 active KPI 且槽位未满 → 优先 set_goal 推进**自己的** KPI，而不是在群里聊天或评论他人工作。
-2. **容量没满就主动推进**：若**你的** KPI/长期目标仍未达成，且在途 burst 未占满槽位，
-   应派发与现有在途任务**不重复**的新角度 set_goal，**而不是**发消息问用户「要不要继续」。
+1. **KPI 全力冲刺**：同 KPI 已有 RUNNING/AWAITING/BLOCKED 在途 burst 时 → **禁止** set_goal 再派并行 burst，让当前 burst 跑完；本轮保持沉默即可。
+2. **KPI 续派**：仅当该 KPI **无**在途 burst（上一 burst 已结束）且槽位未满时，才 set_goal 推进下一角度。
 3. **避免重复**：派新任务前对照「在途任务」的 goal，新任务必须是**不同的子方向/角度**。
 4. **post_to_im 仅用于**：**你自己的**任务完成汇报、**你自己的**硬阻塞（缺凭据/需授权）、**与你 KPI 直接相关**的关键信息。
    **禁止**：替他人传 cookie/文件、催别人进度、对无关群聊接话、问「要不要继续」。
@@ -352,7 +376,7 @@ function classifyGoalActionStatus(
     return 'skipped';
   }
 
-  if (result.startsWith('已向内脑派发任务')) return 'success';
+  if (isSetGoalDispatched(result)) return 'success';
   if (result.startsWith('工具执行错误')) return 'failed';
   return 'skipped';
 }
@@ -395,6 +419,11 @@ async function runHeartbeat(
   // 跨 workspace 在途任务汇总（权威来源，优先于 default workspace 单点状态）
   const liveBurstSummary = buildLiveBurstSummary(ctx.innerBrainRegistry);
 
+  const kpiCompletionBlock =
+    ctx.kpiRegistry && ctx.innerBrainRegistry
+      ? formatKpiCompletionBlock(ctx.kpiRegistry, ctx.innerBrainRegistry)
+      : '';
+
   // 读取记忆层（daily-log + tasks）注入心跳上下文
   const memStore = ctx.memoryStore;
   const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', hasAny: false };
@@ -409,6 +438,7 @@ async function runHeartbeat(
 ${threadSection}
 ## 在途任务（跨所有 workspace，权威来源）
 ${liveBurstSummary}
+${kpiCompletionBlock ? `\n${kpiCompletionBlock}\n` : ''}
 
 ## default workspace 状态（仅供参考，不代表全部任务）
 ${innerStatusText}
@@ -708,6 +738,24 @@ export class OuterHeartbeat {
   private async _tick(): Promise<void> {
     // 执行死亡检测（在 LLM tick 之前，基于上一次 tick 以来的行为变化判断）
     this._checkAlive();
+
+    // KPI 完成判定 sweep（在派活之前结案，避免对已达成 KPI 误派）
+    if (this.deps.kpiRegistry && this.deps.innerBrainRegistry) {
+      const completion = sweepKpiCompletions(
+        this.deps.kpiRegistry,
+        this.deps.innerBrainRegistry,
+      );
+      if (completion.marked.length > 0) {
+        console.log(
+          `[utlra][heartbeat][kpi-complete] marked achieved: ${completion.marked.join(', ')}`,
+        );
+      }
+      for (const p of completion.pending) {
+        console.log(
+          `[utlra][heartbeat][kpi-complete] pending ${p.kpiId}: ${p.reason}`,
+        );
+      }
+    }
 
     if (this.running) {
       console.log('[utlra][heartbeat] previous tick still running, skipping');

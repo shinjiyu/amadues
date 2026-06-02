@@ -2,7 +2,11 @@
  * 内脑实例列表 enrichment（供 GET /api/inner-brains 分页 API 使用）。
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+
 import type { InnerBrainEngine } from '../workspace-kit/index.js';
+import { summarizeDyflowForList, isDyflowWorkDir } from '../openkuroneko/inner-brain/dyflow-inspector.js';
 import { isPidAlive, readWorkerStatus } from '../pi-mono/inner-brain-spawner.js';
 import type { TaskRecord } from './inner-brain-registry.js';
 
@@ -27,6 +31,11 @@ export type InnerBrainInstanceRow = {
   finished_at: string | null;
   ticks: number | null;
   error: string | null;
+  /** DyFlow：有 dyflow-state.json */
+  engine: 'dyflow' | 'legacy' | null;
+  dyflow_mode: string | null;
+  dyflow_dag_nodes: number | null;
+  dyflow_failure: string | null;
 };
 
 export function parseInnerBrainListPagination(query: {
@@ -74,6 +83,15 @@ export function enrichInnerBrainInstanceRow(
     }
   }
 
+  const dyflow = isDyflowWorkDir(r.workDir)
+    ? { engine: 'dyflow' as const, ...summarizeDyflowForList(r.workDir) }
+    : {
+        engine: isLegacyBrainWorkDir(r.workDir) ? ('legacy' as const) : null,
+        dyflow_mode: null,
+        dyflow_dag_nodes: null,
+        dyflow_failure: null,
+      };
+
   return {
     instance_id: r.instanceId,
     workspace_id: r.workspaceId,
@@ -93,5 +111,10 @@ export function enrichInnerBrainInstanceRow(
     finished_at: r.finishedAt ? formatAgentIsoLocal(r.finishedAt) : null,
     ticks: liveTicks,
     error: r.errorMessage ?? null,
+    ...dyflow,
   };
+}
+
+function isLegacyBrainWorkDir(workDir: string): boolean {
+  return fs.existsSync(path.join(workDir, '.brain', 'controller-state.json'));
 }

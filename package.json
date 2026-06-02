@@ -19,6 +19,12 @@
     "docker:agents:up:gin": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/start-agent-gin.ps1",
     "docker:agents:up:aoi": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/start-agent-aoi.ps1",
     "docker:agents:up:yuanbao": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/start-agent-yuanbao.ps1",
+    "docker:agents:up:bot1": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/start-agent-bot1-local.ps1",
+    "dev:agent:bot1": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/start-agent-bot1-local.ps1",
+    "dev:agent:bot1:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/stop-agent-bot1-local.ps1",
+    "docker:agents:up:bot2": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/start-agent-bot2-local.ps1",
+    "dev:agent:bot2": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/start-agent-bot2-local.ps1",
+    "dev:agent:bot2:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/stop-agent-bot2-local.ps1",
     "build:web-chat": "npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/web-chat",
     "stop": "bash scripts/stop.sh",
     "start": "bash scripts/start.sh",
@@ -39,6 +45,8 @@
     "structurizr:diff": "node scripts/structurizr/diff-workspace.mjs",
     "structurizr:deps": "depcruise packages apps --config doc/structurizr/deps.rules.cjs --output-type err",
     "structurizr:check": "node scripts/structurizr/check-all.mjs",
+    "observe:analyze-run": "node scripts/observe/analyze-run.mjs",
+    "observe:compare-runs": "node scripts/observe/compare-runs.mjs",
     "sync:local-dashboard": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-local-dashboard.ps1"
   },
   "engines": {

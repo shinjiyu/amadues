@@ -27,6 +27,10 @@ New-Item -ItemType Directory -Force -Path $destScripts | Out-Null
 Copy-Item -Force (Join-Path $KuronekoRoot 'scripts\kuroneko-utlra.bundle.json') (Join-Path $LocalDashboardRoot 'scripts\kuroneko-utlra.bundle.json')
 Copy-Item -Force (Join-Path $KuronekoRoot 'scripts\kuroneko\*.ps1') $destScripts
 
+$repoRootFile = Join-Path $destScripts 'repo-root.txt'
+Set-Content -Path $repoRootFile -Value $KuronekoRoot -Encoding ascii -NoNewline
+Write-Host "[sync] repo   -> $repoRootFile ($KuronekoRoot)"
+
 Write-Host "[sync] bundle -> $LocalDashboardRoot\scripts\kuroneko-utlra.bundle.json"
 Write-Host "[sync] ps1    -> $destScripts"
 

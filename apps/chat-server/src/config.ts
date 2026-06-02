@@ -29,6 +29,11 @@ export interface AuthConfig {
   required: boolean;
   /** loginserver 根 URL（如 `https://example.com`）。required=1 时必填。 */
   loginServerUrl: string | null;
+  /**
+   * loginserver JWT 签名密钥（与 `JWT_SECRET_KEY` 相同）。
+   * 配置后 access token 本地 HS256 验签，不再 HTTP 调 `/api/auth/verify`。
+   */
+  loginJwtSecret: string | null;
   /** 白名单 JSON 持久化路径；默认 `${dataRoot}/auth.json`。 */
   authDataFile: string;
   /** 启动时种子的 admin email 列表（逗号分隔）。 */
@@ -108,9 +113,20 @@ export function loadConfig(): ChatServerConfig {
   const required = parseBool(process.env['WEBCHAT_AUTH_REQUIRED']);
   const loginServerUrl =
     process.env['WEBCHAT_LOGIN_SERVER_URL']?.trim()?.replace(/\/$/, '') || null;
+  const loginJwtSecret =
+    process.env['WEBCHAT_LOGIN_JWT_SECRET']?.trim()
+    || process.env['JWT_SECRET_KEY']?.trim()
+    || null;
   if (required && !loginServerUrl) {
     throw new Error(
       'WEBCHAT_AUTH_REQUIRED=1 但缺少 WEBCHAT_LOGIN_SERVER_URL（应为 loginserver 根地址，如 https://example.com）',
+    );
+  }
+  if (required && !loginJwtSecret) {
+    console.warn(
+      '[chat-server] WEBCHAT_AUTH_REQUIRED=1 但未配置 WEBCHAT_LOGIN_JWT_SECRET；'
+        + '每个请求将 HTTP 调 loginserver /api/auth/verify（慢）。'
+        + '请设与 loginserver JWT_SECRET_KEY 相同的值。',
     );
   }
   const authDataFile =
@@ -143,6 +159,7 @@ export function loadConfig(): ChatServerConfig {
   const auth: AuthConfig = {
     required,
     loginServerUrl,
+    loginJwtSecret,
     authDataFile,
     adminEmails,
     cookieSecure,

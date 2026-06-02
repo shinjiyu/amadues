@@ -1,18 +1,9 @@
 # Agent Docker 启停 — 每人 deploy/agent/env/<name>.env（不入库）
 
+. "$PSScriptRoot\_repo-root.ps1"
+
 function Get-KuronekoRepoRootForDocker {
-  if ($env:KURONEKO_ROOT -and (Test-Path $env:KURONEKO_ROOT)) {
-    return $env:KURONEKO_ROOT
-  }
-  $here = $PSScriptRoot
-  if ($here -match 'scripts\\kuroneko') {
-    return (Resolve-Path (Join-Path $here '..\..')).Path
-  }
-  if ($here -match 'scripts\\local-dashboard') {
-    return (Resolve-Path (Join-Path $here '..\..')).Path
-  }
-  Write-Error 'Cannot resolve repo root; set KURONEKO_ROOT or run from this repository.'
-  exit 2
+  Get-KuronekoRepoRoot
 }
 
 function Get-AgentEnvDir([string]$RepoRoot) {
@@ -29,6 +20,8 @@ $script:AgentLegacyEnvMap = @{
   gin      = '.env.gin'
   aoi      = '.env.aoi'
   yuanbao  = '.env.yuanbao'
+  bot1     = '.env.bot1'
+  bot2     = '.env.bot2'
 }
 
 # Legacy root env filenames (migrated once into .env.<agent>)
@@ -132,6 +125,8 @@ function Start-AgentDockerService {
     'gin'      { 'utlra-agent-gin' }
     'aoi'      { 'utlra-agent-aoi' }
     'yuanbao'  { 'utlra-agent-yuanbao' }
+    'bot1'     { 'utlra-agent-bot1' }
+    'bot2'     { 'utlra-agent-bot2' }
     default    { $null }
   }
   while ((Get-Date) -lt $deadline) {
@@ -158,6 +153,9 @@ function Test-AgentDockerService {
     'shiro'    { 'utlra-agent-shiro' }
     'gin'      { 'utlra-agent-gin' }
     'aoi'      { 'utlra-agent-aoi' }
+    'yuanbao'  { 'utlra-agent-yuanbao' }
+    'bot1'     { 'utlra-agent-bot1' }
+    'bot2'     { 'utlra-agent-bot2' }
     default    { return $false }
   }
   $running = docker inspect -f '{{.State.Running}}' $container 2>$null

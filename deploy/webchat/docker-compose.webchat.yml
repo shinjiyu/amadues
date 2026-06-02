@@ -25,6 +25,7 @@ services:
       # ── 鉴权（公网部署强制）─────────────────────────────────
       - WEBCHAT_AUTH_REQUIRED=1
       - WEBCHAT_LOGIN_SERVER_URL=${WEBCHAT_LOGIN_SERVER_URL:-http://host.docker.internal:5001}
+      - WEBCHAT_LOGIN_JWT_SECRET=${WEBCHAT_LOGIN_JWT_SECRET:-}
       - WEBCHAT_LOGIN_PAGE_URL=${WEBCHAT_LOGIN_PAGE_URL:-/login}
       - WEBCHAT_LOGIN_RETURN_PARAM=${WEBCHAT_LOGIN_RETURN_PARAM:-redirect}
       - WEBCHAT_LOGIN_TOKEN_STORAGE_KEY=${WEBCHAT_LOGIN_TOKEN_STORAGE_KEY:-access_token}

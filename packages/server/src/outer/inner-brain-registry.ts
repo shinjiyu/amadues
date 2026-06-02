@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { resolveStoredWorkDir } from '../data-root.js';
 
 export type TaskStatus = 'RUNNING' | 'BLOCKED' | 'AWAITING' | 'DONE' | 'STOPPED' | 'ERROR';
 
@@ -71,7 +72,13 @@ export class InnerBrainRegistry {
     if (!fs.existsSync(this.registryPath)) return;
     try {
       const rows = JSON.parse(fs.readFileSync(this.registryPath, 'utf8')) as TaskRecord[];
-      for (const r of rows) this.tasks.set(r.instanceId, r);
+      let migrated = false;
+      for (const r of rows) {
+        const workDir = resolveStoredWorkDir(r.workDir, this.dataRoot);
+        if (workDir !== r.workDir) migrated = true;
+        this.tasks.set(r.instanceId, { ...r, workDir });
+      }
+      if (migrated) this._save();
     } catch {
       // 文件损坏时忽略，从空状态启动
     }

@@ -59,7 +59,9 @@ async function main(): Promise<void> {
   await authStore.load();
   // loginserver client 必有，required=false 时也允许浏览器手动登录（白名单存在即可）
   const loginUrlForClient = config.auth.loginServerUrl ?? 'http://127.0.0.1:0';
-  const loginClient = new LoginServerClient(loginUrlForClient);
+  const loginClient = new LoginServerClient(loginUrlForClient, {
+    jwtSecret: config.auth.loginJwtSecret,
+  });
   const authService = new AuthService(authStore, loginClient, {
     cookieSecure: config.auth.cookieSecure,
     ...(config.auth.cookieDomain ? { cookieDomain: config.auth.cookieDomain } : {}),
@@ -163,7 +165,7 @@ async function main(): Promise<void> {
         ? `agent_bypass=secret${config.agentUserIds.size > 0 ? ` allowlist=[${[...config.agentUserIds].join(',')}]` : ' (any user_id)'}`
         : 'agent_bypass=<none>';
       const authState = config.auth.required
-        ? `auth=required loginserver=${config.auth.loginServerUrl}`
+        ? `auth=required loginserver=${config.auth.loginServerUrl} jwt=${loginClient.usesLocalJwtVerify() ? 'local' : 'remote'}`
         : 'auth=optional';
       console.log(
         `[chat-server] listening http://localhost:${info.port}  ws://localhost:${info.port}/ws  data=${config.dataRoot}  ${reservedAgents}  ${authState}`,

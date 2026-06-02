@@ -48,6 +48,22 @@ $script:KuronekoServices = @{
     OpenUrl        = $null
     StartupWaitSec = 180
   }
+  'agent-bot1' = @{
+    Label          = 'Agent: Bot1 / GLM Coding / webchat-lab (Local)'
+    LocalAgent     = @{ Name = 'bot1'; Port = 8796; DataDirRel = 'packages\server\data-bot1' }
+    Port           = 8796
+    HealthUrl      = 'http://127.0.0.1:8796/api/health'
+    OpenUrl        = $null
+    StartupWaitSec = 120
+  }
+  'agent-bot2' = @{
+    Label          = 'Agent: Bot2 / GLM-5.1-FP8 / webchat-lab (Local)'
+    LocalAgent     = @{ Name = 'bot2'; Port = 8797; DataDirRel = 'packages\server\data-bot2' }
+    Port           = 8797
+    HealthUrl      = 'http://127.0.0.1:8797/api/health'
+    OpenUrl        = $null
+    StartupWaitSec = 120
+  }
   'dashboard' = @{
     Label          = 'Dashboard'
     NpmScript      = 'dev:dashboard'

@@ -42,6 +42,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs';
+import { configureLlmUsageTracker } from '../outer/llm-usage-tracker.js';
 import { runOpenKuronekoPiMonoAuto } from './run-tick.js';
 
 const instanceId  = process.env['INNER_INSTANCE_ID']  ?? '';
@@ -66,6 +67,15 @@ if (!instanceId || !workspaceId || !workDir) {
     `退出码: 0=正常 1=运行时错误 2=参数错误\n`,
   );
   process.exit(2);
+}
+
+const dataRoot = process.env['UTLRA_DATA_ROOT']?.trim();
+if (dataRoot) {
+  const agentId =
+    process.env['UTLRA_AGENT_NAME']?.trim() ||
+    process.env['UTLRA_AGENT_IM_SID']?.trim() ||
+    'unknown';
+  configureLlmUsageTracker({ dataRoot, agentId });
 }
 
 export type WorkerStatusPhase = 'starting' | 'running' | 'done' | 'error';

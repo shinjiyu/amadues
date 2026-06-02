@@ -3,7 +3,7 @@
  * 外脑 LLM 可调用这些工具来回复用户、派发内脑任务、查询/管理内脑状态。
  *
  * 多内脑支持（参考 openKuroneko InnerBrainPool）：
- *   - set_goal：每次调用创建独立 workspace，返回 instanceId
+ *   - set_goal：KPI 模式复用 canonical instance；一次性任务每次新建 workspace
  *   - list_inner_brains：列出所有任务实例
  *   - stop_inner_brain：停止指定实例（写入停止信号文件）
  *   - send_directive：向指定实例发送指令
@@ -26,10 +26,12 @@ import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import { formatKpiReflexionBlock } from './kpi-registry.js';
 import { findLiveBurstForKpi } from './kpi-dispatch-guard.js';
+import { findCanonicalBurstForKpi } from './inner-brain-kpi-reuse.js';
 import { checkRunningInnerBrainCapacity } from './inner-brain-capacity.js';
 import { resolveTaskOriginThread } from './default-im-thread.js';
 import { formatKpiDigest, suggestKpiAction, buildKpiBurstLinks } from './kpi-progress.js';
 import { ingestDeliverables } from './deliverables-ingest.js';
+import { collectPeerWorkspaceIds, prepareKpiPeerHandoff } from './workspace-inbox.js';
 import { processBurstExitForKpi } from './kpi-burst-hooks.js';
 import {
   listActivePendings as listActivePendingsSync,
@@ -136,13 +138,12 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'set_goal',
       description:
-        '向内脑派发新任务，**每次调用会创建新的独立工作区与 instance_id**（一次性任务、KPI 的**第一次**尝试）。' +
-        '请确认用户明确要求开始新任务后再调用。\n\n' +
-        '【持续 / 周期 / 监督类目标】只调用一次 set_goal，在 goal 正文写明检查周期与交付物，' +
-        '要求内脑用 wait_timer 或 [cyclic:N] 自行排期；**禁止**用「第二轮/第三轮监督检查」再 set_goal。' +
-        '续跑前用 read_inner_status 看 async.is_async_waiting；若在等定时则勿重复派发。\n\n' +
-        '【KPI 模式】若该任务是长期 KPI 的**首次** burst，传入 kpi_id；同 KPI 共享反思与失败记忆。' +
-        '后续换路线才可再 set_goal（新尝试），不要用同主题多 instance 模拟多轮。',
+        '向内脑派发任务。**长期 KPI**：首次带 kpi_id 会创建 instance；**同一 KPI 后续只会复用该 instance 续跑**，禁止为同一目标再开新内脑。\n\n' +
+        '【持续 / 周期 / 监督类目标】只调用一次 set_goal（带 kpi_id），在 goal 正文写明检查周期；' +
+        '内脑用 wait_timer 或 [cyclic:N] 自行排期；**禁止**用「第二轮监督检查」再 set_goal。\n\n' +
+        '续跑前用 read_inner_status；若在 AWAITING 等定时/等回复则勿重复派发。\n\n' +
+        '【KPI 模式】set_kpi 后 **首次** set_goal 须传 kpi_id；之后系统自动或你手动 set_goal 时仍传同一 kpi_id，' +
+        '会在**同一 workspace** 上 EXECUTE 下一小步并修正计划。',
       parameters: {
         type: 'object',
         properties: {
@@ -160,13 +161,13 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           },
           kpi_id: {
             type: 'string',
-            description: '（可选）关联的 KPI ID。同一 KPI 的多次 burst 共享反思 / 失败记忆。',
+            description:
+              '（可选）关联 KPI。同一 kpi_id **始终复用同一内脑 instance**；勿为同一 KPI 开多个 instance。',
           },
           peer_workspace_ids: {
             type: 'string',
             description:
-              '（可选）逗号分隔的 peer workspace_id，内脑可 read_peer_file 只读访问。' +
-              '留空则自动注入最近 5 个任务 workspace。',
+              '（可选）额外 peer workspace_id。挂 kpi_id 时默认同 KPI 全部 sibling workspace 互读；spawn 时只写 `.inbox/` 名字+摘要目录，正文用 read_peer_file 按需读取。',
           },
         },
         required: ['goal'],
@@ -769,26 +770,6 @@ async function execReplyToUser(
   return { replied: true, output: `已发送消息（${text.length} 字符${noteAttach}）${noteReject}` };
 }
 
-/** set_goal 时自动注入最近 N 个 peer workspace（只读），供内脑读上一轮产物 */
-function collectAutoPeerWorkspaceIds(
-  registry: InnerBrainRegistry,
-  excludeWorkspaceId: string,
-  limit = 5,
-): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  const rows = registry
-    .list()
-    .filter((r) => r.workspaceId !== excludeWorkspaceId && r.status !== 'ERROR')
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-  for (const r of rows) {
-    if (seen.has(r.workspaceId)) continue;
-    seen.add(r.workspaceId);
-    out.push(r.workspaceId);
-    if (out.length >= limit) break;
-  }
-  return out;
-}
 
 async function execSetGoal(
   args: {
@@ -814,16 +795,11 @@ async function execSetGoal(
 
   const registry = ctx.innerBrainRegistry;
 
-  // ── 多内脑模式：注册表存在时，每次 set_goal 创建独立 workspace ──────────
+  // ── 多内脑模式：KPI 复用 canonical instance；否则新建 workspace ──────────
   if (registry) {
-    const instanceId = registry.generateInstanceId();
-    const wsId = `task-${instanceId}`;
-    ctx.workspaceStore.ensureWorkspace(wsId);
-    const workDir = path.join(ctx.dataRoot, 'workspaces', wsId);
     const originUser = args.origin_user?.trim() || ctx.inboundHumanSid || ctx.agentSid;
     const originThread = resolveTaskOriginThread(args.origin_thread, ctx.threadId);
 
-    // KPI 关联（可选）：校验 kpi_id 有效再挂；无效则忽略不报错，避免误用阻塞任务派发
     const kpiId = args.kpi_id?.trim() || undefined;
     const kpi = kpiId && ctx.kpiRegistry ? ctx.kpiRegistry.get(kpiId) : null;
     if (kpiId && !kpi) {
@@ -831,16 +807,41 @@ async function execSetGoal(
     }
     const resolvedKpiId = kpi ? kpi.kpiId : undefined;
 
-    // 运行槽位：仅 RUNNING 计数；AWAITING 不计入。IM 用户直派不限槽位。
-    if (!ctx.inboundHumanSid) {
-      const cap = checkRunningInnerBrainCapacity(registry, ctx.dataRoot);
-      if (!cap.ok) {
-        const live = resolvedKpiId ? findLiveBurstForKpi(registry, resolvedKpiId) : undefined;
+    // 同 KPI 在途 → 禁止并行（含 IM 直派）
+    if (resolvedKpiId) {
+      const live = findLiveBurstForKpi(registry, resolvedKpiId);
+      if (live) {
         return {
           replied: false,
           output:
-            `（${cap.reason}，本次 set_goal 跳过` +
-            `${live ? `；同 KPI 在途 burst \`${live.instanceId}\`（${live.status}）` : ''}）`,
+            `（同 KPI 在途内脑 \`${live.instanceId}\`（${live.status}），` +
+            `禁止为同一目标并行开多个内脑；请 read_inner_status / send_directive）`,
+        };
+      }
+    }
+
+    const canonical =
+      resolvedKpiId && ctx.kpiRegistry
+        ? findCanonicalBurstForKpi(registry, ctx.kpiRegistry, resolvedKpiId)
+        : undefined;
+    const reusingCanonical = Boolean(canonical);
+
+    const instanceId = reusingCanonical ? canonical!.instanceId : registry.generateInstanceId();
+    const wsId = reusingCanonical ? canonical!.workspaceId : `task-${instanceId}`;
+    if (!reusingCanonical) {
+      ctx.workspaceStore.ensureWorkspace(wsId);
+    }
+    const workDir = reusingCanonical
+      ? canonical!.workDir
+      : path.join(ctx.dataRoot, 'workspaces', wsId);
+
+    // 运行槽位：仅 RUNNING 计数；续跑不占新槽。IM 直派不限槽位。
+    if (!ctx.inboundHumanSid && !reusingCanonical) {
+      const cap = checkRunningInnerBrainCapacity(registry, ctx.dataRoot);
+      if (!cap.ok) {
+        return {
+          replied: false,
+          output: `（${cap.reason}，本次 set_goal 跳过）`,
         };
       }
     }
@@ -874,12 +875,22 @@ async function execSetGoal(
       ?.split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    const peerWorkspaceIds =
-      explicitPeers && explicitPeers.length > 0
-        ? explicitPeers
-        : collectAutoPeerWorkspaceIds(registry, wsId, 5);
+    const peerWorkspaceIds = collectPeerWorkspaceIds({
+      registry,
+      excludeWorkspaceId: wsId,
+      explicitPeerIds: explicitPeers,
+      kpiId: resolvedKpiId,
+      kpiRegistry: ctx.kpiRegistry,
+    });
 
-    // 注册任务（先注册再 spawn，确保 exit handler 能访问到记录）
+    if (peerWorkspaceIds.length > 0) {
+      const catalogResult = prepareKpiPeerHandoff(workDir, workspacesRoot, registry, peerWorkspaceIds);
+      console.log(
+        `[utlra][outer-tools] kpi peers: ${catalogResult.peerWorkspaceIds.join(', ')} → ${wsId}` +
+          (catalogResult.fileCount > 0 ? ` (${catalogResult.fileCount} catalog entries)` : ''),
+      );
+    }
+
     const taskRecord: TaskRecord = {
       instanceId,
       workspaceId: wsId,
@@ -888,12 +899,29 @@ async function execSetGoal(
       originUser,
       originThread,
       status: 'RUNNING',
-      startedAt: new Date().toISOString(),
+      startedAt: reusingCanonical ? (canonical!.startedAt ?? new Date().toISOString()) : new Date().toISOString(),
       ...(resolvedKpiId ? { kpiId: resolvedKpiId } : {}),
+      isReflexionBurst: false,
     };
-    registry.register(taskRecord);
-    if (resolvedKpiId && ctx.kpiRegistry) {
-      ctx.kpiRegistry.attachBurst(resolvedKpiId, instanceId);
+
+    if (reusingCanonical) {
+      registry.update(instanceId, {
+        goal: dispatchGoal,
+        originUser,
+        originThread,
+        status: 'RUNNING',
+        finishedAt: undefined,
+        pid: undefined,
+        errorMessage: undefined,
+        lastTickAt: undefined,
+        isReflexionBurst: false,
+      });
+      fs.writeFileSync(path.join(workDir, '.brain', 'goal.md'), dispatchGoal, 'utf8');
+    } else {
+      registry.register(taskRecord);
+      if (resolvedKpiId && ctx.kpiRegistry) {
+        ctx.kpiRegistry.attachBurst(resolvedKpiId, instanceId);
+      }
     }
 
     // ── 以独立子进程启动内脑，实现进程级隔离 ────────────────────────────────
@@ -1049,7 +1077,9 @@ async function execSetGoal(
 
     return {
       replied: false,
-      output: `已创建新内脑实例并启动任务。instance_id=${instanceId}，workspace=${wsId}。可用 list_inner_brains 查看状态，send_directive 发送补充指令。`,
+      output: reusingCanonical
+        ? `已在既有内脑实例上续跑。instance_id=${instanceId}，workspace=${wsId}（同一 KPI 目标，禁止多开）。`
+        : `已创建新内脑实例并启动任务。instance_id=${instanceId}，workspace=${wsId}。可用 list_inner_brains 查看状态，send_directive 发送补充指令。`,
     };
   }
 

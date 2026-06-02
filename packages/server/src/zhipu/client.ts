@@ -15,7 +15,7 @@ export async function zhipuChatCompletion(opts: ZhipuChatOptions): Promise<{ con
     provider: 'zhipu',
     apiKey: opts.apiKey,
     baseUrl: opts.baseUrl,
-    usageMeta: { source: 'inner_llm_step', model: opts.model, provider: 'zhipu' },
+    usageMeta: { source: 'inner_llm_step', model: opts.model, provider: 'zhipu', ...opts.usageMeta },
     body: {
       model: opts.model,
       messages: opts.messages,

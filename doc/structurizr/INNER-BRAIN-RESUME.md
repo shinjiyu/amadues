@@ -104,9 +104,26 @@ agentServer 进程 load (index.ts)
 
 | 层级 | 位置 |
 |------|------|
-| 单元 | `inner-brain-registry.test.ts`（markStale）；`inner-brain-startup-resume.test.ts`（resume 策略） |
+| 单元 | `inner-brain-registry.test.ts`（markStale）；`inner-brain-startup-resume.test.ts`（resume 策略）；`inner-brain-restart-policy.test.ts`（dead RUNNING restart）；`dyflow-inspector.test.ts` |
 | 组件集成 | `innerBrainStartupResume.component.integration.test.ts`（磁盘持久化 + mock spawn） |
 | 子进程 live | `spawn-inner-worker-live.integration.test.ts`（可选 `UTLRA_TEST_SPAWN_INNER=1`） |
+
+---
+
+## DyFlow 续跑（`INNER_BRAIN_ENGINE=dyflow`）
+
+手动 / 冷启动 respawn 时，worker 读 **同一 workDir** 下：
+
+| 文件 | 续跑用途 |
+|------|----------|
+| `.brain/dyflow-state.json` | `mode`（DESIGN / RUN / …） |
+| `.brain/memory.json` | `node_results`、`last_failure`、`facts` |
+| `.brain/local_dag.json` | 当前轮 DAG（RUN 中可能存在） |
+| `.brain/local_nodes/` | preset + 已 pack 节点 |
+
+**API（2026-06-02）**：`POST /api/inner-brains/:id/restart` 在 **RUNNING 且 pid 已死** 时返回 **200**（非 409），与列表 `liveness=dead` 及 Dashboard「续跑」一致。实现：`outer/inner-brain-restart-policy.ts`。
+
+**可视化**：`GET /api/inner/:ws/brain-inspector` 在 DyFlow workDir 下附带 `engine=dyflow` + `dyflow` 快照；内脑池列表含 `dyflow_mode` / `dyflow_dag_nodes` / `dyflow_failure`。
 
 ---
 
@@ -116,3 +133,4 @@ agentServer 进程 load (index.ts)
 |------|------|
 | 2026-05-21 | 初版：补 ADL 组件 `innerBrainStartupResume`、L3 边、本文档（实现已存在于 index.ts，此前 DSL 未描述） |
 | 2026-05-27 | 链出 AWAITING 专篇；启动序增加 reconcile；区分 RUNNING resume 与 AWAITING 收口 |
+| 2026-06-02 | DyFlow 续跑文件表；dead RUNNING restart 200；brain-inspector / 列表 dyflow 字段 |

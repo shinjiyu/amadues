@@ -2,6 +2,8 @@
 
 > **English:** Inner bursts pause in **AWAITING** when `pendings.json` waits on timers or humans. Recovery is **not** only `changeWatcher` polling: it requires **registry↔workspace reconciliation**, **deterministic IM resolve**, and **startup bootstrap**. Complements [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md) (RUNNING on agent restart).
 
+> **配套层**：本文管「**该醒怎么醒**」；战略层 [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) 管「**该死怎么死**」（`staleBurstReaper` 处理战略变更 cull + `maxAwaitingMs` 静态兜底）。两者**互补无重叠**：本文 §5–§6 的 `awaitingInboundResolver` / `registryLifecycleReconcile` / `changeWatcher` 与新增 `staleBurstReaper` 边界见 STRATEGY §9.2。
+
 与 [`doc/agent-data-state-machine.md`](../agent-data-state-machine.md) §4–§6 一致；本文档补齐此前 ADL/宪法未写清的 **registry 终态** 与 **用户回复必达** 路径。
 
 **状态**：设计已定稿（2026-05-27）· **实现**：待按 P0→P2 落地（见 §8）

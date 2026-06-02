@@ -1,5 +1,7 @@
 /** OpenAI 兼容 messages（智谱 v4 chat/completions） */
 
+import type { LlmUsageRecordMeta } from '../outer/llm-usage-types.js';
+
 export type TextPart = { type: 'text'; text: string };
 export type ImagePart = { type: 'image_url'; image_url: { url: string } };
 
@@ -19,6 +21,7 @@ export interface ZhipuChatOptions {
   temperature?: number;
   /** 编码套餐/省 token：建议 disabled */
   thinking: 'enabled' | 'disabled';
+  usageMeta?: Partial<LlmUsageRecordMeta>;
 }
 
 export function normalizeBaseUrl(url: string): string {

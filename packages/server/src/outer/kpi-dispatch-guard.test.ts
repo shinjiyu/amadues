@@ -44,7 +44,7 @@ describe('evaluateKpiAutonomyDispatch', () => {
     expect(d.reason).toBe('first_burst');
   });
 
-  it('有 RUNNING burst 时仍允许并行派发（容量由 canSpawnInner 把关）', () => {
+  it('有 RUNNING burst 时拒绝并行派发（kpi_burst_in_flight）', () => {
     setup();
     const kpiId = kpiRegistry.create({
       description: 'test kpi',
@@ -57,12 +57,12 @@ describe('evaluateKpiAutonomyDispatch', () => {
       status: 'RUNNING',
     });
     const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
-    expect(d.ok).toBe(true);
-    expect(d.reason).toBe('parallel_next_burst');
+    expect(d.ok).toBe(false);
+    expect(d.reason).toBe('kpi_burst_in_flight');
     expect(d.liveInstanceId).toBe('ib-live');
   });
 
-  it('有 AWAITING burst 时仍允许并行派发不重复任务', () => {
+  it('有 AWAITING burst 时拒绝并行派发', () => {
     setup();
     const kpiId = kpiRegistry.create({
       description: 'test kpi',
@@ -75,8 +75,8 @@ describe('evaluateKpiAutonomyDispatch', () => {
       status: 'AWAITING',
     });
     const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
-    expect(d.ok).toBe(true);
-    expect(d.reason).toBe('parallel_next_burst');
+    expect(d.ok).toBe(false);
+    expect(d.reason).toBe('kpi_burst_in_flight');
   });
 
   it('ERROR 后有 deliverable、idle streak=1 时允许续派', () => {

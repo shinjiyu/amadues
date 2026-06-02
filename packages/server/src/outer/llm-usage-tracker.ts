@@ -56,16 +56,23 @@ export function endLlmCall(): void {
 export function recordLlmUsageFromResponse(
   raw: unknown,
   meta: Partial<LlmUsageRecordMeta> = {},
-  opts: { ok?: boolean; durationMs?: number } = {},
+  opts: { ok?: boolean; durationMs?: number; recordWithoutUsage?: boolean } = {},
 ): void {
-  const parsed = parseLlmUsageFromResponse(raw);
-  if (!parsed) return;
+  const parsed = raw != null ? parseLlmUsageFromResponse(raw) : null;
+  if (!parsed && !opts.recordWithoutUsage) return;
+
+  const tokens = parsed ?? {
+    promptTokens: 0,
+    completionTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+  };
 
   prune();
   samples.push({
     at: Date.now(),
-    prompt: parsed.promptTokens,
-    completion: parsed.completionTokens,
+    prompt: tokens.promptTokens,
+    completion: tokens.completionTokens,
   });
 
   const cfg = resolveJournalConfig();
@@ -87,10 +94,10 @@ export function recordLlmUsageFromResponse(
     workspaceId: meta.workspaceId,
     instanceId: meta.instanceId,
     threadId: meta.threadId,
-    promptTokens: parsed.promptTokens,
-    completionTokens: parsed.completionTokens,
-    reasoningTokens: parsed.reasoningTokens,
-    totalTokens: parsed.totalTokens,
+    promptTokens: tokens.promptTokens,
+    completionTokens: tokens.completionTokens,
+    reasoningTokens: tokens.reasoningTokens,
+    totalTokens: tokens.totalTokens,
     ok: opts.ok ?? true,
     durationMs: opts.durationMs,
   });

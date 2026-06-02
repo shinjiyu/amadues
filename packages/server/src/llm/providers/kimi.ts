@@ -20,7 +20,7 @@ export async function kimiProviderChatCompletion(
     provider: 'kimi',
     apiKey: opts.apiKey,
     baseUrl: opts.baseUrl,
-    usageMeta: { source: 'inner_llm_step', model: opts.model, provider: 'kimi' },
+    usageMeta: { source: 'inner_llm_step', model: opts.model, provider: 'kimi', ...opts.usageMeta },
     body: {
       model: opts.model,
       messages: opts.messages,

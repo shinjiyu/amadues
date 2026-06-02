@@ -17,7 +17,7 @@ export async function localmoduleProviderChatCompletion(
     provider: 'localmodule',
     apiKey: opts.apiKey,
     baseUrl: opts.baseUrl,
-    usageMeta: { source: 'inner_llm_step', model: opts.model, provider: 'localmodule' },
+    usageMeta: { source: 'inner_llm_step', model: opts.model, provider: 'localmodule', ...opts.usageMeta },
     body: {
       model: opts.model,
       messages: opts.messages,

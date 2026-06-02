@@ -12,6 +12,12 @@
 | [`outer-brain-web-search-tool.md`](./outer-brain-web-search-tool.md) | **待实现** | 外脑专用 Web Search 工具（与内脑 playwright 分离） |
 | [`resource-awareness-autonomy.md`](./resource-awareness-autonomy.md) | **ADL 已定稿** | 资源感知 + 心跳闲忙判定 + 自主任务（闲聊 / KPI 内脑 goal） |
 | [`chat-ir-presence-typing.md`](./chat-ir-presence-typing.md) | **typing 已完成** | 「正在输入中」全链路：协议 state(start/stop) → chat-server relay/REST → bridge sendActivity → 外脑回复期 typing/idle → web-chat 指示器。presence 在线态待补 |
+| [`inner-brain-exec-kill-resume-stuck.md`](./inner-brain-exec-kill-resume-stuck.md) | **待实现** | EXECUTE/shell_exec 中被杀 → 重启卡住：RUNNING 僵尸行、restart 409、bg job 内存丢失；方案见专篇 |
+| [`framework-benchmark-token-baseline.md`](./framework-benchmark-token-baseline.md) | **可选/CI** | FakeLLM 机制回归；**真实调优见 task-run-observability** |
+| [`task-run-observability.md`](./task-run-observability.md) | **方案已定** | 真实环境大任务：RunReport + export/analyze/compare；标定 novel + pokemon |
+| [`dyflow-node-promotion-tuning.md`](./dyflow-node-promotion-tuning.md) | **待调优** | Creator pack / drive9 提升：bot2 首跑未触发，Designer 策略可能需强引导 |
+| [`dyflow-tool-promotion.md`](./dyflow-tool-promotion.md) | **T0 已实现** | 工具晋升：固化三层 facts/LocalNode/**Tool**；`register_workspace_script_tool`（ws_*）；T1/T2 待办 |
+| [`dyflow-inner-brain-restart-resume.md`](./dyflow-inner-brain-restart-resume.md) | **待验证** | 内脑随意重启（resume/restart 已实现）；DyFlow 持久化续跑 + 与 exec-kill 409 对齐 |
 
 **已实现（非 backlog）**：Dashboard **参与策略 Lab** — 外脑「是否回复/插嘴」策略调试台，见下文说明。
 

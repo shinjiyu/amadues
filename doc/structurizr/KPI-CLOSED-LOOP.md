@@ -13,20 +13,21 @@
 
 ```text
 1. 外脑 set_kpi                    → kpiRegistry
-2. 外脑 set_goal(kpi_id)           → 注入 formatKpiReflexionBlock + innerBrainRegistry + innerSpawner
+2. 外脑 set_goal(kpi_id)           → 首次创建 canonical instance；后续 **复用同一 instance/workDir** 续跑
 3. 子进程 INNER_KPI_ID             → controller.kpiId
 4. burst 结束 safeArchive          → runReflexion → reflexion.json → archive(kpiId, reflexion)
 5. 外脑 onExit processBurstExitForKpi → appendReflexion + idle streak
 6. streak≥3                        → scheduleReflexionBurst (meta)
 7. meta onExit + AUTO_NEXT_BURST   → scheduleNextKpiBurst (真任务)
 8. 下一轮 decomposer               → knowledgeStore.retrieve(goal, { kpiId })
+9. 心跳 kpiCompletionJudge.sweep   → active 且条件满足 → achieved（见 KPI-COMPLETION-JUDGE.md）
 ```
 
 ## 数据文件
 
 | 路径 | 角色 |
 |------|------|
-| `data/kpi-registry.json` | KPI 元数据、bursts[]、reflexionTrail[]、idleStreak |
+| `data/kpi-registry.json` | KPI 元数据、bursts[]（canonical id 列表，续跑不追加新 id）、reflexionTrail[]、idleStreak |
 | `<workDir>/.brain/reflexion.json` | 单次 burst 结构化反思（onExit 读取） |
 | `~/.openkuroneko/knowledge-base/sessions/` | 带 kpiId + reflexion 的归档 |
 
@@ -38,3 +39,16 @@
 | `UTLRA_KPI_REFLEXION_MAX_TICKS` | `20` | meta burst max_ticks |
 | `UTLRA_KPI_AUTO_NEXT_BURST` | `0` | `1` = meta 结束后自动派真任务 |
 | `UTLRA_REFLEXION_TEMPERATURE` | `0.4` | runReflexion LLM 温度 |
+
+单实例复用详见 [`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md)。
+
+## 外脑心跳在闭环中的角色
+
+心跳（[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)）消费本闭环的 **reflexionTrail / idleStreak / deliverables**，负责：
+
+- **宏观战略**（[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)）：**WHY** 还推哪些 KPI + **HOW** focusOrder/下一角度——**不受质控层替代**；
+- **质控**：burst 是否在向 KPI 实质靠近（非 milestone 级 Attributor 验收）；
+- **KPI 完成判定**：[`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) — sweep + achieve_kpi；
+- **干预**：idle streak → meta reflexion；真 stuck → reap/restart（部分 ⏳ 见专篇 §4）。
+
+勿与 **Attributor CONTINUE**（单 tick 增量靠近）混淆：内脑可以慢，外脑用 streak + liveness 判断「慢但有效」vs「卡死」。

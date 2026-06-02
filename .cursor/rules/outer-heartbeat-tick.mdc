@@ -1,0 +1,64 @@
+---
+description: 外脑心跳 tick 职责 — 战略 WHY+HOW、KPI 完成判定、内脑质控（改 heartbeat/KPI 调度必读）
+globs:
+  - packages/server/src/outer/outer-heartbeat.ts
+  - packages/server/src/outer/kpi-completion-judge.ts
+  - packages/server/src/outer/kpi-progress.ts
+  - packages/server/src/outer/kpi-dispatch-guard.ts
+  - packages/server/src/outer/autonomy-*.ts
+  - packages/server/src/outer/strategy/**
+  - doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md
+  - doc/structurizr/KPI-COMPLETION-JUDGE.md
+  - doc/structurizr/STRATEGY-PLANNING-LAYER.md
+alwaysApply: false
+---
+
+# 外脑心跳 tick（ADL 权威）
+
+改 `outerHeartbeat` / autonomy / KPI 调度前，**先读** Structurizr 专篇，再动代码。
+
+## ADL 专篇（必须同步）
+
+| 文档 | 职责 |
+|------|------|
+| [`STRATEGY-PLANNING-LAYER.md`](doc/structurizr/STRATEGY-PLANNING-LAYER.md) | 宏观战略 **WHY+HOW**；`strategyPlanner`；**不可**被质控替代 |
+| [`OUTER-HEARTBEAT-OVERSIGHT.md`](doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md) | 质控：验收 burst 效果、卡死/restart |
+| [`KPI-COMPLETION-JUDGE.md`](doc/structurizr/KPI-COMPLETION-JUDGE.md) | **KPI 完成判定**：`sweep` / `achieve_kpi` |
+
+Structurizr：`components/agent-server.dsl`（`outerHeartbeat`、`kpiCompletionJudge`、`strategyPlanner`）+ `workspace.dsl` 边与视图 `11`/`13`。
+
+## 单 tick 顺序（硬约束）
+
+```text
+死亡检测
+→ kpiCompletionJudge.sweep（派活前结案 active KPI）
+→ resourceProbe + autonomyJudge
+→ strategyPlanner（WHY+HOW，事件驱动）
+→ 质控（liveness / deliverable 趋势）
+→ staleBurstReaper
+→ dispatch / legacy runHeartbeat
+```
+
+## 三层勿混
+
+| 层 | 判什么 |
+|----|--------|
+| Milestone | 内脑 Attributor |
+| Burst | `is_post_complete`、deliverables |
+| **KPI** | `registry.status=achieved`；规则见 `suggestKpiAction` + [`KPI-COMPLETION-JUDGE.md`](doc/structurizr/KPI-COMPLETION-JUDGE.md) |
+
+监督类 / 未 post_complete → **不** auto achieved。
+
+## 改代码时的检查清单
+
+- [ ] 动 tick 顺序 → 更新 `OUTER-HEARTBEAT-OVERSIGHT.md` §0 + `workspace.dsl` 边
+- [ ] 动 KPI 结案规则 → 更新 `KPI-COMPLETION-JUDGE.md` + `kpi-progress.ts` + `kpi-completion-judge.test.ts`
+- [ ] 动战略/schema → 更新 `STRATEGY-PLANNING-LAYER.md` + `strategyPlanner` 测项
+- [ ] 更新 `modules-catalog.md`、`COMPONENT-TEST-MAP.md`
+- [ ] 心跳 prompt 与 ADL 一致（`buildHeartbeatSystemPrompt`）
+
+## 禁止
+
+- 用质控（liveness/deliverable）**替代**战略 WHY（值不值得推、KPI 是否该 achieved）
+- 跳过 Structurizr 只改 `outer-heartbeat.ts` prompt
+- 对已 `achieved` KPI 再 `set_goal`
