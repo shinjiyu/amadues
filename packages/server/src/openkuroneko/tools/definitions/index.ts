@@ -29,8 +29,4 @@ export {
   brainDirFromWorkDir,
 } from './async-wait.js';
 export { verifySelfUpdateTool, rollbackSelfUpdateTool, readSelfUpdatePlanTool } from './self-update.js';
-// Attributor 专用工具
-export { writeConstraintTool } from './write-constraint.js';
-export { writeSkillTool } from './write-skill.js';
-export { writeKnowledgeTool } from './write-knowledge.js';
 export { writeMemoTool } from './write-memo.js';

@@ -39,11 +39,6 @@ export {
 } from './require-llm.js';
 export { createLlmAdapterForPrompt } from './create-llm-adapter-for-prompt.js';
 export {
-  burstScriptMilestones,
-  createControllerHarness,
-  type ControllerHarness,
-} from './controller-fixture.js';
-export {
   createOuterBrainFixture,
   type OuterBrainFixture,
 } from './outer-brain-fixture.js';

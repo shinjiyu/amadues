@@ -348,7 +348,25 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.innerBrainRegistry "register / list / stop" "in-process" {
             tags "import"
         }
-        kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.innerSpawner "set_goal → spawn worker" "child_process" {
+        kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.innerBrainKpiReuse "set_goal(kpi_id): findCanonical / reuse workDir" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.workspaceInbox "set_goal: prepareKpiPeerHandoff（peer ids + .inbox catalog）" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.workspaceInbox -> kuroneko.agentServer.innerBrainRegistry "list/get sibling TaskRecord" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.workspaceInbox -> kuroneko.agentServer.kpiRegistry "kpi.bursts → workspace ids" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.innerBrainKpiReuse -> kuroneko.agentServer.innerBrainRegistry "get / update canonical TaskRecord" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.innerBrainKpiReuse -> kuroneko.agentServer.kpiRegistry "kpi.bursts → canonical instanceId" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.innerSpawner "set_goal → spawn worker（新建或续跑 canonical）" "child_process" {
             tags "spawn"
         }
         kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.completionNotify "onExit DONE → 通知用户" "in-process" {
@@ -394,8 +412,11 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.kpiBurstHooks -> kuroneko.agentServer.kpiRegistry "更新 trail / idle" "in-process" {
             tags "import"
         }
-        kuroneko.agentServer.kpiBurstHooks -> kuroneko.agentServer.innerSpawner "scheduleReflexionBurst / scheduleNextKpiBurst" "in-process" {
+        kuroneko.agentServer.kpiBurstHooks -> kuroneko.agentServer.innerSpawner "scheduleReflexion/Next → spawn canonical（index + innerBrainKpiReuse）" "in-process" {
             tags "spawn"
+        }
+        kuroneko.agentServer.kpiBurstHooks -> kuroneko.agentServer.innerBrainKpiReuse "schedule* 经 index 调 patchCanonical" "in-process" {
+            tags "import"
         }
         kuroneko.agentServer.pushLoop -> kuroneko.agentServer.innerBrainRegistry "list RUNNING/BLOCKED/AWAITING" "in-process" {
             tags "import"
@@ -405,50 +426,100 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.innerWorker.workerHost -> kuroneko.innerWorker.piMonoScheduler "run-tick" "in-process" {
             tags "import"
         }
+        kuroneko.innerWorker.piMonoScheduler -> kuroneko.innerWorker.workdirGuard "setWorkDirGuard + setPeerWorkspaces" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.innerFileTools -> kuroneko.innerWorker.workdirGuard "path security check" "in-process" {
+            tags "import"
+        }
         kuroneko.innerWorker.piMonoScheduler -> kuroneko.innerWorker.controllerFsm "tick()" "in-process" {
             tags "import"
         }
-        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.decomposer "mode=DECOMPOSE" "in-process" {
+
+        // ── DyFlow engine ────────────────────────────────────────────────
+        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.designer "mode=DESIGN" "in-process" {
             tags "import"
         }
-        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.executor "mode=EXECUTE" "in-process" {
+        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.runner "mode=RUN" "in-process" {
             tags "import"
         }
-        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.attributor "mode=ATTRIBUTE" "in-process" {
+        kuroneko.innerWorker.designer -> kuroneko.innerWorker.designerToolRegistry "tools allowlist" "in-process" {
             tags "import"
         }
-        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.blockResolver "mode=BLOCKED" "in-process" {
+        kuroneko.innerWorker.designer -> kuroneko.innerWorker.memoryStore "read goal/last_failure/facts/constraints" "in-process" {
             tags "import"
         }
-        kuroneko.innerWorker.blockResolver -> kuroneko.innerWorker.brainFs "directives / mode" "file" {
-            tags "file"
-        }
-        kuroneko.innerWorker.decomposer -> kuroneko.innerWorker.brainFs "写 milestones" "file" {
-            tags "file"
-        }
-        kuroneko.innerWorker.executor -> kuroneko.innerWorker.brainFs "execution-context" "file" {
-            tags "file"
-        }
-        kuroneko.innerWorker.attributor -> kuroneko.innerWorker.brainFs "K/S/P constraints" "file" {
-            tags "file"
-        }
-        kuroneko.innerWorker.reflexionModule -> kuroneko.innerWorker.brainFs "reflexion.json" "file" {
-            tags "file"
-        }
-        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.reflexionModule "safeArchive → runReflexion" "in-process" {
+        kuroneko.innerWorker.designer -> kuroneko.innerWorker.localNodeStore "list / read LocalNode" "in-process" {
             tags "import"
         }
-        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.archiveStore "archive(kpiId, reflexion)" "in-process" {
-            tags "import"
-        }
-        kuroneko.innerWorker.reflexionModule -> kuroneko.innerWorker.archiveStore "session meta + reflexion" "in-process" {
-            tags "import"
-        }
-        kuroneko.innerWorker.decomposer -> kuroneko.innerWorker.archiveStore "retrieve(goal, { kpiId })" "in-process" {
-            tags "import"
-        }
-        kuroneko.innerWorker.reflexionModule -> kuroneko.agentServer.llmGateway "复盘 LLM" "HTTPS" {
+        kuroneko.innerWorker.designer -> kuroneko.agentServer.llmGateway "DESIGN LLM" "HTTPS" {
             tags "http"
+        }
+        kuroneko.innerWorker.runner -> kuroneko.innerWorker.baseNodeExecutor "dispatch baseNode" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.runner -> kuroneko.innerWorker.nodeCreatorExecutor "dispatch nodeCreator" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.runner -> kuroneko.innerWorker.localNodeStore "resolve ref → LocalNode" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.runner -> kuroneko.innerWorker.memoryStore "write node_results / last_failure" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.baseNodeExecutor -> kuroneko.innerWorker.innerFileTools "RUN tool_calls" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.baseNodeExecutor -> kuroneko.agentServer.llmGateway "ReAct LLM" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.innerWorker.nodeCreatorExecutor -> kuroneko.agentServer.llmGateway "pack/specialize LLM" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.innerWorker.nodeCreatorExecutor -> kuroneko.innerWorker.localNodeStore "commit_local_node" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.nodeCreatorExecutor -> kuroneko.innerWorker.nodeAbstractor "fire-and-forget on commit" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.nodeAbstractor -> kuroneko.agentServer.llmGateway "placeholder 推断 LLM" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.innerWorker.nodeAbstractor -> kuroneko.agentServer.nodeDefDrive9Store "put NodeDef + index" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.innerWorker.nodeAssembler -> kuroneko.agentServer.llmGateway "binding 推断 LLM" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.innerWorker.nodeAssembler -> kuroneko.innerWorker.localNodeStore "commit imported LocalNode" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.designerToolRegistry -> kuroneko.innerWorker.nodeAssembler "search_and_instance 内循环" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.designerToolRegistry -> kuroneko.agentServer.nodeDefDrive9Store "search NodeDef catalog" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.innerWorker.designerToolRegistry -> kuroneko.innerWorker.localNodeStore "list / read" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.designerToolRegistry -> kuroneko.innerWorker.memoryStore "read / report_done" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.workerHost -> kuroneko.innerWorker.presetSeeder "首次 spawn 注入 preset/*" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.presetSeeder -> kuroneko.innerWorker.localNodeStore "write preset LocalNode" "file" {
+            tags "file"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.nodeDefEviction "tick sweep（P2）" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.nodeDefEviction -> kuroneko.agentServer.nodeDefDrive9Store "list/tombstone NodeDef" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.archiveStore "archive(kpiId)" "in-process" {
+            tags "import"
         }
         kuroneko.innerWorker.brainFs -> kuroneko.agentServer.kpiBurstHooks "readReflexionFromWorkspace" "file" {
             tags "file"
@@ -464,6 +535,15 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
 
         // ── L3 外脑：心跳 / 资源感知 / 自主调度 ─────────────────
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.kpiCompletionJudge "tick sweepKpiCompletions + digest" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.kpiCompletionJudge -> kuroneko.agentServer.kpiRegistry "markAchieved / list active" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.kpiCompletionJudge -> kuroneko.agentServer.innerBrainRegistry "buildKpiBurstLinks / live burst" "in-process" {
+            tags "import"
+        }
         kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.resourceProbe "collect ResourceSnapshot" "in-process" {
             tags "import"
         }
@@ -521,6 +601,76 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.agentPersonality "read/update_personality" "in-process" {
             tags "import"
         }
+
+        // ── L3 外脑：环境模型（P1 起替代 resourceProbe） ─────────────
+        kuroneko.agentServer.environmentSensorRegistry -> kuroneko.agentServer.innerBrainRegistry "innerBrains sensor read" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.environmentSensorRegistry -> kuroneko.agentServer.llmUsageJournal "llmUsage sensor read" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.environmentSensorRegistry -> kuroneko.agentServer.threadOrchestrator "inbound sensor read" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.environmentSensorRegistry -> kuroneko.agentServer.environmentChangeDetector "diff + derive + detectEvents" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.environmentChangeDetector -> kuroneko.agentServer.environmentJournal "ring + events + hourly" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.environmentJournal -> kuroneko.agentServer.environmentJournal "rotate events.jsonl / hourly.jsonl" "file" {
+            tags "file"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.environmentSensorRegistry "P1 collect EnvironmentSnapshot" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.autonomyJudge -> kuroneko.agentServer.environmentSensorRegistry "P1 read EnvironmentSnapshot.facets" "in-process" {
+            tags "import"
+        }
+
+        // ── L3 外脑：战略规划层 ─────────────────────────────────────
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.strategyStore "loadCurrent + recentEvents" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.strategyPlanner "shouldReevaluate? planNext" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.staleBurstReaper "execute(cull + staleAwaitingPolicy) before dispatch" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.strategyPlanner -> kuroneko.agentServer.strategyStore "writeCurrent + appendJournal" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.strategyPlanner -> kuroneko.agentServer.environmentJournal "envEvents (unconsumed) + envHourly" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.strategyPlanner -> kuroneko.agentServer.kpiRegistry "kpis + reflexionTrail digest" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.strategyPlanner -> kuroneko.agentServer.performanceGoalEngine "scorecards" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.strategyPlanner -> kuroneko.agentServer.llmGateway "REFLECT+DESIGN LLM" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.agentServer.strategyPlanner -> kuroneko.agentServer.innerBrainRegistry "recentBursts + AWAITING list" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.staleBurstReaper -> kuroneko.agentServer.strategyStore "read cullDirectives + staleAwaitingPolicy" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.staleBurstReaper -> kuroneko.agentServer.innerBrainRegistry "ABORTED state migration" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.staleBurstReaper -> kuroneko.agentServer.awaitingInboundResolver "peekPendingMatch（避免杀正在收敛）" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.staleBurstReaper -> kuroneko.innerWorker.archiveStore "archive(workDir, abortReason)" "file" {
+            tags "file"
+        }
+        kuroneko.agentServer.autonomyTaskDispatcher -> kuroneko.agentServer.strategyStore "P1 read focusOrder（替代自由选 KPI）" "in-process" {
+            tags "import"
+        }
     }
 
     views {
@@ -568,12 +718,19 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "08-L3-Outer-Inner-Lifecycle" {
             title "L3 Outer — 内脑 spawn / 重启恢复 / AWAITING 对账 / 通知 / KPI"
-            include kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.brainAsyncSnapshot kuroneko.agentServer.registryLifecycleReconcile kuroneko.agentServer.innerBrainStartupResume kuroneko.agentServer.innerSpawner kuroneko.agentServer.changeWatcher kuroneko.agentServer.completionNotify kuroneko.agentServer.pushLoop kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiBurstHooks kuroneko.innerWorker.workerHost
+            include kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.innerBrainKpiReuse kuroneko.agentServer.workspaceInbox kuroneko.agentServer.brainAsyncSnapshot kuroneko.agentServer.registryLifecycleReconcile kuroneko.agentServer.innerBrainStartupResume kuroneko.agentServer.innerSpawner kuroneko.agentServer.changeWatcher kuroneko.agentServer.completionNotify kuroneko.agentServer.pushLoop kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiBurstHooks kuroneko.innerWorker.workerHost
             autolayout tb
         }
 
         component kuroneko.innerWorker "09-L3-Inner-Phases" {
-            include element.tag==Inner-Phase element.tag==Inner-Scheduler kuroneko.innerWorker.controllerFsm kuroneko.innerWorker.blockResolver kuroneko.innerWorker.brainFs kuroneko.innerWorker.archiveStore kuroneko.innerWorker.workerHost kuroneko.innerWorker.piMonoScheduler
+            title "L3 内脑 — DyFlow Phases (DESIGN/RUN/AWAITING/DONE)"
+            include element.tag==Inner-Phase element.tag==Inner-Scheduler element.tag==Inner-Tools kuroneko.innerWorker.controllerFsm kuroneko.innerWorker.brainFs kuroneko.innerWorker.archiveStore kuroneko.innerWorker.workerHost kuroneko.innerWorker.piMonoScheduler kuroneko.innerWorker.workdirGuard kuroneko.innerWorker.innerFileTools
+            autolayout tb
+        }
+
+        component kuroneko.innerWorker "09b-L3-Inner-DyFlow" {
+            title "L3 内脑 — DyFlow（designer/runner/baseNode/Creator + LocalNode/Memory + Abstractor/Assembler）"
+            include kuroneko.innerWorker.controllerFsm kuroneko.innerWorker.designer kuroneko.innerWorker.runner kuroneko.innerWorker.baseNodeExecutor kuroneko.innerWorker.nodeCreatorExecutor kuroneko.innerWorker.localNodeStore kuroneko.innerWorker.memoryStore kuroneko.innerWorker.designerToolRegistry kuroneko.innerWorker.presetSeeder kuroneko.innerWorker.nodeAbstractor kuroneko.innerWorker.nodeAssembler kuroneko.innerWorker.innerFileTools kuroneko.innerWorker.workerHost kuroneko.innerWorker.piMonoScheduler kuroneko.agentServer.llmGateway kuroneko.agentServer.nodeDefDrive9Store
             autolayout tb
         }
 
@@ -585,19 +742,31 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "10b-L3-Outer-KPI" {
             title "L3 外脑 — KPI 调度与 onExit"
-            include kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiBurstHooks kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.innerSpawner
-            autolayout tb
-        }
-
-        component kuroneko.innerWorker "10c-L3-Inner-Reflexion" {
-            title "L3 内脑 — safeArchive / reflexion / 归档"
-            include kuroneko.innerWorker.controllerFsm kuroneko.innerWorker.reflexionModule kuroneko.innerWorker.blockResolver kuroneko.innerWorker.archiveStore kuroneko.innerWorker.decomposer kuroneko.innerWorker.brainFs kuroneko.innerWorker.piMonoScheduler kuroneko.innerWorker.workerHost
+            include kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiBurstHooks kuroneko.agentServer.kpiCompletionJudge kuroneko.agentServer.innerBrainKpiReuse kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.workspaceInbox kuroneko.agentServer.innerSpawner
             autolayout tb
         }
 
         component kuroneko.agentServer "11-L3-Outer-Autonomy" {
-            title "L3 外脑 — 资源感知 / 心跳闲忙 / 自主任务"
-            include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.resourceProbe kuroneko.agentServer.llmUsageTracker kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.agentPersonality kuroneko.agentServer.autonomyJudge kuroneko.agentServer.autonomyTaskDispatcher kuroneko.agentServer.performanceGoalEngine kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.participationPolicy kuroneko.agentServer.kpiRegistry kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop
+            title "L3 外脑 — 心跳（KPI完成判定+质控+战略+自主调度）"
+            include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.kpiCompletionJudge kuroneko.agentServer.resourceProbe kuroneko.agentServer.llmUsageTracker kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.agentPersonality kuroneko.agentServer.autonomyJudge kuroneko.agentServer.autonomyTaskDispatcher kuroneko.agentServer.performanceGoalEngine kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.participationPolicy kuroneko.agentServer.kpiRegistry kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop
+            autolayout tb
+        }
+
+        component kuroneko.agentServer "12-L3-Outer-Environment" {
+            title "L3 外脑 — 环境模型（sensor registry / journal / change detector / 消费方）"
+            include kuroneko.agentServer.environmentSensorRegistry kuroneko.agentServer.environmentJournal kuroneko.agentServer.environmentChangeDetector kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.autonomyJudge kuroneko.agentServer.strategyPlanner kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.llmUsageJournal kuroneko.agentServer.threadOrchestrator
+            autolayout tb
+        }
+
+        component kuroneko.agentServer "13-L3-Outer-Strategy" {
+            title "L3 外脑 — 战略层（reflect/design + reaper + dispatch）"
+            include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.strategyStore kuroneko.agentServer.strategyPlanner kuroneko.agentServer.staleBurstReaper kuroneko.agentServer.autonomyTaskDispatcher kuroneko.agentServer.kpiRegistry kuroneko.agentServer.performanceGoalEngine kuroneko.agentServer.environmentJournal kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.llmGateway kuroneko.agentServer.outerToolExecutor kuroneko.innerWorker.archiveStore
+            autolayout tb
+        }
+
+        container kuroneko "14-L2-DyFlow-Node-Lifecycle" {
+            title "L2 DyFlow — LocalNode → NodeDef（drive9）共享 + eviction 治理"
+            include kuroneko.innerWorker kuroneko.agentServer drive9
             autolayout tb
         }
 

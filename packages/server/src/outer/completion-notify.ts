@@ -14,7 +14,7 @@ import {
   pickDeliverableExcerpt,
   pickImSummary,
   shortenMilestonesForReport,
-} from '../openkuroneko/controller/completion-report.js';
+} from '../openkuroneko/burst/completion-report.js';
 import { ingestDeliverables } from './deliverables-ingest.js';
 import type { AttachmentPart } from './attach-expand.js';
 

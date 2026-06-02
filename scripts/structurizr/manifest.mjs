@@ -66,12 +66,11 @@ export const L3_COMPONENTS = {
   innerWorker: [
     { id: 'workerHost', name: 'Worker Host', path: 'packages/server/src/pi-mono/inner-brain-worker.ts' },
     { id: 'piMonoScheduler', name: 'Pi-mono Scheduler', path: 'packages/server/src/pi-mono/run-tick.ts' },
-    { id: 'controllerFsm', name: 'Controller FSM', path: 'packages/server/src/openkuroneko/controller/controller.ts' },
-    { id: 'decomposer', name: 'Decomposer', path: 'packages/server/src/openkuroneko/controller/decomposer.ts' },
-    { id: 'executor', name: 'Executor', path: 'packages/server/src/openkuroneko/controller/executor.ts' },
-    { id: 'attributor', name: 'Attributor', path: 'packages/server/src/openkuroneko/controller/attributor.ts' },
-    { id: 'reflexionModule', name: 'Reflexion', path: 'packages/server/src/openkuroneko/controller/reflexion.ts' },
-    { id: 'blockResolver', name: 'Block Resolver', path: 'packages/server/src/openkuroneko/controller/block-resolver.ts' },
+    { id: 'controllerFsm', name: 'Controller FSM', path: 'packages/server/src/openkuroneko/inner-brain/controller.ts' },
+    { id: 'designer', name: 'Designer', path: 'packages/server/src/openkuroneko/inner-brain/designer.ts' },
+    { id: 'runner', name: 'Runner', path: 'packages/server/src/openkuroneko/inner-brain/runner.ts' },
+    { id: 'baseNodeExecutor', name: 'BaseNode Executor', path: 'packages/server/src/openkuroneko/inner-brain/base-node-executor.ts' },
+    { id: 'completionReport', name: 'Completion Report', path: 'packages/server/src/openkuroneko/burst/completion-report.ts' },
     { id: 'brainFs', name: 'Brain FS', path: 'packages/server/src/openkuroneko/brain/brain-fs.ts' },
     { id: 'archiveStore', name: 'Archive Store', path: 'packages/server/src/openkuroneko/archive/fs-store.ts' },
   ],
@@ -92,9 +91,9 @@ export const L3_RELATIONSHIPS = [
   ['agentServer', 'resourceProbe', 'innerBrainRegistry', 'import'],
   ['agentServer', 'resourceProbe', 'llmUsageTracker', 'import'],
   ['agentServer', 'llmUsageTracker', 'llmUsageJournal', 'import'],
-  ['innerWorker', 'controllerFsm', 'decomposer', 'import'],
-  ['innerWorker', 'controllerFsm', 'executor', 'import'],
-  ['innerWorker', 'controllerFsm', 'attributor', 'import'],
+  ['innerWorker', 'controllerFsm', 'designer', 'import'],
+  ['innerWorker', 'controllerFsm', 'runner', 'import'],
+  ['innerWorker', 'runner', 'baseNodeExecutor', 'import'],
 ];
 
 /**

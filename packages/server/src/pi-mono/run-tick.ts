@@ -8,21 +8,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { createController } from '../openkuroneko/controller/index.js';
+import { createDyflowController } from '../openkuroneko/inner-brain/index.js';
+import { createNodeDefDrive9Store } from '../drive9/node-def-drive9-store.js';
+import { Drive9Client } from '../drive9/drive9-client.js';
 import {
   createIORegistry,
   createFileInputEndpoint,
   createFileOutputEndpoint,
 } from '../openkuroneko/io/index.js';
-import { createMemoryLayer2 } from '../openkuroneko/memory/index.js';
-import { createMem0Client } from '../openkuroneko/mem0/index.js';
 import { createLogger } from '../openkuroneko/logger/index.js';
 import { createLocalModuleAdapter, createOpenAIAdapter } from '../openkuroneko/adapter/index.js';
 import { createToolRegistry } from '../openkuroneko/tools/index.js';
 import * as toolsDefs from '../openkuroneko/tools/definitions/index.js';
 import { createObSkillProvider } from '../openkuroneko/skills/provider.js';
 import { Drive9SkillProvider } from '../openkuroneko/skills/drive9-provider.js';
-import { createFilesystemStore } from '../openkuroneko/archive/index.js';
 import { loadInnerLlmEnvFromProcess } from '../llm/inner-llm-step.js';
 import { getSelfUpdateAllowedDirs } from '../self-update/session.js';
 import { resolveDrive9Config } from '../drive9/drive9-client.js';
@@ -80,8 +79,6 @@ async function createPiMonoController(params: {
   ioRegistry.registerInput(createFileInputEndpoint('default', inputPath));
   ioRegistry.registerOutput(createFileOutputEndpoint('default', outputPath));
 
-  const memory = createMemoryLayer2(tempDir);
-  const mem0 = createMem0Client();
   const logger = createLogger(params.workspaceId, tempDir);
 
   const primaryLlm = loadInnerLlmEnvFromProcess();
@@ -137,6 +134,7 @@ async function createPiMonoController(params: {
     toolsDefs.createQueryAvailableSkillsTool(skillProvider),
     toolsDefs.getSkillContentTool,
     toolsDefs.registerDeliverableTool,
+    toolsDefs.writeMemoTool,
     toolsDefs.askUserTool,
     toolsDefs.waitTimerTool,
     toolsDefs.waitSignalTool,
@@ -147,36 +145,38 @@ async function createPiMonoController(params: {
     toolsDefs.stopAgentTool,
   ]);
 
-  const attributorToolRegistry = createToolRegistry([
-    toolsDefs.writeConstraintTool,
-    toolsDefs.writeSkillTool,
-    toolsDefs.writeMemoTool,
-    toolsDefs.writeKnowledgeTool,
-  ]);
-
-  const knowledgeStore = createFilesystemStore();
-
   const innerKpiId = process.env['INNER_KPI_ID']?.trim() || undefined;
 
-  const controller = createController(
-    {
-      agentId: params.workspaceId,
-      workDir: params.workDir,
-      tempDir,
-      kpiId: innerKpiId,
-    },
+  // 内脑引擎：DyFlow（Designer/Runner）。legacy 三件套已删除。
+  // ADL：doc/structurizr/DYFLOW-INNER-EXECUTOR.md
+  const burstId = process.env['INNER_BURST_ID']?.trim() || innerKpiId || params.workspaceId;
+
+  // P1：drive9 配置存在时启用节点共享（Designer search_and_instance + creator 自动导出）
+  const nodeSharing = drive9Config
+    ? {
+        defStore: createNodeDefDrive9Store(
+          new Drive9Client({ apiKey: drive9Config.apiKey, apiUrl: drive9Config.apiUrl }),
+        ),
+        sourceAgent: params.workspaceId,
+        env: { workDir: params.workDir },
+      }
+    : undefined;
+
+  const controller = createDyflowController(
+    { workDir: params.workDir, burstId },
     {
       llm,
-      ioRegistry,
-      executorToolRegistry,
-      attributorToolRegistry,
-      memory,
-      mem0,
+      toolRegistry: executorToolRegistry,
       logger,
-      knowledgeStore,
+      ...(nodeSharing ? { nodeSharing } : {}),
+      onComplete: async (reason: string) => {
+        try {
+          const out = ioRegistry.getOutput('default');
+          await out?.write(JSON.stringify({ type: 'COMPLETE', message: reason, ts: new Date().toISOString() }));
+        } catch { /* non-critical */ }
+      },
     },
   );
-
   return { controller };
 }
 

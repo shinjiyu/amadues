@@ -1,0 +1,176 @@
+/**
+ * DyFlow 内脑控制器 — 新 FSM：DESIGN → RUN → AWAITING → DONE。
+ *
+ * ADL：doc/structurizr/DYFLOW-INNER-EXECUTOR.md §3
+ *
+ * 暴露与 legacy controller 相同的 tick() 契约，供 run-tick 按
+ * INNER_BRAIN_ENGINE flag 切换。状态持久化在 .brain/dyflow-state.json。
+ */
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+import type { LLMAdapter } from '../adapter/index.js';
+import type { Logger } from '../logger/index.js';
+import type { ToolRegistry } from '../tools/index.js';
+import { createLocalNodeStore } from './local-node-store.js';
+import type { LocalNodeStore } from './local-node-store.js';
+import { createMemoryStore } from './memory-store.js';
+import type { MemoryStore } from './memory-store.js';
+import { seedPresetNodes } from './preset-seeder.js';
+import { runDesigner } from './designer.js';
+import { runLocalDag } from './runner.js';
+import { readLocalDag, clearLocalDag } from './local-dag-store.js';
+import type { NodeDefDrive9Store } from '../../drive9/node-def-drive9-store.js';
+import type { EnvSnapshot } from './node-abstractor.js';
+import type { DyflowState } from './types.js';
+
+/** DESIGN 连续空转上限：超过则判定无法推进，进入 DONE（reason 标记） */
+const MAX_EMPTY_DESIGN_STREAK = 3;
+
+export interface DyflowControllerContext {
+  workDir: string;
+  burstId: string;
+}
+
+/** P1：节点共享（drive9）配置；提供后 Designer 有 search_and_instance，creator 自动导出 */
+export interface NodeSharingConfig {
+  defStore: NodeDefDrive9Store;
+  sourceAgent: string;
+  env?: EnvSnapshot;
+}
+
+export interface DyflowControllerDeps {
+  llm: LLMAdapter;
+  /** baseNode 可用的全套工具 */
+  toolRegistry: ToolRegistry;
+  logger: Logger;
+  store?: LocalNodeStore;
+  memory?: MemoryStore;
+  /** DONE 时回调（用于发 COMPLETE 通知） */
+  onComplete?: (reason: string) => void | Promise<void>;
+  /** P1：节点共享 */
+  nodeSharing?: NodeSharingConfig;
+}
+
+export interface DyflowTickResult {
+  hadWork: boolean;
+}
+
+export interface DyflowController {
+  tick(): Promise<DyflowTickResult>;
+}
+
+export function createDyflowController(
+  ctx: DyflowControllerContext,
+  deps: DyflowControllerDeps,
+): DyflowController {
+  const { workDir, burstId } = ctx;
+  const { llm, toolRegistry, logger, onComplete } = deps;
+  const store = deps.store ?? createLocalNodeStore(workDir);
+  const memory = deps.memory ?? createMemoryStore(workDir);
+  const statePath = path.join(workDir, '.brain', 'dyflow-state.json');
+
+  // P1：从 nodeSharing 派生 designer.sharing 与 runner.autoExport
+  const sharing = deps.nodeSharing
+    ? { defStore: deps.nodeSharing.defStore, llm, logger, ...(deps.nodeSharing.env ? { env: deps.nodeSharing.env } : {}) }
+    : undefined;
+  const autoExport = deps.nodeSharing
+    ? { defStore: deps.nodeSharing.defStore, sourceAgent: deps.nodeSharing.sourceAgent, ...(deps.nodeSharing.env ? { env: deps.nodeSharing.env } : {}) }
+    : undefined;
+
+  // 首次 spawn：注入 preset/*（幂等）
+  seedPresetNodes(workDir, { store });
+  // 从 legacy goal.md 兜底 seed memory.goal（外脑 set_goal 仍写 goal.md）
+  seedGoalIntoMemory(workDir, memory);
+
+  function readState(): DyflowState {
+    try {
+      const raw = fs.readFileSync(statePath, 'utf8');
+      const parsed = JSON.parse(raw) as DyflowState;
+      if (parsed && parsed.mode) return parsed;
+    } catch { /* fallthrough */ }
+    return { mode: 'DESIGN', burstId, designStreak: 0, updatedAt: new Date().toISOString() };
+  }
+
+  function writeState(next: Partial<DyflowState> & { mode: DyflowState['mode'] }): DyflowState {
+    const state: DyflowState = {
+      burstId,
+      designStreak: 0,
+      ...next,
+      updatedAt: new Date().toISOString(),
+    };
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf8');
+    return state;
+  }
+
+  return {
+    async tick(): Promise<DyflowTickResult> {
+      const state = readState();
+      logger.info('dyflow-controller', { event: 'tick.start', data: { mode: state.mode, burstId } });
+
+      switch (state.mode) {
+        case 'DESIGN': {
+          const outcome = await runDesigner({ llm, logger, store, memory, workDir, burstId, ...(sharing ? { sharing } : {}) });
+          if (outcome.kind === 'run') {
+            writeState({ mode: 'RUN', designStreak: 0 });
+            return { hadWork: true };
+          }
+          if (outcome.kind === 'done') {
+            writeState({ mode: 'DONE', reason: outcome.reason, designStreak: 0 });
+            clearLocalDag(workDir);
+            await onComplete?.(outcome.reason);
+            return { hadWork: true };
+          }
+          // empty：Designer 没出图也没完成
+          const streak = (state.designStreak ?? 0) + 1;
+          if (streak >= MAX_EMPTY_DESIGN_STREAK) {
+            const reason = `Designer 连续 ${streak} 次空转，无法推进：${outcome.reason}`;
+            writeState({ mode: 'DONE', reason, designStreak: streak });
+            await onComplete?.(reason);
+            logger.warn('dyflow-controller', { event: 'design.giveup', data: { burstId, streak } });
+            return { hadWork: true };
+          }
+          writeState({ mode: 'DESIGN', designStreak: streak });
+          return { hadWork: true };
+        }
+
+        case 'RUN': {
+          const dag = readLocalDag(workDir);
+          if (!dag) {
+            writeState({ mode: 'DESIGN', designStreak: 0 });
+            return { hadWork: true };
+          }
+          const res = await runLocalDag(dag, { llm, toolRegistry, store, memory, logger, workDir, ...(autoExport ? { autoExport } : {}) });
+          clearLocalDag(workDir);
+          // 无论成功失败都回 DESIGN：成功 → Designer 检测完成 / 继续；失败 → 据 last_failure replan
+          writeState({ mode: 'DESIGN', designStreak: 0, reason: res.ok ? null : `RUN failed at ${res.failedAt}` });
+          return { hadWork: true };
+        }
+
+        case 'AWAITING':
+          // P0：暂无 wait/ask 节点，AWAITING 直接 idle（数据驱动唤醒留待 P1）
+          return { hadWork: false };
+
+        case 'DONE':
+        case 'ERROR':
+        case 'STOPPED':
+          return { hadWork: false };
+
+        default:
+          logger.error('dyflow-controller', { event: 'unknown.mode', data: { mode: state.mode } });
+          return { hadWork: false };
+      }
+    },
+  };
+}
+
+function seedGoalIntoMemory(workDir: string, memory: MemoryStore): void {
+  if (memory.read().goal) return;
+  try {
+    const goalPath = path.join(workDir, '.brain', 'goal.md');
+    const goal = fs.readFileSync(goalPath, 'utf8').trim();
+    if (goal) memory.patch('goal', goal);
+  } catch { /* no goal.md yet */ }
+}

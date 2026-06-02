@@ -24,11 +24,16 @@
 | threadOrchestrator | ✅ `chat-ir/seen-tracker.test.ts`（freshCheck @ 语义） | ✅ `threadOrchestrator.component.integration.test.ts`（串行 + FIFO 排队） | — | freshCheck 实现于 `@utlra/chat-ir` |
 | outerConversationLoop | ❌ | ✅ `outerConversationLoop.component.integration.test.ts` | — | + `integration/outer-conversation-loop-assembly` |
 | outerToolExecutor | 🟡 tools 单测散落 | ✅ `outerToolExecutor.component.integration.test.ts` | — | `normalizeAgentReplyMentionText` |
+| **workspaceInbox** | ✅ `workspace-inbox.test.ts` | ⏳ | — | ADL [`INNER-WORKSPACE-INBOX.md`](./INNER-WORKSPACE-INBOX.md) |
+| **innerFileTools** | ⏳ `read-file.test.ts` | — | — | ADL [`INNER-FILE-ACCESS.md`](./INNER-FILE-ACCESS.md) |
 | outerOrchestrator | 🟡 parse | ✅ `outerOrchestrator.component.integration.test.ts` | — | + `outer-roundtrip` / `outer-roundtrip-inner`（注入 spawn） |
+| innerBrainKpiReuse | ✅ `inner-brain-kpi-reuse.test.ts` | ⏳ | — | ADL [`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md) |
 | innerBrainRegistry | ❌ | ✅ `innerBrainRegistry.component.integration.test.ts` | — | |
 | innerSpawner | ❌ | ✅ `innerSpawner.component.integration.test.ts` | — | + 可选 `spawn-inner-worker-live`（`UTLRA_TEST_SPAWN_INNER=1`） |
 | kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | |
 | kpiBurstHooks | ✅ `kpi-burst-hooks.test.ts` | ✅ `kpiBurstHooks.component.integration.test.ts` | — | 与 `kpi-lifecycle.integration` 互补 |
+| kpiCompletionJudge | ✅ `kpi-completion-judge.test.ts` | — | — | ADL [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) |
+| outerHeartbeat | 🟡 death-detect | ✅ `outer-heartbeat.integration.test.ts` + `autonomy-heartbeat.component.integration.test.ts` | — | ADL [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP |
 | completionNotify | 🟡 `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 `inner-brain-deliverables.md` |
 | pushLoop | ❌ | ✅ `pushLoop.component.integration.test.ts` | — | BLOCK → IM |
@@ -41,20 +46,49 @@
 | llmGateway | ✅ `raw.test.ts` 等 | ✅ `llmGateway.component.integration.test.ts` | — | |
 | llmUsageTracker | ✅ `llm-usage-tracker.test.ts` | — | — | 内存滚动窗口 |
 | llmUsageJournal | ✅ `llm-usage-journal.test.ts` | ✅ `llmUsageJournal.component.integration.test.ts` | — | ADL [`LLM-USAGE-JOURNAL.md`](./LLM-USAGE-JOURNAL.md) |
+| environmentSensorRegistry | ⏳ `environment-sensor-registry.test.ts` | ⏳ `environmentSensorRegistry.component.integration.test.ts` | — | ADL [`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md) |
+| environmentJournal | ⏳ `environment-journal.test.ts` | ⏳ `environmentJournal.component.integration.test.ts` | — | rotation + 未消费查询 |
+| environmentChangeDetector | ⏳ `environment-change-detector.test.ts` | — | — | hysteresis / warmUp / derive |
+| strategyStore | ⏳ `strategy-store.test.ts` | — | — | ADL [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) |
+| strategyPlanner | — | ⏳ `strategyPlanner.component.integration.test.ts` | ⏳ `strategy-planner.prompt.test.ts` | FakeLLM → typed artifact |
+| staleBurstReaper | ⏳ `stale-burst-reaper.test.ts` | ⏳ `staleBurstReaper.component.integration.test.ts` | — | peek + SIGTERM/KILL + ABORTED + archive |
+| **frameworkBenchmarkHarness** | ✅ `token-estimate.test.ts` | ✅ `framework-benchmark.component.integration.test.ts` | — | ADL [`FRAMEWORK-BENCHMARK.md`](./FRAMEWORK-BENCHMARK.md) · S1/S2 + `baseline.json` |
+| **nodeDefDrive9Store** | ✅ `node-def-drive9-store.test.ts`（put/get/index/dedupe/search/tombstone） | — | — | ADL [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §5.4（P1，注入 Drive9Fs） |
+| **nodeDefEviction** | ✅ `node-def-eviction.test.ts`（score + cold + quota） | — | — | dedupe + quota + cold tombstone（P2） |
+
+## 元宝 PSTune（`data-yuanbao` workspace · ADL [`BATTLE-TUNE-LOOP.md`](./BATTLE-TUNE-LOOP.md)）
+
+| 模块 ID | 单元测 | 模块测 | 备注 |
+|---------|--------|--------|------|
+| profileLoader | ✅ `profile_loader.test.mjs` | ⏳ | `tuning/profile_loader.mjs` |
+| battleAnalyzer | ⏳ | ⏳ | `tuning/battle_analyzer.mjs` |
+| replayInjector | — | ⏳ | 离线 replay JSON → override diff |
+| pstuneCli | — | ⏳ | `pstune.mjs analyze` / `gate` |
+
+路径根：`packages/server/data-yuanbao/workspaces/task-ib-mpvf5dh8-6070/`
 
 ## 内脑 L3（`innerWorker`）
+
+> **DyFlow 单引擎**：旧三件套 `decomposer / executor / attributor / blockResolver` 及 `reflexion` 已删除（含全部对应测试）。详见 [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md)、[`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md)。
 
 | ADL 模块 ID | 单元测 | 模块测 | Prompt 测 | 备注 |
 |-------------|--------|--------|-----------|------|
 | workerHost | ❌ | ✅ `workerHost.component.integration.test.ts` | — | status.json 契约 |
 | piMonoScheduler | ❌ | ✅ `piMonoScheduler.component.integration.test.ts` | — | stop 信号 + runtime 标签 |
-| controllerFsm | 🟡 completion-report | ✅ `controllerFsm.component.integration.test.ts` | ❌ E.1 run-burst | BrainFS state |
-| decomposer | ✅ `parse-milestones.test.ts` | ✅ `decomposer.component.integration.test.ts` | ✅ `decomposer.prompt.test.ts` | |
-| executor | 🟡 | ✅ `executor.component.integration.test.ts` | — | + `executor-resolved-pendings.test.ts` |
-| attributor | ✅ `attributor-parse.test.ts` + `research-skill-policy.test.ts` | ✅ `attributor.component.integration.test.ts` | ✅ `attributor.prompt.test.ts` | R1 研究里程碑 write_skill 门控 |
-| reflexionModule | ✅ reflexion 解析 | ✅ `reflexionModule.component.integration.test.ts` | ✅ `reflexion.prompt.test.ts` | |
-| blockResolver | ❌ | ✅ `blockResolver.component.integration.test.ts` | — | FakeLLM |
-| brainFs | ✅ `parse-milestones.test.ts` | ✅ `brainFs.component.integration.test.ts` | — | |
+| controllerFsm | — | ✅ `controllerFsm.component.integration.test.ts` | — | DyFlow DESIGN/RUN/AWAITING/DONE |
+| completionReport | ✅ `completion-report.test.ts`（im/verbose） | — | — | burst DONE 完成报告正文 |
+| **designer** | ✅ `designer.test.ts`（run/done/empty + ref 校验） | ✅ `controller.component.integration.test.ts`（DESIGN↔RUN↔DONE 全链） | ⏳ `designer.prompt.test.ts` | P0；DESIGN ↔ RUN 切换 + last_failure 决策表 |
+| **runner** | ✅ `runner.test.ts`（顺序图 + terminal stop + 缺 ref + compound 展开） | ✅ `controller.component.integration.test.ts` | — | P0；顺序图 + dispatch + memory 写入 |
+| **baseNodeExecutor** | ✅ `base-node-executor.test.ts`（render/terminal/allowlist/fail-fast + outputs） | — | — | P0；ReAct + fail-fast streak + `INNER_BASE_NODE_MAX_ROUNDS` |
+| **nodeCreatorExecutor** | ✅ `node-creator-executor.test.ts`（pack/abort + auto-export） | — | ⏳ `node-creator.prompt.test.ts` | P0；pack/specialize + commit_local_node |
+| **localNodeStore** | ✅ `local-node-store.test.ts`（schema/嵌套 id/穿越/index 重建） | — | — | P0；schema 校验 + index |
+| **memoryStore** | ✅ `memory-store.test.ts`（点路径/last_failure/node_results/facts） | — | — | P0；last_failure / node_results / facts |
+| **designerToolRegistry** | ✅ `search-and-instance.test.ts`（装配失败包容 + 幂等） | ✅ `designer.test.ts`（list/read/commit/report 工具） | — | P0；list/read/commit 工具 + P1 search_and_instance |
+| **presetSeeder** | ✅ `preset-seeder.test.ts`（首次 seed/跳过/版本升级/export=false） | — | — | P0；首次 seed + 已存在跳过 |
+| **workspaceScriptTools** | ✅ `workspace-script-tools.test.ts`（name 规范化/穿越拒绝/缺脚本/dedupe/materialize） | — | — | P0b；T0 工具晋升（register + materialize + runner 注入 + Designer 可见） |
+| **nodeAbstractor** | ✅ `node-abstractor.test.ts`（sanitize 残留/origin 过滤/dedupe） | — | ⏳ `node-abstractor.prompt.test.ts` | P1；origin 过滤 + dedupeKey |
+| **nodeAssembler** | ✅ `node-assembler.test.ts`（applyBinding 无残留/幂等/缺 required） | — | ⏳ `node-assembler.prompt.test.ts` | P1；binding 推断 + 失败包容 |
+| brainFs | ✅ `parse-milestones.test.ts` | ✅ `brainFs.component.integration.test.ts` | — | DyFlow 后仅余通用文件读写（tail 等） |
 | archiveStore | ✅ `fs-store.test.ts` | ✅ `archiveStore.component.integration.test.ts` | — | |
 
 ## 实施阶段（testing-strategy §7）
@@ -65,10 +99,10 @@
 | B testing kit | ✅ | fake-llm / fixture / temp-data-root |
 | C 可注入重构 | ✅ | policy / controller / heartbeat / loop |
 | D 单元 | ✅ 大部分 | 与组件测互补 |
-| D' Prompt | ✅ 内脑三件套 + participation | `attributor` / `decomposer` / `reflexion` `.prompt.test.ts` |
+| D' Prompt | ✅ DyFlow + participation | `designer` / `node-creator` / `node-abstractor` `.prompt.test.ts` |
 | **E 模块黑盒** | **✅ L3 全覆盖** | 27 组件 + 既有 `integration/*` |
 | F 装配 | ✅ | 上列 + `index-listen-smoke`（子进程 listen）/ `index-app-health` |
-| E.1 编排 | ✅ | `run-burst` / `await-and-wake` / `inbound-policy-table` / `outer-heartbeat` |
+| E.1 编排 | ✅ | `await-and-wake` / `inbound-policy-table` / `outer-heartbeat` |
 
 ## 运行
 

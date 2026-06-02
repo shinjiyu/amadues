@@ -1,0 +1,254 @@
+/**
+ * DyFlow 内脑引擎 — 核心类型
+ *
+ * ADL 权威：
+ *   - doc/structurizr/DYFLOW-INNER-EXECUTOR.md（FSM / NodeInst / local_dag / failure_summary）
+ *   - doc/structurizr/INNER-NODE-LIFECYCLE.md（LocalNode / NodeDef schema）
+ *
+ * 三个概念（不要混用）：
+ *   - LocalNode：具象 JSON（真实路径/账号），存 .brain/local_nodes/<id>.json
+ *   - NodeInst：local_dag 里的「图格」，引用 LocalNode id
+ *   - NodeDef：脱敏模板（placeholder），存 drive9 /nodes/shared/（P1）
+ */
+
+// ── 节点来源 ──────────────────────────────────────────────────────────────────
+
+export type NodeOrigin = 'preset' | 'creator' | 'imported';
+
+// ── interface 契约 ───────────────────────────────────────────────────────────
+
+export interface NodeInputSpec {
+  key: string;
+  type: string;
+  /** NodeDef 抽象后的 placeholder 名（仅模板态有意义） */
+  placeholder?: string;
+}
+
+export interface NodeOutputSpec {
+  key: string;
+  type: string;
+}
+
+export interface NodeInterface {
+  inputs: NodeInputSpec[];
+  /** baseNode 必须全部满足才算 ok；缺失即 terminal failure */
+  outputs: NodeOutputSpec[];
+}
+
+// ── body：executor（baseNode）或 graph（compound） ──────────────────────────
+
+export interface BodyExecutor {
+  kind: 'executor';
+  /** 可含 ${{ memory.x }} / ${{ params.y }} 占位 */
+  promptTemplate: string;
+  /** 角色/约束附加（system slice 追加） */
+  systemSlice?: string;
+  /** baseNode 工具 allowlist（工具名，须能被 worker 进程解析） */
+  tools: string[];
+  defaultParams?: Record<string, unknown>;
+}
+
+export interface BodyGraph {
+  kind: 'graph';
+  /** 子图（≠ Designer 当前 local_dag） */
+  nodes: NodeInst[];
+  edges?: GraphEdge[];
+  entry?: string;
+  /** 暴露给父图 memory 的 key */
+  exports: { from: string; as: string }[];
+}
+
+export type NodeBody = BodyExecutor | BodyGraph;
+
+// ── LocalNode ─────────────────────────────────────────────────────────────────
+
+export interface LocalNodeProvenance {
+  fromNodeInsts?: string[];
+  fromBurst?: string;
+  /** Assembler 装配理由（≤1KB） */
+  bindingRationale?: string;
+}
+
+export interface LocalNodeMetadata {
+  origin: NodeOrigin;
+  /** imported 时记 NodeDef id@version */
+  sourceDef?: string;
+  provenance?: LocalNodeProvenance;
+  /** 此 LocalNode 适用的 workDir（Assembler 装配时写） */
+  workDir?: string;
+  /** false 时 Abstractor 跳过 export */
+  export?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LocalNode {
+  /** 形如 "preset/base" / "local/ps_open_battle" / "imported/<defId>@<ver>" */
+  id: string;
+  /** semver-like：1.0.0；同 id 升版本不改 ref */
+  version: string;
+  displayName: string;
+  description: string;
+  tags: string[];
+  interface: NodeInterface;
+  body: NodeBody;
+  metadata: LocalNodeMetadata;
+}
+
+// ── NodeInst（local_dag 里的一格） ──────────────────────────────────────────
+
+export interface NodeInst {
+  /** local_dag 内唯一 */
+  id: string;
+  /** LocalNode id */
+  ref: string;
+  /** φ：Designer 本轮细指令；可选 */
+  instruction?: string;
+  /** 覆盖 LocalNode 默认（路径/账号 binding） */
+  params?: Record<string, unknown>;
+  /** 额外读哪些 memory key（默认 goal + last_failure + node_results.<id>） */
+  memoryIn?: string[];
+  /** 写回 memory 的 key 名（默认 node_results.<id>） */
+  memoryOut?: string[];
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+}
+
+// ── local_dag ─────────────────────────────────────────────────────────────────
+
+export interface LocalDag {
+  burstId: string;
+  designedAt: string;
+  nodes: NodeInst[];
+  /** P0 默认按 nodes[] 顺序串行；可省略 */
+  edges?: GraphEdge[];
+  /** 默认 nodes[0] */
+  entry?: string;
+  notes?: string;
+}
+
+// ── failure_summary（terminal failure 时写 memory.last_failure） ─────────────
+
+export type FailureConfidence = 'high' | 'low';
+
+export interface FailureSummary {
+  nodeInstId: string;
+  localRef: string;
+  /** 一段话：原因 + 影响 */
+  summary: string;
+  /** 关键尝试列表（不堆原始 stderr） */
+  attempted: string[];
+  /** 默认 high；唯有 transient 信号才 low */
+  confidence: FailureConfidence;
+  /** true → Designer 可考虑同 ref 重排 */
+  transient?: boolean;
+  /** 截断的 ≤1KB 原始 tail（debug 用） */
+  rawTail?: string;
+  at: string;
+}
+
+// ── node_results（runner 写入 memory） ──────────────────────────────────────
+
+export interface NodeResult {
+  nodeInstId: string;
+  ref: string;
+  ok: boolean;
+  /** ok 时 interface.outputs 的实际值 */
+  outputs?: Record<string, unknown>;
+  /** 失败时同 FailureSummary（也镜像写 memory.last_failure） */
+  failure?: FailureSummary;
+  at: string;
+}
+
+// ── 全局 memory（.brain/memory.json） ───────────────────────────────────────
+
+export interface InnerMemory {
+  /** 战略目标（外脑/seed 写） */
+  goal?: string;
+  /** KPI 级红线（外脑 set_goal / KPI policy 写） */
+  constraints: string[];
+  /** 环境事实（extract_facts / 外脑 seed 写） */
+  facts: string[];
+  /** runner 写入的最近一次 terminal failure */
+  last_failure?: FailureSummary | null;
+  /** newNodeCreator 失败 */
+  last_pack_error?: string | null;
+  /** node_results.<nodeInstId> = NodeResult */
+  node_results: Record<string, NodeResult>;
+  /** KPI 进度（Designer 自报 / 外脑写） */
+  kpi_progress?: Record<string, unknown>;
+  /** 自由扩展键（Designer / baseNode 写读，需声明 memoryIn/memoryOut） */
+  [key: string]: unknown;
+}
+
+// ── 新 FSM 控制器状态（独立于 legacy ControllerState） ──────────────────────
+
+export type DyflowMode = 'DESIGN' | 'RUN' | 'AWAITING' | 'DONE' | 'ERROR' | 'STOPPED';
+
+export interface DyflowState {
+  mode: DyflowMode;
+  /** 当前 burst（registry id） */
+  burstId?: string;
+  /** 进入 DONE / ERROR 的原因 */
+  reason?: string | null;
+  /** DESIGN 连续空图 / 异常计数，用于兜底 */
+  designStreak?: number;
+  updatedAt: string;
+}
+
+// ── NodeDef（drive9 共享模板，P1；P0 仅类型占位） ────────────────────────────
+
+export type PlaceholderKind = 'path' | 'account' | 'room' | 'secret' | 'other';
+
+export interface NodeDefPlaceholder {
+  name: string;
+  kind: PlaceholderKind;
+  required: boolean;
+  exampleHint?: string;
+}
+
+export interface NodeDefMetadata {
+  sourceAgent: string;
+  sourceLocalId: string;
+  /** body 结构 hash，用于去重 */
+  dedupeKey: string;
+  citeCount: number;
+  importCount: number;
+  assembleFailCount: number;
+  createdAt: string;
+  lastImportedAt?: string;
+  status: 'active' | 'tombstone';
+}
+
+export interface NodeDef {
+  id: string;
+  version: string;
+  description: string;
+  tags: string[];
+  placeholders: NodeDefPlaceholder[];
+  interface: NodeInterface;
+  /** 与 LocalNode body 同结构，但字符串字段含 ${{ NAME }} */
+  body: NodeBody;
+  metadata: NodeDefMetadata;
+}
+
+// ── 节点库索引（.brain/local_nodes/index.json） ──────────────────────────────
+
+export interface LocalNodeIndexEntry {
+  id: string;
+  version: string;
+  displayName: string;
+  description: string;
+  tags: string[];
+  origin: NodeOrigin;
+  kind: NodeBody['kind'];
+  updatedAt: string;
+}
+
+export interface LocalNodeIndex {
+  entries: LocalNodeIndexEntry[];
+  updatedAt: string;
+}

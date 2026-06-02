@@ -1,44 +1,44 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import {
+  buildDyflowInspectorPayload,
+  isDyflowWorkDir,
+} from '../openkuroneko/inner-brain/dyflow-inspector.js';
+
 /** 外脑注入的 workDir 读接口（ADL：内脑模块不 npm import workspace-kit） */
 export interface BrainInspectorFileReader {
   readTextFile(workspaceId: string, relPath: string): string | null;
 }
 
-/** 供 Dashboard 展示：一次 Pi-mono 单步在 openKuroneko 里到底做什么 */
+/** 供 Dashboard 展示：一次 Pi-mono 单步在 DyFlow 内脑里到底做什么 */
 export const PI_MONO_TICK_EXPLAINED = {
   summary:
-    '一次「Pi-mono 单步」= 调用 openKuroneko 的 Controller.tick() 恰好一次。它会读取 .brain/controller-state.json 里的 mode，在该模式下执行「一整段」该模式的逻辑，然后写回状态；不是「一次 LLM 一行字」，也不是「一个工具调用」这种更细粒度。',
+    '一次「Pi-mono 单步」= 调用 DyFlow Controller.tick() 恰好一次。它读取 .brain/dyflow-state.json 里的 mode（DESIGN/RUN/…），执行「一整段」该模式逻辑后写回状态；不是「一次 LLM 一行字」或「一个工具调用」这种更细粒度。',
   modes: [
     {
-      mode: 'DECOMPOSE',
+      mode: 'DESIGN',
       what:
-        '运行 Tactical Decomposer：读 goal / constraints / 旧 milestones，通常 **一次** LLM（无工具），生成新的 milestones.md；成功则 mode→EXECUTE，失败则 BLOCKED。',
+        '运行 Designer：读 goal / memory.facts / last_failure / 已注册 LocalNode 与 workspace 工具，**一次** LLM 规划出 local_dag（节点 = preset/base 或 local/* 或 preset/node_creator 等）；成功则 mode→RUN。',
     },
     {
-      mode: 'EXECUTE',
+      mode: 'RUN',
       what:
-        '运行 Reactive Executor：针对 **当前 Active 里程碑**，在循环里多轮 **LLM + 工具**，直到本轮不再返回 tool_calls；写 environment 快照与 **execution-context.json**（给下一步 Attributor），然后 mode→ATTRIBUTE。',
+        '运行 Runner：按 local_dag 拓扑依次实例化并执行节点。baseNode 在受限轮数内多轮 **LLM + 工具**（fail-fast：连续无进展即 transient 上交 Designer）；节点结果写入 memory.node_results；全部成功 → DONE，遇失败 → 回 DESIGN 重规划。',
     },
     {
-      mode: 'ATTRIBUTE',
+      mode: 'AWAITING',
       what:
-        '运行 Mandatory Attributor：读 execution-context，多轮 LLM + 写约束/技能/知识工具；解析末尾 **CONTROL:** / **REASON:**，决定 CONTINUE / SUCCESS_AND_NEXT / REPLAN / BLOCK / CYCLE_DONE；然后 **删除** execution-context.json，并切换 mode。',
+        '存在未决 pending（ask_user / wait_timer / wait_signal）时挂起，等待外脑或定时信号；满足后回到 RUN。',
     },
     {
-      mode: 'BLOCKED',
+      mode: 'DONE',
       what:
-        '等待外脑 input 或 directives（如 BLOCK 解封）；有输入则可能 REPLAN 或解封进 EXECUTE；无输入则 hadWork=false。',
-    },
-    {
-      mode: 'SLEEPING',
-      what:
-        '循环里程碑间歇休眠；到时或外脑信号唤醒后回到 EXECUTE 或 DECOMPOSE。',
+        '所有节点完成，写 COMPLETE 输出；hadWork=false。',
     },
   ],
   note:
-    'EXECUTE 这一「宏步」内部已包含多轮 LLM/工具；ATTRIBUTE 同理。若要看归因结论，见下方「最近归因」或日志里 attributor / attribute.done。',
+    'RUN 这一「宏步」内部已包含多轮 LLM/工具。若要看规划与失败原因，见下方 DyFlow 区块（current mode / DAG / last_failure / node_results）或日志里 designer / base-node / runner。',
 } as const;
 
 function readPiMonoLogLines(workDir: string): string[] {
@@ -161,7 +161,18 @@ export function buildBrainInspectorPayload(
 
   const ctrlTick = findLastLogEntry(logLines, (e) => e['module'] === 'controller' && e['event'] === 'tick.start');
 
+  const dyflowTick = findLastLogEntry(
+    logLines,
+    (e) => e['module'] === 'dyflow-controller' && e['event'] === 'tick.start',
+  );
+  const lastBaseNode = findLastLogEntry(logLines, (e) => e['module'] === 'base-node');
+  const lastDesigner = findLastLogEntry(logLines, (e) => e['module'] === 'designer');
+
+  const dyflow = isDyflowWorkDir(workDir) ? buildDyflowInspectorPayload(workDir) : null;
+
   return {
+    engine: dyflow ? ('dyflow' as const) : ('legacy' as const),
+    dyflow,
     controllerState,
     goalText: (goalBrain ?? goalRun ?? '').slice(0, 8000),
     milestonesText: milestones.slice(0, 12000),
@@ -180,7 +191,28 @@ export function buildBrainInspectorPayload(
       lastControllerTickStart: ctrlTick
         ? { ts: ctrlTick['ts'], data: ctrlTick['data'] }
         : null,
+      lastDyflowTickStart: dyflowTick
+        ? { ts: dyflowTick['ts'], data: dyflowTick['data'] }
+        : null,
+      lastBaseNode: lastBaseNode
+        ? { ts: lastBaseNode['ts'], module: lastBaseNode['module'], event: lastBaseNode['event'], data: lastBaseNode['data'] }
+        : null,
+      lastDesigner: lastDesigner
+        ? { ts: lastDesigner['ts'], module: lastDesigner['module'], event: lastDesigner['event'], data: lastDesigner['data'] }
+        : null,
     },
     piMonoTickExplained: PI_MONO_TICK_EXPLAINED,
+    dyflowTickExplained: dyflow
+      ? {
+          summary:
+            'DyFlow 内脑：DESIGN（Designer 出 local_dag）↔ RUN（Runner 顺序执行 NodeInst）。baseNode 猛猛干；连续无进展或达轮次上限则 transient failure → Designer replan。',
+          modes: [
+            { mode: 'DESIGN', what: '读 memory + LocalNode 库，commit_local_dag 或 report_done' },
+            { mode: 'RUN', what: '按 local_dag 顺序跑 preset/base、node_creator 等' },
+            { mode: 'AWAITING', what: 'pendings 等待（与外脑 changeWatcher 一致）' },
+            { mode: 'DONE', what: '本 burst 结束' },
+          ],
+        }
+      : undefined,
   };
 }
