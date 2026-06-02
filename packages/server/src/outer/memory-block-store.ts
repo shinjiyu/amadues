@@ -130,14 +130,17 @@ export class MemoryBlockStore {
   async get(
     blockId: string,
     key: string,
-    _opts: { includeValue?: boolean } = {},
+    opts: { includeValue?: boolean } = {},
   ): Promise<Record<string, unknown> | null> {
     const block = this.resolveBlock(blockId);
     const strategy = resolveStrategy(block.strategy);
     const raw = this.readEntryJson(block.blockId, key);
     if (!raw) return null;
     const entry = coerceEntryForStrategy(raw, block.strategy);
-    return strategy.toPublicMeta(entry as KvSecretEntry & NotebookEntry, false);
+    const redactSecrets =
+      (block.strategy === 'kv_secret' || block.blockId === 'keychain') &&
+      !(opts.includeValue ?? false);
+    return strategy.toPublicMeta(entry as KvSecretEntry & NotebookEntry, redactSecrets);
   }
 
   async put(

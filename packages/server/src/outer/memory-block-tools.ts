@@ -87,12 +87,17 @@ export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
     type: 'function',
     function: {
       name: 'memory_block_get',
-      description: '读取 block 条目（含 keychain 正文）。',
+      description:
+        '读取 block 条目。keychain（kv_secret）默认只返回元数据；要写入 set_goal 派内脑时设 include_value=true 取明文。',
       parameters: {
         type: 'object',
         properties: {
           block_id: { type: 'string', description: '块 ID' },
           key: { type: 'string', description: 'entry key' },
+          include_value: {
+            type: 'boolean',
+            description: 'keychain/kv_secret：true 时返回 value（用于写入 set_goal 正文，勿贴进 IM 闲聊）',
+          },
         },
         required: ['block_id', 'key'],
       },
@@ -156,7 +161,8 @@ export const MEMORY_BLOCK_TOOL_DEFS: ToolDef[] = [
     type: 'function',
     function: {
       name: 'keychain_get',
-      description: '读取 keychain 块条目（等同 memory_block_get block_id=keychain）。',
+      description:
+        '读取 keychain 条目明文（用于写入 set_goal / 派内脑，**不是**加密传输通道）。vault 仅长期保管，避免凭据在长对话里丢失。',
       parameters: {
         type: 'object',
         properties: {
@@ -275,7 +281,7 @@ export async function execMemoryBlockEntries(
 }
 
 export async function execMemoryBlockGet(
-  args: { block_id?: string; key?: string },
+  args: { block_id?: string; key?: string; include_value?: boolean },
   ctx: OuterToolContext,
 ): Promise<ToolCallResult> {
   const store = requireStore(ctx);
@@ -284,7 +290,8 @@ export async function execMemoryBlockGet(
   const key = args.key?.trim() ?? '';
   if (!blockId || !key) return { replied: false, output: '（block_id 或 key 为空）' };
   try {
-    const meta = await store.get(blockId, key);
+    const includeValue = args.include_value === true;
+    const meta = await store.get(blockId, key, { includeValue });
     if (!meta) return { replied: false, output: `（${blockId}/${key} 不存在）` };
     return { replied: false, output: JSON.stringify(meta, null, 2) };
   } catch (e) {
@@ -320,10 +327,14 @@ export async function execMemoryBlockPut(
       block.strategy === 'notebook'
         ? { body: content, title: args.title, tags: args.tags }
         : { kind: args.kind ?? 'generic', value: content };
-    const meta = await store.put(blockId, key, payload, ctx.agentSid);
+    await store.put(blockId, key, payload, ctx.agentSid);
+    const shown =
+      block.strategy === 'kv_secret' || block.blockId === 'keychain'
+        ? await store.get(blockId, key)
+        : await store.get(blockId, key, { includeValue: true });
     return {
       replied: false,
-      output: `已写入 ${blockId}/${key}（${block.strategy}）。\n${JSON.stringify(meta, null, 2)}`,
+      output: `已写入 ${blockId}/${key}（${block.strategy}）。\n${JSON.stringify(shown, null, 2)}`,
     };
   } catch (e) {
     return { replied: false, output: `（错误：${e instanceof Error ? e.message : String(e)}）` };
@@ -365,7 +376,7 @@ export async function execKeychainGet(
   args: { key?: string },
   ctx: OuterToolContext,
 ): Promise<ToolCallResult> {
-  return execMemoryBlockGet({ block_id: 'keychain', key: args.key }, ctx);
+  return execMemoryBlockGet({ block_id: 'keychain', key: args.key, include_value: true }, ctx);
 }
 
 export async function dispatchMemoryBlockTool(

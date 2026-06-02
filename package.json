@@ -25,6 +25,7 @@
     "docker:agents:up:bot2": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/start-agent-bot2-local.ps1",
     "dev:agent:bot2": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/start-agent-bot2-local.ps1",
     "dev:agent:bot2:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/stop-agent-bot2-local.ps1",
+    "dev:agent:bot2:fresh": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kuroneko/refresh-agent-bot2-local.ps1",
     "build:web-chat": "npm run build -w @utlra/webchat-protocol && npm run build -w @utlra/web-chat",
     "stop": "bash scripts/stop.sh",
     "start": "bash scripts/start.sh",

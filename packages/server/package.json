@@ -21,6 +21,7 @@
     "@hono/node-server": "^1.13.0",
     "@utlra/chat-ir": "*",
     "@utlra/discord-bridge": "*",
+    "better-sqlite3": "^12.10.0",
     "dotenv": "^16.4.5",
     "hono": "^4.6.0",
     "isomorphic-git": "^1.38.0",
@@ -34,5 +35,13 @@
     "tsx": "^4.19.0",
     "typescript": "^5.4.5",
     "vitest": "^2.1.9"
-  }
+  },
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

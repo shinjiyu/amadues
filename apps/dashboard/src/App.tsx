@@ -62,21 +62,19 @@ type WorkspaceArtifacts = {
 };
 
 const BRAIN_CORE_FILES = [
-  '.brain/knowledge.md',
-  '.brain/skills.md',
-  '.brain/milestones.md',
-  '.brain/constraints.md',
   '.brain/goal.md',
-  '.brain/environment.md',
+  '.brain/memory.json',
+  '.brain/dyflow-state.json',
+  '.brain/local_dag.json',
+  '.brain/local_nodes/index.json',
 ] as const;
 
 const BRAIN_CORE_LABEL: Record<string, string> = {
-  '.brain/knowledge.md': '知识 knowledge.md',
-  '.brain/skills.md': '技能索引 skills.md',
-  '.brain/milestones.md': '里程碑 milestones.md',
-  '.brain/constraints.md': '约束 constraints.md',
   '.brain/goal.md': '目标 goal.md',
-  '.brain/environment.md': '环境快照 environment.md',
+  '.brain/memory.json': '全局 memory',
+  '.brain/dyflow-state.json': 'DyFlow 状态',
+  '.brain/local_dag.json': '当前 DAG',
+  '.brain/local_nodes/index.json': 'LocalNode 索引',
 };
 
 function coreBrainSortKey(p: string): number {
@@ -461,7 +459,7 @@ function DataPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix:
         <div className="viz-core-hero-head">
           <h2 className="viz-core-title">核心产出</h2>
           <p className="viz-core-sub">
-            交付报告（workspace 根目录）与 Agent 脑内文件（知识 / 技能 / 里程碑）。下方可预览全文。
+            交付报告（workspace 根目录）与 DyFlow 脑内状态文件（memory / DAG / LocalNode）。下方可预览全文。
           </p>
         </div>
 
@@ -509,10 +507,10 @@ function DataPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix:
             ))}
           </div>
         ) : (
-          <p className="viz-empty">尚无根目录 *.md 报告（跑完分析类里程碑后会出现）</p>
+          <p className="viz-empty">尚无根目录 *.md 报告（任务完成后会出现）</p>
         )}
 
-        <h3 className="viz-core-h3">Agent 脑内 · 知识与技能</h3>
+        <h3 className="viz-core-h3">Agent 脑内 · DyFlow 状态</h3>
         {coreBrainFiles.length > 0 ? (
           <div className="viz-chip-grid">
             {coreBrainFiles.map((e) => (
@@ -941,11 +939,6 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
                             ⚠ {inst.dyflow_failure}
                           </span>
                         )}
-                        {inst.phase && inst.engine !== 'dyflow' && (
-                          <span style={{ color: '#8b92a8', fontSize: 11, display: 'block' }}>
-                            {inst.phase}
-                          </span>
-                        )}
                       </td>
                       <td>
                         <code style={{ fontSize: 11 }}>{inst.instance_id}</code>
@@ -993,7 +986,7 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
                             type="button"
                             style={{ fontSize: 11, background: '#1e3a5f', borderColor: '#3b6ea5' }}
                             disabled={restarting === inst.instance_id}
-                            title="从磁盘状态续跑（dyflow-state / controller-state + memory）"
+                            title="从磁盘续跑（dyflow-state + memory.json）"
                             onClick={() => void restartInstance(inst.instance_id)}
                           >
                             {restarting === inst.instance_id ? '续跑中…' : inst.liveness === 'dead' ? '续跑' : '继续'}
@@ -1051,15 +1044,9 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix: string }) {
-  const [goal, setGoal] = useState('实现一个最小可用的内脑 tick 演示。');
-  const [status, setStatus] = useState<Record<string, unknown> | null>(null);
+  const [goal, setGoal] = useState('');
   const [telemetry, setTelemetry] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [llmHint, setLlmHint] = useState('');
-  const [llmConfig, setLlmConfig] = useState<Record<string, unknown> | null>(null);
-  const [llmResult, setLlmResult] = useState<Record<string, unknown> | null>(null);
-  const [llmBusy, setLlmBusy] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
   const [piMono, setPiMono] = useState<{ ready: boolean; dist?: string; hint?: string | null } | null>(null);
   const [piBusy, setPiBusy] = useState(false);
   const [piAutoBusy, setPiAutoBusy] = useState(false);
@@ -1072,13 +1059,9 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
   const [suggestPromoteShutdown, setSuggestPromoteShutdown] = useState(false);
   const [promoteBusy, setPromoteBusy] = useState(false);
 
-  const pull = useCallback(async () => {
-    const [s, t] = await Promise.all([
-      fetch(`${apiPrefix}/inner/${workspaceId}/status`).then((r) => r.json()),
-      fetch(`${apiPrefix}/inner/${workspaceId}/telemetry`).then((r) => r.json()),
-    ]);
-    setStatus(s.status as Record<string, unknown>);
-    setTelemetry(t.lines as string[]);
+  const pullTelemetry = useCallback(async () => {
+    const t = await fetch(`${apiPrefix}/inner/${workspaceId}/telemetry`).then((r) => r.json());
+    setTelemetry((t.lines as string[]) ?? []);
   }, [workspaceId]);
 
   const pullInsight = useCallback(async () => {
@@ -1091,8 +1074,11 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
       if (!rb.ok) throw new Error(`brain-inspector HTTP ${rb.status}`);
       if (!rl.ok) throw new Error(`pi-logs HTTP ${rl.status}`);
       const [b, l] = await Promise.all([rb.json(), rl.json()]);
-      setBrainInsp(b as BrainInspector);
+      const brain = b as BrainInspector;
+      setBrainInsp(brain);
       setPiLogs(l as PiLogsResponse);
+      const g = brain.dyflow?.memory?.goal ?? brain.goalText;
+      if (g?.trim()) setGoal(g.trim());
     } catch (e) {
       setInsightErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1101,10 +1087,10 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
   }, [workspaceId]);
 
   useEffect(() => {
-    const id = setInterval(() => void pull(), 2000);
-    void pull();
+    const id = setInterval(() => void pullTelemetry(), 5000);
+    void pullTelemetry();
     return () => clearInterval(id);
-  }, [pull]);
+  }, [pullTelemetry]);
 
   useEffect(() => {
     const ms = piBusy ? 450 : 2200;
@@ -1114,41 +1100,11 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
   }, [piBusy, pullInsight]);
 
   useEffect(() => {
-    void fetch(`${apiPrefix}/llm/config`)
-      .then((r) => r.json())
-      .then(setLlmConfig)
-      .catch(() => setLlmConfig(null));
-  }, [apiPrefix]);
-
-  useEffect(() => {
     void fetch(`${apiPrefix}/inner/${workspaceId}/pi-mono`)
       .then((r) => r.json())
       .then(setPiMono)
       .catch(() => setPiMono({ ready: false, hint: '无法连接 API' }));
   }, [apiPrefix, workspaceId]);
-
-  const readImageAsBase64 = (file: File): Promise<{ b64: string; mime: string }> =>
-    new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => {
-        const s = String(r.result ?? '');
-        const m = s.match(/^data:([^;]+);base64,(.+)$/);
-        if (m) resolve({ mime: m[1]!, b64: m[2]! });
-        else reject(new Error('invalid data url'));
-      };
-      r.onerror = () => reject(r.error);
-      r.readAsDataURL(file);
-    });
-
-  const phase = (status?.phase as string) ?? 'idle';
-  const badgeClass =
-    phase === 'executing' ? 'executing' : phase === 'planning' ? 'planning' : 'idle';
-
-  const tickCount = Number(status?.tickCount ?? 0);
-  const lastAction = String(status?.lastAction ?? '');
-  /** 仅写入 Goal、从未点过 tick / pi-tick 时，phase 会一直是 planning 且计数为 0 —— 这是预期行为 */
-  const waitingForFirstTick =
-    lastAction === 'goal_set' && tickCount === 0 && phase === 'planning';
 
   return (
     <div>
@@ -1164,15 +1120,6 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
         piBusy={piLocked}
         insightLoading={!insightLoaded}
       />
-      {waitingForFirstTick && (
-        <div className="card inner-nudge">
-          <strong>内脑还没开始跑任务</strong>
-          <p>
-            你已<strong>设置 Goal</strong>，但还没有跑 <strong>Pi-mono</strong>。当前 <code>planning</code> 只表示「已记目标」；
-            需要点击下方 <strong>Pi-mono tick</strong> 或 <strong>Pi-mono Auto</strong>（需配置智谱等 API Key）。
-          </p>
-        </div>
-      )}
       {suggestPromoteShutdown && (
         <div className="card inner-nudge" style={{ borderColor: '#3d5a80' }}>
           <strong>[调试] 建议：manifest 晋升并关闭内脑</strong>
@@ -1205,8 +1152,8 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
                 if (!r.ok) setErr(j.error ?? (await r.text()));
                 else {
                   setSuggestPromoteShutdown(false);
-                  void pull();
                   void pullInsight();
+                  void pullTelemetry();
                 }
               } finally {
                 setPromoteBusy(false);
@@ -1232,15 +1179,21 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
               });
               if (!r.ok) setErr(await r.text());
               else {
-                void pull();
                 void pullInsight();
+                void pullTelemetry();
               }
             }}
           >
             设置 Goal
           </button>
-          <button type="button" onClick={() => void pull()}>
-            刷新状态
+          <button
+            type="button"
+            onClick={() => {
+              void pullInsight();
+              void pullTelemetry();
+            }}
+          >
+            刷新实况
           </button>
           <button
             type="button"
@@ -1259,8 +1212,8 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
                 if (!r.ok) setErr(j.error ?? await r.text());
                 else {
                   setSuggestPromoteShutdown(!!j.suggestPromoteShutdown);
-                  void pull();
                   void pullInsight();
+                  void pullTelemetry();
                 }
               } finally {
                 setPiBusy(false);
@@ -1311,8 +1264,8 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
                 if (!r.ok) setErr(j.error ?? await r.text());
                 else {
                   setSuggestPromoteShutdown(!!j.suggestPromoteShutdown);
-                  void pull();
                   void pullInsight();
+                  void pullTelemetry();
                 }
               } finally {
                 setPiAutoBusy(false);
@@ -1329,7 +1282,7 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
               if (
                 !confirm(
                   '完全清空内脑状态并重新测试？\n\n' +
-                    '将删除 Goal；清空里程碑/约束/知识/技能/环境；控制器回到 DECOMPOSE；\n' +
+                    '将删除 Goal；清空 memory / local_dag / LocalNode 等 DyFlow 状态；\n' +
                     '删除 .run/pi-mono（含日志与 deliverables）、遥测 trace、LLM 缓存；\n' +
                     '重置 manifest。\n\n' +
                     '不会删除 workspace 根目录的报告文件与 .tool-outputs。',
@@ -1342,8 +1295,8 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
               const j = (await r.json()) as { ok?: boolean; error?: string };
               if (!r.ok) setErr(j.error ?? (await r.text()));
               else {
-                void pull();
                 void pullInsight();
+                void pullTelemetry();
               }
             }}
           >
@@ -1352,11 +1305,11 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
           <button
             type="button"
             className="danger"
-            title="将 Pi-mono 控制器置为休眠（SLEEPING），不删 Goal；之后可再 tick 或外脑唤醒"
+            title="停止当前 DyFlow burst（写入 DONE），不删 Goal"
             onClick={async () => {
               if (
                 !confirm(
-                  '关闭内脑？\n\n将把控制器置为休眠（长期睡眠），并清除未完成的 execution-context。\nGoal 与里程碑文件不会删除。',
+                  '关闭内脑？\n\n将把 DyFlow 置为 DONE 并停止 worker；Goal 与 memory 文件保留，可续跑新 burst。',
                 )
               ) {
                 return;
@@ -1366,8 +1319,8 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
               const j = (await r.json()) as { ok?: boolean; error?: string };
               if (!r.ok) setErr(j.error ?? (await r.text()));
               else {
-                void pull();
                 void pullInsight();
+                void pullTelemetry();
               }
             }}
           >
@@ -1375,11 +1328,10 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
           </button>
         </div>
         <p style={{ fontSize: 12, color: '#8b92a8', marginTop: 12, lineHeight: 1.5 }}>
-          <strong>单步粒度</strong>：一次 <code>Pi-mono 单步</code> = 内嵌 Pi-mono 控制器的<strong>一次</strong>{' '}
-          <code>Controller.tick()</code>（一个<strong>宏步</strong>）。例如 DECOMPOSE 里会跑完一整次 Decomposer（通常一次
-          LLM）；EXECUTE 里可能包含<strong>多轮</strong> LLM + 工具，直到 Executor 本轮结束再进入 ATTRIBUTE。
-          <strong>Auto</strong> 则在<strong>同一连接内</strong>连续 tick，直到某次 <code>hadWork=false</code>（本轮无事可做）或达到「Auto
-          上限」——不等于「整个项目永远跑完」；若遇 BLOCKED / 休眠，仍需外脑输入或再点 Auto。
+          <strong>单步粒度</strong>：一次 <code>Pi-mono 单步</code> = DyFlow <code>Controller.tick()</code> 一次宏步。
+          <strong>DESIGN</strong> 由 Designer 规划 <code>local_dag</code>；<strong>RUN</strong> 由 Runner 顺序执行节点（baseNode
+          内可多轮 LLM+工具）。连续无进展或达轮次上限会以 transient failure 交还 Designer。
+          <strong>Auto</strong> 在同一连接内连续 tick，直到 <code>hadWork=false</code> 或达到 Auto 上限。
         </p>
         {piMono && !piMono.ready && (
           <p style={{ fontSize: 12, color: '#c9a227', marginTop: 8 }}>
@@ -1388,81 +1340,13 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
           </p>
         )}
       </div>
-      <div className="card">
-        <strong>智谱 LLM（编码套餐端点：文本 glm-5.1 / 附图单次 glm-5v-turbo）</strong>
-        <pre style={{ fontSize: 12, marginTop: 8, maxHeight: 120, overflow: 'auto' }}>
-          {JSON.stringify(llmConfig, null, 2)}
-        </pre>
-        <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}>本轮补充（可选）</label>
-        <textarea rows={2} value={llmHint} onChange={(e) => setLlmHint(e.target.value)} />
-        <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}>附图（可选，走 ZHIPU_VISION_MODEL）</label>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
-        />
-        <div className="row" style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            disabled={llmBusy || !llmConfig?.configured}
-            onClick={async () => {
-              setErr(null);
-              setLlmBusy(true);
-              setLlmResult(null);
-              try {
-                let imageBase64: string | undefined;
-                let mimeType: string | undefined;
-                if (imageFile) {
-                  const { b64, mime } = await readImageAsBase64(imageFile);
-                  imageBase64 = b64;
-                  mimeType = mime;
-                }
-                const r = await fetch(`${apiPrefix}/inner/${workspaceId}/llm-step`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    userHint: llmHint || undefined,
-                    imageBase64,
-                    mimeType,
-                  }),
-                });
-                const j = await r.json();
-                setLlmResult(j);
-                if (!r.ok) setErr((j.error as string) ?? r.statusText);
-                void pull();
-              } catch (e) {
-                setErr(String(e));
-              } finally {
-                setLlmBusy(false);
-              }
-            }}
-          >
-            {llmBusy ? '请求中…' : 'LLM 一步'}
-          </button>
-          {!llmConfig?.configured && (
-            <span style={{ fontSize: 13, color: '#c9a227' }}>未配置 ZHIPU_API_KEY（见 .env.example）</span>
-          )}
-        </div>
-        {llmResult && (
-          <pre style={{ marginTop: 12, overflow: 'auto', maxHeight: 280, fontSize: 12 }}>
-            {JSON.stringify(llmResult, null, 2)}
-          </pre>
-        )}
-      </div>
 
-      <div className="card">
-        <strong>工作状态（utlra 聚合 · 与 Pi-mono 模式不同源）</strong>
-        <div style={{ marginTop: 8 }}>
-          <span className={`badge ${badgeClass}`}>{phase}</span>
-        </div>
-        <pre style={{ overflow: 'auto', marginTop: 12 }}>{JSON.stringify(status, null, 2)}</pre>
-      </div>
-      <div className="card">
-        <strong>遥测尾部（.run/telemetry/trace.jsonl）</strong>
+      <details className="card inner-live-details">
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>调试 · 遥测 trace 尾部</summary>
         <pre style={{ overflow: 'auto', maxHeight: 240, fontSize: 11, marginTop: 8 }}>
           {telemetry.length ? telemetry.join('\n') : '（空）'}
         </pre>
-      </div>
+      </details>
     </div>
   );
 }

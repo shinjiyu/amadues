@@ -75,7 +75,7 @@ describe('memory-block-tools', () => {
       ctx,
     );
     expect(put.output).toContain('weibo');
-    expect(put.output).toContain('已写入并校验');
+    expect(put.output).toContain('kv_secret');
     expect(put.output).not.toContain('s=1');
   });
 

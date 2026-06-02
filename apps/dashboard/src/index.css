@@ -326,34 +326,28 @@ textarea {
   border: 1px solid #30363d;
 }
 
-.pi-mode-DECOMPOSE {
+.pi-mode-DESIGN {
   background: rgba(88, 166, 255, 0.12);
   color: #58a6ff;
   border-color: rgba(88, 166, 255, 0.35);
 }
 
-.pi-mode-EXECUTE {
+.pi-mode-RUN {
   background: rgba(63, 185, 80, 0.12);
   color: #3fb950;
   border-color: rgba(63, 185, 80, 0.35);
 }
 
-.pi-mode-ATTRIBUTE {
-  background: rgba(188, 140, 255, 0.12);
-  color: #bc8cff;
-  border-color: rgba(188, 140, 255, 0.35);
-}
-
-.pi-mode-BLOCKED {
-  background: rgba(248, 81, 73, 0.12);
-  color: #f85149;
-  border-color: rgba(248, 81, 73, 0.35);
-}
-
-.pi-mode-SLEEPING {
+.pi-mode-AWAITING {
   background: rgba(210, 153, 34, 0.12);
   color: #d29922;
   border-color: rgba(210, 153, 34, 0.35);
+}
+
+.pi-mode-DONE {
+  background: rgba(188, 140, 255, 0.12);
+  color: #bc8cff;
+  border-color: rgba(188, 140, 255, 0.35);
 }
 
 .pi-mode-unknown,

@@ -68,7 +68,19 @@ curl.exe -fsS http://127.0.0.1:8797/api/health
 ## 5. 本地开发（非 Docker）
 
 ```powershell
-npm run dev:bot1   # 需先在 package.json 加脚本，或 copy yuanbao 模式用 _agent-local
+npm run dev:agent:bot1    # 8796
+npm run dev:agent:bot2      # 8797
+npm run dev:agent:bot2:stop
 ```
+
+**Bot2 实验归零（停服 + 清 `data-bot2` + 新 mem9/drive9 + 写 `bot2.env` + 拉起）：**
+
+```powershell
+npm run dev:agent:bot2:fresh
+# 仅清缓存并重启，保留现有 mem9/drive9：
+# powershell -File scripts/kuroneko/refresh-agent-bot2-local.ps1 -SkipProvision
+```
+
+脚本：`scripts/kuroneko/refresh-agent-bot2-local.ps1`（需本机 `curl`、`drive9` CLI）。
 
 Docker 与本地二选一，同 profile 不要同时占端口。

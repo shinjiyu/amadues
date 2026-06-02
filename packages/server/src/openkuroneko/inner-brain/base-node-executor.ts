@@ -17,6 +17,19 @@ import type { LLMAdapter, Message } from '../adapter/index.js';
 import type { Logger } from '../logger/index.js';
 import type { ToolRegistry } from '../tools/index.js';
 import type { ExecutionEntry } from '../brain/index.js';
+import {
+  recordInnerToolCall,
+  recordInnerToolResult,
+  resolveInnerToolAuditPaths,
+} from './inner-tool-audit.js';
+import { buildRuntimeContextSection } from './runtime-context.js';
+import { pruneReActMessages } from './react-message-prune.js';
+import {
+  shouldSlimToolCallArgs,
+  slimAssistantToolCallsAfterSuccess,
+} from './react-tool-call-slim.js';
+import { createShellStallGuard } from './shell-stall-guard.js';
+import { compressToolOutputForContext } from './tool-output-spill.js';
 import type {
   FailureSummary,
   InnerMemory,
@@ -25,7 +38,7 @@ import type {
 } from './types.js';
 
 /**
- * 防烧：绝对轮次上限 + 连续无进展 fail-fast（ADL §6.1，bot2 观测 7×50 轮 cap）。
+ * 防烧：绝对轮次上限（默认 50）+ 连续无进展 fail-fast（默认 5，ADL §6.1）。
  * 环境变量可选覆盖（仅 baseNode；Designer 仍用固定 20 轮）。
  */
 function readPositiveIntEnv(name: string, fallback: number): number {
@@ -35,9 +48,8 @@ function readPositiveIntEnv(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-const SAFETY_MAX_ROUNDS = readPositiveIntEnv('INNER_BASE_NODE_MAX_ROUNDS', 10);
+const SAFETY_MAX_ROUNDS = readPositiveIntEnv('INNER_BASE_NODE_MAX_ROUNDS', 50);
 const FAIL_FAST_NO_PROGRESS_STREAK = readPositiveIntEnv('INNER_BASE_NODE_FAIL_FAST_STREAK', 5);
-const TOOL_OUTPUT_INLINE_MAX = 3000;
 
 export interface BaseNodeOutcome {
   ok: boolean;
@@ -58,6 +70,8 @@ export interface BaseNodeRunContext {
   inst: NodeInst;
   memory: InnerMemory;
   workDir: string;
+  /** KPI burst，写入 inner tool-audit */
+  burstId?: string;
 }
 
 /** 替换 ${{ params.x }} / ${{ memory.x }} 占位 */
@@ -85,13 +99,6 @@ export function resolveParams(node: LocalNode, inst: NodeInst): Record<string, u
   const out: Record<string, unknown> = { ...defaults };
   if (node.metadata.workDir) out['workDir'] = node.metadata.workDir;
   return { ...out, ...(inst.params ?? {}) };
-}
-
-function compressOutput(output: string): string {
-  if (output.length <= TOOL_OUTPUT_INLINE_MAX) return output;
-  const head = output.slice(0, 1800);
-  const tail = output.slice(output.length - 800);
-  return `${head}\n…[截断 ${output.length - 2600} 字符]…\n${tail}`;
 }
 
 function detectTerminal(content: string): { abort: boolean; transient: boolean; reason: string } {
@@ -175,8 +182,18 @@ export async function runBaseNode(
   }
 
   const params = resolveParams(node, inst);
+  const runtimeBlock = buildRuntimeContextSection({
+    workDir: ctx.workDir,
+    dataRoot: process.env['UTLRA_DATA_ROOT']?.trim(),
+  });
   const systemPrompt = renderTemplate(
-    node.body.promptTemplate + (node.body.systemSlice ? `\n\n${node.body.systemSlice}` : ''),
+    [
+      node.body.promptTemplate,
+      node.body.systemSlice ?? '',
+      runtimeBlock,
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
     { params, memory: ctx.memory },
   );
   const userMessage = renderTemplate(buildUserMessage(ctx), { params, memory: ctx.memory });
@@ -185,6 +202,7 @@ export async function runBaseNode(
   const executionLog: ExecutionEntry[] = [];
   let messages: Message[] = [{ role: 'user', content: userMessage }];
   let lastContent = '';
+  const auditPaths = resolveInnerToolAuditPaths(ctx.workDir);
 
   logger.info('base-node', {
     event: 'start',
@@ -192,6 +210,7 @@ export async function runBaseNode(
   });
 
   let noProgressStreak = 0;
+  const shellStall = createShellStallGuard();
 
   for (let round = 0; round < SAFETY_MAX_ROUNDS; round++) {
     let result;
@@ -235,7 +254,7 @@ export async function runBaseNode(
       return { ok: true, outputs, executionLog, lastContent };
     }
 
-    const assistantMsg: Message = {
+    let assistantMsg: Message = {
       role: 'assistant',
       content: lastContent,
       tool_calls: result.toolCalls.map(tc => ({
@@ -244,12 +263,13 @@ export async function runBaseNode(
         function: { name: tc.name, arguments: JSON.stringify(tc.args) },
       })),
     };
-    const toolMsgs: Message[] = [assistantMsg];
+    const toolResultMsgs: Message[] = [];
+    const slimAfterSuccess: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> = [];
     const roundToolOk: boolean[] = [];
 
     for (const tc of result.toolCalls) {
       if (allowed && !allowed.has(tc.name)) {
-        toolMsgs.push({
+        toolResultMsgs.push({
           role: 'tool',
           content: JSON.stringify({ ok: false, output: `工具 ${tc.name} 不在本节点 allowlist 内` }),
           tool_call_id: tc.id,
@@ -260,7 +280,7 @@ export async function runBaseNode(
       }
       const tool = toolRegistry.get(tc.name);
       if (!tool) {
-        toolMsgs.push({
+        toolResultMsgs.push({
           role: 'tool',
           content: JSON.stringify({ ok: false, output: `Unknown tool: ${tc.name}` }),
           tool_call_id: tc.id,
@@ -270,16 +290,70 @@ export async function runBaseNode(
         continue;
       }
       let toolResult: { ok: boolean; output: string };
+      const t0 = Date.now();
+      recordInnerToolCall({
+        dataRoot: auditPaths.dataRoot,
+        workspaceId: auditPaths.workspaceId,
+        module: 'base-node',
+        nodeInstId: inst.id,
+        ...(ctx.burstId ? { burstId: ctx.burstId } : {}),
+        reactRound: round,
+        toolName: tc.name,
+        args: tc.args,
+      });
       try {
         toolResult = await tool.call(tc.args);
       } catch (e) {
         toolResult = { ok: false, output: String(e) };
       }
-      const compressed = { ok: toolResult.ok, output: compressOutput(toolResult.output) };
+      if (tc.name === 'shell_exec') {
+        const cmd = String(tc.args['command'] ?? '');
+        const stall = shellStall.record(cmd, toolResult.ok);
+        if (stall.stalled) {
+          logger.warn('base-node', {
+            event: 'shell_stall',
+            data: { nodeInstId: inst.id, reason: stall.reason },
+          });
+          return {
+            ok: false,
+            executionLog,
+            lastContent,
+            failure: makeFailure(inst, node, stall.reason, executionLog, 'low', true, lastContent.slice(-1024)),
+          };
+        }
+      }
+      recordInnerToolResult({
+        dataRoot: auditPaths.dataRoot,
+        workspaceId: auditPaths.workspaceId,
+        module: 'base-node',
+        nodeInstId: inst.id,
+        ...(ctx.burstId ? { burstId: ctx.burstId } : {}),
+        reactRound: round,
+        toolName: tc.name,
+        ok: toolResult.ok,
+        output: toolResult.output,
+        durationMs: Date.now() - t0,
+      });
+      const compressed = {
+        ok: toolResult.ok,
+        output: compressToolOutputForContext(toolResult.output, {
+          spill: {
+            workDir: ctx.workDir,
+            round,
+            toolName: tc.name,
+            toolCallId: tc.id,
+          },
+        }),
+      };
       roundToolOk.push(toolResult.ok);
       executionLog.push({ toolName: tc.name, args: tc.args, result: compressed });
-      toolMsgs.push({ role: 'tool', content: JSON.stringify(compressed), tool_call_id: tc.id });
+      toolResultMsgs.push({ role: 'tool', content: JSON.stringify(compressed), tool_call_id: tc.id });
+      if (toolResult.ok && shouldSlimToolCallArgs(tc.name)) {
+        slimAfterSuccess.push({ toolCallId: tc.id, toolName: tc.name, args: tc.args });
+      }
     }
+
+    assistantMsg = slimAssistantToolCallsAfterSuccess(assistantMsg, slimAfterSuccess);
 
     if (roundHadToolProgress(roundToolOk)) {
       noProgressStreak = 0;
@@ -300,7 +374,7 @@ export async function runBaseNode(
       }
     }
 
-    messages = [...messages, ...toolMsgs];
+    messages = pruneReActMessages([...messages, assistantMsg, ...toolResultMsgs]);
   }
 
   // 达到安全上限：按 transient 失败上交（可能只是没收敛）
@@ -358,4 +432,11 @@ export function roundHadToolProgress(roundToolOk: boolean[]): boolean {
 }
 
 /** 测试辅助：暴露内部纯函数 */
-export const __internal = { detectTerminal, buildUserMessage, collectOutputs, roundHadToolProgress };
+export const __internal = {
+  detectTerminal,
+  buildUserMessage,
+  collectOutputs,
+  roundHadToolProgress,
+  buildRuntimeContextSection,
+  pruneReActMessages,
+};

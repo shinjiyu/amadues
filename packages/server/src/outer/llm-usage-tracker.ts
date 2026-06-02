@@ -65,6 +65,7 @@ export function recordLlmUsageFromResponse(
     promptTokens: 0,
     completionTokens: 0,
     reasoningTokens: 0,
+    cachedPromptTokens: 0,
     totalTokens: 0,
   };
 
@@ -97,6 +98,7 @@ export function recordLlmUsageFromResponse(
     promptTokens: tokens.promptTokens,
     completionTokens: tokens.completionTokens,
     reasoningTokens: tokens.reasoningTokens,
+    ...(tokens.cachedPromptTokens > 0 ? { cachedPromptTokens: tokens.cachedPromptTokens } : {}),
     totalTokens: tokens.totalTokens,
     ok: opts.ok ?? true,
     durationMs: opts.durationMs,

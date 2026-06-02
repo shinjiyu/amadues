@@ -137,8 +137,9 @@ export function isSystemBlockId(blockId: string): boolean {
 const SYSTEM_BLOCKS: BlockDefinition[] = [
   {
     blockId: 'keychain',
-    strategy: 'notebook',
-    description: 'Named long-term entries (Cookie, Token, notes); same CRUD as other blocks',
+    strategy: 'kv_secret',
+    description:
+      '长期凭据独立保管（Cookie/Token/账号密码）；外脑 set_goal 时明文写入 goal，非加密传输信道',
     title: '钥匙串',
     system: true,
   },

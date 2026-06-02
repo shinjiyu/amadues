@@ -31,6 +31,8 @@ export interface LlmUsageJournalEntry {
   promptTokens: number;
   completionTokens: number;
   reasoningTokens: number;
+  /** prompt 中命中 provider 前缀 cache 的 token（OpenAI prompt_tokens_details.cached_tokens 等） */
+  cachedPromptTokens?: number;
   totalTokens: number;
   ok: boolean;
   durationMs?: number;
@@ -41,6 +43,7 @@ export interface LlmUsageBucket {
   promptTokens: number;
   completionTokens: number;
   reasoningTokens: number;
+  cachedPromptTokens: number;
   totalTokens: number;
 }
 
@@ -63,6 +66,7 @@ export interface ParsedLlmUsage {
   promptTokens: number;
   completionTokens: number;
   reasoningTokens: number;
+  cachedPromptTokens: number;
   totalTokens: number;
 }
 
@@ -85,12 +89,27 @@ export function parseLlmUsageFromResponse(raw: unknown): ParsedLlmUsage | null {
   const p = Number.isFinite(prompt) ? prompt : 0;
   const c = Number.isFinite(completion) ? completion : 0;
   const total = Number.isFinite(totalRaw) && totalRaw > 0 ? totalRaw : p + c;
+  const cached = parseCachedPromptTokens(usage);
   return {
     promptTokens: p,
     completionTokens: c,
     reasoningTokens: reasoning,
+    cachedPromptTokens: cached,
     totalTokens: total,
   };
+}
+
+/** OpenAI-compatible cached_tokens；部分网关放在顶层 cache_read_input_tokens */
+function parseCachedPromptTokens(usage: Record<string, unknown>): number {
+  const details = usage['prompt_tokens_details'];
+  if (details && typeof details === 'object') {
+    const c = num((details as Record<string, unknown>)['cached_tokens']);
+    if (c > 0) return c;
+  }
+  const top = num(usage['cache_read_input_tokens']);
+  if (top > 0) return top;
+  const promptDetails = usage['prompt_cache_hit_tokens'];
+  return num(promptDetails);
 }
 
 function num(v: unknown): number {
@@ -104,6 +123,7 @@ export function emptyUsageBucket(): LlmUsageBucket {
     promptTokens: 0,
     completionTokens: 0,
     reasoningTokens: 0,
+    cachedPromptTokens: 0,
     totalTokens: 0,
   };
 }
@@ -113,5 +133,6 @@ export function addToUsageBucket(bucket: LlmUsageBucket, entry: LlmUsageJournalE
   bucket.promptTokens += entry.promptTokens;
   bucket.completionTokens += entry.completionTokens;
   bucket.reasoningTokens += entry.reasoningTokens;
+  bucket.cachedPromptTokens += entry.cachedPromptTokens ?? 0;
   bucket.totalTokens += entry.totalTokens;
 }

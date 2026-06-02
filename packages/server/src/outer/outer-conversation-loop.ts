@@ -172,7 +172,8 @@ ${OUTER_ASYNC_ORCHESTRATION_GUIDE}
 
 ## 硬约束
 - 必须用 reply_to_user 工具发送消息，不能只输出文本
-- 存 Cookie/Token：对每个字段分别调用 keychain_put（如 key=zhihu__xsrf），禁止只口头说「已存入 keychain」而不调用工具；写入成功时工具返回含「已写入并校验」
+- 存 Cookie/Token/账号：keychain_put 入库（独立保管，防长对话丢失）；派内脑前 keychain_get 取明文并**写入 set_goal 的 goal 正文**，勿指望内脑自己去 vault 挖
+- 禁止只口头说「已存入 keychain」而不调用工具；写入成功时工具返回含「已写入并校验」
 - 禁止编造未知信息
 - 禁止在 reply_to_user 的 text 里写 Markdown 链接（例如 \`[昵称](@sid:…)\`）；@人只用「@昵称」或「@显示名」纯文本，不要带 sid URI
 - 每轮最多调用工具 ${MAX_TOOL_ROUNDS} 次`;

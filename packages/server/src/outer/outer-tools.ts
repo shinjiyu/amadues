@@ -149,7 +149,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
         properties: {
           goal: {
             type: 'string',
-            description: '任务目标描述（Markdown），内脑将根据此目标执行',
+            description:
+              '任务目标描述（Markdown），内脑将根据此目标执行。若需账号/密码：先 keychain_get 取明文，**写入本字段**（vault 是独立保管，不是加密传输；内脑 Designer 会再抄到 instruction）',
           },
           origin_user: {
             type: 'string',

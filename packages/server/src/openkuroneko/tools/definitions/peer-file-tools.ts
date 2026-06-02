@@ -1,10 +1,10 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import {
   listPeerWorkspaces,
   resolvePeerReadPath,
 } from './workdir-guard.js';
 import { listFilesUnderRoot, searchFilesUnderRoot } from './file-search.js';
+import { readTextFilePaginated } from './read-file-lines.js';
 import type { Tool } from '../index.js';
 
 function parseBool(raw: unknown): boolean {
@@ -35,19 +35,22 @@ export const listPeerWorkspacesTool: Tool = {
   },
 };
 
-const DEFAULT_PEER_READ_MAX_BYTES = Math.max(
-  512 * 1024,
-  Number(process.env['UTLRA_PEER_READ_MAX_BYTES'] ?? 25 * 1024 * 1024),
-);
+function parseOptionalInt(raw: unknown): number | undefined {
+  if (raw == null || raw === '') return undefined;
+  const n = Number.parseInt(String(raw), 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
 
 export const readPeerFileTool: Tool = {
   name: 'read_peer_file',
   description:
-    'Read a text file from a same-KPI peer workspace (read-only). ' +
-    'Check `.inbox/README.md` for names/summaries first; fetch full content here on demand.',
+    'Read a text file from a same-KPI peer workspace (read-only, paginated). ' +
+    'Check `.inbox/README.md` for names/summaries first.',
   parameters: {
     workspace_id: { type: 'string', description: 'Peer workspace id, e.g. task-ib-mpqmx0v5-9a32' },
     path: { type: 'string', description: 'Path relative to that workspace root' },
+    offset_line: { type: 'number', description: '1-based start line (default 1)' },
+    limit_lines: { type: 'number', description: 'Max lines (default 200, max 500)' },
   },
   required: ['workspace_id', 'path'],
   async call(args): Promise<{ ok: boolean; output: string }> {
@@ -56,19 +59,10 @@ export const readPeerFileTool: Tool = {
     if (!wsId || !rel) return { ok: false, output: 'Missing workspace_id or path' };
     const abs = resolvePeerReadPath(wsId, rel);
     if (!abs) return { ok: false, output: `Peer workspace 不可读或路径非法：${wsId}/${rel}` };
-    try {
-      const st = fs.statSync(abs);
-      if (!st.isFile()) return { ok: false, output: `Not a file: ${abs}` };
-      if (st.size > DEFAULT_PEER_READ_MAX_BYTES) {
-        return {
-          ok: false,
-          output: `File too large (${st.size} bytes); max ${DEFAULT_PEER_READ_MAX_BYTES} for read_peer_file`,
-        };
-      }
-      return { ok: true, output: fs.readFileSync(abs, 'utf8') };
-    } catch (e) {
-      return { ok: false, output: String(e) };
-    }
+    return readTextFilePaginated(abs, {
+      offsetLine: parseOptionalInt(args['offset_line']),
+      limitLines: parseOptionalInt(args['limit_lines']),
+    });
   },
 };
 

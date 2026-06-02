@@ -125,7 +125,7 @@ baseNode（preset/base 或 Creator 派生）
     LLM ReAct loop（**无早停**；有兜底防烧）
       工具失败 → 自行重试 / 换路径 / 改参数
       **连续无进展**（默认 5 轮内无任何 `ok:true` 工具结果，`INNER_BASE_NODE_FAIL_FAST_STREAK`）→ transient `last_failure`，上交 Designer（可由 Designer 安排重试）
-      **绝对轮次上限**（默认 10，`INNER_BASE_NODE_MAX_ROUNDS`）→ 同上 transient
+      **绝对轮次上限**（默认 50，`INNER_BASE_NODE_MAX_ROUNDS`）→ 同上 transient；无进展仍由 fail-fast（5 轮）提前上交 Designer
       达到「不可继续」判定 → 写 failure_summary，退出
       达到目标 / interface.outputs 全部满足 → ok 退出
 ```
@@ -135,6 +135,46 @@ baseNode（preset/base 或 Creator 派生）
 - baseNode 内部生成新 LocalNode（那是 newNodeCreator 职责）
 - baseNode 改 `local_dag`（那是 Designer 职责）
 - baseNode 跨 NodeInst 读写 memory **未声明** key（除 last_failure）
+
+### 6.1b 运行时上下文（Runtime Context，P0）
+
+> 对齐 Cursor [agent harness](https://cursor.com/blog/continually-improving-agent-harness) / OpenCode prompt assembly：**稳定、每节点必带**的执行环境事实，减少 ReAct 在 OS/shell/凭据路径上的无效试探。
+
+`baseNodeExecutor` 在 **system prompt 末尾**（`LocalNode.body.promptTemplate` 之后）追加 `## 运行时环境`，内容来自 `inner-brain/runtime-context.ts`：
+
+| 字段 | 来源 | 说明 |
+|------|------|------|
+| `platform` / `arch` | `process.platform` | `win32` / `linux` / `darwin` |
+| `shell` | `UTLRA_SHELL` + `exec-runner` | Windows 默认 `powershell`（`-Command`）；`cmd` 可显式回退 |
+| `user` / `home` | `os.userInfo` / `HOME` | 路径推断用 |
+| `workDir` | NodeInst / ctx | 相对路径基准 |
+| `dataRoot` / `vault` | `UTLRA_DATA_ROOT` | `vault/blocks/keychain` 凭据根；**无 dataRoot 时注明 vault 不可用** |
+| `env_keys` | `process.env` 名列表 | 仅列 **存在** 的 key 名（含 `*_API_KEY` / `*_SECRET`），**不含 secret 值** |
+| 凭据契约 | 固定文案 | **以 NodeInst.instruction / memory.goal 中的明文为准**；勿默认挖 vault/浏览器；**禁止** Edge 解密、macOS `security`、bash `||` 在 PowerShell 中 |
+
+**与上下文治理**：runtime 块随 system 前缀固定；ReAct 历史治理见 §6.5。
+
+实现：`buildRuntimeContextSection({ workDir, dataRoot? })` · 测试：`runtime-context.test.ts`。
+
+### 6.1c 凭据传递链（P0，修正 keychain 语义）
+
+> vault **不是**内外脑加密信道，是外脑侧**独立保管**，防止凭据在长上下文丢失。执行时靠 **明文 task 传递**。
+
+```text
+外脑 keychain_put → 外脑 keychain_get → set_goal（goal 正文含明文）
+  → memory.goal → Designer NodeInst.instruction（明文摘录）
+  → baseNode 按 instruction 执行（不默认 shell/Edge 挖密码）
+```
+
+| 角色 | 职责 |
+|------|------|
+| **外脑** | 需要派活时 `keychain_get` 取明文，**写入 `set_goal` 的 goal 参数**（勿只在 IM 说「已存 keychain」） |
+| **Designer** | 子目标需要账号时，从 `memory.goal` / constraints **把明文写进 `instruction`**，不要写「去读 keychain」让 baseNode 猜 |
+| **baseNode** | 信任 instruction 中的明文；禁止浏览器解密/env 盲探 |
+
+**内脑兜底工具**（非主路径）：`keychain_entries` / `keychain_get`（`keychain-tools.ts`），仅 instruction 明确要求读 vault 且 goal 无明文时用。无 `keychain_put`。
+
+`preset/base` v1.2.0：凭据以 instruction 明文为主；v1.1.0 的「优先 keychain_get」已废弃。
 
 ### 6.2 failure_summary（terminal failure 时）
 
@@ -161,6 +201,56 @@ memory.last_failure = {
 | **显式放弃** | LLM 输出 `CANNOT_CONTINUE: <reason>`（prompt 约定） |
 
 **非 terminal**（已自修）：不写 `last_failure`，写 `memory.node_results[id] = ok`。
+
+### 6.5 ReAct 上下文治理（P2）
+
+> 不做 LLM 整段摘要 compaction（易丢约束、伤 cache）；采用 **截断 + 落盘 + 旧轮 prune**，结论仍应 `record_fact` 沉淀。
+
+| 机制 | 实现 | 默认 | 环境变量 |
+|------|------|------|----------|
+| **Tool 输出压缩** | `tool-output-spill.ts` | 超 `INNER_TOOL_OUTPUT_INLINE_MAX`（3000）→ head/tail + 全文写入 `.run/tool-output/` | `INNER_TOOL_OUTPUT_INLINE_MAX` |
+| **旧轮 prune** | `react-message-prune.ts` | 保留首条 `user` + 最近 **2** 轮完整 tool；更早轮 tool → `[react-prune]` 占位（含落盘路径提示） | `INNER_REACT_PRUNE=1`，`INNER_REACT_PRUNE_PROTECT_ROUNDS=2`，`INNER_REACT_PRUNE=0` 关闭 |
+| **Tool 参数瘦身（P2.5）** | `react-tool-call-slim.ts` | `write_file`/`edit_file` 成功后 assistant 参数替换为 `[N chars omitted…]`；旧轮同样瘦身 | `INNER_TOOL_ARGS_SLIM_MIN=200` |
+| **web_search fetch 上限** | `web-search/index.ts` | 默认 **4000** 字符（`truncatePage`）；可 `max_chars` / `OPENKURONEKO_WEB_SEARCH_FETCH_MAX_CHARS` | — |
+| **Shell stall** | `shell-stall-guard.ts` | 同一 `shell_exec` 命令连续 **4** 次 `ok:false` → transient failure | `INNER_SHELL_STALL_GUARD=1`，`INNER_SHELL_STALL_MAX_REPEAT=4` |
+| **Prompt cache 计量** | `llm-usage-types.parseLlmUsageFromResponse` | journal 可选字段 `cachedPromptTokens`（`prompt_tokens_details.cached_tokens`） | — |
+
+**禁止**：prune 后不自动删 `.run/tool-output/`（本轮 burst 内可 `read_file` 复查）；**不**改写 system / 首条 user。
+
+**P1（✅）**：`read_file(offset_line,limit_lines)` / `read_peer_file` 分页（`read-file-lines.ts`）· `shell_probe` 批量探测（§6.6）。
+
+### 6.6 shell_probe（P1）
+
+| 项 | 说明 |
+|----|------|
+| **目的** | 多条只读探测命令一次 tool 返回，减少 ReAct 轮次（凭据/环境发现） |
+| **实现** | `tools/definitions/shell-probe.ts`；注册于 `run-tick.ts` executor 工具集 |
+| **参数** | `commands`（JSON 数组或换行分隔，最多 8）、`stop_on_first_ok`（默认 true）、`timeout_ms`（默认 15000） |
+| **行为** | 顺序 `runCommand`；首个 exit 0 且非空输出可提前结束 |
+| **提示** | `runtime-context.ts` + preset 约束：环境探测优先 `shell_probe`，大文件用分页 `read_file` |
+
+### 6.4 内脑工具审计（baseNode / Designer）
+
+DyFlow 每次工具调用落盘 JSONL，便于按节点分析 token 与行为（对齐外脑 `outer/tool-logs`）：
+
+```text
+DATA_ROOT/inner/tool-logs/<workspaceId>/YYYY-MM-DD.jsonl
+```
+
+| 字段 | 说明 |
+|------|------|
+| `schema` | `inner-tool-audit.v1` |
+| `module` | `base-node` \| `designer` \| `node-creator` |
+| `event` | `tool.call` \| `tool.result` |
+| `data.round` | ReAct 轮次（0-based） |
+| `data.name` | 工具名 |
+| `data.node_inst_id` | NodeInst.id（baseNode） |
+| `data.burst_id` | KPI burstId |
+| `data.args` | 脱敏参数（长 `content` 截断） |
+| `data.preview` | 结果预览 ≤240 字符 |
+| `data.output_len` | 完整输出长度 |
+
+实现：`inner-brain/inner-tool-audit.ts`；`base-node-executor` 在每次 `tool.call` 前后写入。
 
 ### 6.3 Designer 失败决策表（写进 Designer prompt）
 
@@ -390,3 +480,5 @@ burst 结束 → registry DONE；子进程退出
 | 2026-06-02 | 初版：Designer–Runner 替换三件套；DESIGN/RUN/AWAITING/DONE FSM；NodeInst schema；failure_summary；Designer Tools；preset；burst 全保留 |
 | 2026-06-02 | §6.1：baseNode fail-fast streak + `INNER_BASE_NODE_MAX_ROUNDS`（bot2 实验：7×50 轮 safety_cap 烧 token）|
 | 2026-06-02 | §7b：固化三层（facts/LocalNode/**Tool**）+ 晋升准则；T0 `register_workspace_script_tool`（bot2：成功节点 0 提升，且多数应是 Tool 非 Node）|
+| 2026-06-02 | §6.1：`INNER_BASE_NODE_MAX_ROUNDS` 默认恢复 **50**；`INNER_BASE_NODE_FAIL_FAST_STREAK` 保持 **5** |
+| 2026-06-02 | §6.4：内脑 `inner/tool-logs` 工具审计 JSONL（baseNode） |

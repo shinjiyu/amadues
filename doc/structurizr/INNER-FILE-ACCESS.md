@@ -14,7 +14,7 @@
 | 无分页参数 | LLM 无法「只看第 3 章」 |
 | 与 inbox 目录重复 | spawn 已给摘要，EXECUTE 又整文件 read |
 
-**现状（代码）**：`read-file.ts` 无上限、无 offset，整文件 `readFileSync` 进 tool result。
+**现状（代码）**：`read-file-lines.ts` 共享分页；`read-file.ts` / `read_peer_file` 支持 `offset_line` / `limit_lines`。
 
 ---
 
@@ -33,7 +33,7 @@
 
 ---
 
-## 3. 本仓库目标模式（⏳ 实现）
+## 3. 本仓库目标模式（✅ P1）
 
 ### 3.1 工具分层
 
@@ -44,7 +44,7 @@
 大文件：read_peer_file 同参数；或 shell_exec head/tail
 ```
 
-### 3.2 read_file 契约（计划）
+### 3.2 read_file 契约（已实现）
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
@@ -82,7 +82,7 @@
 
 | 模块 ID | 路径 | 职责 |
 |---------|------|------|
-| `innerFileTools` | `read-file.ts` + `peer-file-tools.ts` | 分页读 ⏳ |
+| `innerFileTools` | `read-file-lines.ts` + `read-file.ts` + `peer-file-tools.ts` | 分页读 ✅ |
 | `fileSearch` | `file-search.ts` | search 先定位 |
 | `workspaceInbox` | `workspace-inbox.ts` | spawn 摘要目录 |
 
@@ -92,7 +92,7 @@
 
 | 类型 | 文件 |
 |------|------|
-| 单测 | ⏳ `read-file.test.ts`（分页、截断提示、二进制拒绝） |
+| 单测 | ✅ `read-file-lines.test.ts`（分页、截断提示、二进制拒绝） |
 | 组件 | ⏳ 大文件 novel 场景：search → offset read |
 
 ---
@@ -102,3 +102,4 @@
 | 日期 | 说明 |
 |------|------|
 | 2026-06-01 | 初版：业界模式 + read_file 分页 ADL（未实现） |
+| 2026-06-02 | P1：`read-file-lines.ts` + `read_peer_file` 同参 |

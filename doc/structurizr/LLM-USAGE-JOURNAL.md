@@ -19,7 +19,7 @@
 ## 3. 存储
 
 - 路径：`<DATA_ROOT>/usage/llm-usage.jsonl`
-- 每行一条 `LlmUsageJournalEntry`（ISO 时间、source、model、tokens、agentId、可选 workspace/instance/thread）
+- 每行一条 `LlmUsageJournalEntry`（ISO 时间、source、model、tokens、可选 `cachedPromptTokens`、agentId、可选 workspace/instance/thread）
 
 ## 4. 采集点
 

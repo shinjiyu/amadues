@@ -47,7 +47,7 @@ describe('presetSeeder', () => {
     store.commit(old);
     const r = seedPresetNodes(root, { store });
     expect(r.upgraded).toContain('preset/base');
-    expect(store.read('preset/base')?.version).toBe('1.0.0');
+    expect(store.read('preset/base')?.version).toBe('1.2.0');
   });
 
   it('preset nodes are flagged export=false', () => {

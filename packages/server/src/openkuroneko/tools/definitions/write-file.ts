@@ -8,7 +8,8 @@ export const writeFileTool: Tool = {
   name: 'write_file',
   description:
     'Write text content to a file in the working directory.\n' +
-    'mode=overwrite（默认）整文件覆盖；mode=append 在文件末尾追加（文件不存在则创建）。',
+    'mode=overwrite（默认）整文件覆盖；mode=append 在文件末尾追加（文件不存在则创建）。\n' +
+    '大段代码写入后对话历史会自动省略 content（文件已在 workDir）；后续请用 edit_file 小范围修改，或 register_workspace_script_tool 晋升稳定脚本。',
   parameters: {
     path:    { type: 'string', description: 'File path relative to workDir (e.g. "src/snake.js")' },
     content: { type: 'string', description: 'Text content to write or append' },

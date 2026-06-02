@@ -13,6 +13,7 @@ import type { Logger } from '../logger/index.js';
 import type { LLMAdapter } from '../adapter/index.js';
 import type { ToolRegistry } from '../tools/index.js';
 import { createToolRegistry } from '../tools/index.js';
+import { createKeychainTools } from './keychain-tools.js';
 import { createMemoryTools } from './memory-tools.js';
 import {
   materializeWorkspaceScriptTools,
@@ -107,7 +108,7 @@ export async function runLocalDag(dag: LocalDag, deps: RunnerDeps): Promise<Runn
       return { ok: false, completed, failedAt: inst.id, results };
     }
 
-    const outcome = await dispatchNode(inst, node, deps);
+    const outcome = await dispatchNode(inst, node, deps, dag.burstId);
     const nr: NodeResult = {
       nodeInstId: inst.id,
       ref: node.id,
@@ -130,7 +131,12 @@ export async function runLocalDag(dag: LocalDag, deps: RunnerDeps): Promise<Runn
   return { ok: true, completed, results };
 }
 
-async function dispatchNode(inst: NodeInst, node: LocalNode, deps: RunnerDeps): Promise<DispatchOutcome> {
+async function dispatchNode(
+  inst: NodeInst,
+  node: LocalNode,
+  deps: RunnerDeps,
+  burstId?: string,
+): Promise<DispatchOutcome> {
   const { llm, toolRegistry, store, memory, logger, workDir } = deps;
   const memSnapshot = memory.read();
 
@@ -144,7 +150,7 @@ async function dispatchNode(inst: NodeInst, node: LocalNode, deps: RunnerDeps): 
   }
 
   if (node.body.kind === 'graph') {
-    return runGraph(inst, node, deps);
+    return runGraph(inst, node, deps, burstId);
   }
 
   // baseNode 注入：memory 工具（固化事实）+ workspace 脚本工具（T0 已晋升能力）+ 注册工具
@@ -152,18 +158,24 @@ async function dispatchNode(inst: NodeInst, node: LocalNode, deps: RunnerDeps): 
   const augmented = createToolRegistry([
     ...toolRegistry.list(),
     ...createMemoryTools(memory),
+    ...createKeychainTools(),
     ...materializeWorkspaceScriptTools(workDir),
     createRegisterWorkspaceScriptToolTool(workDir),
   ]);
   const out = await runBaseNode(
-    { node, inst, memory: memSnapshot, workDir },
+    { node, inst, memory: memSnapshot, workDir, ...(burstId ? { burstId } : {}) },
     { llm, toolRegistry: augmented, logger },
   );
   return { ok: out.ok, ...(out.outputs ? { outputs: out.outputs } : {}), ...(out.failure ? { failure: out.failure } : {}) };
 }
 
 /** compound 节点：inline 展开子图，共享父图 memory，按 exports 暴露顶层 key */
-async function runGraph(inst: NodeInst, node: LocalNode, deps: RunnerDeps): Promise<DispatchOutcome> {
+async function runGraph(
+  inst: NodeInst,
+  node: LocalNode,
+  deps: RunnerDeps,
+  burstId?: string,
+): Promise<DispatchOutcome> {
   if (node.body.kind !== 'graph') throw new Error('runGraph called on non-graph node');
   const { store, memory, logger } = deps;
   const subResults: Record<string, NodeResult> = {};
@@ -173,7 +185,7 @@ async function runGraph(inst: NodeInst, node: LocalNode, deps: RunnerDeps): Prom
     if (!childNode) {
       return { ok: false, failure: missingRefFailure(child) };
     }
-    const outcome = await dispatchNode(child, childNode, deps);
+    const outcome = await dispatchNode(child, childNode, deps, burstId);
     const nr: NodeResult = {
       nodeInstId: `${inst.id}.${child.id}`,
       ref: childNode.id,

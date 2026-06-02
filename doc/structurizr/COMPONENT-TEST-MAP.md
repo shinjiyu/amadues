@@ -25,7 +25,9 @@
 | outerConversationLoop | ❌ | ✅ `outerConversationLoop.component.integration.test.ts` | — | + `integration/outer-conversation-loop-assembly` |
 | outerToolExecutor | 🟡 tools 单测散落 | ✅ `outerToolExecutor.component.integration.test.ts` | — | `normalizeAgentReplyMentionText` |
 | **workspaceInbox** | ✅ `workspace-inbox.test.ts` | ⏳ | — | ADL [`INNER-WORKSPACE-INBOX.md`](./INNER-WORKSPACE-INBOX.md) |
-| **innerFileTools** | ⏳ `read-file.test.ts` | — | — | ADL [`INNER-FILE-ACCESS.md`](./INNER-FILE-ACCESS.md) |
+| **innerFileTools** | ✅ `read-file-lines.test.ts` | — | — | ADL [`INNER-FILE-ACCESS.md`](./INNER-FILE-ACCESS.md) |
+| **shellProbe** | ✅ `shell-probe.test.ts` | — | — | ADL [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §6.6 |
+| **reactToolCallSlim** | ✅ `react-tool-call-slim.test.ts` | — | — | ADL §6.5 P2.5 |
 | outerOrchestrator | 🟡 parse | ✅ `outerOrchestrator.component.integration.test.ts` | — | + `outer-roundtrip` / `outer-roundtrip-inner`（注入 spawn） |
 | innerBrainKpiReuse | ✅ `inner-brain-kpi-reuse.test.ts` | ⏳ | — | ADL [`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md) |
 | innerBrainRegistry | ❌ | ✅ `innerBrainRegistry.component.integration.test.ts` | — | |
@@ -79,7 +81,12 @@
 | completionReport | ✅ `completion-report.test.ts`（im/verbose） | — | — | burst DONE 完成报告正文 |
 | **designer** | ✅ `designer.test.ts`（run/done/empty + ref 校验） | ✅ `controller.component.integration.test.ts`（DESIGN↔RUN↔DONE 全链） | ⏳ `designer.prompt.test.ts` | P0；DESIGN ↔ RUN 切换 + last_failure 决策表 |
 | **runner** | ✅ `runner.test.ts`（顺序图 + terminal stop + 缺 ref + compound 展开） | ✅ `controller.component.integration.test.ts` | — | P0；顺序图 + dispatch + memory 写入 |
-| **baseNodeExecutor** | ✅ `base-node-executor.test.ts`（render/terminal/allowlist/fail-fast + outputs） | — | — | P0；ReAct + fail-fast streak + `INNER_BASE_NODE_MAX_ROUNDS` |
+| **baseNodeExecutor** | ✅ `base-node-executor.test.ts`（render/terminal/allowlist/fail-fast + outputs + runtime 注入） | — | — | P0；ReAct + fail-fast + runtime context |
+| **runtimeContext** | ✅ `runtime-context.test.ts`（platform/shell/vault/env_keys） | — | — | P0；baseNode system 常驻环境块 |
+| **innerKeychainTools** | ✅ `keychain-tools.test.ts`（entries/get + 无 dataRoot） | — | — | P0；内脑 vault 只读 |
+| **reactMessagePrune** | ✅ `react-message-prune.test.ts` | — | — | P2；旧轮 tool prune |
+| **toolOutputSpill** | ✅ `tool-output-spill.test.ts` | — | — | P2；超大 tool 落盘 |
+| **shellStallGuard** | ✅ `shell-stall-guard.test.ts` | — | — | P2；重复 shell 失败 |
 | **nodeCreatorExecutor** | ✅ `node-creator-executor.test.ts`（pack/abort + auto-export） | — | ⏳ `node-creator.prompt.test.ts` | P0；pack/specialize + commit_local_node |
 | **localNodeStore** | ✅ `local-node-store.test.ts`（schema/嵌套 id/穿越/index 重建） | — | — | P0；schema 校验 + index |
 | **memoryStore** | ✅ `memory-store.test.ts`（点路径/last_failure/node_results/facts） | — | — | P0；last_failure / node_results / facts |

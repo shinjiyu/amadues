@@ -43,8 +43,20 @@ describe('parseLlmUsageFromResponse', () => {
       promptTokens: 12,
       completionTokens: 8,
       reasoningTokens: 5,
+      cachedPromptTokens: 0,
       totalTokens: 20,
     });
+  });
+
+  it('parses prompt_tokens_details.cached_tokens', () => {
+    const parsed = parseLlmUsageFromResponse({
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 10,
+        prompt_tokens_details: { cached_tokens: 80 },
+      },
+    });
+    expect(parsed?.cachedPromptTokens).toBe(80);
   });
 });
 

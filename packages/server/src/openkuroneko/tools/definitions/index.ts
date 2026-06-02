@@ -9,6 +9,7 @@ export {
   searchPeerFilesTool,
 } from './peer-file-tools.js';
 export { shellExecTool } from './shell-exec.js';
+export { shellProbeTool } from './shell-probe.js';
 export { shellExecBgTool } from './shell-exec-bg.js';
 export { shellReadOutputTool } from './shell-read-output.js';
 export { shellKillTool } from './shell-kill.js';

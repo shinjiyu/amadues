@@ -6,7 +6,9 @@ import { prepareSelfUpdateMutation } from '../../../self-update/session.js';
 
 export const editFileTool: Tool = {
   name: 'edit_file',
-  description: 'Replace a specific string in a file with a new string (first occurrence).',
+  description:
+    'Replace a specific string in a file with a new string (first occurrence). ' +
+    'Prefer small old_string/new_string patches over rewriting whole files with write_file.',
   parameters: {
     path:       { type: 'string', description: 'File path to edit' },
     old_string: { type: 'string', description: 'Exact string to find and replace' },

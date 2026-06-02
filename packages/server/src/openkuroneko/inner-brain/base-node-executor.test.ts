@@ -80,6 +80,27 @@ describe('detectTerminal', () => {
 });
 
 describe('runBaseNode', () => {
+  it('injects runtime context into system prompt', async () => {
+    let sawRuntime = false;
+    const llm = createFakeLLM([
+      {
+        match: ({ systemPrompt }) => {
+          sawRuntime =
+            systemPrompt.includes('## 运行时环境') &&
+            systemPrompt.includes('明文') &&
+            systemPrompt.includes('workDir: /tmp/x');
+          return true;
+        },
+        reply: { content: 'ok' },
+      },
+    ]);
+    await runBaseNode(
+      { node: baseNode(), inst, memory: emptyMemory(), workDir: '/tmp/x' },
+      { llm, toolRegistry: createToolRegistry([]), logger: silentLogger() },
+    );
+    expect(sawRuntime).toBe(true);
+  });
+
   it('completes when LLM finishes without tool calls', async () => {
     const llm = createFakeLLM([{ label: 'done', match: 'fetch the data', reply: { content: 'fetched ok' } }]);
     const outcome = await runBaseNode(

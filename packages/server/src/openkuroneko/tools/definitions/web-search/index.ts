@@ -14,9 +14,25 @@
 
 import type { Tool } from '../../index.js';
 import { curlFetch, curlSearch } from './engine-curl.js';
+import { truncatePage } from './html-parser.js';
 import { playwrightFetch, playwrightSearch } from './engine-playwright.js';
 
 type Engine = 'curl' | 'playwright';
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function resolveFetchMaxChars(override: unknown): number {
+  const n = Number(override);
+  if (Number.isFinite(n) && n > 0) {
+    return Math.min(Math.floor(n), 20_000);
+  }
+  return readPositiveIntEnv('OPENKURONEKO_WEB_SEARCH_FETCH_MAX_CHARS', 4000);
+}
 
 function resolveEngine(override?: unknown): Engine {
   if (override === 'playwright') return 'playwright';
@@ -35,6 +51,10 @@ export const webSearchTool: Tool = {
     url:         { type: 'string', description: 'URL to fetch (required when action="fetch")' },
     engine:      { type: 'string', description: '"curl" (default) or "playwright"', enum: ['curl', 'playwright'] },
     max_results: { type: 'number', description: 'Max results to return (default 5, max 10)' },
+    max_chars: {
+      type: 'number',
+      description: 'Max plain-text chars for action=fetch (default 4000, max 20000)',
+    },
   },
   required: ['action'],
 
@@ -59,9 +79,11 @@ export const webSearchTool: Tool = {
         const url = String(args['url'] ?? '').trim();
         if (!url) return { ok: false, output: 'Missing required argument: url' };
 
-        const output = engine === 'playwright'
+        const maxChars = resolveFetchMaxChars(args['max_chars']);
+        const raw = engine === 'playwright'
           ? await playwrightFetch(url)
           : curlFetch(url);
+        const output = truncatePage(raw, maxChars);
 
         return { ok: true, output };
       }

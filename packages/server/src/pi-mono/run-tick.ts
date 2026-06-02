@@ -124,6 +124,7 @@ async function createPiMonoController(params: {
     toolsDefs.listPeerFilesTool,
     toolsDefs.searchPeerFilesTool,
     toolsDefs.shellExecTool,
+    toolsDefs.shellProbeTool,
     toolsDefs.shellExecBgTool,
     toolsDefs.shellReadOutputTool,
     toolsDefs.shellKillTool,
