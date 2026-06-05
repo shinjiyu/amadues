@@ -34,7 +34,7 @@ export interface AutonomyPipelineDeps {
   getLlmEnv: () => InnerLlmEnv | null;
   getOrchestratorStats?: ResourceProbeDeps['getOrchestratorStats'];
   scheduleReflexionBurst?: (kpiId: string) => string | null;
-  scheduleNextKpiBurst?: (kpiId: string) => string | null;
+  scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   loadThreads?: () => LooseThreadStore;
   identityRegistry?: IdentityRegistry;
 }

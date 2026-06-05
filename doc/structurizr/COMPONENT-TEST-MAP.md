@@ -81,12 +81,16 @@
 | completionReport | ✅ `completion-report.test.ts`（im/verbose） | — | — | burst DONE 完成报告正文 |
 | **designer** | ✅ `designer.test.ts`（run/done/empty + ref 校验） | ✅ `controller.component.integration.test.ts`（DESIGN↔RUN↔DONE 全链） | ⏳ `designer.prompt.test.ts` | P0；DESIGN ↔ RUN 切换 + last_failure 决策表 |
 | **runner** | ✅ `runner.test.ts`（顺序图 + terminal stop + 缺 ref + compound 展开） | ✅ `controller.component.integration.test.ts` | — | P0；顺序图 + dispatch + memory 写入 |
-| **baseNodeExecutor** | ✅ `base-node-executor.test.ts`（render/terminal/allowlist/fail-fast + outputs + runtime 注入） | — | — | P0；ReAct + fail-fast + runtime context |
+| **baseNodeExecutor** | ✅ `base-node-executor.test.ts`（render/terminal/allowlist/fail-fast + acceptance + shell-evidence + runtime） | — | — | P0；ReAct + §6.7 验票 |
+| **nodeAcceptance** | ✅ `node-acceptance.test.ts`（json/file/string + shell 404） | — | — | P0b；DYFLOW §6.7 |
+| **failureDistill** | ✅ `failure-distill.test.ts`（distill + dedupe append） | — | — | P0b；DYFLOW §7c |
 | **runtimeContext** | ✅ `runtime-context.test.ts`（platform/shell/vault/env_keys） | — | — | P0；baseNode system 常驻环境块 |
 | **innerKeychainTools** | ✅ `keychain-tools.test.ts`（entries/get + 无 dataRoot） | — | — | P0；内脑 vault 只读 |
 | **reactMessagePrune** | ✅ `react-message-prune.test.ts` | — | — | P2；旧轮 tool prune |
 | **toolOutputSpill** | ✅ `tool-output-spill.test.ts` | — | — | P2；超大 tool 落盘 |
 | **shellStallGuard** | ✅ `shell-stall-guard.test.ts` | — | — | P2；重复 shell 失败 |
+| **burstStallEvaluator** | ✅ `burst-stall-evaluator.test.ts` | — | — | P0 观测；空转信号 |
+| **burstStallAlert** | ✅ `burst-stall-alert.test.ts` | — | — | P0 观测；落盘 + debounce |
 | **nodeCreatorExecutor** | ✅ `node-creator-executor.test.ts`（pack/abort + auto-export） | — | ⏳ `node-creator.prompt.test.ts` | P0；pack/specialize + commit_local_node |
 | **localNodeStore** | ✅ `local-node-store.test.ts`（schema/嵌套 id/穿越/index 重建） | — | — | P0；schema 校验 + index |
 | **memoryStore** | ✅ `memory-store.test.ts`（点路径/last_failure/node_results/facts） | — | — | P0；last_failure / node_results / facts |

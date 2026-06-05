@@ -8,6 +8,9 @@ import { ClientEventSchema, ServerEventSchema, type ClientEvent, type ServerEven
 
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000];
 const HELLO_TIMEOUT_MS = 15_000;
+/** 经 nginx/运营商 idle 断连时保活；连续 2 次无 pong 则 terminate 触发重连 */
+const WS_PING_INTERVAL_MS = 25_000;
+const WS_PING_MISS_LIMIT = 2;
 
 function wsLog(userId: string, msg: string, extra?: Record<string, unknown>): void {
   const suffix = extra && Object.keys(extra).length > 0 ? ` ${JSON.stringify(extra)}` : '';
@@ -38,6 +41,8 @@ export class WebChatWsClient {
   private retryIdx = 0;
   private status: ConnectionStatus = 'idle';
   private helloAckTimer: NodeJS.Timeout | null = null;
+  private pingTimer: NodeJS.Timeout | null = null;
+  private pingMissStreak = 0;
   private isReady = false;
   private socketOpenedAt: number | null = null;
 
@@ -53,6 +58,34 @@ export class WebChatWsClient {
     this.openSocket();
   }
 
+  /** 强制断开并走重连（用于 presence 漂移 / 半开连接） */
+  reconnectNow(reason: string): void {
+    if (this.closed) return;
+    wsWarn(this.opts.userId, 'reconnectNow', { reason, wasReady: this.isReady, status: this.status });
+    if (this.helloAckTimer) {
+      clearTimeout(this.helloAckTimer);
+      this.helloAckTimer = null;
+    }
+    this.clearPingTimer();
+    this.isReady = false;
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) {
+      try {
+        ws.terminate();
+      } catch {
+        this.scheduleReconnect(reason);
+        return;
+      }
+      // 半开连接有时 terminate 后收不到 close；兜底强制重连
+      setTimeout(() => {
+        if (!this.closed && !this.ws) this.scheduleReconnect(`${reason}:terminate_fallback`);
+      }, 2000);
+      return;
+    }
+    this.scheduleReconnect(reason);
+  }
+
   close(): void {
     wsLog(this.opts.userId, 'close invoked (intentional shutdown)', { wasReady: this.isReady, status: this.status });
     this.closed = true;
@@ -60,6 +93,7 @@ export class WebChatWsClient {
       clearTimeout(this.helloAckTimer);
       this.helloAckTimer = null;
     }
+    this.clearPingTimer();
     try { this.ws?.close(); } catch { /* ignore */ }
     this.ws = null;
     this.setStatus('closed');
@@ -82,6 +116,14 @@ export class WebChatWsClient {
 
   isOpen(): boolean {
     return this.status === 'open' && this.isReady;
+  }
+
+  getStatus(): ConnectionStatus {
+    return this.status;
+  }
+
+  getIsReady(): boolean {
+    return this.isReady;
   }
 
   private openSocket(): void {
@@ -109,8 +151,14 @@ export class WebChatWsClient {
     }
     this.ws = ws;
 
+    ws.on('pong', () => {
+      this.pingMissStreak = 0;
+    });
+
     ws.on('open', () => {
       this.socketOpenedAt = Date.now();
+      this.pingMissStreak = 0;
+      this.startPing(ws);
       wsLog(this.opts.userId, 'socket open, hello sent', { attempt });
       this.retryIdx = 0;
       const helloPayload: ClientEvent = {
@@ -190,6 +238,7 @@ export class WebChatWsClient {
         clearTimeout(this.helloAckTimer);
         this.helloAckTimer = null;
       }
+      this.clearPingTimer();
       const wasReady = this.isReady;
       this.isReady = false;
       this.ws = null;
@@ -218,6 +267,38 @@ export class WebChatWsClient {
     } catch (e) {
       wsWarn(this.opts.userId, 'sendRaw failed', { error: String(e) });
     }
+  }
+
+  private startPing(ws: NodeWebSocket): void {
+    this.clearPingTimer();
+    this.pingTimer = setInterval(() => {
+      if (this.closed || ws.readyState !== NodeWebSocket.OPEN) return;
+      this.pingMissStreak += 1;
+      if (this.pingMissStreak > WS_PING_MISS_LIMIT) {
+        wsWarn(this.opts.userId, 'ping timeout, terminating socket', {
+          missStreak: this.pingMissStreak,
+        });
+        try {
+          ws.terminate();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      try {
+        ws.ping();
+      } catch (e) {
+        wsWarn(this.opts.userId, 'ws ping failed', { error: String(e) });
+      }
+    }, WS_PING_INTERVAL_MS);
+  }
+
+  private clearPingTimer(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    this.pingMissStreak = 0;
   }
 
   private scheduleReconnect(cause: string): void {

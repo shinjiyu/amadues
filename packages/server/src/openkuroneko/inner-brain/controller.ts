@@ -19,6 +19,8 @@ import { createMemoryStore } from './memory-store.js';
 import type { MemoryStore } from './memory-store.js';
 import { seedPresetNodes } from './preset-seeder.js';
 import { runDesigner } from './designer.js';
+import { applyFailureDistill, distillRunFailures } from './failure-distill.js';
+import { maybeEmitBurstStallAlert } from './burst-stall-alert.js';
 import { runLocalDag } from './runner.js';
 import { readLocalDag, clearLocalDag } from './local-dag-store.js';
 import type { NodeDefDrive9Store } from '../../drive9/node-def-drive9-store.js';
@@ -31,6 +33,10 @@ const MAX_EMPTY_DESIGN_STREAK = 3;
 export interface DyflowControllerContext {
   workDir: string;
   burstId: string;
+  /** 如 `ib-mpxjtjll-d566`；用于空转告警路径与索引 */
+  instanceId?: string;
+  /** registry.startedAt ISO；长时空转判定 */
+  burstStartedAt?: string | null;
 }
 
 /** P1：节点共享（drive9）配置；提供后 Designer 有 search_and_instance，creator 自动导出 */
@@ -65,8 +71,29 @@ export function createDyflowController(
   ctx: DyflowControllerContext,
   deps: DyflowControllerDeps,
 ): DyflowController {
-  const { workDir, burstId } = ctx;
+  const { workDir, burstId, instanceId, burstStartedAt } = ctx;
   const { llm, toolRegistry, logger, onComplete } = deps;
+
+  function burstStartedAtMs(): number | null {
+    if (!burstStartedAt) return null;
+    const t = new Date(burstStartedAt).getTime();
+    return Number.isFinite(t) ? t : null;
+  }
+
+  function checkStallAndAlert(trigger: string): void {
+    const id =
+      instanceId ??
+      (burstId.startsWith('task-') ? burstId.replace(/^task-/, 'ib-') : burstId);
+    maybeEmitBurstStallAlert({
+      workDir,
+      instanceId: id,
+      trigger,
+      memory,
+      logger,
+      dyflowStatePath: statePath,
+      startedAtMs: burstStartedAtMs(),
+    });
+  }
   const store = deps.store ?? createLocalNodeStore(workDir);
   const memory = deps.memory ?? createMemoryStore(workDir);
   const statePath = path.join(workDir, '.brain', 'dyflow-state.json');
@@ -125,11 +152,15 @@ export function createDyflowController(
           }
           // empty：Designer 没出图也没完成
           const streak = (state.designStreak ?? 0) + 1;
+          if (streak >= 2) {
+            checkStallAndAlert(`design.empty_streak:${streak}`);
+          }
           if (streak >= MAX_EMPTY_DESIGN_STREAK) {
             const reason = `Designer 连续 ${streak} 次空转，无法推进：${outcome.reason}`;
             writeState({ mode: 'DONE', reason, designStreak: streak });
             await onComplete?.(reason);
             logger.warn('dyflow-controller', { event: 'design.giveup', data: { burstId, streak } });
+            checkStallAndAlert(`design.giveup:${streak}`);
             return { hadWork: true };
           }
           writeState({ mode: 'DESIGN', designStreak: streak });
@@ -144,6 +175,18 @@ export function createDyflowController(
           }
           const res = await runLocalDag(dag, { llm, toolRegistry, store, memory, logger, workDir, ...(autoExport ? { autoExport } : {}) });
           clearLocalDag(workDir);
+          if (!res.ok) {
+            const distilled = distillRunFailures({
+              results: res.results,
+              lastFailure: memory.read().last_failure,
+            });
+            const added = applyFailureDistill(memory, distilled);
+            logger.info('dyflow-controller', {
+              event: 'failure.distill',
+              data: { burstId, failedAt: res.failedAt, distilled: distilled.length, added },
+            });
+            checkStallAndAlert(`failure.distill:${res.failedAt ?? 'unknown'}`);
+          }
           // 无论成功失败都回 DESIGN：成功 → Designer 检测完成 / 继续；失败 → 据 last_failure replan
           writeState({ mode: 'DESIGN', designStreak: 0, reason: res.ok ? null : `RUN failed at ${res.failedAt}` });
           return { hadWork: true };

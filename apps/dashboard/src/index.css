@@ -1373,3 +1373,144 @@ button.viz-link-btn:hover {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.stall-alerts {
+  padding: 12px 0;
+}
+
+.stall-alerts-header {
+  margin-bottom: 16px;
+}
+
+.stall-alerts-title {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+}
+
+.stall-alerts-hint {
+  font-size: 12px;
+  color: #8b92a8;
+  margin: 0 0 12px;
+}
+
+.stall-alerts-err {
+  color: #f87171;
+}
+
+.stall-alerts-empty {
+  color: #8b92a8;
+}
+
+.stall-alerts-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .stall-alerts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stall-alerts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.stall-alerts-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+}
+
+.stall-alerts-item.active {
+  border-color: #5b8def;
+  background: #1e2a42;
+}
+
+.stall-sev {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.stall-sev-warn {
+  background: #4a3a10;
+  color: #facc15;
+}
+
+.stall-sev-critical {
+  background: #4a1a1a;
+  color: #f87171;
+}
+
+.stall-alerts-item-id {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.stall-alerts-item-ts {
+  font-size: 11px;
+  color: #8b92a8;
+}
+
+.stall-alerts-item-summary {
+  font-size: 12px;
+  color: #c8cad4;
+}
+
+.stall-alerts-item-signals {
+  font-size: 11px;
+  color: #7eb6ff;
+}
+
+.stall-alerts-detail {
+  background: #1a1f2e;
+  border: 1px solid #3d4454;
+  border-radius: 8px;
+  padding: 14px;
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.stall-alerts-ws {
+  font-size: 12px;
+  color: #8b92a8;
+  font-weight: normal;
+}
+
+.stall-alerts-paths ul {
+  margin: 8px 0;
+  padding-left: 18px;
+}
+
+.stall-alerts-snippet,
+.stall-alerts-metrics {
+  margin-top: 12px;
+  max-height: 280px;
+  overflow: auto;
+  background: #0f1117;
+  padding: 10px;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+.btn-primary {
+  border-color: #3d5a8a;
+  background: #243552;
+}
+
+.btn-secondary {
+  margin-left: 8px;
+}

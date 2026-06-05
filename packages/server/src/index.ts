@@ -92,10 +92,15 @@ import {
 import { formatAgentIsoLocal, resolveAgentTimezone } from './agent-time.js';
 import { buildBrainInspectorPayload } from './pi-mono/brain-snapshot.js';
 import {
+  listStallAlertIndex,
+  readStallAlertBundle,
+} from './openkuroneko/inner-brain/burst-stall-alert.js';
+import {
   evaluateInnerBrainRestart,
   restartEligibilityErrorMessage,
 } from './outer/inner-brain-restart-policy.js';
 import { findLiveBurstForKpi } from './outer/kpi-dispatch-guard.js';
+import { dispatchKpiBurst } from './outer/kpi-api-dispatch.js';
 import {
   buildWorkspaceArtifactsPayload,
   revealWorkspaceAllowed,
@@ -379,11 +384,11 @@ function scheduleReflexionBurst(kpiId: string): string | null {
 /**
  * 自动续跑真任务：复用 canonical instance，注入 KPI + reflexionTrail。
  */
-function scheduleNextKpiBurst(kpiId: string): string | null {
+function scheduleNextKpiBurst(kpiId: string, excludeInstanceId?: string): string | null {
   const kpi = kpiRegistry.get(kpiId);
   if (!kpi || kpi.status !== 'active') return null;
 
-  if (findLiveBurstForKpi(innerBrainRegistry, kpiId)) {
+  if (findLiveBurstForKpi(innerBrainRegistry, kpiId, excludeInstanceId)) {
     console.warn(`[utlra][kpi] auto next skipped: burst in flight for ${kpiId}`);
     return null;
   }
@@ -401,7 +406,7 @@ function scheduleNextKpiBurst(kpiId: string): string | null {
     isReflexionBurst: false,
     originThread,
   });
-  kpiRegistry.resetIdle(kpiId);
+  // 勿在此 resetIdle：无产出 auto next 须累加 consecutiveIdleBursts 直至 meta 反思
 
   const record: TaskRecord = {
     ...canonical,
@@ -831,6 +836,31 @@ app.get('/api/usage/summary', (c) => {
   const hours = Number.isFinite(hoursRaw) ? Math.min(168, Math.max(1, hoursRaw)) : 24;
   const summary = buildLlmUsageSummary(DATA_ROOT, AGENT_ID, hours, getLlmUsageSnapshot());
   return c.json(summary);
+});
+
+/** 内脑空转告警索引（ADL：INNER-BURST-STALL-ALERT.md） */
+app.get('/api/stall-alerts', (c) => {
+  const limitRaw = Number(c.req.query('limit') ?? 30);
+  const limit = Number.isFinite(limitRaw) ? Math.min(100, Math.max(1, limitRaw)) : 30;
+  const workspaceId = c.req.query('workspace_id')?.trim();
+  let alerts = listStallAlertIndex(DATA_ROOT, limit);
+  if (workspaceId) {
+    alerts = alerts.filter(a => a.workspaceId === workspaceId);
+  }
+  return c.json({
+    dataRoot: DATA_ROOT,
+    agentId: AGENT_ID,
+    count: alerts.length,
+    alerts,
+  });
+});
+
+app.get('/api/stall-alerts/:alertId', (c) => {
+  const alertId = c.req.param('alertId').trim();
+  if (!alertId) return c.json({ error: 'alertId required' }, 400);
+  const bundle = readStallAlertBundle(DATA_ROOT, alertId);
+  if (!bundle) return c.json({ error: 'not found' }, 404);
+  return c.json(bundle);
 });
 
 /**
@@ -1373,9 +1403,8 @@ app.post('/api/inner-brains/:id/restart', async (c) => {
 // 由 progress detector 在 idle streak 达阈值时自动派发反思 burst。
 //
 // 设计取向：
-//   - 这套 API 仅做注册表 CRUD，**不自动派发主任务 burst**。需要主任务时仍走外脑
-//     set_goal 工具（它会把 kpiId 透传给 inner-brain registry）。
-//   - 反思 burst 是例外，由 progress detector 在内部自动触发，不暴露在 API 表面。
+//   - 默认不自动派发主任务 burst；**例外**：`POST /api/kpis/:id/dispatch`（Ops/E2E 直连 set_goal）。
+//   - 反思 burst：`POST /api/kpis/:id/reflect` 或 progress detector 内部触发。
 
 app.get('/api/kpis', (c) => {
   const status = c.req.query('status') as 'active' | 'paused' | 'achieved' | 'abandoned' | undefined;
@@ -1418,7 +1447,12 @@ app.post('/api/kpis/:id/achieve', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { evidence?: string };
   const k = kpiRegistry.get(c.req.param('id'));
   if (!k) return c.json({ error: 'KPI 不存在' }, 404);
-  kpiRegistry.markAchieved(k.kpiId, body.evidence);
+  if (k.bursts.length === 0) {
+    return c.json({ error: 'KPI 尚无关联 burst，须先 dispatch 或 set_goal(kpi_id)' }, 409);
+  }
+  const evidence = (body.evidence ?? '').trim();
+  if (!evidence) return c.json({ error: 'evidence 必填' }, 400);
+  kpiRegistry.markAchieved(k.kpiId, evidence);
   return c.json({ ok: true, kpi: kpiRegistry.get(k.kpiId) });
 });
 
@@ -1447,6 +1481,41 @@ app.post('/api/kpis/:id/reflect', (c) => {
   const instanceId = scheduleReflexionBurst(k.kpiId);
   if (!instanceId) return c.json({ error: '反思 burst 派发失败' }, 500);
   return c.json({ ok: true, reflexionBurstId: instanceId });
+});
+
+/** Ops / E2E：直连 set_goal(kpi_id)，见 KPI-CLOSED-LOOP.md §API dispatch */
+app.post('/api/kpis/:id/dispatch', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    goal?: string;
+    origin_thread?: string;
+    origin_user?: string;
+  };
+  const r = await dispatchKpiBurst(
+    {
+      dataRoot: DATA_ROOT,
+      repoRoot: REPO_ROOT,
+      innerBrainRegistry,
+      kpiRegistry,
+      assetStore,
+      getEngine,
+      workspaceStore: store,
+      repoStore,
+      memoryStore: globalMemoryStore,
+      scheduleReflexionBurst,
+      scheduleNextKpiBurst,
+      defaultThreadId:
+        process.env['UTLRA_OUTER_HEARTBEAT_THREAD_ID']?.trim() || 'thread:ops',
+    },
+    c.req.param('id'),
+    body,
+  );
+  if (!r.ok) {
+    return c.json(
+      { error: r.reason ?? 'dispatch_failed', detail: r.output.slice(0, 500) },
+      r.reason === 'kpi_not_found' ? 404 : 409,
+    );
+  }
+  return c.json({ ok: true, output: r.output, instanceId: r.instanceId });
 });
 
 app.post('/api/chat/demo-roundtrip', async (c) => {

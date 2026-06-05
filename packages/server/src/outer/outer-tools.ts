@@ -649,7 +649,7 @@ export interface OuterToolContext {
    */
   scheduleReflexionBurst?: (kpiId: string) => string | null;
   /** meta 反思后自动续跑真 burst（UTLRA_KPI_AUTO_NEXT_BURST=1） */
-  scheduleNextKpiBurst?: (kpiId: string) => string | null;
+  scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   loadThreads?: () => LooseThreadStore;
   /**
    * 发消息前的跨进程新鲜度检查。
@@ -1368,6 +1368,12 @@ function execAchieveKpi(
   if (!evidence) return { replied: false, output: '（必须提供 evidence 证明已达成）' };
   const k = ctx.kpiRegistry.get(id);
   if (!k) return { replied: false, output: `（KPI ${id} 不存在）` };
+  if (k.bursts.length === 0) {
+    return {
+      replied: false,
+      output: '（KPI 尚无关联 burst；须先 set_goal(kpi_id) 派发内脑后再 achieve_kpi）',
+    };
+  }
   ctx.kpiRegistry.markAchieved(id, evidence);
   return { replied: false, output: `KPI ${id} 已标记为 achieved。证据：${evidence.slice(0, 200)}` };
 }

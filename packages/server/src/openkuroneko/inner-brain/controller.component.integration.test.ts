@@ -45,7 +45,7 @@ describe('createDyflowController (integration)', () => {
       {
         label: 'base-run',
         match: ({ systemPrompt }) => systemPrompt.includes('baseNode 执行器'),
-        reply: { content: 'weather fetched and summarized' },
+        reply: { content: 'weather fetched and summarized with enough detail for acceptance' },
       },
       {
         label: 'design-commit',
@@ -74,6 +74,39 @@ describe('createDyflowController (integration)', () => {
 
     const t4 = await controller.tick(); // DONE idle
     expect(t4.hadWork).toBe(false);
+  });
+
+  it('distills constraints after failed RUN before next DESIGN', async () => {
+    const llm = createFakeLLM([
+      {
+        label: 'design-commit',
+        match: ({ systemPrompt }) => systemPrompt.includes('Designer'),
+        reply: {
+          content: '',
+          toolCalls: [{
+            id: 'd1',
+            name: 'commit_local_dag',
+            args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'will fail' }] },
+          }],
+        },
+      },
+      {
+        label: 'base-fail',
+        match: ({ systemPrompt, messages }) =>
+          systemPrompt.includes('baseNode 执行器') &&
+          lastUser(messages).includes('will fail'),
+        reply: { content: 'CANNOT_CONTINUE: API path wrong permanently' },
+      },
+    ]);
+    const controller = createDyflowController(
+      { workDir: root, burstId: 'b1' },
+      { llm, toolRegistry: createToolRegistry([]), logger: silentLogger() },
+    );
+    await controller.tick();
+    await controller.tick();
+    const mem = createMemoryStore(root).read();
+    expect(mem.constraints.some(c => c.startsWith('[run-failure]'))).toBe(true);
+    expect(mem.node_results['n1']?.ok).toBe(false);
   });
 
   it('gives up after repeated empty DESIGN ticks', async () => {

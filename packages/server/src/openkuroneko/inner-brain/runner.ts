@@ -29,6 +29,7 @@ import type {
   LocalDag,
   LocalNode,
   NodeInst,
+  NodeOutcomeStatus,
   NodeResult,
 } from './types.js';
 
@@ -53,6 +54,7 @@ export interface RunnerResult {
 
 interface DispatchOutcome {
   ok: boolean;
+  status?: NodeOutcomeStatus;
   outputs?: Record<string, unknown>;
   failure?: FailureSummary;
 }
@@ -109,10 +111,12 @@ export async function runLocalDag(dag: LocalDag, deps: RunnerDeps): Promise<Runn
     }
 
     const outcome = await dispatchNode(inst, node, deps, dag.burstId);
+    const status: NodeOutcomeStatus | undefined = outcome.ok ? 'ok' : (outcome.status ?? 'failed');
     const nr: NodeResult = {
       nodeInstId: inst.id,
       ref: node.id,
       ok: outcome.ok,
+      status,
       ...(outcome.outputs ? { outputs: outcome.outputs } : {}),
       ...(outcome.failure ? { failure: outcome.failure } : {}),
       at: new Date().toISOString(),
@@ -146,7 +150,12 @@ async function dispatchNode(
       { llm, logger, store, ...(deps.autoExport ? { autoExport: deps.autoExport } : {}) },
     );
     if (!out.ok && out.packError) memory.patch('last_pack_error', out.packError);
-    return { ok: out.ok, ...(out.outputs ? { outputs: out.outputs } : {}), ...(out.failure ? { failure: out.failure } : {}) };
+    return {
+      ok: out.ok,
+      ...(out.status ? { status: out.status } : {}),
+      ...(out.outputs ? { outputs: out.outputs } : {}),
+      ...(out.failure ? { failure: out.failure } : {}),
+    };
   }
 
   if (node.body.kind === 'graph') {
@@ -166,7 +175,12 @@ async function dispatchNode(
     { node, inst, memory: memSnapshot, workDir, ...(burstId ? { burstId } : {}) },
     { llm, toolRegistry: augmented, logger },
   );
-  return { ok: out.ok, ...(out.outputs ? { outputs: out.outputs } : {}), ...(out.failure ? { failure: out.failure } : {}) };
+  return {
+    ok: out.ok,
+    ...(out.status ? { status: out.status } : {}),
+    ...(out.outputs ? { outputs: out.outputs } : {}),
+    ...(out.failure ? { failure: out.failure } : {}),
+  };
 }
 
 /** compound 节点：inline 展开子图，共享父图 memory，按 exports 暴露顶层 key */

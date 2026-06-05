@@ -62,7 +62,6 @@ function Set-EnvFileLine {
 
 function Ensure-Bot2EnvDefaults {
   param([Parameter(Mandatory = $true)][string]$EnvPath)
-  Set-EnvFileLine -EnvPath $EnvPath -Key 'INNER_BRAIN_ENGINE' -Value 'dyflow'
   Set-EnvFileLine -EnvPath $EnvPath -Key 'INNER_BASE_NODE_MAX_ROUNDS' -Value '50'
   Set-EnvFileLine -EnvPath $EnvPath -Key 'INNER_BASE_NODE_FAIL_FAST_STREAK' -Value '5'
   if (-not (Select-String -LiteralPath $EnvPath -Pattern '^\s*DRIVE9_SERVER=' -Quiet)) {

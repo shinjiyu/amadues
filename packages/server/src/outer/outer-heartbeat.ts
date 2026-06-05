@@ -220,6 +220,9 @@ async function callLlmWithTools(
     baseUrl: env.baseUrl,
     usageMeta: { source: 'outer_heartbeat', model: env.textModel, provider: env.provider },
     body: {
+      model: env.textModel,
+      messages,
+      max_tokens: env.maxTokensText,
       temperature: 0.5,
       thinking: { type: 'disabled' },
       tools,
@@ -591,7 +594,7 @@ export interface HeartbeatDeps {
   /** KPI 注册表（autonomy kpi_inner_goal 必需） */
   kpiRegistry?: KpiRegistry;
   scheduleReflexionBurst?: (kpiId: string) => string | null;
-  scheduleNextKpiBurst?: (kpiId: string) => string | null;
+  scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   getOrchestratorStats?: ResourceProbeDeps['getOrchestratorStats'];
   /**
    * 外脑实例引用（可选，传入时启用 Environment 侧死亡检测）。

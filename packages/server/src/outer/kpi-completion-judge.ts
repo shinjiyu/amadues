@@ -27,6 +27,7 @@ export function sweepKpiCompletions(
   const pending: Array<{ kpiId: string; reason: string }> = [];
 
   for (const kpi of kpiRegistry.list({ status: 'active' })) {
+    if (kpi.bursts.length === 0) continue;
     const links = buildKpiBurstLinks(kpi, innerRegistry);
     const { action, reason } = suggestKpiAction(kpi, links);
     if (action !== 'achieved') continue;

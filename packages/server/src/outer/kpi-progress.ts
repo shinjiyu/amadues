@@ -2,8 +2,9 @@
  * KPI 进展推断 — 纯函数，供 burst onExit、view_kpi、场景 harness 共用。
  */
 import type { ReflexionSummary, KpiRecord } from './kpi-registry.js';
-import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
+import type { InnerBrainRegistry, TaskRecord, TaskStatus } from './inner-brain-registry.js';
 import { buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
+import { LIVE_KPI_BURST_STATUSES } from './kpi-dispatch-guard.js';
 
 export type KpiSuggestedAction =
   | 'achieved'       // 应 markAchieved（或已自动达成）
@@ -39,6 +40,10 @@ export function shouldAutoAchieveKpi(input: {
   return false;
 }
 
+function isLiveRegistryStatus(status: string): boolean {
+  return LIVE_KPI_BURST_STATUSES.has(status as TaskStatus);
+}
+
 export function buildKpiBurstLinks(
   kpi: KpiRecord,
   innerRegistry: InnerBrainRegistry | undefined,
@@ -53,29 +58,32 @@ export function buildKpiBurstLinks(
       lastReflexionVerdict: null,
     }));
   }
-  return kpi.bursts.map((id) => {
+  return kpi.bursts.flatMap((id) => {
     const t = innerRegistry.get(id);
+    if (t && t.kpiId != null && t.kpiId !== kpi.kpiId) {
+      return [];
+    }
     if (!t) {
-      return {
+      return [{
         instanceId: id,
         registryStatus: 'missing',
         isPostComplete: false,
         isAsyncWaiting: false,
         deliverableCount: 0,
         lastReflexionVerdict: null,
-      };
+      }];
     }
     const snap = buildBrainAsyncSnapshot(t.workDir);
     const trail = kpi.reflexionTrail.filter((r) => r.burstInstanceId === id);
     const lastVerdict = trail[0]?.verdict ?? null;
-    return {
+    return [{
       instanceId: id,
       registryStatus: t.status,
       isPostComplete: snap.is_post_complete,
       isAsyncWaiting: snap.is_async_waiting,
       deliverableCount: t.deliverableCount ?? 0,
       lastReflexionVerdict: lastVerdict,
-    };
+    }];
   });
 }
 
@@ -92,8 +100,11 @@ export function suggestKpiAction(
   }
 
   const latest = links[links.length - 1];
-  const anyAwaiting = links.some((l) => l.isAsyncWaiting && !l.isPostComplete);
-  const anyBlocked = links.some((l) => l.registryStatus === 'BLOCKED' || l.registryStatus === 'AWAITING');
+  const liveLinks = links.filter((l) => isLiveRegistryStatus(l.registryStatus));
+  const anyAwaiting = liveLinks.some((l) => l.isAsyncWaiting && !l.isPostComplete);
+  const anyBlocked = liveLinks.some(
+    (l) => l.registryStatus === 'BLOCKED' || l.registryStatus === 'AWAITING',
+  );
   const latestDone = latest?.registryStatus === 'DONE' && latest.isPostComplete;
 
   if (latestDone && latest.deliverableCount > 0) {
@@ -114,10 +125,6 @@ export function suggestKpiAction(
   const running = links.some((l) => l.registryStatus === 'RUNNING');
   if (running) {
     return { action: 'continue', reason: '仍有 burst 在跑' };
-  }
-
-  if (kpi.consecutiveIdleBursts > 0) {
-    return { action: 'stuck_reflexion', reason: `idle streak=${kpi.consecutiveIdleBursts}` };
   }
 
   return { action: 'continue', reason: '活跃推进中' };

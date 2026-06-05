@@ -86,10 +86,43 @@ describe('buildKpiGoalPlannerContext', () => {
     expect(ctx).toContain('ib-done-0001');
     expect(ctx).toContain('report.md');
     expect(ctx).toContain('ib-live-0002');
-    expect(ctx).toContain('当前在途内脑');
+    expect(ctx).toContain('本 KPI 在途内脑');
     expect(ctx).toContain('规划约束');
     expect(ctx).toContain('consecutive_idle_bursts');
     expect(ctx).toContain('优先国内平台');
+
+    root.cleanup();
+  });
+
+  it('excludes non-KPI live inner brains from planner context', async () => {
+    const root = createTestDataRoot('kpi-ctx-filter-');
+    const registry = new InnerBrainRegistry(root.dataRoot);
+    const kpiRegistry = new KpiRegistry(root.dataRoot);
+    const kpi = kpiRegistry.create({ description: '主 KPI', createdBy: 'test' });
+
+    const otherDir = path.join(root.dataRoot, 'workspaces', 'task-ib-other-99');
+    fs.mkdirSync(otherDir, { recursive: true });
+    registry.register({
+      instanceId: 'ib-other-99',
+      workspaceId: 'task-ib-other-99',
+      workDir: otherDir,
+      goal: '一次性杂务：帮别人传文件',
+      originUser: 'test',
+      status: 'RUNNING',
+      startedAt: new Date().toISOString(),
+    });
+
+    const ctx = await buildKpiGoalPlannerContext({
+      dataRoot: root.dataRoot,
+      kpi: kpiRegistry.get(kpi.kpiId)!,
+      kpiRegistry,
+      registry,
+      snapshot: baseSnapshot(),
+    });
+
+    expect(ctx).not.toContain('ib-other-99');
+    expect(ctx).not.toContain('帮别人传文件');
+    expect(ctx).toContain('非本 KPI');
 
     root.cleanup();
   });

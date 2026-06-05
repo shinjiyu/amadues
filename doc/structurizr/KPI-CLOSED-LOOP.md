@@ -37,10 +37,33 @@
 |------|------|------|
 | `UTLRA_KPI_STUCK_THRESHOLD` | `3` | 触发 meta reflexion burst |
 | `UTLRA_KPI_REFLEXION_MAX_TICKS` | `20` | meta burst max_ticks |
-| `UTLRA_KPI_AUTO_NEXT_BURST` | `0` | `1` = meta 结束后自动派真任务 |
+| `UTLRA_KPI_AUTO_NEXT_BURST` | `0` | `1` = meta 结束后自动派真任务；真任务 **无 deliverable** 退出时可模板续跑（**不 resetIdle**，累加至阈值触发 meta；有产出则不续跑） |
 | `UTLRA_REFLEXION_TEMPERATURE` | `0.4` | runReflexion LLM 温度 |
 
 单实例复用详见 [`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md)。
+
+## KPI 规划上下文边界（勿串扰）
+
+| 来源 | 进入 KPI goal 规划？ | 说明 |
+|------|---------------------|------|
+| `kpi.bursts[]` 且 `TaskRecord.kpiId` 一致 | ✅ | `buildKpiBurstLinks` / burst 详情 |
+| 同 `kpi_id` 的 RUNNING/AWAITING/BLOCKED | ✅ | `formatLiveBurstSummary(registry, kpiId)` |
+| 无 `kpi_id` 的一次性 `set_goal` | ❌ | 仅 `mem9` / `update_tasks` |
+| 其它 active KPI 摘要 | 仅标题行 | 防重复主题，不展开 burst |
+| 群聊 / 他 agent 线程 | ❌ | 记忆检索，不进 `kpi-registry` |
+
+`suggestKpiAction` 的 `follow_up` / `async_waiting` 只统计**在途** burst（`LIVE_KPI_BURST_STATUSES`），避免历史 `DONE` 行仍标 `AWAITING` 误阻断 `UTLRA_KPI_AUTO_NEXT_BURST` 续跑。
+
+实现：`kpi-goal-context.ts`、`kpi-progress.ts`。
+
+## Ops API：`POST /api/kpis/:id/dispatch`
+
+| 字段 | 说明 |
+|------|------|
+| 用途 | E2E / Dashboard 直连 `set_goal(kpi_id)`，不经过外脑 LLM |
+| body | `{ goal?, origin_thread?, origin_user? }`；`goal` 缺省用 KPI `description` |
+| 门禁 | 同 `evaluateKpiAutonomyDispatch`（在途 burst / stuck reflexion 等拒绝） |
+| 实现 | `outer/kpi-api-dispatch.ts` |
 
 ## 外脑心跳在闭环中的角色
 

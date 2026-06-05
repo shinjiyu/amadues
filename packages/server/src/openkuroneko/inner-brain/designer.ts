@@ -39,6 +39,7 @@ export const DESIGNER_SYSTEM = `你是 DyFlow 内脑的 Designer（编排者）�
 - 没有合适的专用节点时，**直接用 preset/base + 清晰 instruction**，不要臆造不存在的 ref
 - 若已有多个 node_results 为 ok 且战术可复述，**本轮优先**安排 1 个 preset/node_creator（params.mode=pack, source_node_ids=[...]），减少重复长 instruction
 - 连续 last_failure（救火）时可暂缓 pack，先换 ref 或新 instruction
+- **必读 constraints**：带 [run-failure] 前缀的是上轮 RUN 后 FailureDistill 强制红线，不得无视
 
 ## 固化三层（成本递减）：facts / LocalNode / Tool
 - A 事实：知识/选择器/API 形状 → 让 baseNode 用 record_fact 或排 preset/extract_facts
@@ -93,10 +94,18 @@ function buildUserMessage(memory: MemoryStore, store: LocalNodeStore, workDir: s
   ].join('\n\n---\n\n');
 }
 
-function summarizeResults(results: Record<string, { ok: boolean; ref: string }>): string {
+function summarizeResults(
+  results: Record<string, { ok: boolean; ref: string; status?: string; failure?: { summary: string } }>,
+): string {
   const entries = Object.entries(results);
   if (entries.length === 0) return '（暂无）';
-  return entries.map(([id, r]) => `- ${id} (${r.ref}): ${r.ok ? 'ok' : 'failed'}`).join('\n');
+  return entries
+    .map(([id, r]) => {
+      const st = r.status ?? (r.ok ? 'ok' : 'failed');
+      const tail = r.failure?.summary ? ` — ${r.failure.summary.slice(0, 120)}` : '';
+      return `- ${id} (${r.ref}): ${st}${tail}`;
+    })
+    .join('\n');
 }
 
 export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> {

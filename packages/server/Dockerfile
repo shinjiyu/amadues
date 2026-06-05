@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.6
-#
 # 镜像：utlra/agent-server
 # 构建（仓库根）：
 #   docker build -f packages/server/Dockerfile -t utlra/agent-server:latest .
@@ -8,6 +6,11 @@
 # 持久化数据挂载到 /data（UTLRA_DATA_ROOT=/data）。
 FROM node:20-bookworm-slim AS builder
 WORKDIR /repo
+
+# better-sqlite3：无预编译包时需 node-gyp（python + build-essential）
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* tsconfig.base.json ./
 COPY packages/chat-ir/package.json packages/chat-ir/
@@ -39,9 +42,10 @@ RUN npm run build -w @utlra/chat-ir \
 # ── 运行镜像 ──────────────────────────────────────────────────────
 FROM node:20-bookworm-slim
 
-# curl：web_search 默认引擎；git：workspace 内 isomorphic-git
+# curl：web_search；git：isomorphic-git；python3/make/g++：better-sqlite3 原生模块
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl ca-certificates git \
+ && apt-get install -y --no-install-recommends \
+    curl ca-certificates git python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /repo

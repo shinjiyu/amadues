@@ -30,11 +30,16 @@ import {
 } from './react-tool-call-slim.js';
 import { createShellStallGuard } from './shell-stall-guard.js';
 import { compressToolOutputForContext } from './tool-output-spill.js';
+import {
+  shellOutputLooksFailed,
+  validateNodeCompletion,
+} from './node-acceptance.js';
 import type {
   FailureSummary,
   InnerMemory,
   LocalNode,
   NodeInst,
+  NodeOutcomeStatus,
 } from './types.js';
 
 /**
@@ -53,6 +58,8 @@ const FAIL_FAST_NO_PROGRESS_STREAK = readPositiveIntEnv('INNER_BASE_NODE_FAIL_FA
 
 export interface BaseNodeOutcome {
   ok: boolean;
+  /** §6.7 机械完成态 */
+  status?: NodeOutcomeStatus;
   outputs?: Record<string, unknown>;
   failure?: FailureSummary;
   executionLog: ExecutionEntry[];
@@ -248,10 +255,30 @@ export async function runBaseNode(
           ),
         };
       }
-      // 自然完成 → outputs 校验
-      const outputs = collectOutputs(node, lastContent);
+      // 自然完成 → 机械验票（§6.7）
+      const completion = validateNodeCompletion({
+        node,
+        inst,
+        workDir: ctx.workDir,
+        lastContent,
+        executionLog,
+      });
+      if (completion.status === 'failed') {
+        const reason = `输出契约未满足：${completion.missing.join('; ')}`;
+        logger.warn('base-node', {
+          event: 'acceptance_failed',
+          data: { nodeInstId: inst.id, missing: completion.missing },
+        });
+        return {
+          ok: false,
+          status: 'failed',
+          executionLog,
+          lastContent,
+          failure: makeFailure(inst, node, reason, executionLog, 'high', false, lastContent.slice(-1024)),
+        };
+      }
       logger.info('base-node', { event: 'done', data: { nodeInstId: inst.id, rounds: round, tools: executionLog.length } });
-      return { ok: true, outputs, executionLog, lastContent };
+      return { ok: true, status: 'ok', outputs: completion.outputs, executionLog, lastContent };
     }
 
     let assistantMsg: Message = {
@@ -305,6 +332,12 @@ export async function runBaseNode(
         toolResult = await tool.call(tc.args);
       } catch (e) {
         toolResult = { ok: false, output: String(e) };
+      }
+      if (tc.name === 'shell_exec' && toolResult.ok && shellOutputLooksFailed(toolResult.output)) {
+        toolResult = {
+          ok: false,
+          output: `[shell-evidence] 输出含失败信号（404/非零退出等），不得视为成功：${toolResult.output.slice(0, 1200)}`,
+        };
       }
       if (tc.name === 'shell_exec') {
         const cmd = String(tc.args['command'] ?? '');
@@ -381,6 +414,7 @@ export async function runBaseNode(
   logger.warn('base-node', { event: 'safety_cap', data: { nodeInstId: inst.id, cap: SAFETY_MAX_ROUNDS } });
   return {
     ok: false,
+    status: 'capped',
     executionLog,
     lastContent,
     failure: makeFailure(

@@ -140,7 +140,7 @@ export interface OuterBrainDeps {
    * outer-tools 的 set_goal onExit 用它在 KPI idle streak 达阈值时触发反思。
    */
   scheduleReflexionBurst?: (kpiId: string) => string | null;
-  scheduleNextKpiBurst?: (kpiId: string) => string | null;
+  scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   /** 外脑记忆层（支持 mem9 云端存储） */
   memoryStore?: OuterMemoryStore;
   /** 技能语义存储层（mem9 shared:skills 命名空间） */

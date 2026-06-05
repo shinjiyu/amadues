@@ -58,12 +58,34 @@
                     tags "Inner-Module" "DyFlow-Phase" "Planned"
                     properties {
                         "path" "packages/server/src/openkuroneko/inner-brain/base-node-executor.ts"
-                        "horizon.intention" "DyFlow baseNode：原 Executor 整包，无 maxRounds 硬约束（P0 暂不防烧）"
+                        "horizon.intention" "DyFlow baseNode：ReAct + fail-fast + §6.7 机械验票"
                         "horizon.in" "LocalNode.body.executor + NodeInst.instruction? + memoryIn"
-                        "horizon.out" "node_results[id] = ok | failure_summary（high confidence）"
-                        "horizon.deps" "innerFileTools; shellExec; webSearch; etc.（per-LocalNode allowlist）"
-                        "horizon.test.integration" "baseNodeExecutor.component.integration.test.ts"
-                        "horizon.note" "见 DYFLOW-INNER-EXECUTOR.md §6 失败语义"
+                        "horizon.out" "node_results[id] status ok|capped|failed + outputs | failure_summary"
+                        "horizon.deps" "innerFileTools; shellExec; webSearch; nodeAcceptance; etc."
+                        "horizon.test.unit" "base-node-executor.test.ts"
+                        "horizon.note" "见 DYFLOW-INNER-EXECUTOR.md §6 §6.7"
+                    }
+                }
+
+                nodeAcceptance = component "Node Acceptance" "baseNode 完成验票：interface.outputs 机械校验 + shell_exec 假成功检测" "TypeScript" {
+                    tags "Inner-Module" "DyFlow-Phase"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/node-acceptance.ts"
+                        "horizon.intention" "LLM 停工具后验票；避免 404 shell 与空摘要算 ok"
+                        "horizon.deps" "baseNodeExecutor"
+                        "horizon.test.unit" "node-acceptance.test.ts"
+                        "horizon.note" "DYFLOW-INNER-EXECUTOR.md §6.7"
+                    }
+                }
+
+                failureDistill = component "Failure Distill" "RUN 失败后蒸馏 last_failure/node_results → memory.constraints（mandatory）" "TypeScript" {
+                    tags "Inner-Module" "DyFlow-Phase"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/failure-distill.ts"
+                        "horizon.intention" "对称 §7b 成功梯子；替代 Attributor constraints.md"
+                        "horizon.deps" "memoryStore; innerBrainController"
+                        "horizon.test.unit" "failure-distill.test.ts"
+                        "horizon.note" "DYFLOW-INNER-EXECUTOR.md §7c"
                     }
                 }
 

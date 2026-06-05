@@ -25,6 +25,13 @@ describe('kpiCompletionJudge', () => {
     expect(fx.kpiRegistry.get(fx.kpiId)?.status).toBe('achieved');
   });
 
+  it('无关联 burst 的 active KPI → sweep 不 mark', () => {
+    fx = createKpiScenarioFixture('未派发');
+    const r = sweepKpiCompletions(fx.kpiRegistry, fx.innerBrainRegistry);
+    expect(r.marked).toHaveLength(0);
+    expect(fx.kpiRegistry.get(fx.kpiId)?.status).toBe('active');
+  });
+
   it('监督类未 post_complete → sweep 不 mark', () => {
     fx = createKpiScenarioFixture('持续监督');
     fx.simulateBurstExit({

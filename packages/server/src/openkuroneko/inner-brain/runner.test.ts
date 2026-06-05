@@ -45,8 +45,8 @@ describe('runLocalDag', () => {
 
   it('runs two baseNodes sequentially and records node_results', async () => {
     const llm = createFakeLLM([
-      { label: 'n1', match: 'first task', reply: { content: 'first done' } },
-      { label: 'n2', match: 'second task', reply: { content: 'second done' } },
+      { label: 'n1', match: 'first task', reply: { content: 'first task completed with summary output' } },
+      { label: 'n2', match: 'second task', reply: { content: 'second task completed with summary output' } },
     ]);
     const d = deps(llm);
     const dag: LocalDag = {
@@ -62,12 +62,12 @@ describe('runLocalDag', () => {
     expect(res.completed).toEqual(['n1', 'n2']);
     const mem = d.memory.read();
     expect(mem.node_results['n1']?.ok).toBe(true);
-    expect(mem.node_results['n2']?.outputs?.['result']).toBe('second done');
+    expect(mem.node_results['n2']?.outputs?.['result']).toContain('second task completed');
   });
 
   it('stops at terminal failure and writes last_failure', async () => {
     const llm = createFakeLLM([
-      { label: 'n1', match: 'good task', reply: { content: 'ok' } },
+      { label: 'n1', match: 'good task', reply: { content: 'good task finished successfully' } },
       { label: 'n2', match: 'bad task', reply: { content: 'CANNOT_CONTINUE: blocked' } },
       { label: 'n3', match: 'never', reply: { content: 'should not run' } },
     ]);

@@ -28,6 +28,8 @@ export interface KpiScenarioFixture {
     instanceId: string;
     outcome: ReturnType<typeof processBurstExitForKpi>;
   };
+  /** scheduleNextKpiBurst 被调用的次数（AUTO_NEXT_BURST 测试用） */
+  nextBurstsScheduled: string[];
   cleanup: () => void;
 }
 
@@ -50,12 +52,17 @@ export function createKpiScenarioFixture(description = '测试 KPI 目标'): Kpi
   const kpi = kpiRegistry.create({ description, createdBy: 'test:harness' });
 
   const reflexionBurstsScheduled: string[] = [];
+  const nextBurstsScheduled: string[] = [];
   const deps: BurstExitDeps = {
     kpiRegistry,
     innerBrainRegistry,
     scheduleReflexionBurst: (kid) => {
       reflexionBurstsScheduled.push(kid);
       return `ib-reflexion-${reflexionBurstsScheduled.length}`;
+    },
+    scheduleNextKpiBurst: (kid) => {
+      nextBurstsScheduled.push(kid);
+      return `ib-next-${nextBurstsScheduled.length}`;
     },
     stuckThreshold: 3,
   };
@@ -148,6 +155,7 @@ export function createKpiScenarioFixture(description = '测试 KPI 目标'): Kpi
 
       return { instanceId, outcome };
     },
+    nextBurstsScheduled,
     cleanup() {
       fs.rmSync(dataRoot, { recursive: true, force: true });
     },

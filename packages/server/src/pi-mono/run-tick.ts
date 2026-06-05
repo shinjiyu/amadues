@@ -163,8 +163,15 @@ async function createPiMonoController(params: {
       }
     : undefined;
 
+  const instanceId =
+    process.env['INNER_INSTANCE_ID']?.trim() ||
+    (params.workspaceId.startsWith('task-')
+      ? `ib-${params.workspaceId.slice('task-'.length)}`
+      : params.workspaceId);
+  const burstStartedAt = process.env['INNER_BURST_STARTED_AT']?.trim() || null;
+
   const controller = createDyflowController(
-    { workDir: params.workDir, burstId },
+    { workDir: params.workDir, burstId, instanceId, burstStartedAt },
     {
       llm,
       toolRegistry: executorToolRegistry,

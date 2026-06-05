@@ -110,12 +110,16 @@
 | controllerFsm | **DyFlow 阶段状态机** | `inner-brain/controller.ts` | tick → mode 切换 |
 | **designer** | **DyFlow DESIGN** 阶段（P0） | `inner-brain/designer.ts` | memory + last_failure + LocalNode index → local_dag.json |
 | **runner** | **DyFlow RUN** 阶段（P0） | `inner-brain/runner.ts` | local_dag.json → 派发 baseNode/Creator |
-| **baseNodeExecutor** | **baseNode（猛猛干 ReAct）**（P0） | `inner-brain/base-node-executor.ts` | LocalNode + instruction? + memory → outputs / failure_summary；**runtime context** §6.1b |
+| **baseNodeExecutor** | **baseNode（猛猛干 ReAct）**（P0） | `inner-brain/base-node-executor.ts` | LocalNode + instruction? + memory → outputs / failure_summary；**runtime context** §6.1b；**§6.7 验票** |
+| **nodeAcceptance** | **完成验票 + shell-evidence**（P0b） | `inner-brain/node-acceptance.ts` | executionLog + outputs → ok/failed；shell 404 假成功 |
+| **failureDistill** | **RUN 失败→constraints**（P0b） | `inner-brain/failure-distill.ts` | controller RUN 后 mandatory 红线蒸馏 |
 | **runtimeContext** | baseNode system 常驻环境块（P0） | `inner-brain/runtime-context.ts` | workDir + dataRoot → OS/shell/vault 契约 |
 | **innerKeychainTools** | 内脑 vault 只读（P0） | `inner-brain/keychain-tools.ts` | `keychain_entries` / `keychain_get` |
 | **toolOutputSpill** | 超大 tool 落盘 + 预览（P2） | `inner-brain/tool-output-spill.ts` | `.run/tool-output/*` |
 | **reactMessagePrune** | ReAct 旧轮 prune（P2） | `inner-brain/react-message-prune.ts` | messages → 减 token |
 | **shellStallGuard** | 重复 shell 失败检测（P2） | `inner-brain/shell-stall-guard.ts` | stall → transient failure |
+| **burstStallEvaluator** | **burst 级空转判定** | `inner-brain/burst-stall-evaluator.ts` | memory/node_results → verdict |
+| **burstStallAlert** | **空转告警落盘 + 索引** | `inner-brain/burst-stall-alert.ts` | verdict → `stall-alerts/` 包 + `index.jsonl` |
 | **nodeCreatorExecutor** | **newNodeCreator（pack/specialize）**（P0） | `inner-brain/node-creator-executor.ts` | params{mode,...} → 新 LocalNode + Abstractor 触发 |
 | **localNodeStore** | **LocalNode 库**（P0） | `inner-brain/local-node-store.ts` | commit / read / list + index |
 | **memoryStore** | **全局 memory.json**（P0） | `inner-brain/memory-store.ts` | patch/get goal/facts/constraints/last_failure/node_results |

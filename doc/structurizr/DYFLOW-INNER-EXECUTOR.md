@@ -83,6 +83,7 @@ NodeInst {
   params?:      Record<string, unknown>  # 覆盖 LocalNode 默认（路径/账号 binding）
   memoryIn?:    string[]           # 额外读哪些 memory key（默认 last_failure + node_results.<id>）
   memoryOut?:   string[]           # 写回 memory 的 key 名（默认 node_results.<id>）
+  acceptance?:  NodeAcceptance     # 可选；缺省按 LocalNode.interface.outputs 机械验票（§6.7）
 }
 ```
 
@@ -202,6 +203,50 @@ memory.last_failure = {
 
 **非 terminal**（已自修）：不写 `last_failure`，写 `memory.node_results[id] = ok`。
 
+### 6.7 节点完成判定与验票（P0b，2026-06-03）
+
+> **动机**：旧 Executor 有 Attributor 验票；DyFlow 迁移后 LLM 停工具即 `collectOutputs(lastContent)`，**无产物校验** → 404 shell、已有数据仍探索、safety_cap 仍记「跑完」。
+
+**原则**：LLM 只负责探索/编排；**完成四态由 Runner + 机械验票**决定，不交给 Designer 主观猜。
+
+| 状态 | 含义 | 写入 |
+|------|------|------|
+| `ok` | `interface.outputs`（或 `NodeInst.acceptance`）全部验票通过 | `node_results[id].ok=true`, `status=ok` |
+| `failed` | 高置信不可恢复 / 输出契约缺失 / 假 shell 成功累计 | `last_failure` + `status=failed` |
+| `capped` | 达 `INNER_BASE_NODE_MAX_ROUNDS` 仍未收敛 | `last_failure`（transient）+ `status=capped` |
+| `partial` | （P1）显式 `acceptance.minOutputs` 满足但未全量 | `status=partial`；默认 P0 不启用 |
+
+```text
+baseNode 自然结束（无 tool_calls）时:
+  1. gatherEvidence(executionLog, workDir) — write_file/read_file/shell 路径与产物
+  2. validateNodeCompletion(node.interface.outputs, evidence, lastContent)
+  3. 任一 mandatory output 未通过 → terminal failure「输出契约未满足」
+  4. 通过 → ok + outputs（证据值优先于 lastContent 占位）
+
+ReAct 循环内（每轮）:
+  shell_exec 若 ok:true 但输出含 HTTP 404 / exit code≠0 等 → 降为 ok:false（shell-evidence）
+  避免「curl 404 仍算有进展」烧满 safety_cap
+```
+
+**`NodeInst.acceptance`（可选）**：
+
+```text
+NodeAcceptance {
+  requireAllOutputs?: boolean   # 默认 true
+  minOutputs?: string[]         # P1：至少满足的 output key 子集 → partial
+}
+```
+
+**`interface.outputs[].type` 验票规则（P0）**：
+
+| type | 通过条件 |
+|------|----------|
+| `string` | `lastContent` 非空摘要，或 executionLog 有 ok 工具且非纯失败占位 |
+| `file` | workDir 内相对路径存在（来自 evidence 或 LLM 声明路径） |
+| `json` | 同上且 `JSON.parse` 成功；可选检查顶层 `code===0`（番茄类 API 通用，非案例硬编码） |
+
+实现：`inner-brain/node-acceptance.ts` · 测试：`node-acceptance.test.ts`。
+
 ### 6.5 ReAct 上下文治理（P2）
 
 > 不做 LLM 整段摘要 compaction（易丢约束、伤 cache）；采用 **截断 + 落盘 + 旧轮 prune**，结论仍应 `record_fact` 沉淀。
@@ -213,6 +258,7 @@ memory.last_failure = {
 | **Tool 参数瘦身（P2.5）** | `react-tool-call-slim.ts` | `write_file`/`edit_file` 成功后 assistant 参数替换为 `[N chars omitted…]`；旧轮同样瘦身 | `INNER_TOOL_ARGS_SLIM_MIN=200` |
 | **web_search fetch 上限** | `web-search/index.ts` | 默认 **4000** 字符（`truncatePage`）；可 `max_chars` / `OPENKURONEKO_WEB_SEARCH_FETCH_MAX_CHARS` | — |
 | **Shell stall** | `shell-stall-guard.ts` | 同一 `shell_exec` 命令连续 **4** 次 `ok:false` → transient failure | `INNER_SHELL_STALL_GUARD=1`，`INNER_SHELL_STALL_MAX_REPEAT=4` |
+| **Burst stall alert** | `burst-stall-evaluator.ts` + `burst-stall-alert.ts` | 多节点 cap / 无 facts / 长跑无 deliverable → **立即** `DATA_ROOT/stall-alerts/` 定位包 + Dashboard | [`INNER-BURST-STALL-ALERT.md`](./INNER-BURST-STALL-ALERT.md)；`INNER_BURST_STALL_ALERT=1` |
 | **Prompt cache 计量** | `llm-usage-types.parseLlmUsageFromResponse` | journal 可选字段 `cachedPromptTokens`（`prompt_tokens_details.cached_tokens`） | — |
 
 **禁止**：prune 后不自动删 `.run/tool-output/`（本轮 burst 内可 `read_file` 复查）；**不**改写 system / 首条 user。
@@ -329,6 +375,35 @@ DATA_ROOT/inner/tool-logs/<workspaceId>/YYYY-MM-DD.jsonl
 
 **与 node_creator 的关系**：`node_creator` 固化 **图上的格子（认知单元）**；`register_workspace_script_tool` 固化 **allowlist 里的原子能力（执行单元）**。两者互补，不互替。
 
+### 7c. FailureDistill（失败→红线，对称 §7b）
+
+> **动机**：旧 Attributor 写 `.brain/constraints.md`；现仅有可选 `record_constraint`，**无每轮 RUN 后 mandatory 蒸馏** → Designer 下一轮仍排同错路径。
+
+```text
+RUN 结束（图失败或 terminal stop）→ 回 DESIGN 之前:
+  failureDistill(memory, node_results[], last_failure)
+    → 生成 1..N 条确定性 constraint 字符串（无 LLM）
+    → memory.appendConstraint（去重）
+    → Designer 下一 tick 必读 constraints（与 last_failure 并列）
+```
+
+| 蒸馏规则（P0 确定性） | 示例 constraint |
+|----------------------|-----------------|
+| 每个 failed `node_results` | `[run-failure] 节点 n3（preset/base）：…；禁止同 instruction 裸重试` |
+| `safety_cap` / 安全轮次 | `[run-failure] ref preset/base 已 safety_cap，下轮须换 ref、API 或拆分节点` |
+| 404 / not found 信号 | `[run-failure] HTTP/API 404 不得视为 shell 成功；须核对端点、鉴权、curl -L` |
+
+**与 `record_constraint` 分工**：
+
+| 机制 | 谁写 | 何时 |
+|------|------|------|
+| `record_constraint`（baseNode 工具） | LLM 自觉 | 探索中发现红线 |
+| **FailureDistill** | Runner/controller **强制** | 每轮 RUN 失败后、进 DESIGN 前 |
+
+P2 可增 LLM 摘要蒸馏（`preset/failure_distill`）；P0 仅规则引擎，避免再烧 token。
+
+实现：`inner-brain/failure-distill.ts` · `controller.ts` RUN 分支调用 · 测试：`failure-distill.test.ts`。
+
 ---
 
 ## 8. compound 节点的执行语义
@@ -440,6 +515,8 @@ burst 结束 → registry DONE；子进程退出
 | **nodeCreatorExecutor** | newNodeCreator 节点执行（pack / specialize） | `…/node-creator-executor.ts` | ⏳ + `.prompt.test.ts` |
 | **localNodeStore** | `.brain/local_nodes/*.json` 读写 + index | `…/local-node-store.ts` | ⏳ |
 | **memoryStore** | `.brain/memory.json` 读写 + last_failure / facts / constraints / node_results | `…/memory-store.ts` | ⏳ |
+| **nodeAcceptance** | baseNode 完成验票 + shell 假成功检测 | `…/node-acceptance.ts` | ⏳ `node-acceptance.test.ts` |
+| **failureDistill** | RUN 失败→`memory.constraints[]` 强制蒸馏 | `…/failure-distill.ts` | ⏳ `failure-distill.test.ts` |
 | **designerToolRegistry** | Designer 专用工具集装配 | `…/designer-tools/index.ts` | ⏳ |
 | **presetSeeder** | 首次 spawn 注入 `preset/*` 节点 | `…/preset-seeder.ts` | ⏳ |
 
@@ -482,3 +559,4 @@ burst 结束 → registry DONE；子进程退出
 | 2026-06-02 | §7b：固化三层（facts/LocalNode/**Tool**）+ 晋升准则；T0 `register_workspace_script_tool`（bot2：成功节点 0 提升，且多数应是 Tool 非 Node）|
 | 2026-06-02 | §6.1：`INNER_BASE_NODE_MAX_ROUNDS` 默认恢复 **50**；`INNER_BASE_NODE_FAIL_FAST_STREAK` 保持 **5** |
 | 2026-06-02 | §6.4：内脑 `inner/tool-logs` 工具审计 JSONL（baseNode） |
+| 2026-06-03 | §6.7：节点完成四态 + outputs 机械验票 + shell-evidence；§7c FailureDistill（RUN→DESIGN 前写 constraints） |

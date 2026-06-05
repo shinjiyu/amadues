@@ -113,11 +113,14 @@ function Invoke-AgentDockerCompose {
 function Start-AgentDockerService {
   param(
     [Parameter(Mandatory = $true)][string]$Profile,
-    [int]$StartupWaitSec = 120
+    [int]$StartupWaitSec = 120,
+    [switch]$SkipBuild
   )
   $root = Get-KuronekoRepoRootForDocker
   Ensure-AgentInstanceEnvFile $root $Profile
-  Invoke-AgentDockerCompose -RepoRoot $root -ComposeArgs @('--profile', $Profile, 'up', '-d', '--build')
+  $upArgs = @('--profile', $Profile, 'up', '-d')
+  if (-not $SkipBuild) { $upArgs += '--build' }
+  Invoke-AgentDockerCompose -RepoRoot $root -ComposeArgs $upArgs
   $deadline = (Get-Date).AddSeconds($StartupWaitSec)
   $container = switch ($Profile) {
     'kuroneko' { 'utlra-agent-kuroneko' }

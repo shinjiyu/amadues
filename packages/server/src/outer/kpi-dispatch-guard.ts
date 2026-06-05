@@ -19,9 +19,14 @@ export function hasLiveWorkForKpi(registry: InnerBrainRegistry, kpiId: string): 
 export function findLiveBurstForKpi(
   registry: InnerBrainRegistry,
   kpiId: string,
+  /** burst onExit 续跑时 registry 尚未标 DONE，需排除当前实例 */
+  excludeInstanceId?: string,
 ): TaskRecord | undefined {
   return registry.list().find(
-    (t) => t.kpiId === kpiId && LIVE_KPI_BURST_STATUSES.has(t.status),
+    (t) =>
+      t.kpiId === kpiId &&
+      LIVE_KPI_BURST_STATUSES.has(t.status) &&
+      (excludeInstanceId == null || t.instanceId !== excludeInstanceId),
   );
 }
 

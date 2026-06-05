@@ -26,8 +26,19 @@ export interface NodeInputSpec {
 
 export interface NodeOutputSpec {
   key: string;
+  /** string | file | json — 见 DYFLOW-INNER-EXECUTOR.md §6.7 */
   type: string;
 }
+
+/** NodeInst 可选验收策略（§6.7） */
+export interface NodeAcceptance {
+  /** 默认 true：interface.outputs 全部验票通过才算 ok */
+  requireAllOutputs?: boolean;
+  /** P1：至少满足的 output key → partial */
+  minOutputs?: string[];
+}
+
+export type NodeOutcomeStatus = 'ok' | 'partial' | 'capped' | 'failed';
 
 export interface NodeInterface {
   inputs: NodeInputSpec[];
@@ -110,6 +121,8 @@ export interface NodeInst {
   memoryIn?: string[];
   /** 写回 memory 的 key 名（默认 node_results.<id>） */
   memoryOut?: string[];
+  /** 可选验收策略；缺省仅按 LocalNode.interface.outputs 机械验票 */
+  acceptance?: NodeAcceptance;
 }
 
 export interface GraphEdge {
@@ -156,6 +169,8 @@ export interface NodeResult {
   nodeInstId: string;
   ref: string;
   ok: boolean;
+  /** 机械完成态（§6.7）；缺省时由 ok + failure 推断 */
+  status?: NodeOutcomeStatus;
   /** ok 时 interface.outputs 的实际值 */
   outputs?: Record<string, unknown>;
   /** 失败时同 FailureSummary（也镜像写 memory.last_failure） */

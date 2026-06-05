@@ -5,8 +5,9 @@ import { ParticipationLabPanel } from './participation-lab.js';
 import { MemoryBlocksPanel } from './memory-blocks-panel.js';
 import { LogExplorerPanel } from './log-explorer.js';
 import { UsagePanel } from './usage-panel.js';
+import { StallAlertsPanel } from './stall-alerts-panel.js';
 
-type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation' | 'logs' | 'usage';
+type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation' | 'logs' | 'usage' | 'stalls';
 
 const TENANT = 'default';
 
@@ -181,6 +182,9 @@ export function App() {
           <button type="button" className={tab === 'usage' ? 'active' : ''} onClick={() => setTab('usage')}>
             用量
           </button>
+          <button type="button" className={tab === 'stalls' ? 'active' : ''} onClick={() => setTab('stalls')}>
+            节点触顶
+          </button>
         </div>
         {tab === 'data' && <DataPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'inner' && <InnerBrainPoolPanel apiPrefix={apiPrefix} />}
@@ -189,6 +193,7 @@ export function App() {
         {tab === 'participation' && <ParticipationLabPanel apiPrefix={apiPrefix} />}
         {tab === 'logs' && <LogExplorerPanel apiPrefix={apiPrefix} />}
         {tab === 'usage' && <UsagePanel apiPrefix={apiPrefix} />}
+        {tab === 'stalls' && <StallAlertsPanel apiPrefix={apiPrefix} />}
       </div>
     </div>
   );

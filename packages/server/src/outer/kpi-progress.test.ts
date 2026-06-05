@@ -220,9 +220,9 @@ describe('suggestKpiAction · active 状态', () => {
     expect(suggestKpiAction(makeKpi(), [link]).action).toBe('continue');
   });
 
-  it('idle streak > 0 且未到阈值 → stuck_reflexion（更早地反思）', () => {
+  it('idle streak > 0 且未到阈值 → continue（由 onExit 达阈值再派 meta）', () => {
     const kpi = makeKpi({ consecutiveIdleBursts: 1 });
-    expect(suggestKpiAction(kpi, [], 3).action).toBe('stuck_reflexion');
+    expect(suggestKpiAction(kpi, [], 3).action).toBe('continue');
   });
 
   it('完全活跃推进（无产出 / 无等待 / 无 idle）→ continue', () => {
@@ -240,6 +240,15 @@ describe('suggestKpiAction · 排序与优先级', () => {
     const kpi = makeKpi({ consecutiveIdleBursts: 5 });
     const link = makeLink({ isAsyncWaiting: true, registryStatus: 'AWAITING' });
     expect(suggestKpiAction(kpi, [link], 3).action).toBe('follow_up');
+  });
+
+  it('历史 DONE+AWAITING 不触发 follow_up（仅看在途 burst）', () => {
+    const doneStaleAwaiting = makeLink({
+      instanceId: 'ib-old',
+      registryStatus: 'DONE',
+      isAsyncWaiting: true,
+    });
+    expect(suggestKpiAction(makeKpi(), [doneStaleAwaiting]).action).toBe('continue');
   });
 
   it('achieved 优先于 follow_up（只要最近 burst 已收尾）', () => {

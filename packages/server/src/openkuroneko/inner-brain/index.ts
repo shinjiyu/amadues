@@ -23,6 +23,15 @@ export { createDesignerTools } from './designer-tools.js';
 export type { NodeSharingDeps } from './designer-tools.js';
 export { readLocalDag, writeLocalDag, clearLocalDag } from './local-dag-store.js';
 export { createDyflowController } from './controller.js';
+export { evaluateBurstStall, isBurstStallAlertEnabled } from './burst-stall-evaluator.js';
+export type { BurstStallVerdict, BurstStallSignal } from './burst-stall-evaluator.js';
+export {
+  maybeEmitBurstStallAlert,
+  listStallAlertIndex,
+  readStallAlertBundle,
+  STALL_ALERT_SCHEMA,
+} from './burst-stall-alert.js';
+export type { StallAlertIndexEntry, BurstStallAlertBundle } from './burst-stall-alert.js';
 export type {
   DyflowController,
   DyflowControllerContext,

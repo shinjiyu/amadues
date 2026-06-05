@@ -84,6 +84,9 @@ export class WebChatChannel implements ChatIRChannel {
 
   private started = false;
   private status: ConnectionStatus = 'idle';
+  /** 对照 chat-server /me.online，修复 WS 半开导致 UI 显示离线 */
+  private presenceWatchTimer: NodeJS.Timeout | null = null;
+  private static readonly PRESENCE_WATCH_MS = 60_000;
 
   constructor(private readonly opts: WebChatChannelOptions) {
     this.rest = new WebChatRestClient({
@@ -121,7 +124,13 @@ export class WebChatChannel implements ChatIRChannel {
 
   destroy(): void {
     this.started = false;
+    this.stopPresenceWatch();
     this.ws.close();
+  }
+
+  /** 供运维/调试：WS 是否 ready（与 chat-server presence.online 一致） */
+  getWebChatConnectionStatus(): { status: ConnectionStatus; ready: boolean } {
+    return { status: this.status, ready: this.ws.isOpen() };
   }
 
   async postMessage(threadId: string, body: ChatIROutboundBody): Promise<void> {
@@ -203,9 +212,49 @@ export class WebChatChannel implements ChatIRChannel {
       this.subscribeThread(this.opts.config.globalThreadId);
     }
     this.ws.connect();
+    this.startPresenceWatch();
     console.log(
       `[webchat-channel] started agent=${this.opts.config.agentUserId} api=${this.opts.config.apiBase} ws=${this.opts.config.wsUrl}`,
     );
+  }
+
+  private startPresenceWatch(): void {
+    this.stopPresenceWatch();
+    this.presenceWatchTimer = setInterval(() => {
+      void this.tickPresenceWatch().catch((e) => {
+        console.warn('[webchat-channel] presence watch failed', e);
+      });
+    }, WebChatChannel.PRESENCE_WATCH_MS);
+  }
+
+  private stopPresenceWatch(): void {
+    if (this.presenceWatchTimer) {
+      clearInterval(this.presenceWatchTimer);
+      this.presenceWatchTimer = null;
+    }
+  }
+
+  private async tickPresenceWatch(): Promise<void> {
+    if (!this.started) return;
+    if (!this.ws.isOpen()) {
+      if (this.ws.getStatus() === 'open' || this.ws.getStatus() === 'connecting') {
+        this.ws.reconnectNow('presence_watch_not_ready');
+      } else {
+        this.ws.connect();
+      }
+      return;
+    }
+    try {
+      const me = await this.rest.me();
+      if (!me.online) {
+        console.warn(
+          `[webchat-channel] presence drift: WS ready but /me online=false agent=${this.opts.config.agentUserId}, reconnecting`,
+        );
+        this.ws.reconnectNow('presence_drift');
+      }
+    } catch {
+      /* REST 暂不可达时不误杀 WS */
+    }
   }
 
   private subscribeThread(chatServerThreadId: string): void {

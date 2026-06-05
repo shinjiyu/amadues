@@ -90,6 +90,7 @@ services:
     volumes:
       - ../../packages/server/data-yuanbao:/data
 
+  # bot1/bot2：实验对默认本机 tsx（见 dev:agent:bot1 / bot2）；勿与 local 同端口混跑
   agent-bot1:
     <<: *agent-common
     container_name: utlra-agent-bot1

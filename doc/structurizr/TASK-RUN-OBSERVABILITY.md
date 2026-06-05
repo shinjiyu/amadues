@@ -43,6 +43,7 @@ FakeLLM 场景基准（[`FRAMEWORK-BENCHMARK.md`](./FRAMEWORK-BENCHMARK.md)）�
 | `environment/events.jsonl` | 环境事件（P1 起） | 过载、token 速率趋势 |
 | `workspaces/task-*/.run/pi-mono/logs/*.jsonl` | DyFlow tick（designer/base-node start·done） | FSM 阶段 |
 | `inner/tool-logs/<workspaceId>/*.jsonl` | baseNode/Designer **逐工具** call·result（DyFlow） | **工具结构、参数、耗时** |
+| `stall-alerts/index.jsonl` + `stall-alerts/<ib-id>/*.json` | **空转即时告警包**（[`INNER-BURST-STALL-ALERT.md`](./INNER-BURST-STALL-ALERT.md)） | Cursor 定位、Dashboard「空转」Tab |
 | `workspaces/task-*/.run/pi-mono/deliverables.json` | 交付物列表 | **outcome 代理指标** |
 | `workspaces/task-*/.brain/*` | goal、milestones、knowledge | 计划 vs 执行 |
 | `outer/tool-logs/<agentSid>/*.jsonl` | 外脑 tool 审计 | set_goal 频率、meta 任务 |

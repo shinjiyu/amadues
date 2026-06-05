@@ -57,6 +57,64 @@ describe('KPI scenario harness', () => {
     expect(digest).toContain('follow_up');
   });
 
+  it('场景 F：有 deliverable 但未 post-complete → 不触发模板 auto next', () => {
+    const prev = process.env['UTLRA_KPI_AUTO_NEXT_BURST'];
+    process.env['UTLRA_KPI_AUTO_NEXT_BURST'] = '1';
+    try {
+      fx = createKpiScenarioFixture('E2E 文件产出');
+      const { outcome } = fx.simulateBurstExit({
+        verdict: 'success',
+        deliverables: ['kpi-e2e-proof.txt'],
+        postComplete: false,
+      });
+      expect(outcome.deliverableCount).toBe(1);
+      expect(outcome.nextKpiBurstId).toBeNull();
+      expect(fx.nextBurstsScheduled).toHaveLength(0);
+    } finally {
+      if (prev === undefined) delete process.env['UTLRA_KPI_AUTO_NEXT_BURST'];
+      else process.env['UTLRA_KPI_AUTO_NEXT_BURST'] = prev;
+    }
+  });
+
+  it('场景 H：连续 3 次无产出 → idle 累加至反思，前 2 次可 auto next', () => {
+    const prev = process.env['UTLRA_KPI_AUTO_NEXT_BURST'];
+    process.env['UTLRA_KPI_AUTO_NEXT_BURST'] = '1';
+    try {
+      fx = createKpiScenarioFixture('无产出三连');
+      const o1 = fx.simulateBurstExit({ verdict: 'failed', deliverables: [] }).outcome;
+      const o2 = fx.simulateBurstExit({ verdict: 'failed', deliverables: [] }).outcome;
+      const o3 = fx.simulateBurstExit({ verdict: 'failed', deliverables: [] }).outcome;
+      expect(fx.kpiRegistry.get(fx.kpiId)?.consecutiveIdleBursts).toBe(3);
+      expect(o1.nextKpiBurstId).toMatch(/^ib-next-/);
+      expect(o2.nextKpiBurstId).toMatch(/^ib-next-/);
+      expect(o3.nextKpiBurstId).toBeNull();
+      expect(o3.reflexionBurstId).toMatch(/^ib-reflexion-/);
+      expect(fx.nextBurstsScheduled).toHaveLength(2);
+    } finally {
+      if (prev === undefined) delete process.env['UTLRA_KPI_AUTO_NEXT_BURST'];
+      else process.env['UTLRA_KPI_AUTO_NEXT_BURST'] = prev;
+    }
+  });
+
+  it('场景 G：零 deliverable idle 结束 → 可触发模板 auto next', () => {
+    const prev = process.env['UTLRA_KPI_AUTO_NEXT_BURST'];
+    process.env['UTLRA_KPI_AUTO_NEXT_BURST'] = '1';
+    try {
+      fx = createKpiScenarioFixture('无产出探索');
+      const { outcome } = fx.simulateBurstExit({
+        verdict: 'failed',
+        deliverables: [],
+        postComplete: false,
+      });
+      expect(outcome.deliverableCount).toBe(0);
+      expect(outcome.nextKpiBurstId).toMatch(/^ib-next-/);
+      expect(fx.nextBurstsScheduled).toHaveLength(1);
+    } finally {
+      if (prev === undefined) delete process.env['UTLRA_KPI_AUTO_NEXT_BURST'];
+      else process.env['UTLRA_KPI_AUTO_NEXT_BURST'] = prev;
+    }
+  });
+
   it('场景 E：监督类未完成 post-complete → 保持 active', () => {
     fx = createKpiScenarioFixture('持续监督 Shiro');
     const { outcome } = fx.simulateBurstExit({

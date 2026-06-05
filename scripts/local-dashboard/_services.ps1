@@ -40,7 +40,7 @@ $script:KuronekoServices = @{
     StartupWaitSec = 180
   }
   'agent-yuanbao' = @{
-    Label          = 'Agent: 元宝 / webchat-lab (Docker)'
+    Label          = 'Agent: 元宝 / kuroneko.chat/webchat (Docker)'
     DockerProfile  = 'yuanbao'
     ContainerName  = 'utlra-agent-yuanbao'
     Port           = 8793

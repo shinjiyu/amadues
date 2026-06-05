@@ -150,9 +150,13 @@ function formatBurstDetail(
   return lines.filter(Boolean).join('\n');
 }
 
-function formatLiveBurstSummary(registry: InnerBrainRegistry): string {
-  const live = registry.list().filter((t) => LIVE_KPI_BURST_STATUSES.has(t.status));
-  if (live.length === 0) return '（当前无 RUNNING/AWAITING/BLOCKED 内脑）';
+function formatLiveBurstSummary(registry: InnerBrainRegistry, kpiId: string): string {
+  const live = registry
+    .list()
+    .filter(
+      (t) => t.kpiId === kpiId && LIVE_KPI_BURST_STATUSES.has(t.status),
+    );
+  if (live.length === 0) return '（本 KPI 当前无 RUNNING/AWAITING/BLOCKED 内脑）';
   return live
     .map((t) => {
       const goalPreview = t.goal.replace(/\s+/g, ' ').slice(0, 120);
@@ -247,6 +251,9 @@ export async function buildKpiGoalPlannerContext(input: KpiGoalPlannerContextInp
     const burstLines: string[] = ['## 历次 burst 详情（最近）'];
     for (const id of burstIds) {
       const rec = registry.get(id);
+      if (rec && rec.kpiId != null && rec.kpiId !== kpi.kpiId) {
+        continue;
+      }
       if (rec) {
         burstLines.push(formatBurstDetail(rec, kpi, input.getEngine));
       } else {
@@ -256,7 +263,9 @@ export async function buildKpiGoalPlannerContext(input: KpiGoalPlannerContextInp
     sections.push(burstLines.join('\n\n'));
   }
 
-  sections.push(`## 当前在途内脑（全 KPI，禁止重复）\n${formatLiveBurstSummary(registry)}`);
+  sections.push(
+    `## 本 KPI 在途内脑（禁止重复派发）\n${formatLiveBurstSummary(registry, kpi.kpiId)}`,
+  );
 
   const otherKpis = kpiRegistry.list({ status: 'active' }).filter((k) => k.kpiId !== kpi.kpiId);
   if (otherKpis.length > 0) {
@@ -271,7 +280,8 @@ export async function buildKpiGoalPlannerContext(input: KpiGoalPlannerContextInp
   sections.push(
     '## 规划约束',
     '- 只输出一条**新的、可执行**的内脑 goal（Markdown，≤500 字），不要解释、不要前言。',
-    '- **禁止**与「当前在途内脑」或最近 burst 的 goal 重复同一调研/执行主题。',
+    '- **禁止**与本 KPI 在途内脑或最近 burst 的 goal 重复同一调研/执行主题。',
+    '- 非本 KPI 的一次性内脑 / 群聊杂务只写入记忆层，勿写进 KPI goal。',
     '- 硬失败方向（见反思）禁止重试；优先采纳 nextStrategy 换向建议。',
     '- 若系统建议动作为 continue/follow_up/achieved，应派**明显不同的下一步**而非重开同类任务。',
     '- 若上一轮已有 deliverable，下一轮应**承接产出**（深化、汇总、换维度），不要从零重复。',

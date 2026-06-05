@@ -102,13 +102,48 @@ describe('runBaseNode', () => {
   });
 
   it('completes when LLM finishes without tool calls', async () => {
-    const llm = createFakeLLM([{ label: 'done', match: 'fetch the data', reply: { content: 'fetched ok' } }]);
+    const llm = createFakeLLM([{ label: 'done', match: 'fetch the data', reply: { content: 'fetched ok with data saved' } }]);
     const outcome = await runBaseNode(
       { node: baseNode(), inst, memory: emptyMemory(), workDir: '/tmp/x' },
       { llm, toolRegistry: createToolRegistry([]), logger: silentLogger() },
     );
     expect(outcome.ok).toBe(true);
-    expect(outcome.outputs).toEqual({ result: 'fetched ok' });
+    expect(outcome.status).toBe('ok');
+    expect(outcome.outputs?.['result']).toContain('fetched ok');
+  });
+
+  it('fails acceptance when output summary too short', async () => {
+    const llm = createFakeLLM([{ label: 'done', match: () => true, reply: { content: 'ok' } }]);
+    const outcome = await runBaseNode(
+      { node: baseNode(), inst, memory: emptyMemory(), workDir: '/tmp/x' },
+      { llm, toolRegistry: createToolRegistry([]), logger: silentLogger() },
+    );
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failure?.summary).toMatch(/输出契约未满足/);
+  });
+
+  it('treats shell 404 as tool failure for progress streak', async () => {
+    const shell: Tool = {
+      name: 'shell_exec',
+      description: 'curl',
+      async call() {
+        return { ok: true, output: 'HTTP/1.1 404 Not Found' };
+      },
+    };
+    const llm = createFakeLLM([
+      {
+        match: () => true,
+        reply: { content: '', toolCalls: [{ id: 't1', name: 'shell_exec', args: { command: 'curl x' } }] },
+      },
+      { match: () => true, reply: { content: 'CANNOT_CONTINUE: still 404' } },
+    ]);
+    const node = baseNode({ body: { kind: 'executor', promptTemplate: 'x', tools: ['shell_exec'] } });
+    const outcome = await runBaseNode(
+      { node, inst, memory: emptyMemory(), workDir: '/tmp/x' },
+      { llm, toolRegistry: createToolRegistry([shell]), logger: silentLogger() },
+    );
+    expect(outcome.executionLog[0]?.result.ok).toBe(false);
+    expect(outcome.executionLog[0]?.result.output).toContain('shell-evidence');
   });
 
   it('runs a tool then finishes', async () => {

@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string]$Service
+  [string]$Service,
+  [switch]$SkipBuild
 )
 
 . "$PSScriptRoot\_services.ps1"
@@ -29,7 +30,7 @@ if ($svc.DockerProfile) {
   . (Join-Path $KuronekoRepoRoot 'scripts\kuroneko\_agent-docker.ps1')
   if (Test-Path $pidFile) { Remove-Item $pidFile -Force -ErrorAction SilentlyContinue }
   $wait = if ($svc.StartupWaitSec) { [int]$svc.StartupWaitSec } else { 180 }
-  Start-AgentDockerService -Profile $svc.DockerProfile -StartupWaitSec $wait
+  Start-AgentDockerService -Profile $svc.DockerProfile -StartupWaitSec $wait -SkipBuild:$SkipBuild
   exit 0
 }
 

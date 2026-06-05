@@ -99,7 +99,7 @@ export interface BurstExitDeps {
   /** 派发反思 burst 的函数（注入避免 index.ts ↔ outer 循环依赖） */
   scheduleReflexionBurst: (kpiId: string) => string | null;
   /** meta 反思结束后自动派下一发真任务（UTLRA_KPI_AUTO_NEXT_BURST=1） */
-  scheduleNextKpiBurst?: (kpiId: string) => string | null;
+  scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   /** 反思 burst 触发阈值；默认 UTLRA_KPI_STUCK_THRESHOLD or 3 */
   stuckThreshold?: number;
 }
@@ -161,7 +161,9 @@ export function processBurstExitForKpi(
       isKpiAutoNextBurstEnabled() &&
       kpi?.status === 'active'
     ) {
-      nextKpiBurstId = deps.scheduleNextKpiBurst(input.kpiId);
+      // meta 反思换向后再给一轮探索预算
+      deps.kpiRegistry.resetIdle(input.kpiId);
+      nextKpiBurstId = deps.scheduleNextKpiBurst(input.kpiId, input.instanceId);
     }
     return {
       deliverableCount,
@@ -229,8 +231,9 @@ export function processBurstExitForKpi(
       buildKpiBurstLinks(kpiAfter, deps.innerBrainRegistry),
       threshold,
     );
-    if (action !== 'achieved' && action !== 'follow_up') {
-      nextKpiBurstId = deps.scheduleNextKpiBurst(input.kpiId);
+    // 有 deliverable 的 burst 视为有效进展：交 achieve / 外脑规划下一轮，勿用模板 goal 立刻续跑（防永动）
+    if (action !== 'achieved' && action !== 'follow_up' && deliverableCount === 0) {
+      nextKpiBurstId = deps.scheduleNextKpiBurst(input.kpiId, input.instanceId);
     }
   }
 

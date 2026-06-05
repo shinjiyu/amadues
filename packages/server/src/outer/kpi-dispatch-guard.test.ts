@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { evaluateKpiAutonomyDispatch } from './kpi-dispatch-guard.js';
+import { evaluateKpiAutonomyDispatch, findLiveBurstForKpi } from './kpi-dispatch-guard.js';
 import { KpiRegistry } from './kpi-registry.js';
 import { InnerBrainRegistry } from './inner-brain-registry.js';
 import type { TaskRecord } from './inner-brain-registry.js';
@@ -42,6 +42,21 @@ describe('evaluateKpiAutonomyDispatch', () => {
     const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
     expect(d.ok).toBe(true);
     expect(d.reason).toBe('first_burst');
+  });
+
+  it('findLiveBurstForKpi 可排除 onExit 中的当前实例', () => {
+    setup();
+    const kpiId = kpiRegistry.create({
+      description: 'test kpi',
+      createdBy: 'idp:agent:shiro',
+    }).kpiId;
+    registerBurst({
+      instanceId: 'ib-exiting',
+      kpiId,
+      status: 'RUNNING',
+    });
+    expect(findLiveBurstForKpi(innerBrainRegistry, kpiId)).toBeDefined();
+    expect(findLiveBurstForKpi(innerBrainRegistry, kpiId, 'ib-exiting')).toBeUndefined();
   });
 
   it('有 RUNNING burst 时拒绝并行派发（kpi_burst_in_flight）', () => {

@@ -42,7 +42,8 @@ export const PRESET_BASE_PROMPT = `你是一个 baseNode 执行器（DyFlow）�
 - 稳定的环境事实（路径/选择器/账号/API 形状）用 \`record_fact\` 写入 memory.facts。
 
 ## 产出
-- 完成时，确保本节点要求的 outputs 已经真实落地（文件/命令产物/可验证状态）。
+- 完成时，确保本节点要求的 outputs 已经真实落地（文件/命令产物/可验证状态）；框架会机械验票，仅口头「完成」无效。
+- curl/wget 返回 HTTP 404 或 exit code≠0 不算成功，须换 URL/鉴权后再声称完成。
 - 放弃时，用一段话讲清：根因 + 已尝试什么 + 为何不可恢复。`;
 
 export const PRESET_NODE_CREATOR_PROMPT = `你是 newNodeCreator（DyFlow 元节点）。你的唯一职责是把「已经跑成功的战术」固化成一个可复用的 LocalNode。

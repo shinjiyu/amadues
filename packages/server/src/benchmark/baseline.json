@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "scenarios": {
+    "S1-single-burst-complete": {
+      "llmCalls": 4,
+      "estimatedPromptTokens": 1769,
+      "ticks": 4,
+      "executorLlmCalls": 1,
+      "maxExecutorRound": 0,
+      "toolCalls": 0,
+      "wallMs": 246
+    },
+    "S2-executor-multi-round": {
+      "llmCalls": 7,
+      "estimatedPromptTokens": 3645,
+      "ticks": 3,
+      "executorLlmCalls": 5,
+      "maxExecutorRound": 4,
+      "toolCalls": 4,
+      "wallMs": 182
+    }
+  }
+}
