@@ -7,6 +7,8 @@
 | 链路 | 触发 | 产出 | 消费者 |
 |------|------|------|--------|
 | **Per-burst reflexion** | 内脑 `safeArchive`（COMPLETE/BLOCK/REPLAN_LIMIT/CYCLE_MAX） | `.brain/reflexion.json` + archive session | `kpiBurstHooks` → `reflexionTrail`；下轮 `decomposer(kpiId)` |
+
+> **IM 通知 ≠ reflexion BLOCK**：归档触发器里的 `BLOCK` 表 burst 遇阻；用户可见通知走 [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md)（COMPLETE / AWAITING_HUMAN / PROGRESS 三类，去重）。
 | **Meta reflexion burst** | `idleStreak ≥ 阈值` | 短 burst + 同上 reflexion | `UTLRA_KPI_AUTO_NEXT_BURST=1` 时可 `scheduleNextKpiBurst` |
 
 ## 闭环步骤（实现顺序）

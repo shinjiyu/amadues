@@ -124,6 +124,14 @@ foreach record in registry where status in (AWAITING, BLOCKED):
 4. 若多条 → 正文含 `instance_id`（如 `` `ib-xxx` ``）则精确匹配；否则 **不自动 resolve**（外脑 `send_directive` 兜底）。
 5. 正文以 `[NEW_GOAL]` 开头 → 不 resolve，交给 controller 新任务路径。
 
+**拒绝 resolve（防 agent 通知 echo）** — 详见 [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md) §5：
+
+| # | 条件 | reason |
+|---|------|--------|
+| R1 | `senderSid` 在 agent-mirror 表（如 `webchat:user:kuroneko`） | `sender_agent_mirror` |
+| R2 | 正文以 `✅` 或 `⚠️ 内脑任务被阻塞` 开头 | `agent_notification_echo` |
+| R3 | 正文匹配外脑/内脑 IM 通知模板（`⏸ 内脑任务等待您的输入` 等） | `agent_notification_echo` |
+
 **与 `send_directive` 关系**：
 
 | 路径 | 确定性 | 场景 |
@@ -140,8 +148,8 @@ foreach record in registry where status in (AWAITING, BLOCKED):
 | 阶段 | 行为 |
 |------|------|
 | **bootstrap**（`start()` 内一次） | 调用 `registryLifecycleReconcile`；`resolveDueTimers` 扫全表 AWAITING |
-| **tick** | 对每个 AWAITING/BLOCKED：`expireOverdue` → 若有 `unconsumed resolved` 且 pid 不存活 → `spawnTask` |
-| **不负责** | IM 入站（交给 resolver）；registry DONE 收口（交给 reconcile） |
+| **tick** | 对每个 AWAITING/BLOCKED：`expireOverdue` → 若有 `unconsumed resolved` 且 pid 不存活 → **`markConsumed` 再 `spawnTask`**（见 [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md) §6） |
+| **不负责** | IM 入站（交给 resolver）；registry DONE 收口（交给 reconcile）；**AWAITING_HUMAN IM**（交给 `awaitingNotify` onExit） |
 
 宪法 §6.2 的 **IMWatcher** 合并进 **`awaitingInboundResolver`**；**TimerWatcher** 仍为 poll（v1），非最小堆。
 

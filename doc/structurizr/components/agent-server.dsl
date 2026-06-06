@@ -204,7 +204,7 @@
                     }
                 }
 
-                awaitingInboundResolver = component "Awaiting Inbound Resolver" "【IM 必达】人消息 → 同 thread 的 ask_user pending → resolved；spawn 仍由 changeWatcher" "TypeScript" {
+                awaitingInboundResolver = component "Awaiting Inbound Resolver" "【IM 必达】人消息 → 同 thread 的 ask_user pending → resolved；拒 agent-mirror/通知 echo" "TypeScript" {
                     tags "Outer-Module" "Inbound" "Inner-Lifecycle"
                     properties {
                         "path" "packages/server/src/outer/awaiting-inbound-resolver.ts"
@@ -214,7 +214,32 @@
                         "horizon.deps" "brainAsyncSnapshot; innerBrainRegistry"
                         "horizon.test.unit" "awaiting-inbound-resolver.test.ts"
                         "horizon.test.integration" "awaitingInboundResolver.component.integration.test.ts"
-                        "horizon.note" "挂载于 outerBrainFacade，policy 之后、conversationLoop 之前"
+                        "horizon.note" "挂载于 outerBrainFacade，policy 之后、conversationLoop 之前；见 INNER-BRAIN-IM-NOTIFY-BOUNDARY.md §5"
+                    }
+                }
+
+                imNotifyDedup = component "IM Notify Dedup" "【通知去重】awaiting_human / complete fingerprint → .run/im-notify-ledger.json" "TypeScript" {
+                    tags "Outer-Module" "Inner-Lifecycle"
+                    properties {
+                        "path" "packages/server/src/outer/im-notify-dedup.ts"
+                        "horizon.intention" "防同一阻塞/完成连发 IM"
+                        "horizon.in" "workDir + kind + fingerprint"
+                        "horizon.out" "shouldSend / recordSent"
+                        "horizon.test.unit" "im-notify-dedup.test.ts"
+                        "horizon.note" "见 INNER-BRAIN-IM-NOTIFY-BOUNDARY.md §2"
+                    }
+                }
+
+                awaitingNotify = component "Awaiting Notify" "【等待人类】onExit AWAITING + ask_user pending → ⏸ IM（dedup）" "TypeScript" {
+                    tags "Outer-Module" "Inner-Lifecycle"
+                    properties {
+                        "path" "packages/server/src/outer/awaiting-notify.ts"
+                        "horizon.intention" "替代 pushLoop BLOCK 与 legacy output BLOCK onExit"
+                        "horizon.in" "TaskRecord + workDir + imClient"
+                        "horizon.out" "postMessage or skip"
+                        "horizon.deps" "imNotifyDedup; brainAsyncSnapshot"
+                        "horizon.test.unit" "awaiting-notify.test.ts"
+                        "horizon.note" "见 INNER-BRAIN-IM-NOTIFY-BOUNDARY.md §3"
                     }
                 }
 
@@ -232,7 +257,7 @@
                     }
                 }
 
-                completionNotify = component "Completion Notify" "【完成通知】burst DONE → buildCompletionReport(audience=im) → 附件 parts；与 pushLoop 分工（COMPLETE 不重复推）" "TypeScript" {
+                completionNotify = component "Completion Notify" "【完成通知】burst DONE → buildCompletionReport(audience=im) → 附件；completion-notified.json 去重" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
                         "path" "packages/server/src/outer/completion-notify.ts; openkuroneko/burst/completion-report.ts"
@@ -242,30 +267,32 @@
                         "horizon.protocol" "doc/protocols/inner-brain-deliverables.md §6.4"
                         "horizon.test.unit" "completion-notify.test.ts; completion-report.test.ts"
                         "horizon.test.integration" "completionNotify.component.integration.test.ts"
+                        "horizon.note" "见 INNER-BRAIN-IM-NOTIFY-BOUNDARY.md §4"
                     }
                 }
 
-                pushLoop = component "Push Loop" "【增量推送】轮询 RUNNING 实例的 .run/pi-mono/output；PROGRESS/BLOCK 推渠道" "TypeScript" {
+                pushLoop = component "Push Loop" "【增量推送】轮询 RUNNING 实例 output；仅 PROGRESS 可选推 IM；BLOCK 只记日志" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
                         "path" "packages/server/src/outer/push-loop.ts"
-                        "horizon.intention" "长任务中途进度（COMPLETE 主要由 onExit）"
+                        "horizon.intention" "长任务中途进度；AWAITING_HUMAN 由 awaitingNotify"
                         "horizon.in" "registry 列表 + offset 文件"
-                        "horizon.out" "imClient.postMessage"
+                        "horizon.out" "imClient.postMessage (PROGRESS only)"
                         "horizon.test.integration" "pushLoop.component.integration.test.ts"
+                        "horizon.note" "见 INNER-BRAIN-IM-NOTIFY-BOUNDARY.md §1"
                     }
                 }
 
-                changeWatcher = component "Change Watcher" "【AWAITING 唤醒】bootstrap(reconcile+timer 补单) + 1s tick：unconsumed resolved → spawn；不负责 IM 入站" "TypeScript" {
+                changeWatcher = component "Change Watcher" "【AWAITING 唤醒】tick：unconsumed resolved → markConsumed → spawn" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
                         "path" "packages/server/src/pi-mono/change-watcher.ts"
-                        "horizon.intention" "pendings 到期/解封后 spawn；与 registryLifecycleReconcile / awaitingInboundResolver 分工"
+                        "horizon.intention" "pendings 到期/解封后 spawn；spawn 前消费 resolved 防重唤醒"
                         "horizon.in" "innerBrainRegistry AWAITING|BLOCKED 列表"
                         "horizon.out" "innerSpawner spawn"
                         "horizon.test.unit" "change-watcher.test.ts"
                         "horizon.test.integration" "changeWatcher.component.integration.test.ts; await-and-wake.integration.test.ts"
-                        "horizon.note" "v1 为 poll 非最小堆；见 INNER-BRAIN-AWAITING-LIFECYCLE.md §5.3"
+                        "horizon.note" "见 INNER-BRAIN-AWAITING-LIFECYCLE.md §5.3; INNER-BRAIN-IM-NOTIFY-BOUNDARY.md §6"
                     }
                 }
 

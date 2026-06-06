@@ -78,6 +78,7 @@ import { isInnerBrainStoppable, stopInnerBrainInstance } from './outer/stop-inne
 import { createChangeWatcher, type ChangeWatcher } from './pi-mono/change-watcher.js';
 import { registryLifecycleReconcile, startRegistryLifecycleReconcileInterval } from './outer/registry-lifecycle-reconcile.js';
 import { isBrainAwaitingAsync } from './outer/brain-async-snapshot.js';
+import { notifyInnerBrainAwaitingHuman } from './outer/awaiting-notify.js';
 import { notifyInnerBrainTaskComplete, type CompletionNotifyDeps } from './outer/completion-notify.js';
 import { PushLoop } from './outer/push-loop.js';
 import { OuterHeartbeat, loadHeartbeatConfigFromEnv } from './outer/outer-heartbeat.js';
@@ -302,15 +303,27 @@ function spawnAndAttachWorker(
           pid:              undefined,
         });
 
-        if (finalStatus === 'DONE' && record.originThread && completionNotifyDeps) {
-          void notifyInnerBrainTaskComplete(completionNotifyDeps, {
-            instanceId: id,
-            workspaceId: record.workspaceId,
-            workDir: record.workDir,
-            originThread: record.originThread,
-          }).catch((e: unknown) =>
-            console.error('[utlra][inner-brain] completion notify failed:', e),
-          );
+        if (record.originThread && completionNotifyDeps) {
+          if (finalStatus === 'DONE') {
+            void notifyInnerBrainTaskComplete(completionNotifyDeps, {
+              instanceId: id,
+              workspaceId: record.workspaceId,
+              workDir: record.workDir,
+              originThread: record.originThread,
+            }).catch((e: unknown) =>
+              console.error('[utlra][inner-brain] completion notify failed:', e),
+            );
+          } else if (finalStatus === 'AWAITING') {
+            void notifyInnerBrainAwaitingHuman(
+              {
+                imClient: completionNotifyDeps.imClient,
+                agentSid: completionNotifyDeps.agentSid,
+              },
+              record,
+            ).catch((e: unknown) =>
+              console.error('[utlra][inner-brain] awaiting notify failed:', e),
+            );
+          }
         }
 
         console.log(

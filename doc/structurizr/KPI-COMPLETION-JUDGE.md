@@ -37,6 +37,17 @@ active KPI 且**无** RUNNING/AWAITING/BLOCKED 在途 burst 时，最近 burst �
 
 监督类 / 未 post_complete → **不** achieved，继续 `follow_up` 或 `continue`。
 
+**在途 burst 语义分层**（[`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md) §8）：
+
+| `suggestKpiAction` | 条件 | 外脑行为 |
+|--------------------|------|----------|
+| `awaiting_human` | `is_async_waiting` 且存在 `ask_user` pending | **勿**重复 set_goal；展示「等待人类」 |
+| `follow_up` | AWAITING 无 ask_user / safety_cap 循环 / 真 stuck | 介入、换路线或 reap |
+| `continue` | RUNNING 正常推进 | 观察 |
+| `stuck_reflexion` | idle streak 达阈值 | meta burst |
+
+`shouldAutoAchieveKpi`：`isAwaiting` 仍返回 false（与 §3 一致）。
+
 ---
 
 ## 4. 心跳 tick 中的位置

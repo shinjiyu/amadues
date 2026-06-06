@@ -232,7 +232,12 @@ export function processBurstExitForKpi(
       threshold,
     );
     // 有 deliverable 的 burst 视为有效进展：交 achieve / 外脑规划下一轮，勿用模板 goal 立刻续跑（防永动）
-    if (action !== 'achieved' && action !== 'follow_up' && deliverableCount === 0) {
+    if (
+      action !== 'achieved' &&
+      action !== 'follow_up' &&
+      action !== 'awaiting_human' &&
+      deliverableCount === 0
+    ) {
       nextKpiBurstId = deps.scheduleNextKpiBurst(input.kpiId, input.instanceId);
     }
   }

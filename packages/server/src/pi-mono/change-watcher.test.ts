@@ -16,7 +16,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { ChangeWatcher } from './change-watcher.js';
-import { addPending, readPendings, type PendingItem } from '../openkuroneko/pendings/index.js';
+import {
+  addPending,
+  readPendings,
+  resolvePending,
+  type PendingItem,
+} from '../openkuroneko/pendings/index.js';
 import type { TaskRecord } from '../outer/inner-brain-registry.js';
 
 class FakeRegistry {
@@ -151,6 +156,29 @@ describe('ChangeWatcher', () => {
     const resolved = w.resolveSignal(task.instanceId, 'payment_ok', { amount: 100 });
     expect(resolved?.status).toBe('resolved');
     expect((resolved?.result as { amount: number })?.amount).toBe(100);
+  });
+
+  it('unconsumed resolved → markConsumed then spawn (no repeat on next tick)', async () => {
+    const { workDir, brainDir } = tmpWorkspace();
+    const item = addPending(brainDir, {
+      kind: 'ask_user',
+      spec: { prompt: 'q' },
+    });
+    resolvePending(brainDir, item.id, { result: { reply: 'ok' } });
+    reg.put(mkTask(workDir));
+
+    const calls: TaskRecord[] = [];
+    const w = new ChangeWatcher({
+      registry: reg as unknown as import('../outer/inner-brain-registry.js').InnerBrainRegistry,
+      spawnTask: (t) => { calls.push(t); return { ok: true }; },
+    });
+    await (w as unknown as { tick: () => Promise<void> }).tick();
+    expect(calls.length).toBe(1);
+    const after = readPendings(brainDir);
+    expect(after[0]?.consumed).toBe(true);
+
+    await (w as unknown as { tick: () => Promise<void> }).tick();
+    expect(calls.length).toBe(1);
   });
 
   it('expired deadline → spawn (timeout path)', async () => {

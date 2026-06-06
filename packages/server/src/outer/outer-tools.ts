@@ -42,6 +42,7 @@ import {
   formatBrainAsyncSnapshotForLlm,
   isBrainAwaitingAsync,
 } from './brain-async-snapshot.js';
+import { notifyInnerBrainAwaitingHuman } from './awaiting-notify.js';
 import { notifyInnerBrainTaskComplete } from './completion-notify.js';
 import { expandAttachAssetIds, type AttachmentPart } from './attach-expand.js';
 import {
@@ -1021,21 +1022,7 @@ async function execSetGoal(
           // PushLoop 只轮询 RUNNING/BLOCKED 实例，onExit 比 poll 更及时，统一在此处理。
           const record = registry.get(instanceId);
           if (record?.originThread) {
-            const lastEvent = readLastOutputEvent(workDir);
-
-            if (lastEvent?.type === 'BLOCK') {
-              // 内脑因缺能力/信息而暂停，通知用户;新架构下统一 AWAITING(pending 数据)
-              registry.update(instanceId, { status: 'AWAITING' });
-              void ctx.imClient.postMessage(record.originThread, {
-                sender_sid: ctx.agentSid,
-                text:
-                  `⚠️ 内脑任务被阻塞，需要您的输入。\n\n` +
-                  `**问题**：${lastEvent.question ?? lastEvent.message}\n\n` +
-                  `请回复后，我会将您的答复转发给内脑继续执行。\n任务 ID：\`${instanceId}\``,
-              }).catch((e: unknown) =>
-                console.error('[utlra][outer-tools] block notify failed:', e),
-              );
-            } else if (finalStatus === 'DONE') {
+            if (finalStatus === 'DONE') {
               void notifyInnerBrainTaskComplete(
                 {
                   imClient: ctx.imClient,
@@ -1051,6 +1038,13 @@ async function execSetGoal(
                 },
               ).catch((e: unknown) =>
                 console.error('[utlra][outer-tools] completion notify failed:', e),
+              );
+            } else if (finalStatus === 'AWAITING') {
+              void notifyInnerBrainAwaitingHuman(
+                { imClient: ctx.imClient, agentSid: ctx.agentSid },
+                record,
+              ).catch((e: unknown) =>
+                console.error('[utlra][outer-tools] awaiting notify failed:', e),
               );
             }
           }

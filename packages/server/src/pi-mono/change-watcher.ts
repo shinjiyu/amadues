@@ -29,6 +29,7 @@ import {
   listUnconsumedResolved,
   findByCtxRef,
   resolvePending,
+  markConsumed,
   type PendingItem,
 } from '../openkuroneko/pendings/index.js';
 import { isPidAlive } from './inner-brain-spawner.js';
@@ -133,7 +134,10 @@ export class ChangeWatcher {
     );
     this.inFlightWakeups.add(task.instanceId);
 
-    // 5. spawn worker —— 委托给调用方提供的 spawnTask（含完整 KPI / reflexion hook）
+    // 5. 消费 resolved pending，避免下一轮 tick 重复唤醒
+    markConsumed(brainDir, unconsumed.map((p) => p.id));
+
+    // 6. spawn worker —— 委托给调用方提供的 spawnTask（含完整 KPI / reflexion hook）
     try {
       const res = this.opts.spawnTask(task);
       if (!res.ok) {

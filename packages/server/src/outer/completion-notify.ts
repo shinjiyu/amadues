@@ -151,6 +151,39 @@ export function buildCompletionMessageFromWorkspace(
   return { message: rebuilt, deliverables };
 }
 
+function completionNotifiedPath(workDir: string): string {
+  return path.join(workDir, '.run', 'completion-notified.json');
+}
+
+function alreadyCompletionNotified(workDir: string, instanceId: string): boolean {
+  const fp = completionNotifiedPath(workDir);
+  if (!fs.existsSync(fp)) return false;
+  try {
+    const raw = JSON.parse(fs.readFileSync(fp, 'utf8')) as { instanceId?: string };
+    return raw.instanceId === instanceId;
+  } catch {
+    return false;
+  }
+}
+
+function markCompletionNotified(
+  workDir: string,
+  instanceId: string,
+  deliverableCount: number,
+): void {
+  const fp = completionNotifiedPath(workDir);
+  fs.mkdirSync(path.dirname(fp), { recursive: true });
+  fs.writeFileSync(
+    fp,
+    JSON.stringify(
+      { at: new Date().toISOString(), instanceId, deliverableCount },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+}
+
 /** 向内脑任务发起人发送「任务完成」IM（含产物附件） */
 export async function notifyInnerBrainTaskComplete(
   deps: CompletionNotifyDeps,
@@ -192,6 +225,13 @@ export async function notifyInnerBrainTaskComplete(
     },
   }));
 
+  if (alreadyCompletionNotified(opts.workDir, opts.instanceId)) {
+    console.log(
+      `[completion-notify] skip dedup (${opts.instanceId}): completion-notified.json exists`,
+    );
+    return;
+  }
+
   const outboundBody =
     attachmentParts.length > 0
       ? {
@@ -202,6 +242,7 @@ export async function notifyInnerBrainTaskComplete(
       : { sender_sid: deps.agentSid, text: completionText };
 
   await deps.imClient.postMessage(opts.originThread, outboundBody);
+  markCompletionNotified(opts.workDir, opts.instanceId, successCount);
   console.log(
     `[completion-notify] sent (${opts.instanceId}): deliverables ok=${successCount} requested=${requested}`,
   );

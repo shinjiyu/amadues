@@ -33,6 +33,32 @@ export function isHumanSender(senderSid: string): boolean {
   return !senderSid.startsWith('idp:agent:') && !senderSid.startsWith('agent:');
 }
 
+const DEFAULT_AGENT_MIRROR_SIDS = ['webchat:user:kuroneko'];
+
+function agentMirrorSids(): Set<string> {
+  const extra =
+    process.env['UTLRA_AGENT_MIRROR_SIDS']
+      ?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) ?? [];
+  return new Set([...DEFAULT_AGENT_MIRROR_SIDS, ...extra]);
+}
+
+/** 外脑/内脑 IM 通知模板 — 不得当人类回复 resolve pending */
+export function isAgentNotificationEcho(text: string): boolean {
+  const t = text.trim();
+  if (/^✅/.test(t)) return true;
+  if (/^⚠️\s*内脑任务被阻塞/.test(t)) return true;
+  if (/^⏸\s*内脑任务等待您的输入/.test(t)) return true;
+  return false;
+}
+
+export function isAgentMirrorSender(senderSid: string): boolean {
+  const mirrors = agentMirrorSids();
+  const base = senderSid.split('@')[0] ?? senderSid;
+  return mirrors.has(senderSid) || mirrors.has(base);
+}
+
 function awaitingOnThread(registry: InnerBrainRegistry, threadId: string): TaskRecord[] {
   return registry
     .list()
@@ -84,7 +110,15 @@ export async function resolveAwaitingInboundFromIm(
     return { resolved: false, reason: 'sender_not_human' };
   }
 
+  if (isAgentMirrorSender(ev.senderSid)) {
+    return { resolved: false, reason: 'sender_agent_mirror' };
+  }
+
   const text = inboundMessageText(ev);
+  if (isAgentNotificationEcho(text)) {
+    return { resolved: false, reason: 'agent_notification_echo' };
+  }
+
   if (/^\[NEW_GOAL\]/i.test(text)) {
     return { resolved: false, reason: 'new_goal_prefix' };
   }

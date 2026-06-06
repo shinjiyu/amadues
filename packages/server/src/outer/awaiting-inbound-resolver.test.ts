@@ -12,6 +12,8 @@ import type { ImInboundEvent } from './outer-brain.js';
 import { InnerBrainRegistry, type TaskRecord } from './inner-brain-registry.js';
 import {
   inboundMessageText,
+  isAgentMirrorSender,
+  isAgentNotificationEcho,
   isHumanSender,
   resolveAwaitingInboundFromIm,
 } from './awaiting-inbound-resolver.js';
@@ -71,6 +73,19 @@ describe('awaiting-inbound-resolver helpers', () => {
       humanInbound('  hello\nworld  '),
     );
     expect(text).toBe('hello\nworld');
+  });
+
+  it('isAgentMirrorSender flags kuroneko webchat mirror', () => {
+    expect(isAgentMirrorSender('webchat:user:kuroneko')).toBe(true);
+    expect(isAgentMirrorSender('webchat:user:kuroneko@webchat:global')).toBe(true);
+    expect(isAgentMirrorSender('human:alice')).toBe(false);
+  });
+
+  it('isAgentNotificationEcho flags completion/block templates', () => {
+    expect(isAgentNotificationEcho('✅ 任务完成')).toBe(true);
+    expect(isAgentNotificationEcho('⚠️ 内脑任务被阻塞，需要您的输入')).toBe(true);
+    expect(isAgentNotificationEcho('⏸ 内脑任务等待您的输入')).toBe(true);
+    expect(isAgentNotificationEcho('SUB=cookie')).toBe(false);
   });
 });
 
@@ -176,6 +191,34 @@ describe('resolveAwaitingInboundFromIm', () => {
   it('no AWAITING on thread → no resolve', async () => {
     const out = await resolveAwaitingInboundFromIm(reg, humanInbound('hello', 'thread:empty'));
     expect(out.resolved).toBe(false);
+  });
+
+  it('agent mirror sender → no resolve', async () => {
+    const workDir = mkWorkDir(root, 'mirror');
+    addPending(path.join(workDir, '.brain'), { kind: 'ask_user', spec: { prompt: 'q' } });
+    registerAwaiting(reg, workDir, 'ib-mirror');
+
+    const out = await resolveAwaitingInboundFromIm(reg, {
+      ...humanInbound('real answer'),
+      senderSid: 'webchat:user:kuroneko@webchat:global',
+    });
+
+    expect(out.resolved).toBe(false);
+    expect(out.reason).toBe('sender_agent_mirror');
+  });
+
+  it('agent notification echo → no resolve', async () => {
+    const workDir = mkWorkDir(root, 'echo');
+    addPending(path.join(workDir, '.brain'), { kind: 'ask_user', spec: { prompt: 'q' } });
+    registerAwaiting(reg, workDir, 'ib-echo');
+
+    const out = await resolveAwaitingInboundFromIm(
+      reg,
+      humanInbound('✅ 内脑任务完成 summary'),
+    );
+
+    expect(out.resolved).toBe(false);
+    expect(out.reason).toBe('agent_notification_echo');
   });
 
   it('long cookie reply stays plain { reply } (no auto vault)', async () => {

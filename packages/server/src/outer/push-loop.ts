@@ -4,7 +4,7 @@
  * 轮询所有活跃内脑实例的 Pi-mono output 文件，解析 BLOCK / COMPLETE / PROGRESS 事件：
  *
  * BLOCK：
- *   向 originThread 发送阻塞通知，将用户回复写入 directives.jsonl 解封。
+ *   仅记日志，不推 IM（AWAITING_HUMAN 由 onExit awaitingNotify 统一发送）。
  *
  * COMPLETE：
  *   向 originThread 发送完成通知，附带产出文件列表（通过 IM postMessage）。
@@ -100,7 +100,7 @@ export class PushLoop {
     for (const ev of events) {
       console.log(`[utlra][push-loop] ${instanceId} event=${ev.type}: ${ev.message.slice(0, 80)}`);
       switch (ev.type) {
-        case 'BLOCK':    await this.handleBlock(inst, ev);    break;
+        case 'BLOCK':    this.handleBlock(inst, ev);           break;
         case 'COMPLETE': await this.handleComplete(inst, ev); break;
         case 'PROGRESS': this.handleProgress(inst, ev);       break;
       }
@@ -109,39 +109,11 @@ export class PushLoop {
 
   // ── 事件处理 ────────────────────────────────────────────────────────────
 
-  private async handleBlock(inst: TaskRecord, output: InnerBrainOutput): Promise<void> {
-    const threadId = inst.originThread;
-    if (!threadId) {
-      console.warn(`[utlra][push-loop] BLOCK: no originThread for ${inst.instanceId}`);
-      return;
-    }
-
-    const question = output.question ?? output.message;
-    const text =
-      `⚠️ 内脑任务被阻塞，需要您的输入。\n\n` +
-      `**任务 ID**：\`${inst.instanceId}\`\n` +
-      `**问题**：${question}\n\n` +
-      `请回复后，我会将您的答复转发给内脑继续执行。`;
-
-    await this.sendToThread(threadId, text);
-
-    // 将用户后续回复（通过外脑对话循环的 send_directive）解封内脑
-    // 这里写入一个 BLOCK 标记到 directives，让内脑知道已在等待用户回复
-    const directivesFile = path.join(inst.workDir, '.run', 'directives.jsonl');
-    const entry = JSON.stringify({
-      ts:      new Date().toISOString(),
-      type:    'feedback',
-      content: `[BLOCK通知已发送] 等待用户回复：${question}`,
-      from:    'push-loop',
-    });
-    try {
-      fs.mkdirSync(path.dirname(directivesFile), { recursive: true });
-      fs.appendFileSync(directivesFile, entry + '\n', 'utf8');
-    } catch { /* non-critical */ }
-
-    // 更新注册表状态:统一走 AWAITING(数据状态机)
-    // 旧实现 BLOCKED 在保留兼容期内仍可读;新事件统一标 AWAITING。
-    this.opts.registry.update(inst.instanceId, { status: 'AWAITING' });
+  private handleBlock(inst: TaskRecord, output: InnerBrainOutput): void {
+    const question = (output.question ?? output.message).slice(0, 120);
+    console.log(
+      `[utlra][push-loop] BLOCK logged only (IM delegated to awaitingNotify): ${inst.instanceId} q=${question}`,
+    );
   }
 
   private handleComplete(inst: TaskRecord, output: InnerBrainOutput): void {

@@ -33,6 +33,7 @@ function makeLink(overrides: Partial<KpiBurstLink> = {}): KpiBurstLink {
     registryStatus: 'DONE',
     isPostComplete: false,
     isAsyncWaiting: false,
+    hasAskUserPending: false,
     deliverableCount: 0,
     lastReflexionVerdict: null,
     ...overrides,
@@ -191,11 +192,22 @@ describe('suggestKpiAction · active 状态', () => {
     expect(suggestKpiAction(makeKpi(), [link]).action).toBe('achieved');
   });
 
-  it('有 burst 在 async waiting → follow_up', () => {
+  it('有 burst 在 async waiting + ask_user → awaiting_human', () => {
+    const link = makeLink({
+      isAsyncWaiting: true,
+      hasAskUserPending: true,
+      registryStatus: 'AWAITING',
+    });
+    const r = suggestKpiAction(makeKpi(), [link]);
+    expect(r.action).toBe('awaiting_human');
+    expect(r.reason).toMatch(/人类|ask_user/);
+  });
+
+  it('有 burst 在 async waiting 但无 ask_user → follow_up', () => {
     const link = makeLink({ isAsyncWaiting: true, registryStatus: 'AWAITING' });
     const r = suggestKpiAction(makeKpi(), [link]);
     expect(r.action).toBe('follow_up');
-    expect(r.reason).toMatch(/等待外部输入|阻塞/);
+    expect(r.reason).toMatch(/阻塞|外部/);
   });
 
   it('有 burst BLOCKED 且未交付 → follow_up', () => {
@@ -236,10 +248,14 @@ describe('suggestKpiAction · 排序与优先级', () => {
     expect(suggestKpiAction(kpi, []).action).toBe('achieved');
   });
 
-  it('follow_up 优先于 stuck_reflexion（等用户 / 等外部时不应自驱反思）', () => {
+  it('awaiting_human 优先于 stuck_reflexion（等用户时不应自驱反思）', () => {
     const kpi = makeKpi({ consecutiveIdleBursts: 5 });
-    const link = makeLink({ isAsyncWaiting: true, registryStatus: 'AWAITING' });
-    expect(suggestKpiAction(kpi, [link], 3).action).toBe('follow_up');
+    const link = makeLink({
+      isAsyncWaiting: true,
+      hasAskUserPending: true,
+      registryStatus: 'AWAITING',
+    });
+    expect(suggestKpiAction(kpi, [link], 3).action).toBe('awaiting_human');
   });
 
   it('历史 DONE+AWAITING 不触发 follow_up（仅看在途 burst）', () => {

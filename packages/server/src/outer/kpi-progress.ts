@@ -8,7 +8,8 @@ import { LIVE_KPI_BURST_STATUSES } from './kpi-dispatch-guard.js';
 
 export type KpiSuggestedAction =
   | 'achieved'       // 应 markAchieved（或已自动达成）
-  | 'follow_up'      // 有阻塞/等待，外脑应 send_directive 或催用户
+  | 'awaiting_human' // ask_user pending，正常等待人类；勿重复 set_goal
+  | 'follow_up'      // 真 stuck / 无 ask_user 的 AWAITING，外脑应介入
   | 'continue'       // 仍在推进，可等 timer / 勿重复 set_goal
   | 'stuck_reflexion'// idle streak 高，已/将派反思 burst
   | 'abandon_candidate';
@@ -18,6 +19,7 @@ export interface KpiBurstLink {
   registryStatus: string;
   isPostComplete: boolean;
   isAsyncWaiting: boolean;
+  hasAskUserPending: boolean;
   deliverableCount: number;
   lastReflexionVerdict: string | null;
 }
@@ -54,6 +56,7 @@ export function buildKpiBurstLinks(
       registryStatus: 'unknown',
       isPostComplete: false,
       isAsyncWaiting: false,
+      hasAskUserPending: false,
       deliverableCount: 0,
       lastReflexionVerdict: null,
     }));
@@ -69,6 +72,7 @@ export function buildKpiBurstLinks(
         registryStatus: 'missing',
         isPostComplete: false,
         isAsyncWaiting: false,
+        hasAskUserPending: false,
         deliverableCount: 0,
         lastReflexionVerdict: null,
       }];
@@ -76,11 +80,13 @@ export function buildKpiBurstLinks(
     const snap = buildBrainAsyncSnapshot(t.workDir);
     const trail = kpi.reflexionTrail.filter((r) => r.burstInstanceId === id);
     const lastVerdict = trail[0]?.verdict ?? null;
+    const hasAskUserPending = snap.active_pendings.some((p) => p.kind === 'ask_user');
     return [{
       instanceId: id,
       registryStatus: t.status,
       isPostComplete: snap.is_post_complete,
       isAsyncWaiting: snap.is_async_waiting,
+      hasAskUserPending,
       deliverableCount: t.deliverableCount ?? 0,
       lastReflexionVerdict: lastVerdict,
     }];
@@ -114,8 +120,15 @@ export function suggestKpiAction(
     }
   }
 
+  const anyAwaitingHuman = liveLinks.some(
+    (l) => l.isAsyncWaiting && l.hasAskUserPending && !l.isPostComplete,
+  );
+  if (anyAwaitingHuman) {
+    return { action: 'awaiting_human', reason: '有 burst 在等人类回复 ask_user，勿重复 set_goal' };
+  }
+
   if (anyAwaiting || (anyBlocked && !latestDone)) {
-    return { action: 'follow_up', reason: '有 burst 在等待外部输入或阻塞，需跟进而非再 set_goal' };
+    return { action: 'follow_up', reason: '有 burst 阻塞或等待外部（非 ask_user），需外脑介入' };
   }
 
   if (kpi.consecutiveIdleBursts >= stuckThreshold) {
