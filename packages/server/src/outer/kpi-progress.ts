@@ -65,7 +65,7 @@ export function buildKpiBurstLinks(
       lastReflexionVerdict: null,
     }));
   }
-  return kpi.bursts.flatMap((id) => {
+  return kpi.bursts.flatMap((id): KpiBurstLink[] => {
     const t = innerRegistry.get(id);
     if (t && t.kpiId != null && t.kpiId !== kpi.kpiId) {
       return [];
