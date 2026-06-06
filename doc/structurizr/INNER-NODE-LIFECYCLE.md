@@ -305,14 +305,14 @@ worker 启动:
 
 P0 preset 列表:
   preset/base.json
-  preset/node_creator.json
+  （preset/node_creator 已移除 — 节点提升走 Designer promote_local_node，见 DYFLOW-INNER-EXECUTOR.md §7/§9b）
 
 P2 preset:
   preset/extract_facts（环境事实提取）✅
 ```
 
 > **实现状态**：preset 节点以 TS 常量存于 `inner-brain/preset-nodes.ts`（`PRESET_BASE` /
-> `PRESET_NODE_CREATOR` / `PRESET_EXTRACT_FACTS`），`presetSeeder` 启动时幂等写入
+> `PRESET_EXTRACT_FACTS`），`presetSeeder` 启动时幂等写入
 > `.brain/local_nodes/preset/`。`preset/extract_facts` 是 baseNode（`tools:
 > ['record_fact','read_file','search_files','shell_exec']`），把稳定环境事实写入
 > `memory.facts`。`record_fact` / `record_constraint` 由 runner 在派发 baseNode 时

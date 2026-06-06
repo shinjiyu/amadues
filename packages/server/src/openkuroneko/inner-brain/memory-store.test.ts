@@ -4,7 +4,17 @@ import path from 'node:path';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 
 import { createMemoryStore } from './memory-store.js';
-import type { FailureSummary, NodeResult } from './types.js';
+import type { DagHistoryEntry, FailureSummary, NodeResult } from './types.js';
+
+function dagEntry(burstId: string, ok = true): DagHistoryEntry {
+  return {
+    burstId,
+    designedAt: 'now',
+    finishedAt: 'now',
+    ok,
+    nodes: [{ id: 'n1', ref: 'preset/base', status: ok ? 'ok' : 'failed' }],
+  };
+}
 
 function failure(nodeInstId: string): FailureSummary {
   return {
@@ -69,5 +79,34 @@ describe('memoryStore', () => {
     store.appendConstraint('never delete prod');
     expect(store.read().facts).toEqual(['the moon is bright']);
     expect(store.read().constraints).toEqual(['never delete prod']);
+  });
+
+  it('appendDagHistory accumulates and rings to INNER_DAG_HISTORY_MAX', () => {
+    const store = createMemoryStore(root);
+    store.appendDagHistory(dagEntry('b1', true));
+    store.appendDagHistory(dagEntry('b2', false));
+    const hist = store.read().dag_history ?? [];
+    expect(hist).toHaveLength(2);
+    expect(hist[0]?.burstId).toBe('b1');
+    expect(hist[1]?.ok).toBe(false);
+  });
+
+  it('appendDagHistory caps at 20 keeping most recent', () => {
+    const store = createMemoryStore(root);
+    for (let i = 0; i < 25; i++) store.appendDagHistory(dagEntry(`b${i}`));
+    const hist = store.read().dag_history ?? [];
+    expect(hist).toHaveLength(20);
+    expect(hist[0]?.burstId).toBe('b5');
+    expect(hist[19]?.burstId).toBe('b24');
+  });
+
+  it('lockMilestone dedupes by id (replace)', () => {
+    const store = createMemoryStore(root);
+    store.lockMilestone({ id: 'book_created', summary: '建书', lockedAt: 't1' });
+    store.lockMilestone({ id: 'chapters_published', summary: '发章', lockedAt: 't2' });
+    store.lockMilestone({ id: 'book_created', summary: '建书(更新)', lockedAt: 't3' });
+    const locked = store.read().locked_milestones ?? [];
+    expect(locked).toHaveLength(2);
+    expect(locked.find(m => m.id === 'book_created')?.summary).toBe('建书(更新)');
   });
 });

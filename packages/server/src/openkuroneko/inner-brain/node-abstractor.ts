@@ -3,7 +3,7 @@
  *
  * ADL：doc/structurizr/INNER-NODE-LIFECYCLE.md §5 §7.1
  *
- * 触发：nodeCreatorExecutor 成功 commit_local_node 后 fire-and-forget。
+ * 触发：promote_local_node 成功提升后 fire-and-forget（drive9 配置存在时）。
  * 仅 origin=creator 且 metadata.export !== false 才导出。
  * 写 drive9 前做严格脱敏校验：sanitized 中不得残留任何具象 example/env 字面值。
  */

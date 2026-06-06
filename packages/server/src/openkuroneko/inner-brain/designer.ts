@@ -7,7 +7,7 @@
  * 失败决策表（high-confidence last_failure 时）写进 system prompt：
  *   1. 换 ref / search_and_instance（P1）
  *   2. 同 ref + 新 instruction（换战术，不是裸重试）
- *   3. 排 newNodeCreator(pack) 改 LocalNode 定义
+ *   3. promote_local_node 固化/改造 LocalNode 定义（反思期，非 RUN 格）
  *   4. report_done / 等待
  *   5. 同 ref 裸重排 — 仅 transient 才允许
  */
@@ -16,10 +16,9 @@ import type { LLMAdapter, Message } from '../adapter/index.js';
 import type { Logger } from '../logger/index.js';
 import { createDesignerTools } from './designer-tools.js';
 import type { NodeSharingDeps } from './designer-tools.js';
-import { loadWorkspaceScriptTools } from './workspace-script-tools.js';
 import type { LocalNodeStore } from './local-node-store.js';
 import type { MemoryStore } from './memory-store.js';
-import type { LocalDag } from './types.js';
+import type { DagHistoryEntry, LocalDag, LockedMilestone } from './types.js';
 
 const SAFETY_MAX_ROUNDS = 20;
 
@@ -29,34 +28,49 @@ export const DESIGNER_SYSTEM = `你是 DyFlow 内脑的 Designer（编排者）�
 ## 你的工具
 - list_local_nodes / read_local_node：查看可用节点（preset/base 是通用 baseNode，能干任意子目标）
 - read_memory：读 goal / facts / constraints / last_failure / node_results
-- commit_local_dag：提交执行图（nodes = NodeInst[]），随后进入 RUN
-- report_done：目标已完成时调用
+- commit_local_dag：提交执行图（nodes = NodeInst[]，每个节点带 deliverable 验收），随后进入 RUN
+- report_done：目标已完成时调用（交付型目标须附 verify 机械证据，否则被拒）
+- promote_local_node：【反思】把已跑通、会复用的战术直接固化成 local/ 节点（不结束本轮，可继续编排复用）
+- lock_milestone：【反思】把已真正达成的子目标锁定为里程碑（附 verify 机械证据）；之后给节点打 milestone=<id> 再 commit 会被拒，防重复编排
 
 ## 编排原则
-- 把目标拆成若干子目标，每个子目标对应一个 NodeInst：{ id, ref, instruction }
+- 把目标拆成若干子目标，每个子目标对应一个 NodeInst：{ id, ref, instruction, deliverable }
 - ref 通常用 preset/base，instruction 写清这一格要达成什么（这是战术，不是步骤脚本）
+- **每个节点都要附 deliverable**：{ summary, checks:[{kind, target, describe?}] }，声明「这一格必须交付什么 + 怎么机械验」。Runner 会机械验票，不达标判 failed（替代旧里程碑的明确交付要求）：
+  - kind=file：产物文件存在且非空，target=workDir 相对路径（如 "workspace/book_id.json"）
+  - kind=json_key：JSON 文件含关键字段，target="rel.json#a.b.c"（如 "create_result.json#book_id"）
+  - kind=stdout_contains：本节点 shell 输出须包含成功标志，target=子串（如 "创建成功"）
+  - kind=stdout_absent：本节点 shell 输出**不得**含失败信号，target=子串（如 "404"、"error"、"失败"）
+  - 选可机械验、能真正代表"这一格干成了"的证据；勿用一句空话 deliverable
 - **需要账号/密码/API key 时**：从 memory.goal / constraints **把明文写进 instruction**（外脑应在 set_goal 时已写入 goal）；勿写「去读 keychain/vault」让 baseNode 自己挖
 - 没有合适的专用节点时，**直接用 preset/base + 清晰 instruction**，不要臆造不存在的 ref
-- 若已有多个 node_results 为 ok 且战术可复述，**本轮优先**安排 1 个 preset/node_creator（params.mode=pack, source_node_ids=[...]），减少重复长 instruction
-- 连续 last_failure（救火）时可暂缓 pack，先换 ref 或新 instruction
+- 若已有多个 node_results 为 ok 且战术可复述，**本轮优先**调 promote_local_node 固化成 local/ 节点（直接提升，不必排 RUN 格），减少重复长 instruction
+- 连续 last_failure（救火）时可暂缓提升，先换 ref 或新 instruction
 - **必读 constraints**：带 [run-failure] 前缀的是上轮 RUN 后 FailureDistill 强制红线，不得无视
 
-## 固化三层（成本递减）：facts / LocalNode / Tool
-- A 事实：知识/选择器/API 形状 → 让 baseNode 用 record_fact 或排 preset/extract_facts
-- B 节点：仍需临场判断/改参/组合多工具的战术 → preset/node_creator(pack)
-- C 工具：步骤已固定、可 (输入)->(输出) 说清、无 LLM 分支的动作（如「跑某脚本」「查某 API」）
-  → 在 instruction 里要求 baseNode 用 register_workspace_script_tool 把脚本晋升为 ws_* 工具；
-    已注册的 ws_* 工具见下方清单，可直接在 instruction 中点名调用，避免重复 ReAct（省 token）
+## 反思与固化（每轮 DESIGN 先反思，再编排）
+- 先看「已完成节点结果摘要 + 最近 DAG 历史」：哪些子目标已 ok（视为锁定，勿重复编排）、哪条路线在连续失败
+- 固化两层（成本递减）：
+  - A 事实：知识/选择器/API 形状/**稳定脚本路径** → 让 baseNode 用 record_fact（脚本写明「python workspace/foo.py 做 X」）或排 preset/extract_facts
+  - B 节点：某段战术已在历史中跑通且会复用 → **直接调 promote_local_node 固化**（DESIGN 内即时提升，无需 RUN 格）
+- 步骤已固定、无 LLM 分支的脚本动作：**不要造工具**，让 baseNode 把脚本路径与运行方式 record_fact，下次在 instruction 里要求 baseNode 直接 shell_exec 跑该脚本
+
+## patch vs redesign（据「最近 DAG 历史」决策）
+- 上轮图大部分 ok、仅个别节点 failed/capped → **patch**：本轮只重排失败那格（换 ref / 写新 instruction），勿把已 ok 的格子整图重来
+- 同一路线连续 ≥2 轮整体失败 / 根因在编排结构本身 → **redesign**：换思路重排整图
+- 历史中已 ok 且产物仍在的子目标 → 视为已锁定，不再编排
+- **关键已完成子目标用 lock_milestone 持久锁定**（附 verify 证据）：因为 node_results 按 nodeInstId 会被后续轮覆盖，光靠摘要会"忘记"已做完的事。锁定后给相关节点打 milestone 标签，commit 会机械拦截重排
 
 ## 读到 last_failure（confidence=high）时的决策优先级（禁止裸重试同 ref）
 1. 换一个 ref（别的 LocalNode）
 2. 同 ref + 写**新的** instruction（换战术）
-3. 排 preset/node_creator 修改/固化节点定义
+3. 用 promote_local_node 固化/改造节点定义（反思期提升，非 RUN 格）
 4. 目标已无法推进 → report_done 并说明，或编排一个 ask_user 性质的探测节点
 5. 只有 last_failure.transient=true 才允许用同 ref + 相近 instruction 重排
 
-## 完成判定
+## 完成判定（report_done 有机械闸门，禁止凭空宣告）
 - 当 memory 显示目标已达成（node_results 满足、kpi_progress 达标）→ report_done
+- **交付型目标必须给 report_done 附 verify=[{kind,target,describe?}]**（同 deliverable.checks 语义，用 file/json_key 给出可机械验的最终证据，如「workspace/report.md 存在」「result.json#published_count 非空」）。verify 不通过会被拒收，你得继续 commit_local_dag 补齐——**勿凭 node 摘要的文字断言就报完成**。
 - 否则必须 commit_local_dag（至少一个节点）`;
 
 export interface DesignerDeps {
@@ -75,10 +89,9 @@ export type DesignerOutcome =
   | { kind: 'done'; reason: string }
   | { kind: 'empty'; reason: string };
 
-function buildUserMessage(memory: MemoryStore, store: LocalNodeStore, workDir: string): string {
+function buildUserMessage(memory: MemoryStore, store: LocalNodeStore): string {
   const mem = memory.read();
   const nodes = store.list();
-  const wsTools = loadWorkspaceScriptTools(workDir);
   const lastFailure = mem.last_failure
     ? `## 上一次失败（last_failure）\n${JSON.stringify(mem.last_failure, null, 2)}`
     : '## 上一次失败\n（无）';
@@ -88,10 +101,31 @@ function buildUserMessage(memory: MemoryStore, store: LocalNodeStore, workDir: s
     `## 已知事实\n${mem.facts.length ? mem.facts.map(f => `- ${f}`).join('\n') : '（无）'}`,
     lastFailure,
     `## 已完成节点结果摘要\n${summarizeResults(mem.node_results)}`,
+    `## 最近 DAG 历史（patch vs redesign 依据）\n${summarizeDagHistory(mem.dag_history)}`,
+    `## 已锁定里程碑（禁止重排；命中即被 commit 拒收）\n${summarizeLockedMilestones(mem.locked_milestones)}`,
     `## 可用 LocalNode（${nodes.length}）\n${nodes.map(n => `- ${n.id} | ${n.kind} | ${n.description}`).join('\n') || '（仅 preset）'}`,
-    `## 已注册工作区工具（${wsTools.length}）\n${wsTools.length ? wsTools.map(t => `- ${t.name} | ${t.description}`).join('\n') : '（无；可让 baseNode register_workspace_script_tool 晋升稳定脚本）'}`,
     `请规划本轮 local_dag（commit_local_dag），或在目标已达成时 report_done。`,
   ].join('\n\n---\n\n');
+}
+
+function summarizeLockedMilestones(locked: LockedMilestone[] | undefined): string {
+  if (!locked || locked.length === 0) return '（无）';
+  return locked.map(m => `- ${m.id}：${m.summary}`).join('\n');
+}
+
+function summarizeDagHistory(history: DagHistoryEntry[] | undefined): string {
+  if (!history || history.length === 0) return '（暂无；本轮是首次编排）';
+  const recent = history.slice(-5);
+  return recent
+    .map((h, i) => {
+      const idx = history.length - recent.length + i + 1;
+      const head = `#${idx} ${h.ok ? '✅全绿' : `❌失败@${h.failedAt ?? '?'}`}（${h.nodes.length} 格）`;
+      const nodes = h.nodes
+        .map(n => `    - ${n.id}(${n.ref}) [${n.status}]${n.deliverable ? ` 交付:${n.deliverable}` : ''}`)
+        .join('\n');
+      return `${head}\n${nodes}`;
+    })
+    .join('\n');
 }
 
 function summarizeResults(
@@ -115,7 +149,7 @@ export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> 
     ...(deps.sharing ? { sharing: deps.sharing } : {}),
   });
 
-  const userMessage = buildUserMessage(memory, store, workDir);
+  const userMessage = buildUserMessage(memory, store);
   let messages: Message[] = [{ role: 'user', content: userMessage }];
 
   logger.info('designer', { event: 'design.start', data: { burstId } });

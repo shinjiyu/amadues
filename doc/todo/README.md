@@ -16,7 +16,7 @@
 | [`framework-benchmark-token-baseline.md`](./framework-benchmark-token-baseline.md) | **可选/CI** | FakeLLM 机制回归；**真实调优见 task-run-observability** |
 | [`task-run-observability.md`](./task-run-observability.md) | **方案已定** | 真实环境大任务：RunReport + export/analyze/compare；标定 novel + pokemon |
 | [`dyflow-node-promotion-tuning.md`](./dyflow-node-promotion-tuning.md) | **待调优** | Creator pack / drive9 提升：bot2 首跑未触发，Designer 策略可能需强引导 |
-| [`dyflow-tool-promotion.md`](./dyflow-tool-promotion.md) | **T0 已实现** | 工具晋升：固化三层 facts/LocalNode/**Tool**；`register_workspace_script_tool`（ws_*）；T1/T2 待办 |
+| [`dyflow-tool-promotion.md`](./dyflow-tool-promotion.md) | ❌ **已废弃（2026-06-06）** | 工具晋升整层移除：`register_workspace_script_tool` / `ws_*` 生产零调用；固化收成两层 facts/LocalNode，稳定脚本改 `record_fact` 记路径 |
 | [`dyflow-inner-brain-restart-resume.md`](./dyflow-inner-brain-restart-resume.md) | **待验证** | 内脑随意重启（resume/restart 已实现）；DyFlow 持久化续跑 + 与 exec-kill 409 对齐 |
 
 **已实现（非 backlog）**：Dashboard **参与策略 Lab** — 外脑「是否回复/插嘴」策略调试台，见下文说明。

@@ -33,7 +33,9 @@
 | innerBrainStartupResume | **外脑重启恢复 RUNNING** | `outer/inner-brain-startup-resume.ts` | 启动 → 同一 instance 再 spawn |
 | brainAsyncSnapshot | workDir 异步快照 | `outer/brain-async-snapshot.ts` | workDir → `is_post_complete` 等 |
 | registryLifecycleReconcile | **registry↔workDir 对账** | `outer/registry-lifecycle-reconcile.ts` | 假 AWAITING → DONE |
-| awaitingInboundResolver | **IM 回复解 pending** | `outer/awaiting-inbound-resolver.ts` | human IM → resolve → changeWatcher spawn |
+| awaitingInboundResolver | **IM 回复解 pending** | `outer/awaiting-inbound-resolver.ts` | human IM → resolve → changeWatcher spawn；拒 agent-mirror/通知 echo |
+| imNotifyDedup | **IM 通知去重** | `outer/im-notify-dedup.ts` | ledger `.run/im-notify-ledger.json`；24h fingerprint |
+| awaitingNotify | **AWAITING 人类通知** | `outer/awaiting-notify.ts` | onExit AWAITING + ask_user → `⏸` IM（dedup） |
 | innerSpawner | spawn 子进程 | `pi-mono/inner-brain-spawner.ts` | goal/workDir → child |
 | kpiRegistry | KPI 与反思 burst | `outer/kpi-registry.ts` | set_kpi → trail / idleStreak |
 | kpiBurstHooks | burst 退出 hook | `outer/kpi-burst-hooks.ts` | reflexion.json → trail；streak → meta；AUTO_NEXT → 下一 burst |
@@ -42,9 +44,9 @@
 | **nodeDefEviction** | **NodeDef 治理 sweep（P2，外脑心跳级）** | `outer/node-def-eviction.ts` | dedupe + quota + cold tombstone |
 | outerMemory | mem9 记忆 | `outer/outer-memory.ts` | chat/task → mem9 |
 | **memoryBlockStore** | **结构化 Block CRUD** | `outer/memory-block-store.ts` + `memory-block-tools.ts` | `memory_block_*`；bind → `.brain/secrets/` |
-| completionNotify | 完成通知（IM 精简） | `outer/completion-notify.ts` + `completion-report.ts` | DONE → `audience=im` 正文 + 附件 |
-| pushLoop | 消费 worker 输出 | `outer/push-loop.ts` | `.run` events → 渠道 |
-| changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | bootstrap + pendings 到期/解封 → spawn |
+| completionNotify | 完成通知（IM 精简） | `outer/completion-notify.ts` + `completion-report.ts` | DONE → `audience=im` 正文 + 附件；`completion-notified.json` 去重 |
+| pushLoop | 消费 worker 输出 | `outer/push-loop.ts` | PROGRESS 可选推渠道；**BLOCK 不推 IM**（见 IM-NOTIFY-BOUNDARY） |
+| changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | bootstrap + pendings 到期/解封 → **markConsumed** → spawn |
 | llmGateway | LLM 调用 | `llm/` | messages → text/tools |
 | **outerHeartbeat** | **定时心跳 + 内脑质控 + 死亡检测** | `outer/outer-heartbeat.ts` | tick → 验收效果 / 卡死判定 / post_to_im / set_goal |
 | **llmUsageTracker** | **LLM token/并发计量** | `outer/llm-usage-tracker.ts` | completion → 滚动 usage + journal |
@@ -111,7 +113,8 @@
 | **designer** | **DyFlow DESIGN** 阶段（P0） | `inner-brain/designer.ts` | memory + last_failure + LocalNode index → local_dag.json |
 | **runner** | **DyFlow RUN** 阶段（P0） | `inner-brain/runner.ts` | local_dag.json → 派发 baseNode/Creator |
 | **baseNodeExecutor** | **baseNode（猛猛干 ReAct）**（P0） | `inner-brain/base-node-executor.ts` | LocalNode + instruction? + memory → outputs / failure_summary；**runtime context** §6.1b；**§6.7 验票** |
-| **nodeAcceptance** | **完成验票 + shell-evidence**（P0b） | `inner-brain/node-acceptance.ts` | executionLog + outputs → ok/failed；shell 404 假成功 |
+| **nodeAcceptance** | **完成验票 + shell-evidence**（P0b） | `inner-brain/node-acceptance.ts` | executionLog + outputs → ok/failed；shell 404 假成功；集成 NodeInst.deliverable |
+| **deliverableCheck** | **节点级交付物机械验票引擎**（DYFLOW §6.7a/§9a） | `inner-brain/deliverable-check.ts` | file/json_key/stdout_contains/stdout_absent；被 nodeAcceptance + report_done 复用 |
 | **failureDistill** | **RUN 失败→constraints**（P0b） | `inner-brain/failure-distill.ts` | controller RUN 后 mandatory 红线蒸馏 |
 | **runtimeContext** | baseNode system 常驻环境块（P0） | `inner-brain/runtime-context.ts` | workDir + dataRoot → OS/shell/vault 契约 |
 | **innerKeychainTools** | 内脑 vault 只读（P0） | `inner-brain/keychain-tools.ts` | `keychain_entries` / `keychain_get` |
@@ -120,13 +123,11 @@
 | **shellStallGuard** | 重复 shell 失败检测（P2） | `inner-brain/shell-stall-guard.ts` | stall → transient failure |
 | **burstStallEvaluator** | **burst 级空转判定** | `inner-brain/burst-stall-evaluator.ts` | memory/node_results → verdict |
 | **burstStallAlert** | **空转告警落盘 + 索引** | `inner-brain/burst-stall-alert.ts` | verdict → `stall-alerts/` 包 + `index.jsonl` |
-| **nodeCreatorExecutor** | **newNodeCreator（pack/specialize）**（P0） | `inner-brain/node-creator-executor.ts` | params{mode,...} → 新 LocalNode + Abstractor 触发 |
 | **localNodeStore** | **LocalNode 库**（P0） | `inner-brain/local-node-store.ts` | commit / read / list + index |
-| **memoryStore** | **全局 memory.json**（P0） | `inner-brain/memory-store.ts` | patch/get goal/facts/constraints/last_failure/node_results |
-| **designerToolRegistry** | **Designer 专用工具集**（P0） | `inner-brain/designer-tools.ts` | list_local_nodes / read_memory / search_and_instance / commit_local_dag / report_done |
+| **memoryStore** | **全局 memory.json**（P0） | `inner-brain/memory-store.ts` | patch/get goal/facts/constraints/last_failure/node_results/dag_history(环形)/locked_milestones |
+| **designerToolRegistry** | **Designer 专用工具集**（P0） | `inner-brain/designer-tools.ts` | list_local_nodes / read_memory / search_and_instance / commit_local_dag(拦截已锁里程碑) / report_done(verify 闸门) / promote_local_node(成功提升 fire-and-forget auto-export) / lock_milestone |
 | **presetSeeder** | **首次 spawn 注入 preset/***（P0） | `inner-brain/preset-seeder.ts` | workDir → preset/base + node_creator + extract_facts（TS 常量幂等 seed） |
 | **memoryTools** | **record_fact / record_constraint**（P2） | `inner-brain/memory-tools.ts` | memoryStore → baseNode 注入工具（写回 facts/constraints 去重） |
-| **workspaceScriptTools** | **T0 工具晋升：register_workspace_script_tool + materialize**（P0b） | `inner-brain/workspace-script-tools.ts` | workDir 脚本 → `ws_*` Tool（runner 注入 baseNode；Designer 可见清单） |
 | **preset/extract_facts** | **环境事实提取节点**（P2，preset baseNode） | `inner-brain/preset-nodes.ts` | 探查环境 → record_fact 写 memory.facts |
 | **nodeAbstractor** | **LocalNode → NodeDef（auto-export）**（P1） | `inner-brain/node-abstractor.ts` | LocalNode + envSnapshot → drive9 NodeDef |
 | **nodeAssembler** | **NodeDef + binding → LocalNode**（P1） | `inner-brain/node-assembler.ts` | NodeDef + workDir + hints → imported LocalNode |
@@ -134,6 +135,7 @@
 | completionReport | burst DONE → 完成报告正文（im/verbose） | `openkuroneko/burst/completion-report.ts` | goal/milestones/deliverables → report |
 | **workdirGuard** | **路径守卫 + peer 只读** | `tools/definitions/workdir-guard.ts` | path → allow/deny |
 | **innerFileTools** | **read/search/write + peer 读** | `read-file-lines.ts`; `read-file.ts`; `peer-file-tools.ts` | 分页读 ✅ INNER-FILE-ACCESS |
+| **describeImageTool** | **栅格图识图** | `describe-image.ts` | `describe_image` → visionModel；✅ INNER-VISION-TOOL |
 | **shellProbe** | **批量 shell 探测** | `shell-probe.ts` | commands[] → 合并输出；早停 |
 | **reactToolCallSlim** | **ReAct write/edit 参数瘦身** | `react-tool-call-slim.ts` | 落盘后省略 content 进 LLM 历史 |
 | archiveStore | 归档 | `archive/fs-store.ts` | archive → session |
@@ -173,5 +175,6 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-05-29 | 分支选择简化为 KPI 优先 + `agentPersonality.idleChatProbability`；judge P0 仅 hard gates |
 | 2026-06-01 | 环境模型 ADL：`ENVIRONMENT-MODEL.md` + 视图 `12-L3-Outer-Environment` + 三件套（sensorRegistry/journal/changeDetector） |
 | 2026-06-01 | 战略规划层 ADL：`STRATEGY-PLANNING-LAYER.md` + 视图 `13-L3-Outer-Strategy` + 三件套（strategyStore/strategyPlanner/staleBurstReaper）；dispatcher 退化为按 strategy 派遣；解决历史 AWAITING 自动死 |
-| 2026-06-02 | T0 工具晋升 `workspaceScriptTools`（[`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §7b 固化三层 facts/LocalNode/Tool）|
+| 2026-06-02 | ~~T0 工具晋升 `workspaceScriptTools`~~（已于 2026-06-06 移除，见下行） |
+| 2026-06-06 | **移除 T0 工具晋升** `workspaceScriptTools` / `register_workspace_script_tool` / `ws_*`（[`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §7b 固化收成两层 facts/LocalNode；生产零调用）|
 | 2026-06-02 | DyFlow 内脑重构 ADL：[`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) + [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md)；新内脑模块 designer/runner/baseNodeExecutor/nodeCreatorExecutor/localNodeStore/memoryStore/designerToolRegistry/presetSeeder/nodeAbstractor/nodeAssembler；新外脑模块 nodeDefDrive9Store/nodeDefEviction；视图 `09b-L3-Inner-DyFlow` + `14-L2-DyFlow-Node-Lifecycle`；旧三件套（decomposer/executor/attributor/blockResolver）标 Deprecated-DyFlow；`INNER-EXECUTE-INCREMENTAL.md` 已 superseded |

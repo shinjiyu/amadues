@@ -1,5 +1,5 @@
 /**
- * commit_local_node 工具 — newNodeCreator 的唯一工具。
+ * commit_local_node 工具 — Designer promote_local_node 复用的节点提交核心。
  *
  * ADL：doc/structurizr/DYFLOW-INNER-EXECUTOR.md §7 / INNER-NODE-LIFECYCLE.md §2
  *

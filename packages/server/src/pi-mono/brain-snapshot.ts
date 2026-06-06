@@ -19,7 +19,7 @@ export const PI_MONO_TICK_EXPLAINED = {
     {
       mode: 'DESIGN',
       what:
-        '运行 Designer：读 goal / memory.facts / last_failure / 已注册 LocalNode 与 workspace 工具，**一次** LLM 规划出 local_dag（节点 = preset/base 或 local/* 或 preset/node_creator 等）；成功则 mode→RUN。',
+        '运行 Designer：读 goal / memory.facts / last_failure / 已注册 LocalNode，**一次** LLM 规划出 local_dag（节点 = preset/base 或 local/* 等）；可在反思期调 promote_local_node 固化战术；成功则 mode→RUN。',
     },
     {
       mode: 'RUN',
@@ -208,7 +208,7 @@ export function buildBrainInspectorPayload(
             'DyFlow 内脑：DESIGN（Designer 出 local_dag）↔ RUN（Runner 顺序执行 NodeInst）。baseNode 猛猛干；连续无进展或达轮次上限则 transient failure → Designer replan。',
           modes: [
             { mode: 'DESIGN', what: '读 memory + LocalNode 库，commit_local_dag 或 report_done' },
-            { mode: 'RUN', what: '按 local_dag 顺序跑 preset/base、node_creator 等' },
+            { mode: 'RUN', what: '按 local_dag 顺序跑 preset/base、local/* 等' },
             { mode: 'AWAITING', what: 'pendings 等待（与外脑 changeWatcher 一致）' },
             { mode: 'DONE', what: '本 burst 结束' },
           ],

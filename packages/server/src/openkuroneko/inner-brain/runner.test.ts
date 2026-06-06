@@ -8,22 +8,15 @@ import { createToolRegistry } from '../tools/index.js';
 import type { Logger } from '../logger/index.js';
 import { createLocalNodeStore } from './local-node-store.js';
 import { createMemoryStore } from './memory-store.js';
-import { runLocalDag, isCreatorNode } from './runner.js';
+import { runLocalDag } from './runner.js';
 import type { RunnerDeps as Deps } from './runner.js';
-import { PRESET_BASE, PRESET_NODE_CREATOR } from './preset-nodes.js';
+import { PRESET_BASE } from './preset-nodes.js';
 import type { LocalDag, LocalNode } from './types.js';
 
 function silentLogger(): Logger {
   const noop = () => {};
   return { info: noop, warn: noop, error: noop, debug: noop } as unknown as Logger;
 }
-
-describe('isCreatorNode', () => {
-  it('recognizes preset/node_creator and commit-only tools', () => {
-    expect(isCreatorNode(PRESET_NODE_CREATOR)).toBe(true);
-    expect(isCreatorNode(PRESET_BASE)).toBe(false);
-  });
-});
 
 describe('runLocalDag', () => {
   let root = '';

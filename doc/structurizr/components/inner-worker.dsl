@@ -42,14 +42,14 @@
                     }
                 }
 
-                runner = component "Runner (DyFlow)" "RUN 阶段：解析 local_dag，按 NodeInst 派发 baseNode / nodeCreator；写 memory.node_results & last_failure" "TypeScript" {
+                runner = component "Runner (DyFlow)" "RUN 阶段：解析 local_dag，按 NodeInst 派发 baseNode / graph；写 memory.node_results & last_failure" "TypeScript" {
                     tags "Inner-Module" "Inner-Phase" "DyFlow-Phase" "Planned"
                     properties {
                         "path" "packages/server/src/openkuroneko/inner-brain/runner.ts"
                         "horizon.intention" "顺序/依边执行 local_dag；非 LLM 决策；terminal failure 上交 designer"
                         "horizon.in" "local_dag.json + LocalNode 库"
                         "horizon.out" "memory.node_results.<id>; memory.last_failure"
-                        "horizon.deps" "baseNodeExecutor; nodeCreatorExecutor; localNodeStore; memoryStore"
+                        "horizon.deps" "baseNodeExecutor; localNodeStore; memoryStore"
                         "horizon.test.integration" "runner.component.integration.test.ts"
                     }
                 }
@@ -89,18 +89,7 @@
                     }
                 }
 
-                nodeCreatorExecutor = component "NodeCreator Executor (DyFlow)" "newNodeCreator 节点执行：LLM 推断打包/特化边界；commit_local_node + 触发 nodeAbstractor" "TypeScript" {
-                    tags "Inner-Module" "DyFlow-Phase" "Planned"
-                    properties {
-                        "path" "packages/server/src/openkuroneko/inner-brain/node-creator-executor.ts"
-                        "horizon.intention" "mode=pack|specialize；窄工具 commit_local_node；失败写 memory.last_pack_error"
-                        "horizon.in" "NodeInst.params{mode,target?,hint?,source_node_ids?} + memory + execution trace"
-                        "horizon.out" "新 LocalNode（origin=creator）+ Abstractor 触发"
-                        "horizon.deps" "localNodeStore; nodeAbstractor(P1)"
-                        "horizon.test.integration" "nodeCreatorExecutor.component.integration.test.ts"
-                        "horizon.test.prompt" "node-creator.prompt.test.ts"
-                    }
-                }
+                // 节点提升已迁出 RUN：原 nodeCreatorExecutor 删除，提升走 designerToolRegistry.promote_local_node（DESIGN 阶段，见 DYFLOW-INNER-EXECUTOR.md §7/§9b）。
 
                 localNodeStore = component "LocalNode Store" ".brain/local_nodes/*.json + index 读写；preset / creator / imported 三 origin" "TypeScript" {
                     tags "Inner-Module" "Inner-State" "DyFlow-State" "Planned"
@@ -135,7 +124,7 @@
                     }
                 }
 
-                presetSeeder = component "Preset Seeder" "首次 spawn 注入 preset/* LocalNode（base / node_creator / extract_facts）" "TypeScript" {
+                presetSeeder = component "Preset Seeder" "首次 spawn 注入 preset/* LocalNode（base / extract_facts）" "TypeScript" {
                     tags "Inner-Module" "DyFlow-State"
                     properties {
                         "path" "packages/server/src/openkuroneko/inner-brain/preset-seeder.ts"
@@ -143,7 +132,7 @@
                         "horizon.in" "workDir; PRESET_NODES（preset-nodes.ts TS 常量）"
                         "horizon.out" ".brain/local_nodes/preset/*.json"
                         "horizon.test.unit" "preset-seeder.test.ts"
-                        "horizon.note" "PRESET_BASE / PRESET_NODE_CREATOR / PRESET_EXTRACT_FACTS；extract_facts 用 record_fact 写 memory.facts"
+                        "horizon.note" "PRESET_BASE / PRESET_EXTRACT_FACTS；extract_facts 用 record_fact 写 memory.facts；节点提升走 promote_local_node（非 preset）"
                     }
                 }
 
@@ -226,5 +215,18 @@
                         "horizon.deps" "workdirGuard; file-search.ts"
                         "horizon.test.unit" "peer-file-tools.test.ts"
                         "horizon.note" "read_file 整文件读 ⏳ offset/limit；优先 search_files + 分页"
+                    }
+                }
+
+                describeImageTool = component "Describe Image Tool" "describe_image：栅格图 → visionModel 文字摘要" "TypeScript" {
+                    tags "Inner-Module" "Inner-Tools"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tools/definitions/describe-image.ts"
+                        "horizon.intention" "Playwright 截图 / read_file 二进制失败后的识图路径"
+                        "horizon.in" "path; optional prompt; workdirGuard"
+                        "horizon.out" "text summary + model header"
+                        "horizon.deps" "innerLlmStep; workdirGuard"
+                        "horizon.test.unit" "describe-image.test.ts"
+                        "horizon.note" "见 INNER-VISION-TOOL.md"
                     }
                 }

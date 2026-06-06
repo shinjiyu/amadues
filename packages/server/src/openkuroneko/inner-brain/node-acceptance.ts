@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { ExecutionEntry } from '../brain/index.js';
+import { runDeliverableChecks } from './deliverable-check.js';
 import type { LocalNode, NodeAcceptance, NodeInst, NodeOutputSpec } from './types.js';
 
 export interface NodeEvidence {
@@ -15,6 +16,8 @@ export interface NodeEvidence {
   filePaths: Set<string>;
   /** 最近一次 shell_exec 原始输出（验票用） */
   lastShellOutput?: string;
+  /** 本节点所有 shell_exec 输出聚合（deliverable stdout_* 验票用） */
+  allShellOutput: string;
 }
 
 export interface NodeCompletionResult {
@@ -36,13 +39,16 @@ export function shellOutputLooksFailed(output: string): boolean {
 export function gatherEvidence(workDir: string, log: ExecutionEntry[]): NodeEvidence {
   const filePaths = new Set<string>();
   let lastShellOutput: string | undefined;
+  const shellChunks: string[] = [];
 
   for (const entry of log) {
-    if (!entry.result.ok) continue;
     const out = entry.result.output ?? '';
+    // shell 输出聚合：含失败调用，便于 stdout_absent 捕捉 404/error 等假成功信号
     if (entry.toolName === 'shell_exec') {
-      lastShellOutput = out;
+      shellChunks.push(out);
+      if (entry.result.ok) lastShellOutput = out;
     }
+    if (!entry.result.ok) continue;
     if (entry.toolName === 'write_file' || entry.toolName === 'edit_file') {
       const p = entry.args['path'] ?? entry.args['file_path'];
       if (typeof p === 'string' && p.trim()) {
@@ -63,7 +69,11 @@ export function gatherEvidence(workDir: string, log: ExecutionEntry[]): NodeEvid
     }
   }
 
-  return { filePaths, lastShellOutput };
+  return {
+    filePaths,
+    ...(lastShellOutput !== undefined ? { lastShellOutput } : {}),
+    allShellOutput: shellChunks.join('\n'),
+  };
 }
 
 function resolveWorkPath(workDir: string, rel: string): string {
@@ -157,22 +167,29 @@ export function validateNodeCompletion(opts: {
   const outputs: Record<string, unknown> = {};
   const missing: string[] = [];
 
+  // ── 1. interface.outputs 机械验票 ───────────────────────────────────────────
   if (specs.length === 0) {
     if (lastContent.trim().length > 0 || evidence.filePaths.size > 0) {
       outputs['result'] = lastContent.trim() || [...evidence.filePaths][0];
-      return { status: 'ok', outputs, missing: [] };
+    } else {
+      missing.push('result');
     }
-    return { status: 'failed', outputs: {}, missing: ['result'] };
+  } else {
+    const required =
+      acceptance.minOutputs && acceptance.minOutputs.length > 0 && acceptance.requireAllOutputs === false
+        ? specs.filter(s => acceptance.minOutputs!.includes(s.key))
+        : specs;
+    for (const spec of required) {
+      const check = checkOutputSpec(spec, { workDir, lastContent, evidence, outputs });
+      if (!check.ok) missing.push(`${spec.key}: ${check.reason ?? '未满足'}`);
+    }
   }
 
-  const required =
-    acceptance.minOutputs && acceptance.minOutputs.length > 0 && acceptance.requireAllOutputs === false
-      ? specs.filter(s => acceptance.minOutputs!.includes(s.key))
-      : specs;
-
-  for (const spec of required) {
-    const check = checkOutputSpec(spec, { workDir, lastContent, evidence, outputs });
-    if (!check.ok) missing.push(`${spec.key}: ${check.reason ?? '未满足'}`);
+  // ── 2. 节点级交付物（§6.7a）：与 interface.outputs 取 AND ────────────────────
+  if (inst.deliverable && inst.deliverable.checks.length > 0) {
+    const stdout = [evidence.allShellOutput, lastContent].filter(s => s && s.trim()).join('\n');
+    const report = runDeliverableChecks(workDir, inst.deliverable.checks, stdout);
+    for (const m of report.missing) missing.push(`deliverable: ${m}`);
   }
 
   if (missing.length > 0) {

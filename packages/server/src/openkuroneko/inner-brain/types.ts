@@ -38,6 +38,30 @@ export interface NodeAcceptance {
   minOutputs?: string[];
 }
 
+// ── 节点级交付物（§6.7a：机械验票，与 report_done 闸门 §9a 共用引擎） ──────────
+
+export type DeliverableCheckKind = 'file' | 'json_key' | 'stdout_contains' | 'stdout_absent';
+
+export interface DeliverableCheck {
+  kind: DeliverableCheckKind;
+  /**
+   * file: workDir 相对路径；
+   * json_key: "rel.json#a.b.c"（# 后为点路径）；
+   * stdout_contains / stdout_absent: 待匹配子串
+   */
+  target: string;
+  /** 人类可读：这条交付物代表什么 */
+  describe?: string;
+}
+
+/** Designer 在编排时为单个 NodeInst 声明的「必须交付什么 + 怎么机械验」 */
+export interface NodeDeliverable {
+  /** 一句话说清本节点必须交付什么 */
+  summary: string;
+  /** 机械可验的检查项；全部通过才算节点 ok（与 interface.outputs 取 AND） */
+  checks: DeliverableCheck[];
+}
+
 export type NodeOutcomeStatus = 'ok' | 'partial' | 'capped' | 'failed';
 
 export interface NodeInterface {
@@ -123,6 +147,10 @@ export interface NodeInst {
   memoryOut?: string[];
   /** 可选验收策略；缺省仅按 LocalNode.interface.outputs 机械验票 */
   acceptance?: NodeAcceptance;
+  /** 节点级交付物（§6.7a）：存在时与 interface.outputs 取 AND，全部 check 通过才算 ok */
+  deliverable?: NodeDeliverable;
+  /** 该节点服务的里程碑标签（§9c）；命中已锁定里程碑时 commit_local_dag 拒收 */
+  milestone?: string;
 }
 
 export interface GraphEdge {
@@ -178,6 +206,43 @@ export interface NodeResult {
   at: string;
 }
 
+// ── locked_milestones（持久「已完成子目标」记忆，§9c） ──────────────────────
+
+export interface LockedMilestone {
+  /** 语义 id（Designer 自取；与 NodeInst.milestone 对应） */
+  id: string;
+  /** 这个里程碑达成了什么 */
+  summary: string;
+  lockedAt: string;
+  /** 锁定时通过的机械证据（供后续复核 / 外脑） */
+  evidence?: DeliverableCheck[];
+}
+
+// ── dag_history（每轮 RUN 后归档的计划序列记忆，§6.8） ──────────────────────
+
+export interface DagHistoryNode {
+  id: string;
+  ref: string;
+  /** 截断后的 instruction（≤200） */
+  instruction?: string;
+  /** 节点结果状态；未执行到为 pending */
+  status: NodeOutcomeStatus | 'pending';
+  /** NodeInst.deliverable.summary（若有） */
+  deliverable?: string;
+}
+
+export interface DagHistoryEntry {
+  burstId: string;
+  designedAt: string;
+  finishedAt: string;
+  /** 整图是否全绿 */
+  ok: boolean;
+  /** 失败 nodeInstId */
+  failedAt?: string;
+  nodes: DagHistoryNode[];
+  notes?: string;
+}
+
 // ── 全局 memory（.brain/memory.json） ───────────────────────────────────────
 
 export interface InnerMemory {
@@ -189,10 +254,14 @@ export interface InnerMemory {
   facts: string[];
   /** runner 写入的最近一次 terminal failure */
   last_failure?: FailureSummary | null;
-  /** newNodeCreator 失败 */
+  /** @deprecated 旧 node_creator pack 失败；node_creator 已移除（2026-06-06），仅为读旧 memory 保留 */
   last_pack_error?: string | null;
   /** node_results.<nodeInstId> = NodeResult */
   node_results: Record<string, NodeResult>;
+  /** 每轮 RUN 后归档的 DAG 计划序列记忆（环形，§6.8） */
+  dag_history?: DagHistoryEntry[];
+  /** 已锁定里程碑（持久「已完成子目标」，§9c；commit 机械拦截重排） */
+  locked_milestones?: LockedMilestone[];
   /** KPI 进度（Designer 自报 / 外脑写） */
   kpi_progress?: Record<string, unknown>;
   /** 自由扩展键（Designer / baseNode 写读，需声明 memoryIn/memoryOut） */

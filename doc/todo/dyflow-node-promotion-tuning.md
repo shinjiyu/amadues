@@ -44,9 +44,10 @@
 4. **与 cap 联动**
    - baseNode 50 轮 cap 浪费时，更应在**成功小节点**上 pack，减少重复 ReAct（见另议降低 `SAFETY_MAX_ROUNDS`）。
 
-5. **先判 Tool 再判 Node**（重要修正，2026-06-02）
-   - bot2 复盘：多数「应提升」项（查 ELO、跑脚本、Playwright 登录）其实是 **Tool**（一次调用），不是 LocalNode。
-   - 晋升前先按 [`dyflow-tool-promotion.md`](./dyflow-tool-promotion.md) / ADL §7b 判定：步骤固定无分支 → **Tool（T0 `register_workspace_script_tool`）**；仍需临场判断 → 才 pack 成 LocalNode。
+5. **先判 fact 再判 Node**（2026-06-06 修正，原「先判 Tool」已废弃）
+   - bot2 复盘：多数「应提升」项（查 ELO、跑脚本、Playwright 登录）步骤固定无分支，本质是**记住脚本路径**。
+   - 「Tool 晋升」层（T0 `register_workspace_script_tool` → `ws_*`）生产零调用，已于 2026-06-06 移除（见 [`dyflow-tool-promotion.md`](./dyflow-tool-promotion.md) DEPRECATED）。
+   - 晋升前先按 ADL §7b 判定：步骤固定无分支 → **A 事实（`record_fact` 记路径 + 运行方式，baseNode 下次 `shell_exec` 直接跑）**；仍需临场判断 → 才 pack 成 LocalNode。
 
 ---
 
@@ -61,4 +62,4 @@
 ## 5. 参考
 
 - 首跑 workspace：`packages/server/data-bot2/workspaces/task-ib-mpwfiv02-2887/`
-- 实现：`packages/server/src/openkuroneko/inner-brain/designer.ts`、`node-creator-executor.ts`、`preset-nodes.ts`
+- 实现：`packages/server/src/openkuroneko/inner-brain/designer.ts`、`designer-tools.ts`（`promote_local_node`）、`preset-nodes.ts`（`node-creator-executor.ts` 已于 2026-06-06 移除）

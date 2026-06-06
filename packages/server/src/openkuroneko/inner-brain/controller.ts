@@ -22,10 +22,12 @@ import { runDesigner } from './designer.js';
 import { applyFailureDistill, distillRunFailures } from './failure-distill.js';
 import { maybeEmitBurstStallAlert } from './burst-stall-alert.js';
 import { runLocalDag } from './runner.js';
+import type { RunnerResult } from './runner.js';
 import { readLocalDag, clearLocalDag } from './local-dag-store.js';
+import { listActivePendings } from '../pendings/index.js';
 import type { NodeDefDrive9Store } from '../../drive9/node-def-drive9-store.js';
 import type { EnvSnapshot } from './node-abstractor.js';
-import type { DyflowState } from './types.js';
+import type { DagHistoryEntry, DyflowState, LocalDag } from './types.js';
 
 /** DESIGN 连续空转上限：超过则判定无法推进，进入 DONE（reason 标记） */
 const MAX_EMPTY_DESIGN_STREAK = 3;
@@ -98,12 +100,15 @@ export function createDyflowController(
   const memory = deps.memory ?? createMemoryStore(workDir);
   const statePath = path.join(workDir, '.brain', 'dyflow-state.json');
 
-  // P1：从 nodeSharing 派生 designer.sharing 与 runner.autoExport
+  // P1：从 nodeSharing 派生 designer.sharing（含 sourceAgent，供 promote_local_node 自动导出 drive9）
   const sharing = deps.nodeSharing
-    ? { defStore: deps.nodeSharing.defStore, llm, logger, ...(deps.nodeSharing.env ? { env: deps.nodeSharing.env } : {}) }
-    : undefined;
-  const autoExport = deps.nodeSharing
-    ? { defStore: deps.nodeSharing.defStore, sourceAgent: deps.nodeSharing.sourceAgent, ...(deps.nodeSharing.env ? { env: deps.nodeSharing.env } : {}) }
+    ? {
+        defStore: deps.nodeSharing.defStore,
+        sourceAgent: deps.nodeSharing.sourceAgent,
+        llm,
+        logger,
+        ...(deps.nodeSharing.env ? { env: deps.nodeSharing.env } : {}),
+      }
     : undefined;
 
   // 首次 spawn：注入 preset/*（幂等）
@@ -173,8 +178,9 @@ export function createDyflowController(
             writeState({ mode: 'DESIGN', designStreak: 0 });
             return { hadWork: true };
           }
-          const res = await runLocalDag(dag, { llm, toolRegistry, store, memory, logger, workDir, ...(autoExport ? { autoExport } : {}) });
+          const res = await runLocalDag(dag, { llm, toolRegistry, store, memory, logger, workDir });
           clearLocalDag(workDir);
+          archiveDagHistory(memory, dag, res);
           if (!res.ok) {
             const distilled = distillRunFailures({
               results: res.results,
@@ -187,13 +193,24 @@ export function createDyflowController(
             });
             checkStallAndAlert(`failure.distill:${res.failedAt ?? 'unknown'}`);
           }
-          // 无论成功失败都回 DESIGN：成功 → Designer 检测完成 / 继续；失败 → 据 last_failure replan
+          const brainDir = path.join(workDir, '.brain');
+          const activePendings = fs.existsSync(path.join(brainDir, 'pendings.json'))
+            ? listActivePendings(brainDir)
+            : [];
+          if (activePendings.length > 0) {
+            writeState({
+              mode: 'AWAITING',
+              designStreak: 0,
+              reason: res.ok ? null : `RUN failed at ${res.failedAt}`,
+            });
+            return { hadWork: false };
+          }
+          // 无 pending：回 DESIGN 继续规划
           writeState({ mode: 'DESIGN', designStreak: 0, reason: res.ok ? null : `RUN failed at ${res.failedAt}` });
           return { hadWork: true };
         }
 
         case 'AWAITING':
-          // P0：暂无 wait/ask 节点，AWAITING 直接 idle（数据驱动唤醒留待 P1）
           return { hadWork: false };
 
         case 'DONE':
@@ -207,6 +224,36 @@ export function createDyflowController(
       }
     },
   };
+}
+
+/** RUN 后把 committed DAG + 执行结果归档进 memory.dag_history（§6.8） */
+function archiveDagHistory(memory: MemoryStore, dag: LocalDag, res: RunnerResult): void {
+  const byId = new Map(res.results.map(r => [r.nodeInstId, r]));
+  const nodes: DagHistoryEntry['nodes'] = dag.nodes.map(inst => {
+    const r = byId.get(inst.id);
+    const status: DagHistoryEntry['nodes'][number]['status'] = r
+      ? (r.status ?? (r.ok ? 'ok' : 'failed'))
+      : 'pending';
+    return {
+      id: inst.id,
+      ref: inst.ref,
+      ...(inst.instruction ? { instruction: inst.instruction.slice(0, 200) } : {}),
+      status,
+      ...(inst.deliverable?.summary ? { deliverable: inst.deliverable.summary } : {}),
+    };
+  });
+  const entry: DagHistoryEntry = {
+    burstId: dag.burstId,
+    designedAt: dag.designedAt,
+    finishedAt: new Date().toISOString(),
+    ok: res.ok,
+    ...(res.failedAt ? { failedAt: res.failedAt } : {}),
+    nodes,
+    ...(dag.notes ? { notes: dag.notes } : {}),
+  };
+  try {
+    memory.appendDagHistory(entry);
+  } catch { /* 归档失败不阻断主流程 */ }
 }
 
 function seedGoalIntoMemory(workDir: string, memory: MemoryStore): void {

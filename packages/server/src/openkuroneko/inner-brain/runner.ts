@@ -1,6 +1,6 @@
 /**
- * Runner — RUN 阶段：解析 local_dag，按 NodeInst 顺序派发 baseNode / nodeCreator，
- * 把结果写入 memory（node_results / last_failure / last_pack_error）。
+ * Runner — RUN 阶段：解析 local_dag，按 NodeInst 顺序派发 baseNode / graph，
+ * 把结果写入 memory（node_results / last_failure）。
  *
  * ADL：doc/structurizr/DYFLOW-INNER-EXECUTOR.md §5 §6 §8
  *
@@ -15,13 +15,7 @@ import type { ToolRegistry } from '../tools/index.js';
 import { createToolRegistry } from '../tools/index.js';
 import { createKeychainTools } from './keychain-tools.js';
 import { createMemoryTools } from './memory-tools.js';
-import {
-  materializeWorkspaceScriptTools,
-  createRegisterWorkspaceScriptToolTool,
-} from './workspace-script-tools.js';
 import { runBaseNode } from './base-node-executor.js';
-import { runNodeCreator } from './node-creator-executor.js';
-import type { AutoExportDeps } from './node-creator-executor.js';
 import type { LocalNodeStore } from './local-node-store.js';
 import type { MemoryStore } from './memory-store.js';
 import type {
@@ -41,8 +35,6 @@ export interface RunnerDeps {
   memory: MemoryStore;
   logger: Logger;
   workDir: string;
-  /** P1：creator commit 后自动导出到 drive9 */
-  autoExport?: AutoExportDeps;
 }
 
 export interface RunnerResult {
@@ -57,16 +49,6 @@ interface DispatchOutcome {
   status?: NodeOutcomeStatus;
   outputs?: Record<string, unknown>;
   failure?: FailureSummary;
-}
-
-export function isCreatorNode(node: LocalNode): boolean {
-  if (node.id === 'preset/node_creator') return true;
-  if (node.tags?.includes('creator')) return true;
-  return (
-    node.body.kind === 'executor' &&
-    node.body.tools.length === 1 &&
-    node.body.tools[0] === 'commit_local_node'
-  );
 }
 
 function orderedNodes(dag: LocalDag): NodeInst[] {
@@ -144,32 +126,16 @@ async function dispatchNode(
   const { llm, toolRegistry, store, memory, logger, workDir } = deps;
   const memSnapshot = memory.read();
 
-  if (isCreatorNode(node)) {
-    const out = await runNodeCreator(
-      { node, inst, memory: memSnapshot, workDir },
-      { llm, logger, store, ...(deps.autoExport ? { autoExport: deps.autoExport } : {}) },
-    );
-    if (!out.ok && out.packError) memory.patch('last_pack_error', out.packError);
-    return {
-      ok: out.ok,
-      ...(out.status ? { status: out.status } : {}),
-      ...(out.outputs ? { outputs: out.outputs } : {}),
-      ...(out.failure ? { failure: out.failure } : {}),
-    };
-  }
-
   if (node.body.kind === 'graph') {
     return runGraph(inst, node, deps, burstId);
   }
 
-  // baseNode 注入：memory 工具（固化事实）+ workspace 脚本工具（T0 已晋升能力）+ 注册工具
-  // 顺序：核心工具 → ws_* 工具（前缀保证不覆盖核心）→ register 工具
+  // baseNode 注入：核心工具 + memory 工具（固化事实）+ keychain 工具
+  // 稳定脚本不再造工具（T0 已移除）：用 record_fact 记路径，下次 shell_exec 直接跑
   const augmented = createToolRegistry([
     ...toolRegistry.list(),
     ...createMemoryTools(memory),
     ...createKeychainTools(),
-    ...materializeWorkspaceScriptTools(workDir),
-    createRegisterWorkspaceScriptToolTool(workDir),
   ]);
   const out = await runBaseNode(
     { node, inst, memory: memSnapshot, workDir, ...(burstId ? { burstId } : {}) },

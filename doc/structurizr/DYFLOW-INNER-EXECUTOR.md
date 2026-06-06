@@ -56,8 +56,8 @@ DESIGN  → RUN          : Designer 输出 local_dag 非空
 DESIGN  → DONE         : Designer 自报「目标已完成」 / `memory.kpi_progress` 已满
 DESIGN  → AWAITING     : local_dag 含 wait_timer / ask_user
 RUN     → DESIGN       : 图跑完 / terminal failure
-RUN     → AWAITING     : node 内触发 async pending
-AWAITING → DESIGN      : pendings 全部 resolved/timed_out
+RUN     → AWAITING     : RUN 结束后 `listActivePendings` 非空（`ask_user` / `wait_timer`）；**禁止**空转 DESIGN↔RUN
+AWAITING → DESIGN      : pendings 全部 resolved/timed_out；changeWatcher spawn 前 `markConsumed`（见 IM-NOTIFY-BOUNDARY §6–7）
 DONE    → DESIGN       : 同 instance 再 spawn（外脑 KPI 未完成）
 任意   → ERROR/STOPPED : 同旧 FSM
 ```
@@ -247,6 +247,67 @@ NodeAcceptance {
 
 实现：`inner-brain/node-acceptance.ts` · 测试：`node-acceptance.test.ts`。
 
+### 6.7a 节点级交付物 `NodeInst.deliverable`（机械验票，替代旧里程碑交付要求）
+
+> **动机（bot2 `ib-mq13z7co-9420`）**：`preset/base` 的 `interface.outputs` 只有松散的 `result: string`（≥8 字符即过），导致「番茄建书」节点 `rawTail` 喊「创建成功」却被判 `capped`、而后续节点凭空断言「已发布 5 章」也无人验。**根因**：缺少 Designer 在编排时就为每个节点声明「这一格必须交付什么、怎么机械验」。旧固定流程靠里程碑给出明确交付要求；DyFlow 用 `NodeInst.deliverable` 把这份要求**下沉到节点**。
+
+**schema（`types.ts`）**：
+
+```text
+DeliverableCheck {
+  kind:     'file' | 'json_key' | 'stdout_contains' | 'stdout_absent'
+  target:   string   # file: workDir 相对路径；json_key: "rel.json#a.b.c"；stdout_*: 子串
+  describe?: string   # 人类可读：这条代表什么
+}
+NodeDeliverable {
+  summary: string             # Designer 一句话说清本节点必须交付什么
+  checks:  DeliverableCheck[] # 全部通过才算节点 ok（与 interface.outputs 取 AND）
+}
+NodeInst.deliverable?: NodeDeliverable
+```
+
+**验票规则**：
+
+| kind | 通过条件 |
+|------|----------|
+| `file` | `path.join(workDir, target)` 存在、是文件、size>0 |
+| `json_key` | `rel.json` 存在且 `JSON.parse` 成功，且 `#` 后点路径解析到非 null/undefined（数组/字符串需非空） |
+| `stdout_contains` | 本节点 executionLog 聚合 stdout（所有 `shell_exec` 输出 + lastContent）**包含** target 子串 |
+| `stdout_absent` | 同上 stdout **不含** target（捕捉 `404`/`error`/`失败` 等假成功信号） |
+
+- `deliverable` **存在时**：节点 ok ⟺ `interface.outputs` 机械验票通过 **且** 全部 `checks` 通过；任一 check 失败 → `status: failed`，`missing[]` 列出失败 check 的 `describe`/`target`。
+- `deliverable` **缺省时**：退化为原 §6.7 行为（仅 `interface.outputs`）——向后兼容。
+- 共享引擎：`inner-brain/deliverable-check.ts`（`runDeliverableChecks`），同时被 `node-acceptance.ts` 与 Designer `report_done` 闸门（§9a）复用。
+
+实现：`inner-brain/deliverable-check.ts` + `node-acceptance.ts` · 测试：`deliverable-check.test.ts` / `node-acceptance.test.ts`。
+
+### 6.8 DAG 记忆 `memory.dag_history`（patch vs redesign 的依据）
+
+> **动机**：Designer 旧实现只看 `node_results`（当前键值）与 `last_failure`，**看不到「过去几轮各自排了什么图、整体成没成」**。结果要么反复 redesign 同一张已大半成功的图（浪费 + 抖动），要么意识不到某条路线已连续失败、仍在原地打转。旧固定流程靠人定的串行步骤天然「记得」走到哪；DyFlow 需把这份「计划序列记忆」显式化。
+
+每轮 RUN 结束，controller 把本轮 committed DAG + 执行结果归档进 `memory.dag_history`（环形，保留最近 `INNER_DAG_HISTORY_MAX`，默认 20）：
+
+```text
+DagHistoryEntry {
+  burstId, designedAt, finishedAt
+  ok: boolean              # 整图是否全绿
+  failedAt?: string        # 失败 nodeInstId
+  nodes: { id, ref, instruction?(截断), status: ok|partial|capped|failed|pending, deliverable?(summary) }[]
+  notes?: string
+}
+InnerMemory.dag_history?: DagHistoryEntry[]
+```
+
+`buildUserMessage` 注入「## 最近 DAG 历史」摘要，Designer 据此做 **patch vs redesign 决策**：
+
+```text
+- 上轮图大部分 ok、仅个别节点 failed/capped  → patch：只重排失败的那一格（换 ref / 新 instruction），保留已 ok 的格子，勿整图重来
+- 同一路线连续 ≥2 轮整体失败 / 根因在编排结构    → redesign：换思路重排整图
+- 某子目标已在历史中 ok 且产物仍在               → 视为已锁定，勿重复编排（里程碑锁定的轻量形态）
+```
+
+实现：`memory-store.ts appendDagHistory` + `controller.ts`（RUN 后归档）· 测试：`memory-store.test.ts`。
+
 ### 6.5 ReAct 上下文治理（P2）
 
 > 不做 LLM 整段摘要 compaction（易丢约束、伤 cache）；采用 **截断 + 落盘 + 旧轮 prune**，结论仍应 `record_fact` 沉淀。
@@ -314,66 +375,39 @@ DATA_ROOT/inner/tool-logs/<workspaceId>/YYYY-MM-DD.jsonl
 
 ---
 
-## 7. newNodeCreator（图里的一格）
+## 7. 节点提升（已迁出 RUN 阶段 → §9b）
 
-| 维度 | 取值 |
-|------|------|
-| **本质** | baseNode 的特化：tools 仅 `commit_local_node`；LLM 推断打包边界 |
-| **mode** | `pack`（成功路径打包成 compound）／`specialize`（特化某 base 模板） |
-| **输入** | NodeInst.params: `{ mode, target?, hint?, source_node_ids? }` |
-| **输出** | `.brain/local_nodes/<id>.json` + 更新 `local_nodes/index.json`；触发 Abstractor（auto-export，见 [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §5） |
-| **失败** | 写 `memory.last_pack_error` → DESIGN |
+> **2026-06-06 移除 `preset/node_creator` RUN 节点**（见 §16）。旧设计把「节点提升」做成图里的一格（baseNode 特化，tools 仅 `commit_local_node`，`mode=pack|specialize`），bot2 实证 Designer 极少主动排它（首跑 9 个成功节点 0 提升）——提升本是「反思」职责，却被塞进「执行」阶段。
 
-**修复**：本设计**不**给 Creator 加 `repair` mode；修复走 NodeInst.instruction（Designer 写战术）+ 必要时 Creator `pack` 把成功修复路径再打成新版本（dedupe + version bump，见 [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §6）。
+提升统一改走 Designer DESIGN 阶段工具 **`promote_local_node`**（见 [§9b](#9b-designer-反思与节点提升promote_local_node)）：当轮直接反思 + 固化，无需多排一格 ReAct。auto-export（drive9 节点共享）随之迁到 `promote_local_node` 成功路径上（fire-and-forget），不再依赖 Runner。
+
+**修复**：修复走 NodeInst.instruction（Designer 写战术）+ 必要时 `promote_local_node` 把成功修复路径打成新版本（dedupe + version bump，见 [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §6）。
 
 ---
 
-## 7b. 固化的三层：facts / LocalNode / **Tool**（晋升准则）
+## 7b. 固化的两层：facts / LocalNode（晋升准则）
 
-> bot2 首跑（`ib-mpwfiv02-2887`）暴露：9 个成功节点全是 `preset/base`，**0 提升**。复盘发现「应提升」项里**多数其实更适合做成 Tool（一次 function call），而非再 pack 成会 ReAct 的 LocalNode**。
+> bot2 首跑（`ib-mpwfiv02-2887`）暴露：9 个成功节点全是 `preset/base`，**0 提升**。曾设过第三层「Tool 晋升」（`register_workspace_script_tool` → `ws_*`），但生产从未触发（注册 0 次、调用 0 次），徒增 Designer 清单 / runner 注入 / manifest 维护成本。**2026-06-06 已移除**（见 §16）。稳定脚本改由 `record_fact` 记「路径 + 怎么跑」，baseNode 继续 `shell_exec` 执行。
 
-「成功经验」有三种固化形态，**成本递减、确定性递增**：
+「成功经验」固化为两种形态，**成本递减、确定性递增**：
 
 | 层 | 载体 | 谁调用 | 成本 | 适用 |
 |----|------|--------|------|------|
-| **A 事实** | `memory.facts`（`record_fact` / `preset/extract_facts`） | Designer / baseNode 读上下文 | 读 | 知识、选择器、API 形状、账号归属 |
+| **A 事实** | `memory.facts`（`record_fact` / `preset/extract_facts`） | Designer / baseNode 读上下文 | 读 | 知识、选择器、API 形状、账号归属、**稳定脚本路径 + 运行方式** |
 | **B 节点** | LocalNode（`preset/node_creator` pack） | Designer 排 `ref: local/…`，**仍 LLM ReAct** | 中（prompt 更短，仍多轮） | **仍需临场判断分支 / 改参 / 组合多工具 / 解释失败** 的战术 |
-| **C 工具** | Tool（`ws_*` 脚本工具 / preset TS 工具） | baseNode **一次 tool_call** | 低（无探索轮次） | **步骤已固定、可 (inputs)->(outputs) 说清、无 LLM 分支** 的原子动作 |
 
 **晋升判定（RUN 结束复盘按序问）：**
 
 ```text
-1. 步骤可写成 (inputs) -> (outputs) 且无需 LLM 分支？
-     → C：register_workspace_script_tool（T0）或提 PR 加 preset 工具（T1）
-2. 只是知识 / 选择器 / API 形状？
-     → A：extract_facts
-3. 战术仍要临场改参、组合多工具、解释失败？
+1. 只是知识 / 选择器 / API 形状 / 稳定脚本路径？
+     → A：record_fact / extract_facts（脚本写明「python workspace/foo.py 做 X」）
+2. 战术仍要临场改参、组合多工具、解释失败？
      → B：node_creator pack
 ```
 
-**反例（bot2 教训）**：登录 PS、查 ELO、跑 `ps_playwright_v6.py` 都是 **C**，pack 成 LocalNode 会让 LLM 在「登录」上再烧 12+ 轮；而「据 last_failure 换对战格式」才是 **B**。
+**反例（bot2 教训）**：登录 PS、查 ELO、跑 `ps_playwright_v6.py` 都属 **A**——脚本已落盘，用 `record_fact` 记路径即可，baseNode 下次 `shell_exec` 直接跑；而「据 last_failure 换对战格式」才是 **B**。
 
-### 7b.1 工具晋升的三档
-
-| 档 | 机制 | 安全边界 | 落地阶段 |
-|----|------|----------|---------|
-| **T0** | **workspace 脚本工具**：`register_workspace_script_tool` 把 workDir 内脚本声明为可调用 Tool（运行时 materialize 成 `ws_<name>`，一层 `runCommand` 包装） | 脚本路径必须在 workDir 内；名字强制 `ws_` 前缀，不覆盖核心工具 | **P0b（本次）** |
-| **T1** | Designer / 运维审核后，把稳定能力提 PR 进 `tools/definitions/*.ts` 成 preset 工具 | 代码 review | 人工 |
-| **T2** | LLM 生成 TS + 测试 + 合并（真·createTool） | 沙箱 + 测试门 | 远期 |
-
-### 7b.2 T0：`register_workspace_script_tool`
-
-| 维度 | 取值 |
-|------|------|
-| **注册者** | baseNode（与 memory 工具同注入；preset/base prompt 提示） |
-| **入参** | `{ name, description, interpreter(python\|node\|pwsh\|bash\|cmd), script(workDir 相对路径), args_schema?, example? }` |
-| **存储** | `<workDir>/.brain/workspace-tools.json`（`{ tools: WorkspaceScriptToolDef[] }`） |
-| **校验** | 脚本存在且在 workDir 内；name slug 化 + 强制 `ws_` 前缀；同名替换（version 不做，覆盖即可） |
-| **materialize** | 每次 RUN 派发 baseNode 时 `materializeWorkspaceScriptTools(workDir)` → `Tool[]`，注入 allowlist（在核心工具之后，`ws_` 前缀保证不覆盖） |
-| **执行** | `ws_<name>` 工具入参 `args`（追加到命令行）；`runCommand(interpreterBin + script + args, { cwd: workDir })`；env 继承（同 shell_exec） |
-| **Designer 可见** | `buildUserMessage` 增「## 已注册工作区工具」清单；Designer 在 instruction 里可让 baseNode 直接调 `ws_*`，避免重复 ReAct |
-
-**与 node_creator 的关系**：`node_creator` 固化 **图上的格子（认知单元）**；`register_workspace_script_tool` 固化 **allowlist 里的原子能力（执行单元）**。两者互补，不互替。
+> **为什么不要「Tool 晋升」层**：把固定脚本声明成 `ws_*` 工具，省的只是「一次 `shell_exec` → 一次 `ws_` 调用」的微小差别，却要维护注册表、materialize、Designer 可见清单、路径穿越校验。bot2 实证零收益。固定脚本的「可复用」本质是**记住路径**（A 层 fact），不是再造一个工具名。
 
 ### 7c. FailureDistill（失败→红线，对称 §7b）
 
@@ -440,6 +474,74 @@ LocalNode.body.graph 存在时（compound）:
 **P2**：可加 `query_kpi_progress`、`read_environment`（外脑 environmentJournal 视图）。
 
 详见 [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §4 关于 `search_and_instance` 的契约。
+
+### 9a. `report_done` 目标级闸门（防假完成）
+
+> **动机（bot2 `ib-mq13z7co-9420`）**：`report_done` 旧实现只设 `session.doneReason`，controller 无条件转 DONE——Designer 一句「✅ 已发布 5 章」即终结，外脑收到的「完成」与磁盘真相相反。完成四态本应「Runner + 机械验票决定，不交给 Designer 主观猜」（§6.7），但 burst 终结这一步漏了机械关卡。
+
+`report_done(reason, verify?)`：
+
+| 参数 | 说明 |
+|------|------|
+| `reason` | 完成理由（人类可读） |
+| `verify?` | `DeliverableCheck[]`——目标级交付证据（复用 §6.7a 引擎）。Designer 应为「交付型目标」列出可机械验的证据（产物文件存在 / JSON 含关键字段）|
+
+**闸门规则**：
+
+```text
+1. verify 提供 → runDeliverableChecks(workDir, verify, stdout='')
+     任一 fail → report_done 返回 ok:false（附失败明细），不转 DONE；
+     Designer 必须继续 commit_local_dag 把缺口补齐后再报完成
+2. verify 全过 / 未提供 → 接受，设 doneReason → controller 转 DONE
+3. 未提供 verify 记 warning（交付型目标强烈建议提供）——不强制以免无产物目标死锁
+```
+
+teeth 主要来自 §6.7a 节点级交付物（杜绝节点假成功）；本闸门是第二层，确保「最终宣告」也要机械证据兜底。实现：`designer-tools.ts` `report_done` · 测试：`designer.test.ts`（verify 失败拒收 / 通过接受）。
+
+### 9b. Designer 反思与节点提升（`promote_local_node`）
+
+> **动机**：旧设计把「节点提升」做成一个 **RUN 节点**（`preset/node_creator`，Designer 需在图里排一格 `params.mode=pack`）。bot2 实证：Designer 极少主动排它（首跑 9 个成功节点 0 提升），因为提升是「反思」职责，却被塞进「执行」阶段，还要多花一格 ReAct。**改为 Designer 在 DESIGN 阶段直接反思 + 提升**。
+
+新增 Designer 工具 `promote_local_node`（DESIGN 阶段直接调用，复用 `commit_local_node` 组装逻辑）：
+
+| 维度 | 取值 |
+|------|------|
+| **何时调** | Designer 读 `node_results` / `dag_history`，发现一段战术已跑通且可复述、未来会复用 → 当轮直接提升（无需排 RUN 节点） |
+| **入参** | `{ id, description, promptTemplate, tools, inputs?, outputs?, tags?, source_node_ids? }`（同 `commit_local_node`） |
+| **效果** | 写 `.brain/local_nodes/<id>.json`（origin=creator）；P1 触发 auto-export。提升不终结 DESIGN——Designer 可继续 commit_local_dag 复用新节点 |
+| **与 commit_local_dag 关系** | `promote_local_node` 是 DESIGN 内的副作用工具（像 read_memory），不构成终态；终态仍是 commit_local_dag / report_done |
+
+**`preset/node_creator` RUN 节点已移除**（2026-06-06）：删除 `node-creator-executor.ts`、runner 的 `isCreatorNode` 派发、`PRESET_NODE_CREATOR` preset 与 seed；auto-export 迁入 `promote_local_node`（`sharing.sourceAgent` 提供时 fire-and-forget 触发 Abstractor）。提升统一走 `promote_local_node`。
+
+**patch vs redesign**：不引入新模式枚举——`commit_local_dag` 已天然支持二者（只排失败那格 = patch；重排整图 = redesign）。决策依据来自 §6.8 `dag_history`，写进 Designer prompt（§6.3 失败决策表的补充）。
+
+实现：`designer-tools.ts` `promote_local_node`（包 `createCommitLocalNodeTool`）· 测试：`designer.test.ts`。
+
+### 9c. 里程碑锁定 `memory.locked_milestones`（机械防重排）
+
+> **动机**：§6.8 dag_history 让 Designer「看得见」已完成子目标，但只是 prompt 自觉。更硬的隐患是 **`node_results` 以 `nodeInstId`(n1/n2…) 为键**——Designer 复用 id，后续轮会**覆盖**早期结果，于是已达成的子目标在 memory 里「消失」，Designer 重新编排它（重复登录、重复建书）。需要一份**不被覆盖**的持久「已完成」记忆 + 机械拦截。
+
+**schema（`types.ts`）**：
+
+```text
+LockedMilestone { id, summary, lockedAt, evidence?: DeliverableCheck[] }
+InnerMemory.locked_milestones?: LockedMilestone[]
+NodeInst.milestone?: string   # Designer 给节点打的里程碑标签（它服务于哪个里程碑）
+```
+
+**Designer 工具 `lock_milestone(id, summary, verify?)`**：
+
+| 规则 | 说明 |
+|------|------|
+| verify 提供 | 复用 §6.7a 引擎机械校验；不通过则**拒锁**（杜绝锁定未真正达成的里程碑）|
+| verify 缺省 | 允许锁定但记 warning（非交付型里程碑）|
+| 落点 | `memory.locked_milestones`（按 id 去重，replace）；side-effect 工具，不终结 DESIGN |
+
+**机械拦截（`commit_local_dag`）**：任一 `NodeInst.milestone` 命中已锁定集合 → **拒收整图**，提示「该里程碑已锁定，勿重排；如需修补请换 milestone 标签或 unlock」。`buildUserMessage` 注入「## 已锁定里程碑（禁止重排）」清单。
+
+> 锁定是 opt-in：Designer 主动给关键里程碑打标签 + 锁定才生效；不打标签的普通节点不受影响。锁定时的 verify 是机械的，拦截是机械的——比纯 prompt 自觉有牙齿。
+
+实现：`memory-store.ts lockMilestone` + `designer-tools.ts` · 测试：`memory-store.test.ts` / `designer.test.ts`。
 
 ---
 
@@ -510,9 +612,8 @@ burst 结束 → registry DONE；子进程退出
 |---------|------|----------------|------|
 | **innerBrainController** | 新 FSM（DESIGN/RUN/AWAITING/DONE）| `openkuroneko/inner-brain/controller.ts` | ⏳ `innerBrainController.component.integration.test.ts` |
 | **designer** | DESIGN 阶段 LLM + Designer Tools | `…/designer.ts` | ⏳ `designer.component.integration.test.ts` + `.prompt.test.ts` |
-| **runner** | RUN 阶段：解析 `local_dag`，按 NodeInst 派发 baseNode / Creator | `…/runner.ts` | ⏳ `runner.component.integration.test.ts` |
+| **runner** | RUN 阶段：解析 `local_dag`，按 NodeInst 派发 baseNode / graph | `…/runner.ts` | ⏳ `runner.component.integration.test.ts` |
 | **baseNodeExecutor** | 单个 baseNode 的 LLM+tools ReAct（含 failure_summary 写入） | `…/base-node-executor.ts` | ⏳ `baseNodeExecutor.component.integration.test.ts` |
-| **nodeCreatorExecutor** | newNodeCreator 节点执行（pack / specialize） | `…/node-creator-executor.ts` | ⏳ + `.prompt.test.ts` |
 | **localNodeStore** | `.brain/local_nodes/*.json` 读写 + index | `…/local-node-store.ts` | ⏳ |
 | **memoryStore** | `.brain/memory.json` 读写 + last_failure / facts / constraints / node_results | `…/memory-store.ts` | ⏳ |
 | **nodeAcceptance** | baseNode 完成验票 + shell 假成功检测 | `…/node-acceptance.ts` | ⏳ `node-acceptance.test.ts` |
@@ -560,3 +661,8 @@ burst 结束 → registry DONE；子进程退出
 | 2026-06-02 | §6.1：`INNER_BASE_NODE_MAX_ROUNDS` 默认恢复 **50**；`INNER_BASE_NODE_FAIL_FAST_STREAK` 保持 **5** |
 | 2026-06-02 | §6.4：内脑 `inner/tool-logs` 工具审计 JSONL（baseNode） |
 | 2026-06-03 | §6.7：节点完成四态 + outputs 机械验票 + shell-evidence；§7c FailureDistill（RUN→DESIGN 前写 constraints） |
+| 2026-06-06 | §7/§9b：**彻底移除 `preset/node_creator` RUN 节点**——删 `node-creator-executor.ts`(+test)、runner `isCreatorNode` 派发与 `RunnerDeps.autoExport`、`PRESET_NODE_CREATOR` preset/seed、`index.ts` 相关导出；auto-export 迁入 `promote_local_node`（`NodeSharingDeps.sourceAgent`，controller 注入，fire-and-forget）。理由：提升是反思职责不应占 RUN 格，bot2 首跑 0 提升，promote_local_node 已完全替代 |
+| 2026-06-06 | §9c：**里程碑锁定 `memory.locked_milestones` + `lock_milestone` 工具 + `NodeInst.milestone` 标签**；`commit_local_dag` 机械拦截已锁里程碑重排。理由：node_results 按 nodeInstId 覆盖 → 已完成子目标"消失"被重做 |
+| 2026-06-06 | §6.8：**DAG 记忆 `memory.dag_history`**（RUN 后归档 committed DAG + 结果，环形 20）→ Designer patch/redesign 决策；§9b：**`promote_local_node`** Designer 反思期直接提升节点，`preset/node_creator` RUN 节点标 deprecated |
+| 2026-06-06 | §6.7a：**节点级交付物 `NodeInst.deliverable`**（file/json_key/stdout_contains/stdout_absent 机械验票，与 interface.outputs 取 AND）；§9a：**`report_done` 目标级闸门 `verify`**（复用同引擎，防 Designer 假完成）；新增 `deliverable-check.ts`；修复 `normalizeNodeInst` 丢弃 `acceptance` 的 bug。理由：bot2 ib-mq13z7co-9420「凭空断言已发布 5 章」终结 burst |
+| 2026-06-06 | §7b：**移除「Tool 晋升」层（C）**——删 `register_workspace_script_tool` / `ws_*` / `workspace-script-tools.ts`；固化收成两层 facts(A)/LocalNode(B)；稳定脚本改 `record_fact` 记路径。理由：bot2 生产注册 0 次、调用 0 次，零收益却增维护成本。`doc/todo/dyflow-tool-promotion.md` 标 deprecated |

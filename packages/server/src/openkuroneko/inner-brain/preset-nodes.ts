@@ -3,7 +3,8 @@
  *
  * ADL：doc/structurizr/DYFLOW-INNER-EXECUTOR.md §10 / INNER-NODE-LIFECYCLE.md §8
  *
- * P0：preset/base（通用 baseNode）+ preset/node_creator（newNodeCreator）。
+ * preset/base（通用 baseNode）+ preset/extract_facts（事实提取）。
+ * 节点提升改走 Designer 反思工具 promote_local_node（§9b），preset/node_creator 已移除。
  * P2：preset/extract_facts。
  *
  * tools 中的 '*' 表示「全部 baseNode 工具」，由 base-node-executor 解释为
@@ -35,9 +36,9 @@ export const PRESET_BASE_PROMPT = `你是一个 baseNode 执行器（DyFlow）�
 - **大段代码**：\`write_file\` 一次落盘后，历史里不再保留全文；改脚本用 \`edit_file\` 小补丁，勿每轮整文件 \`write_file\`。
 
 ## 固化能力（省后续 token）
-- 当你跑通一个**步骤固定、无需临场判断**的脚本（如「跑某 bot」「查某 API」），用
-  \`register_workspace_script_tool\` 把它晋升为 \`ws_<name>\` 工具：之后一次调用即可执行，
-  不必每轮重新 ReAct。仅当动作稳定、可 (输入)->(输出) 描述时这么做。
+- 跑通一个**步骤固定、无需临场判断**的脚本（如「跑某 bot」「查某 API」）后，用 \`record_fact\`
+  记下脚本路径与运行方式（如「python workspace/run_elo.py 查 ELO，输出 JSON」）；下次直接 \`shell_exec\`
+  跑该脚本，不必每轮重新 ReAct。**不要造工具**——记住路径即可复用。
 - \`web_search\` fetch 默认截断；查服务器列表等优先 search + 短 fetch，避免整页 HTML 进上下文。
 - 稳定的环境事实（路径/选择器/账号/API 形状）用 \`record_fact\` 写入 memory.facts。
 
@@ -45,21 +46,6 @@ export const PRESET_BASE_PROMPT = `你是一个 baseNode 执行器（DyFlow）�
 - 完成时，确保本节点要求的 outputs 已经真实落地（文件/命令产物/可验证状态）；框架会机械验票，仅口头「完成」无效。
 - curl/wget 返回 HTTP 404 或 exit code≠0 不算成功，须换 URL/鉴权后再声称完成。
 - 放弃时，用一段话讲清：根因 + 已尝试什么 + 为何不可恢复。`;
-
-export const PRESET_NODE_CREATOR_PROMPT = `你是 newNodeCreator（DyFlow 元节点）。你的唯一职责是把「已经跑成功的战术」固化成一个可复用的 LocalNode。
-
-## 两种模式（params.mode）
-- pack：把一段成功的执行路径（params.source_node_ids 指向的 node_results）打包成一个 compound / executor LocalNode。
-- specialize：基于某个 base 模板（params.target）特化出更专用的节点。
-
-## 推断打包边界
-- 阅读 memory.node_results 里相关节点的 outputs 与执行轨迹。
-- 抽取「稳定的、可复述的操作模式」，丢弃一次性的偶发细节。
-- 设计清晰的 interface.inputs / outputs。
-
-## 产出
-- 调用 commit_local_node 工具提交新 LocalNode（id 用 local/<语义名>）。
-- 失败（无法识别稳定模式）时，输出 \`PACK_ABORT: <原因>\`。`;
 
 /** preset/base：通用 baseNode 模板 */
 export const PRESET_BASE: LocalNode = {
@@ -76,29 +62,6 @@ export const PRESET_BASE: LocalNode = {
     kind: 'executor',
     promptTemplate: PRESET_BASE_PROMPT,
     tools: ['*'],
-  },
-  metadata: { origin: 'preset', export: false, createdAt: '', updatedAt: '' },
-};
-
-/** preset/node_creator：newNodeCreator 元节点 */
-export const PRESET_NODE_CREATOR: LocalNode = {
-  id: 'preset/node_creator',
-  version: '1.0.0',
-  displayName: 'Node Creator',
-  description: 'newNodeCreator：把成功的执行路径 pack / specialize 成新的可复用 LocalNode。窄工具：仅 commit_local_node。',
-  tags: ['preset', 'meta', 'creator'],
-  interface: {
-    inputs: [
-      { key: 'mode', type: 'string' },
-      { key: 'target', type: 'string' },
-      { key: 'source_node_ids', type: 'string[]' },
-    ],
-    outputs: [{ key: 'localNodeId', type: 'string' }],
-  },
-  body: {
-    kind: 'executor',
-    promptTemplate: PRESET_NODE_CREATOR_PROMPT,
-    tools: ['commit_local_node'],
   },
   metadata: { origin: 'preset', export: false, createdAt: '', updatedAt: '' },
 };
@@ -135,4 +98,4 @@ export const PRESET_EXTRACT_FACTS: LocalNode = {
   metadata: { origin: 'preset', export: false, createdAt: '', updatedAt: '' },
 };
 
-export const PRESET_NODES: readonly LocalNode[] = [PRESET_BASE, PRESET_NODE_CREATOR, PRESET_EXTRACT_FACTS];
+export const PRESET_NODES: readonly LocalNode[] = [PRESET_BASE, PRESET_EXTRACT_FACTS];

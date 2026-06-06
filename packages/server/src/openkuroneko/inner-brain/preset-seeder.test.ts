@@ -16,13 +16,14 @@ describe('presetSeeder', () => {
     if (root) fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it('first spawn seeds preset/base and preset/node_creator', () => {
+  it('first spawn seeds preset/base and preset/extract_facts', () => {
     const r = seedPresetNodes(root);
     expect(r.seeded).toContain('preset/base');
-    expect(r.seeded).toContain('preset/node_creator');
+    expect(r.seeded).toContain('preset/extract_facts');
+    expect(r.seeded).not.toContain('preset/node_creator');
     const store = createLocalNodeStore(root);
     expect(store.has('preset/base')).toBe(true);
-    expect(store.read('preset/node_creator')?.body.kind).toBe('executor');
+    expect(store.read('preset/extract_facts')?.body.kind).toBe('executor');
   });
 
   it('second spawn skips already-seeded same-version presets', () => {

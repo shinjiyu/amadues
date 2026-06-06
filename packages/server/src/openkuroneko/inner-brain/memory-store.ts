@@ -11,7 +11,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { FailureSummary, InnerMemory, NodeResult } from './types.js';
+import type { DagHistoryEntry, FailureSummary, InnerMemory, LockedMilestone, NodeResult } from './types.js';
+
+/** dag_history 环形上限（§6.8） */
+const DAG_HISTORY_MAX = Number(process.env['INNER_DAG_HISTORY_MAX'] ?? 20) || 20;
 
 export interface MemoryStore {
   read(): InnerMemory;
@@ -25,6 +28,10 @@ export interface MemoryStore {
   clearLastFailure(): void;
   /** 写 node_results.<id>；失败时镜像写 last_failure */
   recordNodeResult(result: NodeResult): void;
+  /** 归档一轮 RUN 的 DAG + 结果（环形，保留最近 DAG_HISTORY_MAX） */
+  appendDagHistory(entry: DagHistoryEntry): void;
+  /** 锁定一个已完成里程碑（按 id 去重，replace；§9c） */
+  lockMilestone(milestone: LockedMilestone): void;
   appendFact(fact: string): void;
   appendConstraint(constraint: string): void;
   readonly filePath: string;
@@ -105,6 +112,21 @@ export function createMemoryStore(workDir: string): MemoryStore {
       if (!result.ok && result.failure) {
         mem.last_failure = result.failure;
       }
+      write(mem);
+    },
+
+    appendDagHistory(entry: DagHistoryEntry): void {
+      const mem = read();
+      const history = Array.isArray(mem.dag_history) ? mem.dag_history : [];
+      history.push(entry);
+      mem.dag_history = history.slice(-DAG_HISTORY_MAX);
+      write(mem);
+    },
+
+    lockMilestone(milestone: LockedMilestone): void {
+      const mem = read();
+      const existing = Array.isArray(mem.locked_milestones) ? mem.locked_milestones : [];
+      mem.locked_milestones = [...existing.filter(m => m.id !== milestone.id), milestone];
       write(mem);
     },
 

@@ -82,6 +82,76 @@ describe('validateNodeCompletion', () => {
     expect(r.status).toBe('failed');
     expect(r.missing[0]).toMatch(/result/);
   });
+
+  it('deliverable AND: fails the node even when interface.outputs would pass', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accept-d-'));
+    // loose interface.outputs (string) would pass on long content alone
+    const r = validateNodeCompletion({
+      node: baseNode([{ key: 'result', type: 'string' }]),
+      inst: {
+        id: 'n1',
+        ref: 'preset/base',
+        deliverable: {
+          summary: '番茄建书成功并拿到 book_id',
+          checks: [{ kind: 'json_key', target: 'create_result.json#book_id', describe: 'book_id 已生成' }],
+        },
+      },
+      workDir: dir,
+      lastContent: '我已经创建成功并发布了 5 章（口头断言，无文件证据）',
+      executionLog: [],
+    });
+    expect(r.status).toBe('failed');
+    expect(r.missing.some(m => m.includes('deliverable'))).toBe(true);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('deliverable AND: passes when checks + outputs both satisfied', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accept-d2-'));
+    fs.writeFileSync(path.join(dir, 'create_result.json'), JSON.stringify({ book_id: '764804' }), 'utf8');
+    const log: ExecutionEntry[] = [
+      { toolName: 'shell_exec', args: { command: 'python submit_book.py' }, result: { ok: true, output: '番茄小说 创建成功' } },
+    ];
+    const r = validateNodeCompletion({
+      node: baseNode([{ key: 'result', type: 'string' }]),
+      inst: {
+        id: 'n1',
+        ref: 'preset/base',
+        deliverable: {
+          summary: '建书成功',
+          checks: [
+            { kind: 'json_key', target: 'create_result.json#book_id' },
+            { kind: 'stdout_contains', target: '创建成功' },
+            { kind: 'stdout_absent', target: '404' },
+          ],
+        },
+      },
+      workDir: dir,
+      lastContent: '番茄小说创建成功，book_id 已写入 create_result.json',
+      executionLog: log,
+    });
+    expect(r.status).toBe('ok');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('deliverable stdout_absent catches failure signal from a failed shell call', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accept-d3-'));
+    const log: ExecutionEntry[] = [
+      { toolName: 'shell_exec', args: { command: 'curl ...' }, result: { ok: false, output: 'HTTP/1.1 404 Not Found' } },
+    ];
+    const r = validateNodeCompletion({
+      node: baseNode([]),
+      inst: {
+        id: 'n1',
+        ref: 'preset/base',
+        deliverable: { summary: '上传章节', checks: [{ kind: 'stdout_absent', target: '404' }] },
+      },
+      workDir: dir,
+      lastContent: '章节已上传',
+      executionLog: log,
+    });
+    expect(r.status).toBe('failed');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe('gatherEvidence', () => {

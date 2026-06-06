@@ -1,8 +1,12 @@
-# DyFlow 工具晋升（Tool promotion · T0/T1/T2）
+# DyFlow 工具晋升（Tool promotion · T0/T1/T2） — ❌ DEPRECATED（2026-06-06）
 
-> **状态**：T0 **已实现**（2026-06-02）· T1/T2 待办  
-> **关联 ADL**：[`DYFLOW-INNER-EXECUTOR.md`](../structurizr/DYFLOW-INNER-EXECUTOR.md) §7b（固化三层 + 晋升准则）  
-> **关联**：[`dyflow-node-promotion-tuning.md`](./dyflow-node-promotion-tuning.md)（LocalNode pack，是另一层）
+> **状态**：**已废弃 / 已移除**。T0（`register_workspace_script_tool` → `ws_*`）于 2026-06-02 实现，
+> 但生产（bot2）**注册 0 次、调用 0 次**，零收益却增维护成本（注册表 / materialize / Designer 可见清单 / 路径穿越校验）。
+> 2026-06-06 整层移除：`workspace-script-tools.ts` 及测试删除，runner / designer / preset 提示清理。
+> 固化收成 **两层** facts(A)/LocalNode(B)；稳定脚本改用 `record_fact` 记「路径 + 怎么跑」，baseNode 继续 `shell_exec` 执行。
+> 本文档保留作历史记录，**不再实施 T1/T2**。
+> **关联 ADL**：[`DYFLOW-INNER-EXECUTOR.md`](../structurizr/DYFLOW-INNER-EXECUTOR.md) §7b（固化两层 + 晋升准则）· §16 修订（2026-06-06）  
+> **关联**：[`dyflow-node-promotion-tuning.md`](./dyflow-node-promotion-tuning.md)（LocalNode pack，现存的唯一晋升层）
 
 ---
 
