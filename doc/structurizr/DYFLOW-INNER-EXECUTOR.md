@@ -276,10 +276,15 @@ NodeInst.deliverable?: NodeDeliverable
 | `stdout_absent` | 同上 stdout **不含** target（捕捉 `404`/`error`/`失败` 等假成功信号） |
 
 - `deliverable` **存在时**：节点 ok ⟺ `interface.outputs` 机械验票通过 **且** 全部 `checks` 通过；任一 check 失败 → `status: failed`，`missing[]` 列出失败 check 的 `describe`/`target`。
-- `deliverable` **缺省时**：退化为原 §6.7 行为（仅 `interface.outputs`）——向后兼容。
+- `deliverable` **缺省时**：退化为原 §6.7 行为（仅 `interface.outputs`）——向后兼容（历史图 / 非 Designer 路径）。
 - 共享引擎：`inner-brain/deliverable-check.ts`（`runDeliverableChecks`），同时被 `node-acceptance.ts` 与 Designer `report_done` 闸门（§9a）复用。
 
-实现：`inner-brain/deliverable-check.ts` + `node-acceptance.ts` · 测试：`deliverable-check.test.ts` / `node-acceptance.test.ts`。
+**`commit_local_dag` 编排期硬约束（2026-06-06，bot2 `ib-mq1vvq2p-3165` 实测驱动）**：实测 16 节点约 10 个 `capped`，Designer 反复发 `preset/base` + **巨型单体 instruction**（把整段 Playwright 脚本 + 2000 字小说正文塞进 `instruction`，等于 Designer 替 baseNode 干活让其复制粘贴），且 DESIGN 一轮耗时 20 分钟。`commit_local_dag` 两条机械拒收：
+
+1. **anti-monolith**：任一 `instruction.length > 4000`（`MAX_INSTRUCTION_CHARS`）→ 拒收。instruction 只写「战术方向 + 关键事实 + deliverable」；完整脚本/长正文由 baseNode 自己 ReAct 生成，或在 facts 记脚本路径后 `shell_exec` 跑。
+2. **mandatory deliverable**：任一节点缺 `deliverable` 或 `checks` 为空 → 拒收（落实「给目标也要给明确交付要求」）。
+
+实现：`inner-brain/deliverable-check.ts` + `node-acceptance.ts` + `designer-tools.ts`（`commit_local_dag` 守卫）· 测试：`deliverable-check.test.ts` / `node-acceptance.test.ts` / `designer.test.ts`（超长 / 缺 deliverable 拒收后恢复）。
 
 ### 6.8 DAG 记忆 `memory.dag_history`（patch vs redesign 的依据）
 
@@ -661,6 +666,7 @@ burst 结束 → registry DONE；子进程退出
 | 2026-06-02 | §6.1：`INNER_BASE_NODE_MAX_ROUNDS` 默认恢复 **50**；`INNER_BASE_NODE_FAIL_FAST_STREAK` 保持 **5** |
 | 2026-06-02 | §6.4：内脑 `inner/tool-logs` 工具审计 JSONL（baseNode） |
 | 2026-06-03 | §6.7：节点完成四态 + outputs 机械验票 + shell-evidence；§7c FailureDistill（RUN→DESIGN 前写 constraints） |
+| 2026-06-06 | §6.7a：**`commit_local_dag` 编排期硬约束**——拒收 `instruction>4000字`（anti-monolith）与缺 `deliverable` 的节点；Designer 提示同步强化「拆小节点 + 必带交付物」。理由：bot2 ib-mq1vvq2p-3165 实测 16 节点≈10 capped、巨型单体 instruction、DESIGN 单轮 20min |
 | 2026-06-06 | §7/§9b：**彻底移除 `preset/node_creator` RUN 节点**——删 `node-creator-executor.ts`(+test)、runner `isCreatorNode` 派发与 `RunnerDeps.autoExport`、`PRESET_NODE_CREATOR` preset/seed、`index.ts` 相关导出；auto-export 迁入 `promote_local_node`（`NodeSharingDeps.sourceAgent`，controller 注入，fire-and-forget）。理由：提升是反思职责不应占 RUN 格，bot2 首跑 0 提升，promote_local_node 已完全替代 |
 | 2026-06-06 | §9c：**里程碑锁定 `memory.locked_milestones` + `lock_milestone` 工具 + `NodeInst.milestone` 标签**；`commit_local_dag` 机械拦截已锁里程碑重排。理由：node_results 按 nodeInstId 覆盖 → 已完成子目标"消失"被重做 |
 | 2026-06-06 | §6.8：**DAG 记忆 `memory.dag_history`**（RUN 后归档 committed DAG + 结果，环形 20）→ Designer patch/redesign 决策；§9b：**`promote_local_node`** Designer 反思期直接提升节点，`preset/node_creator` RUN 节点标 deprecated |

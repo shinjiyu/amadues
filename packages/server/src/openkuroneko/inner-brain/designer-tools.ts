@@ -25,6 +25,9 @@ import { runDeliverableChecks } from './deliverable-check.js';
 import { createCommitLocalNodeTool } from './commit-local-node-tool.js';
 import type { DeliverableCheck, LocalDag, LockedMilestone, NodeDeliverable, NodeInst } from './types.js';
 
+/** 单节点 instruction 上限：超过即视为「巨型单体」反模式，commit_local_dag 拒收 */
+const MAX_INSTRUCTION_CHARS = 4000;
+
 export interface DesignSession {
   /** Designer 提交的图（commit_local_dag） */
   committedDag?: LocalDag;
@@ -144,8 +147,9 @@ export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
   const commitDagTool: Tool = {
     name: 'commit_local_dag',
     description:
-      '提交本轮执行图：nodes 是 NodeInst 数组，每个 {id, ref(LocalNode id), instruction?(本轮子目标), params?, deliverable?}。' +
-      '强烈建议为每个节点附 deliverable={summary, checks:[{kind,target,describe?}]} 声明「必须交付什么 + 怎么机械验」；' +
+      '提交本轮执行图：nodes 是 NodeInst 数组，每个 {id, ref(LocalNode id), instruction(本轮子目标，简洁战术), params?, deliverable}。' +
+      `【硬约束】① instruction 不得超过 ${MAX_INSTRUCTION_CHARS} 字——勿内嵌完整脚本/长正文，让 baseNode 自己 ReAct 写代码/生成内容；超长会被拒收。` +
+      '② 每个节点**必须**附 deliverable={summary, checks:[{kind,target,describe?}]} 声明「必须交付什么 + 怎么机械验」，缺失会被拒收；' +
       'kind: file(workDir相对路径) | json_key("rel.json#a.b.c") | stdout_contains(子串) | stdout_absent(失败信号子串)。' +
       '提交后进入 RUN 阶段，Runner 会机械验票 deliverable，不达标的节点判 failed。',
     parameters: {
@@ -173,6 +177,31 @@ export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
           output:
             `以下里程碑已锁定（已完成），禁止重排：${relocked.join(', ')}。` +
             `如确需修补，请给该节点换 milestone 标签，或先确认锁定证据已失效。`,
+        };
+      }
+      // 治本：压制「巨型单体 instruction」——instruction 只写战术 + 关键事实 + 交付物，
+      // 完整脚本 / 长正文（小说章节、文章全文）应由 baseNode 自己 ReAct 生成，或在 facts 记脚本路径后 shell_exec 跑
+      const oversized = nodes.filter(n => (n.instruction?.length ?? 0) > MAX_INSTRUCTION_CHARS);
+      if (oversized.length > 0) {
+        return {
+          ok: false,
+          output:
+            `以下节点 instruction 过长（>${MAX_INSTRUCTION_CHARS} 字），属「巨型单体」反模式，拒收：` +
+            `${oversized.map(n => `${n.id}(${n.instruction?.length ?? 0}字)`).join(', ')}。\n` +
+            `修复：① 不要把完整脚本/长正文塞进 instruction——只写「这一格要达成什么 + 关键事实 + deliverable」，让 baseNode 用 ReAct 自己写代码/生成内容；` +
+            `② 已有可用脚本就在 facts 记其路径，instruction 里要求 baseNode 直接 shell_exec 跑；` +
+            `③ 一格只做一个可验收的小步骤，必要时拆成多个更小的节点。`,
+        };
+      }
+      // 治本：每个节点必带可机械验的 deliverable（"给目标也要给明确交付要求"）
+      const noDeliverable = nodes.filter(n => !n.deliverable || n.deliverable.checks.length === 0);
+      if (noDeliverable.length > 0) {
+        return {
+          ok: false,
+          output:
+            `以下节点缺少可机械验的 deliverable（必填），拒收：${noDeliverable.map(n => n.id).join(', ')}。\n` +
+            `每个节点都要带 deliverable={summary, checks:[{kind,target,describe?}]}，kind ∈ file|json_key|stdout_contains|stdout_absent，` +
+            `选能真正代表「这一格干成了」的机械证据（产物文件存在 / JSON 关键字段非空 / stdout 含成功标志或不含 404）。`,
         };
       }
       const dag: LocalDag = {

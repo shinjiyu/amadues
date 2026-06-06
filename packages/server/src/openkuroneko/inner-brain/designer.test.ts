@@ -42,7 +42,7 @@ describe('runDesigner', () => {
           toolCalls: [{
             id: 'd1',
             name: 'commit_local_dag',
-            args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'fetch weather' }] },
+            args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'fetch weather', deliverable: { summary: 'weather saved', checks: [{ kind: 'file', target: 'weather.json' }] } }] },
           }],
         },
       },
@@ -67,11 +67,36 @@ describe('runDesigner', () => {
       {
         label: 'good',
         match: () => true,
-        reply: { content: '', toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'do it' }] } }] },
+        reply: { content: '', toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'do it', deliverable: { summary: 'done', checks: [{ kind: 'stdout_contains', target: 'OK' }] } }] } }] },
       },
     ]);
     const outcome = await runDesigner({ llm, logger: silentLogger(), store, memory, workDir: root, burstId: 'b1' });
     expect(outcome.kind).toBe('run');
+  });
+
+  it('commit_local_dag rejects oversized instruction / missing deliverable, then recovers', async () => {
+    const { store, memory } = setup();
+    const huge = 'x'.repeat(4100);
+    const llm = createFakeLLM([
+      {
+        label: 'oversized',
+        match: ({ messages }) => messages.length === 1,
+        reply: { content: '', toolCalls: [{ id: 'd1', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: huge, deliverable: { summary: 's', checks: [{ kind: 'file', target: 'a.json' }] } }] } }] },
+      },
+      {
+        label: 'no-deliverable',
+        match: ({ messages }) => messages.length === 3,
+        reply: { content: '', toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'short' }] } }] },
+      },
+      {
+        label: 'good',
+        match: () => true,
+        reply: { content: '', toolCalls: [{ id: 'd3', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'short', deliverable: { summary: 's', checks: [{ kind: 'file', target: 'a.json' }] } }] } }] },
+      },
+    ]);
+    const outcome = await runDesigner({ llm, logger: silentLogger(), store, memory, workDir: root, burstId: 'b1' });
+    expect(outcome.kind).toBe('run');
+    if (outcome.kind === 'run') expect(outcome.dag.nodes[0]?.deliverable?.checks[0]?.kind).toBe('file');
   });
 
   it('returns kind=done when designer reports done', async () => {
@@ -104,7 +129,7 @@ describe('runDesigner', () => {
         match: () => true,
         reply: {
           content: '',
-          toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: '真正去发布章节' }] } }],
+          toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: '真正去发布章节', deliverable: { summary: '章节已发布', checks: [{ kind: 'file', target: 'workspace/published.json' }] } }] } }],
         },
       },
     ]);
@@ -158,7 +183,7 @@ describe('runDesigner', () => {
         match: () => true,
         reply: {
           content: '',
-          toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'local/fetch_weather', instruction: '跑一次' }] } }],
+          toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'local/fetch_weather', instruction: '跑一次', deliverable: { summary: '结果文件', checks: [{ kind: 'file', target: 'result.json' }] } }] } }],
         },
       },
     ]);
@@ -181,7 +206,7 @@ describe('runDesigner', () => {
           }],
         },
       },
-      { match: () => true, reply: { content: '', toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'go' }] } }] } },
+      { match: () => true, reply: { content: '', toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'go', deliverable: { summary: 'ok', checks: [{ kind: 'stdout_contains', target: 'OK' }] } }] } }] } },
     ]);
     const outcome = await runDesigner({ llm, logger: silentLogger(), store, memory, workDir: root, burstId: 'b1' });
     expect(outcome.kind).toBe('run');
@@ -203,7 +228,7 @@ describe('runDesigner', () => {
         match: () => true,
         reply: {
           content: '',
-          toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: '发布章节', milestone: 'chapters_published' }] } }],
+          toolCalls: [{ id: 'd2', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: '发布章节', milestone: 'chapters_published', deliverable: { summary: '章节发布', checks: [{ kind: 'file', target: 'workspace/ch1.json' }] } }] } }],
         },
       },
     ]);
