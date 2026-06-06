@@ -220,6 +220,8 @@ describe('component: autonomyHeartbeat', () => {
     expect(pipeline.dispatch.dispatched).toBe(false);
     expect(pipeline.dispatch.reason).toBe('kpi_sprint_in_progress');
     expect(pipeline.skippedLegacyHeartbeat).toBe(true);
-    expect(llmBodies.length).toBe(0);
+    // 战略层常开：idle 时会先跑一次 strategy 规划（plan LLM 调用），但 dispatch 仍按 in-flight burst hold，
+    // 且不会触发 legacy heartbeat（legacy KPI 心跳会带 tools；strategy 规划是纯 JSON 请求，无 tools）。
+    expect(llmBodies.every((b) => b['tools'] === undefined)).toBe(true);
   });
 });

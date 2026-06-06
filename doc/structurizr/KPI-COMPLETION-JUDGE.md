@@ -50,6 +50,32 @@ active KPI 且**无** RUNNING/AWAITING/BLOCKED 在途 burst 时，最近 burst �
 
 ---
 
+## 3b. KPI 类型：`delivery` vs `ongoing`（防常驻任务被误结案）
+
+> **动机**：用户的「24h 台湾情报：收集 + 扩源 + 高阶分析 + 每天两次报告」这类任务，本质是**永续 Mission**，不是一次「做完」的项目。当前模型只有 `active/paused/achieved/abandoned`，一旦某次 burst `post_complete + deliverable≥1`，`sweep` / `kpiBurstHooks` 就会把它 `achieved`——任务被**过早结案**，退化成「每天两次 cron」。
+
+`KpiRecord` 增加判别字段：
+
+```typescript
+type KpiKind = 'delivery' | 'ongoing';
+```
+
+| kind | 语义 | 完成判定 |
+|------|------|----------|
+| **`delivery`**（默认） | 一次性交付目标（"通过 X 拿到 Y"） | 原规则：`post_complete + deliverable≥1 + verdict∈{success,partial,null}` → auto-achieve |
+| **`ongoing`** | 常驻 / 周期 / 监督类（"持续收集情报并每日汇报"） | **禁止** auto-achieve；交付物只是**节拍产出**，KPI 始终 `active`，仅用户 / 战略 WHY 显式 `achieve_kpi` 或 `abandon_kpi` 才结案 |
+
+**硬约束（与代码一致）**：
+
+- `suggestKpiAction(kpi)`：`kpi.kind === 'ongoing'` 时**永不**返回 `achieved`；交付完成回 `continue`（reason=`ongoing 常驻：交付后继续巡检`）。
+- `shouldAutoAchieveKpi({ kind, ... })`：`kind === 'ongoing'` 直接返回 `false`（先于其它判定）。
+- `sweepKpiCompletions`：遍历 active 时 `kind === 'ongoing'` 直接跳过。
+- `kpiBurstHooks.processBurstExitForKpi`：auto-achieve 分支加 `kind !== 'ongoing'` 闸门。
+
+向下兼容：旧数据无 `kind` → `_normalize` 补 `'delivery'`，行为不变。
+
+---
+
 ## 4. 心跳 tick 中的位置
 
 ```text
@@ -70,9 +96,10 @@ active KPI 且**无** RUNNING/AWAITING/BLOCKED 在途 burst 时，最近 burst �
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | **kpiCompletionJudge** | `outer/kpi-completion-judge.ts` | sweep + digest 摘要 |
-| **kpi-progress** | `outer/kpi-progress.ts` | `suggestKpiAction` / `shouldAutoAchieveKpi` 纯函数 |
+| **kpi-progress** | `outer/kpi-progress.ts` | `suggestKpiAction` / `shouldAutoAchieveKpi` 纯函数（含 `kind` 闸门） |
 | **outerHeartbeat** | `outer/outer-heartbeat.ts` | 每 tick 调 sweep；工具含 list/view/achieve_kpi |
-| **kpiBurstHooks** | onExit | 与 sweep 同规则，burst 退出时抢先 mark |
+| **kpiBurstHooks** | onExit | 与 sweep 同规则，burst 退出时抢先 mark；ongoing 跳过 auto-achieve |
+| **kpiFeedback** | `outer/kpi-feedback.ts` | 多巴胺反馈调节：burst 结果 → `momentum`；见 [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) §16 |
 
 ---
 
@@ -82,3 +109,4 @@ active KPI 且**无** RUNNING/AWAITING/BLOCKED 在途 burst 时，最近 burst �
 |------|------|
 | 2026-06-02 | 初版：心跳 + 战略须含 KPI 完成判定；程序化 sweep |
 | 2026-06-02 | workspace.dsl 边 + 视图 10b/11；Cursor rule `outer-heartbeat-tick.mdc` |
+| 2026-06-06 | §3b `KpiKind: delivery \| ongoing`：ongoing 永不 auto-achieve（防 24h 常驻任务被误结案） |

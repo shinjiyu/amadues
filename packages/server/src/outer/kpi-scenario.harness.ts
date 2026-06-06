@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { KpiRegistry } from './kpi-registry.js';
+import { KpiRegistry, type KpiKind } from './kpi-registry.js';
 import { InnerBrainRegistry } from './inner-brain-registry.js';
 import {
   processBurstExitForKpi,
@@ -45,11 +45,14 @@ export interface SimulateBurstExitOpts {
   isReflexionBurst?: boolean;
 }
 
-export function createKpiScenarioFixture(description = '测试 KPI 目标'): KpiScenarioFixture {
+export function createKpiScenarioFixture(
+  description = '测试 KPI 目标',
+  kind: KpiKind = 'delivery',
+): KpiScenarioFixture {
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kpi-scenario-'));
   const kpiRegistry = new KpiRegistry(dataRoot);
   const innerBrainRegistry = new InnerBrainRegistry(dataRoot);
-  const kpi = kpiRegistry.create({ description, createdBy: 'test:harness' });
+  const kpi = kpiRegistry.create({ description, createdBy: 'test:harness', kind });
 
   const reflexionBurstsScheduled: string[] = [];
   const nextBurstsScheduled: string[] = [];

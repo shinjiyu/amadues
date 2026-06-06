@@ -51,17 +51,24 @@
 | **outerHeartbeat** | **定时心跳 + 内脑质控 + 死亡检测** | `outer/outer-heartbeat.ts` | tick → 验收效果 / 卡死判定 / post_to_im / set_goal |
 | **llmUsageTracker** | **LLM token/并发计量** | `outer/llm-usage-tracker.ts` | completion → 滚动 usage + journal |
 | **llmUsageJournal** | **Token 统计持久化** | `outer/llm-usage-journal.ts` | entry → `usage/llm-usage.jsonl` + summary API |
-| **resourceProbe** | **资源感知快照（P0；P1 起被 environmentSensorRegistry 替代）** | `outer/resource-probe.ts` | registry/tracker → ResourceSnapshot |
-| **environmentSensorRegistry** | **环境模型 — 传感器注册表（P1）** | `outer/environment/sensor-registry.ts` | sensors[].read → EnvironmentSnapshot |
-| **environmentJournal** | **环境模型 — 时序日志（ring + events.jsonl + hourly.jsonl）** | `outer/environment/journal.ts` | snapshot/events → 三层留存 + 未消费查询 |
-| **environmentChangeDetector** | **环境模型 — 派生指标 + 事件检测（hysteresis/warmUp/zScore）** | `outer/environment/change-detector.ts` | prev/next → derived + events |
+| **resourceProbe** | **资源感知快照（P0；已由 environmentSensorRegistry 在 pipeline 经 toResourceSnapshot 适配接管，行为等价）** | `outer/resource-probe.ts` | registry/tracker → ResourceSnapshot |
+| **environmentSensorRegistry** | **环境模型 — 传感器注册表（✅ P0；collect 扇入 + cadence + 派生注入）** | `outer/environment/sensor-registry.ts` | sensors[].read → EnvironmentSnapshot |
+| **environmentJournal** | **环境模型 — 时序日志（✅ ring + current.json + events.jsonl 月轮转 + hourly + 未消费查询/markConsumed）** | `outer/environment/journal.ts` | snapshot/events → 三层留存 + 未消费查询 |
+| **environmentChangeDetector** | **环境模型 — 派生指标 + 事件检测（✅ hysteresis/warmUp/rate·delta·streak）** | `outer/environment/change-detector.ts` | prev/next → derived + events |
+| **environmentModelFacade** | **环境模型 — facade（collectEnvironmentSnapshot / toResourceSnapshot 适配 / getSharedEnvironment）** | `outer/environment/index.ts` | deps → EnvironmentSnapshot ↔ ResourceSnapshot |
 | **autonomyPolicyStore** | **闲忙规则（可聊天改）** | `outer/autonomy-policy-store.ts` | policy.json + rubric.md |
 | **autonomyJudge** | **闲忙判定（hard gates；P1 读派生量）** | `outer/autonomy-judge.ts` | snapshot+policy → idle/busy |
 | **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
 | **autonomyTaskDispatcher** | **自主任务分发（P0 自由选 KPI；P1 起按 strategy.focusOrder）** | `outer/autonomy-task-dispatcher.ts` | strategy + 资源 → set_goal/post_to_im |
-| **strategyStore** | **战略真相（current.json + journal.jsonl）** | `outer/strategy/strategy-store.ts` | StrategyArtifact CRUD + journal append |
-| **strategyPlanner** | **战略 REFLECT + DESIGN（事件驱动重评估）** | `outer/strategy/strategy-planner.ts` | env+kpi+lessons → StrategyArtifact |
-| **staleBurstReaper** | **杀僵尸（cullDirectives + maxAwaitingMs 兜底；ABORTED 状态迁移）** | `outer/strategy/stale-burst-reaper.ts` | strategy + registry → ABORTED + archive |
+| **strategyStore** | **战略真相（✅ current.json + journal-YYYY-MM.jsonl）** | `outer/strategy/strategy-store.ts` | StrategyArtifact CRUD + journal append |
+| **strategyTrigger** | **战略 — 重评估触发器（✅ §6 表纯函数）** | `outer/strategy/strategy-trigger.ts` | ctx → {reevaluate, triggers} |
+| **strategyArtifact** | **战略 — StrategyArtifact 校验/规范化（✅ WHY+HOW 必填 + ⊆active 交集）** | `outer/strategy/strategy-artifact.ts` | raw → 校验后 artifact / errors |
+| **strategyPlanner** | **战略 REFLECT + DESIGN（✅ planNext 注入 callLlm；事件驱动重评估；reject→fallback）** | `outer/strategy/strategy-planner.ts` | env+kpi+lessons → StrategyArtifact |
+| **dispatchByStrategy** | **战略 — dispatcher 退化选择（✅ focusOrder∩active 纯函数）** | `outer/strategy/dispatch-by-strategy.ts` | strategy+active → kpi/none |
+| **staleBurstReaper** | **杀僵尸（✅ P0 静态超时兜底 + cullDirectives grace=now；ABORTED 状态迁移 + kill 注入；grace=warn 属 P1）** | `outer/strategy/stale-burst-reaper.ts` | strategy + registry → ABORTED + archive |
+| **strategyLayerFacade** | **战略 — facade（runStrategyPhase 编排 store→trigger→plan→reaper→dispatch；常开，idle 时由 autonomyPipeline 调用）** | `outer/strategy/index.ts` | tick → RunStrategyPhaseResult |
+| **strategyLiveAdapter** | **战略 — live 接线（✅ 真 registry/LLM/process.kill/action-log；autonomyPipeline 在 idle 调用，注入 focusOrder/strategyMode 给 dispatcher）** | `outer/strategy/live-adapter.ts` | pipeline deps → RunStrategyPhaseResult |
+| **kpiFeedback** | **多巴胺反馈调节（momentum 增量 + 选 KPI）** | `outer/kpi-feedback.ts` | BurstFeedbackSignal → Δmomentum / selectKpiByMomentum |
 | performanceGoalEngine | 长期绩效目标审阅 | `performance-goals/engine.ts` | goals → heartbeat block |
 
 **视图**（Structurizr，按路径拆开避免一张图过密）：
@@ -109,7 +116,8 @@
 |---------|------|--------|----------|
 | workerHost | 子进程入口 | `pi-mono/inner-brain-worker.ts` | env → status.json |
 | piMonoScheduler | tick 驱动 | `pi-mono/run-tick.ts` | — → `Controller.tick` |
-| controllerFsm | **DyFlow 阶段状态机** | `inner-brain/controller.ts` | tick → mode 切换 |
+| controllerFsm | **DyFlow 阶段状态机** | `inner-brain/controller.ts` | tick → DESIGN/RUN/ATTRIBUTE/… 切换 |
+| dyflowAttributor | **RUN 后强制归因** | `inner-brain/attributor.ts` | run-context → memory.facts/constraints |
 | **designer** | **DyFlow DESIGN** 阶段（P0） | `inner-brain/designer.ts` | memory + last_failure + LocalNode index → local_dag.json |
 | **runner** | **DyFlow RUN** 阶段（P0） | `inner-brain/runner.ts` | local_dag.json → 派发 baseNode/Creator |
 | **baseNodeExecutor** | **baseNode（猛猛干 ReAct）**（P0） | `inner-brain/base-node-executor.ts` | LocalNode + instruction? + memory → outputs / failure_summary；**runtime context** §6.1b；**§6.7 验票** |
@@ -174,7 +182,10 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-05-29 | 资源感知 + 心跳自主调度：`RESOURCE-AWARENESS-AUTONOMY.md` + 视图 `11-L3-Outer-Autonomy` |
 | 2026-05-29 | 分支选择简化为 KPI 优先 + `agentPersonality.idleChatProbability`；judge P0 仅 hard gates |
 | 2026-06-01 | 环境模型 ADL：`ENVIRONMENT-MODEL.md` + 视图 `12-L3-Outer-Environment` + 三件套（sensorRegistry/journal/changeDetector） |
+| 2026-06-06 | 环境模型 P0 落地：`outer/environment/` 五模块 + facade；6 内置 sensor；pipeline 经 toResourceSnapshot 行为等价接管 resourceProbe；3 套单测全绿 |
 | 2026-06-01 | 战略规划层 ADL：`STRATEGY-PLANNING-LAYER.md` + 视图 `13-L3-Outer-Strategy` + 三件套（strategyStore/strategyPlanner/staleBurstReaper）；dispatcher 退化为按 strategy 派遣；解决历史 AWAITING 自动死 |
+| 2026-06-06 | 战略规划层 P0 落地：`outer/strategy/` 七模块（store/trigger/artifact/planner/dispatch/reaper/facade）；planner 注入 callLlm + reject→fallback；reaper 静态超时兜底 + ABORTED 状态迁移（TaskStatus 加 ABORTED）；6 套单测 43 例全绿；`runStrategyPhase` 默认关（UTLRA_STRATEGY_LAYER_ENABLED） |
+| 2026-06-06 | 战略层接 live 心跳（gated 默认关）：+`strategyLiveAdapter`；`autonomyPipeline` idle 时跑 `runLiveStrategyPhase`，dispatcher `pickActiveKpi` 按 focusOrder∩active 选 + `strategyMode` 跳闲聊；flag 关时零行为差；strategy 套 52 例全绿 |
 | 2026-06-02 | ~~T0 工具晋升 `workspaceScriptTools`~~（已于 2026-06-06 移除，见下行） |
 | 2026-06-06 | **移除 T0 工具晋升** `workspaceScriptTools` / `register_workspace_script_tool` / `ws_*`（[`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §7b 固化收成两层 facts/LocalNode；生产零调用）|
 | 2026-06-02 | DyFlow 内脑重构 ADL：[`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) + [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md)；新内脑模块 designer/runner/baseNodeExecutor/nodeCreatorExecutor/localNodeStore/memoryStore/designerToolRegistry/presetSeeder/nodeAbstractor/nodeAssembler；新外脑模块 nodeDefDrive9Store/nodeDefEviction；视图 `09b-L3-Inner-DyFlow` + `14-L2-DyFlow-Node-Lifecycle`；旧三件套（decomposer/executor/attributor/blockResolver）标 Deprecated-DyFlow；`INNER-EXECUTE-INCREMENTAL.md` 已 superseded |

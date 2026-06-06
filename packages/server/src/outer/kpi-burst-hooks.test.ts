@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { shouldRecordKpiIdle } from './kpi-burst-hooks.js';
 import type { ReflexionSummary } from './kpi-registry.js';
+import { createKpiScenarioFixture, type KpiScenarioFixture } from './kpi-scenario.harness.js';
 
 const baseReflexion: ReflexionSummary = {
   ts: '2026-01-01T00:00:00.000Z',
@@ -64,5 +65,40 @@ describe('shouldRecordKpiIdle', () => {
       deliverableCount: 0,
       reflexion: null,
     })).toBe(true);
+  });
+});
+
+describe('processBurstExitForKpi · 多巴胺反馈调节 (momentum)', () => {
+  let fx: KpiScenarioFixture;
+  afterEach(() => fx?.cleanup());
+
+  it('success + 产出 → momentum +2', () => {
+    fx = createKpiScenarioFixture('情报 KPI', 'ongoing');
+    const { outcome } = fx.simulateBurstExit({
+      verdict: 'success',
+      deliverables: ['a.md'],
+      postComplete: true,
+    });
+    expect(outcome.momentum).toBe(2);
+    expect(fx.kpiRegistry.get(fx.kpiId)?.momentum).toBe(2);
+  });
+
+  it('failed 无产出 → momentum -2，累计后 clamp 不破下限', () => {
+    fx = createKpiScenarioFixture('情报 KPI', 'ongoing');
+    fx.simulateBurstExit({ verdict: 'failed', deliverables: [] });
+    fx.simulateBurstExit({ verdict: 'failed', deliverables: [] });
+    fx.simulateBurstExit({ verdict: 'failed', deliverables: [] });
+    // -2 * 3 = -6 → clamp 到 -5
+    expect(fx.kpiRegistry.get(fx.kpiId)?.momentum).toBe(-5);
+  });
+
+  it('AWAITING → momentum 不变', () => {
+    fx = createKpiScenarioFixture('情报 KPI', 'ongoing');
+    const { outcome } = fx.simulateBurstExit({
+      verdict: 'partial',
+      deliverables: ['x.md'],
+      asyncWaiting: true,
+    });
+    expect(outcome.momentum).toBe(0);
   });
 });

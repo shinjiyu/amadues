@@ -187,7 +187,9 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
         '典型用法：用户给一个高难度 / 开放式目标时（如"通过 X 拿到 Y"），先 set_kpi 创建身份，' +
         '然后再调 set_goal 并传入 kpi_id 派发第一个尝试 burst；第一个 burst 跑完如果没成，' +
         '系统会自动让你（或你 set_goal）派下一个换方向的 burst。\n\n' +
-        '连续 3 个 burst 都 idle 无产出会自动触发"反思 burst"，让 agent 自评 KPI 是否卡死并建议新方向。',
+        '连续 3 个 burst 都 idle 无产出会自动触发"反思 burst"，让 agent 自评 KPI 是否卡死并建议新方向。\n\n' +
+        '【类型 kind】delivery（默认）=一次性交付，达成后自动结案；ongoing=常驻/周期/监督类' +
+        '（如"24h 持续收集情报并每日汇报"），**永不**自动结案，避免常驻任务被某次报告误判完成。',
       parameters: {
         type: 'object',
         properties: {
@@ -202,6 +204,14 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           notes: {
             type: 'string',
             description: '（可选）附加约束或提示，会进入后续 burst 的 constraints',
+          },
+          kind: {
+            type: 'string',
+            enum: ['delivery', 'ongoing'],
+            description:
+              '（可选，默认 delivery）KPI 类型。delivery=一次性交付目标，达成后自动结案；' +
+              'ongoing=常驻/周期/监督类（如"持续收集情报并每日汇报"），**永不**自动结案，' +
+              '交付物只是节拍产出，需用户或战略判断后才 achieve_kpi。',
           },
         },
         required: ['description'],
@@ -1270,21 +1280,27 @@ async function execStartSelfUpdate(
 // ── KPI 工具实现 ────────────────────────────────────────────────────────────
 
 function execSetKpi(
-  args: { description?: string; created_by?: string; notes?: string },
+  args: { description?: string; created_by?: string; notes?: string; kind?: string },
   ctx: OuterToolContext,
 ): ToolCallResult {
   if (!ctx.kpiRegistry) return { replied: false, output: '（KPI 注册表未启用）' };
   const description = args.description?.trim() ?? '';
   if (!description) return { replied: false, output: '（description 为空，已跳过）' };
   const createdBy = args.created_by?.trim() || ctx.agentSid;
+  const kind = args.kind === 'ongoing' ? 'ongoing' : 'delivery';
   const kpi = ctx.kpiRegistry.create({
     description,
     createdBy,
+    kind,
     ...(args.notes?.trim() ? { notes: args.notes.trim() } : {}),
   });
+  const kindNote =
+    kind === 'ongoing'
+      ? '\n类型：ongoing（常驻，永不自动结案；交付物为节拍产出）'
+      : '';
   return {
     replied: false,
-    output: `KPI 已创建：kpi_id=${kpi.kpiId}\n描述：${kpi.description}\n` +
+    output: `KPI 已创建：kpi_id=${kpi.kpiId}\n描述：${kpi.description}${kindNote}\n` +
       `下一步：调用 set_goal 并传入 kpi_id=${kpi.kpiId} 派发第一个尝试 burst。`,
   };
 }
@@ -2192,7 +2208,7 @@ export async function executeOuterTool(
         ctx,
       );
     case 'set_kpi':
-      return execSetKpi(args as { description?: string; created_by?: string; notes?: string }, ctx);
+      return execSetKpi(args as { description?: string; created_by?: string; notes?: string; kind?: string }, ctx);
     case 'list_kpis':
       return execListKpis(args as { status?: string }, ctx);
     case 'view_kpi':

@@ -218,8 +218,8 @@ DATA_ROOT/environment/
 
 | 阶段 | 交付 | 行为变化 |
 |------|------|----------|
-| **P0** | sensor registry + 5 个内置 sensor（innerBrains/llmUsage/inbound/im/process）+ ring buffer 内存 + `current.json` | 替换 `resourceProbe`，行为等价 |
-| **P1** | `events.jsonl` + `hourly.jsonl` + 基础 derive（rate/delta）+ `timeSensor` | `strategyPlanner.reflect` 可读时序 |
+| **P0 ✅** | sensor registry + 5 个内置 sensor（innerBrains/llmUsage/inbound/im/process）+ ring buffer 内存 + `current.json` | 替换 `resourceProbe`：`autonomyPipeline` 经 `getSharedEnvironment` 采集 → `toResourceSnapshot` 适配回 `ResourceSnapshot` 喂旧 judge/dispatch，**行为等价**（旧两条 judge/integration 测的 pre-existing 失败与本改动无关） |
+| **P1 🟡** | `events.jsonl`（按月轮转）+ `hourly.jsonl`（`aggregateHour` 纯函数）+ 基础 derive（rate/delta/streak）+ `timeSensor` | 已落：events 月轮转 + 未消费查询 + markConsumed + derive；`hourly.jsonl` 提供 append/read API，定点 cron 聚合接线待战略层一并接入 |
 | **P2** | `mem9Health` / `drive9Health` / `kpiVelocity` sensor + 异常检测（zScore）+ Dashboard 环境面板 | 真正的"环境感知" |
 | **P3** | rate/streak 类 hardGate；`costRate` / `userResponsiveness` sensor | judge 有时序闸门 |
 
@@ -242,3 +242,4 @@ DATA_ROOT/environment/
 | 日期 | 说明 |
 |------|------|
 | 2026-06-01 | 初版 ADL：sensor registry + journal + changeDetector；替代 `resourceProbe` 扁平 snapshot |
+| 2026-06-06 | P0 落地：`outer/environment/`（types/sensors/change-detector/journal/sensor-registry/facade）；6 个内置 sensor（5 P0 + `timeSensor`）；`autonomyPipeline` 经 `getSharedEnvironment`+`toResourceSnapshot` 行为等价接管 `resourceProbe`；3 套单测（registry/journal/changeDetector，24 例）全绿。P1 events/derive 一并落地，hourly cron 接线留待战略层 |

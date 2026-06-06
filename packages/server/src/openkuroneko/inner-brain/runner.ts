@@ -9,6 +9,7 @@
  * 按 exports 暴露顶层 key。
  */
 
+import type { ExecutionEntry } from '../brain/index.js';
 import type { Logger } from '../logger/index.js';
 import type { LLMAdapter } from '../adapter/index.js';
 import type { ToolRegistry } from '../tools/index.js';
@@ -37,11 +38,22 @@ export interface RunnerDeps {
   workDir: string;
 }
 
+export interface NodeExecutionRecord {
+  nodeInstId: string;
+  ref: string;
+  ok: boolean;
+  status?: NodeOutcomeStatus;
+  executionLog: ExecutionEntry[];
+  failureSummary?: string;
+  rawTail?: string;
+}
+
 export interface RunnerResult {
   ok: boolean;
   completed: string[];
   failedAt?: string;
   results: NodeResult[];
+  executionRecords: NodeExecutionRecord[];
 }
 
 interface DispatchOutcome {
@@ -49,6 +61,7 @@ interface DispatchOutcome {
   status?: NodeOutcomeStatus;
   outputs?: Record<string, unknown>;
   failure?: FailureSummary;
+  executionLog?: ExecutionEntry[];
 }
 
 function orderedNodes(dag: LocalDag): NodeInst[] {
@@ -74,10 +87,29 @@ function missingRefFailure(inst: NodeInst): FailureSummary {
   };
 }
 
+function toExecutionRecord(
+  inst: NodeInst,
+  ref: string,
+  outcome: DispatchOutcome,
+  ok: boolean,
+  status?: NodeOutcomeStatus,
+): NodeExecutionRecord {
+  return {
+    nodeInstId: inst.id,
+    ref,
+    ok,
+    ...(status ? { status } : {}),
+    executionLog: outcome.executionLog ?? [],
+    ...(outcome.failure?.summary ? { failureSummary: outcome.failure.summary } : {}),
+    ...(outcome.failure?.rawTail ? { rawTail: outcome.failure.rawTail } : {}),
+  };
+}
+
 export async function runLocalDag(dag: LocalDag, deps: RunnerDeps): Promise<RunnerResult> {
   const { store, memory, logger } = deps;
   const completed: string[] = [];
   const results: NodeResult[] = [];
+  const executionRecords: NodeExecutionRecord[] = [];
 
   logger.info('runner', { event: 'run.start', data: { burstId: dag.burstId, nodes: dag.nodes.length } });
 
@@ -88,8 +120,16 @@ export async function runLocalDag(dag: LocalDag, deps: RunnerDeps): Promise<Runn
       const nr: NodeResult = { nodeInstId: inst.id, ref: inst.ref, ok: false, failure, at: failure.at };
       memory.recordNodeResult(nr);
       results.push(nr);
+      executionRecords.push({
+        nodeInstId: inst.id,
+        ref: inst.ref,
+        ok: false,
+        status: 'failed',
+        executionLog: [],
+        failureSummary: failure.summary,
+      });
       logger.warn('runner', { event: 'ref.missing', data: { nodeInstId: inst.id, ref: inst.ref } });
-      return { ok: false, completed, failedAt: inst.id, results };
+      return { ok: false, completed, failedAt: inst.id, results, executionRecords };
     }
 
     const outcome = await dispatchNode(inst, node, deps, dag.burstId);
@@ -105,16 +145,17 @@ export async function runLocalDag(dag: LocalDag, deps: RunnerDeps): Promise<Runn
     };
     memory.recordNodeResult(nr);
     results.push(nr);
+    executionRecords.push(toExecutionRecord(inst, node.id, outcome, outcome.ok, status));
 
     if (!outcome.ok) {
       logger.info('runner', { event: 'run.failed', data: { nodeInstId: inst.id, ref: node.id } });
-      return { ok: false, completed, failedAt: inst.id, results };
+      return { ok: false, completed, failedAt: inst.id, results, executionRecords };
     }
     completed.push(inst.id);
   }
 
   logger.info('runner', { event: 'run.done', data: { burstId: dag.burstId, completed: completed.length } });
-  return { ok: true, completed, results };
+  return { ok: true, completed, results, executionRecords };
 }
 
 async function dispatchNode(
@@ -146,6 +187,7 @@ async function dispatchNode(
     ...(out.status ? { status: out.status } : {}),
     ...(out.outputs ? { outputs: out.outputs } : {}),
     ...(out.failure ? { failure: out.failure } : {}),
+    executionLog: out.executionLog,
   };
 }
 

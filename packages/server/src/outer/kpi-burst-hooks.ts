@@ -13,6 +13,7 @@ import type { KpiRegistry, ReflexionSummary } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
 import { buildKpiBurstLinks, shouldAutoAchieveKpi, suggestKpiAction } from './kpi-progress.js';
+import { computeMomentumDelta } from './kpi-feedback.js';
 
 /** 读取 burst 工作目录下 reflexion.json 并标准化为 ReflexionSummary */
 export function readReflexionFromWorkspace(
@@ -115,6 +116,8 @@ export interface BurstExitOutcome {
   idleStreak: number;
   /** 本次 burst 退出后是否已自动 markAchieved */
   autoAchieved?: boolean;
+  /** 多巴胺反馈调节后的 momentum（STRATEGY-PLANNING-LAYER.md §16）；未调整时为当前值 */
+  momentum?: number;
 }
 
 function isKpiAutoNextBurstEnabled(): boolean {
@@ -193,6 +196,17 @@ export function processBurstExitForKpi(
     reflexionBurstId = deps.scheduleReflexionBurst(input.kpiId);
   }
 
+  // 3b) 多巴胺反馈调节：按本轮结果升/降 momentum（STRATEGY-PLANNING-LAYER.md §16）
+  const momentum = deps.kpiRegistry.adjustMomentum(
+    input.kpiId,
+    computeMomentumDelta({
+      verdict: reflexion?.verdict ?? null,
+      deliverableCount,
+      isAwaiting: input.isAwaiting ?? false,
+      exitedWithError: input.exitedWithError,
+    }),
+  );
+
   // 4) 里程碑全完成 + 有产出 → 自动 achieved（外脑常忘记调 achieve_kpi）
   let autoAchieved = false;
   const snap = buildBrainAsyncSnapshot(input.workDir);
@@ -205,6 +219,7 @@ export function processBurstExitForKpi(
       isAwaiting: input.isAwaiting ?? false,
       exitedWithError: input.exitedWithError,
       isPostComplete: snap.is_post_complete,
+      kind: kpiNow.kind,
     })
   ) {
     deps.kpiRegistry.markAchieved(
@@ -249,5 +264,6 @@ export function processBurstExitForKpi(
     nextKpiBurstId,
     idleStreak: streak,
     autoAchieved,
+    momentum,
   };
 }

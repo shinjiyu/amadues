@@ -35,77 +35,17 @@ $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot\_agent-docker.ps1"
 . "$PSScriptRoot\_agent-local.ps1"
-
-function Set-EnvFileLine {
-  param(
-    [Parameter(Mandatory = $true)][string]$EnvPath,
-    [Parameter(Mandatory = $true)][string]$Key,
-    [Parameter(Mandatory = $true)][string]$Value
-  )
-  $lines = Get-Content -LiteralPath $EnvPath -Encoding UTF8
-  $pattern = "^\s*$([regex]::Escape($Key))\s*="
-  $newLine = "$Key=$Value"
-  $found = $false
-  $out = foreach ($line in $lines) {
-    if ($line -match $pattern) {
-      $found = $true
-      $newLine
-    } else {
-      $line
-    }
-  }
-  if (-not $found) {
-    $out = @($out) + $newLine
-  }
-  Set-Content -LiteralPath $EnvPath -Value $out -Encoding UTF8
-}
+. "$PSScriptRoot\_agent-provision.ps1"
 
 function Ensure-Bot2EnvDefaults {
   param([Parameter(Mandatory = $true)][string]$EnvPath)
   Set-EnvFileLine -EnvPath $EnvPath -Key 'INNER_BASE_NODE_MAX_ROUNDS' -Value '50'
   Set-EnvFileLine -EnvPath $EnvPath -Key 'INNER_BASE_NODE_FAIL_FAST_STREAK' -Value '5'
+  Set-EnvFileLine -EnvPath $EnvPath -Key 'INNER_ATTRIBUTOR_MAX_ROUNDS' -Value '20'
+  Set-EnvFileLine -EnvPath $EnvPath -Key 'INNER_DESIGNER_MAX_ROUNDS' -Value '20'
   if (-not (Select-String -LiteralPath $EnvPath -Pattern '^\s*DRIVE9_SERVER=' -Quiet)) {
     Set-EnvFileLine -EnvPath $EnvPath -Key 'DRIVE9_SERVER' -Value 'https://api.drive9.ai'
   }
-}
-
-function New-Mem9ApiKey {
-  $raw = curl.exe -sX POST https://api.mem9.ai/v1alpha1/mem9s
-  if (-not $raw) { throw 'mem9: empty response from POST /v1alpha1/mem9s' }
-  try {
-    $obj = $raw | ConvertFrom-Json
-  } catch {
-    throw "mem9: invalid JSON: $raw"
-  }
-  $id = $obj.id
-  if (-not $id) { throw "mem9: missing id in response: $raw" }
-  return [string]$id
-}
-
-function New-Drive9Context {
-  param([Parameter(Mandatory = $true)][string]$ContextName)
-  $exe = Get-Command drive9 -ErrorAction SilentlyContinue
-  if (-not $exe) {
-    throw 'drive9 CLI not found on PATH. Install: curl -fsSL https://drive9.ai/install.sh | sh (or Windows binary from drive9.ai/releases)'
-  }
-  $createOut = & drive9 create --name $ContextName 2>&1 | Out-String
-  if ($LASTEXITCODE -ne 0) {
-    throw "drive9 create failed: $createOut"
-  }
-  $useOut = & drive9 ctx use $ContextName 2>&1 | Out-String
-  if ($LASTEXITCODE -ne 0) {
-    throw "drive9 ctx use failed: $useOut"
-  }
-  $cfgPath = Join-Path $env:USERPROFILE '.drive9\config'
-  if (-not (Test-Path $cfgPath)) {
-    throw "drive9 config missing: $cfgPath"
-  }
-  $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
-  $ctx = $cfg.contexts.$ContextName
-  if (-not $ctx -or -not $ctx.api_key) {
-    throw "drive9: no api_key for context $ContextName in $cfgPath"
-  }
-  return [string]$ctx.api_key
 }
 
 $root = Get-KuronekoRepoRootForDocker
@@ -114,7 +54,7 @@ $envPath = Join-Path (Get-AgentEnvDir $root) 'bot2.env'
 
 Write-Host '[bot2-fresh] stop'
 Stop-AgentLocalProcess -Name bot2 -Port 8797
-& docker stop utlra-agent-bot2 2>$null | Out-Null
+try { & docker stop utlra-agent-bot2 2>&1 | Out-Null } catch { }
 
 $dataDir = Join-Path $root 'packages\server\data-bot2'
 if (Test-Path $dataDir) {
@@ -148,5 +88,11 @@ if ($NoStart) {
 }
 
 Write-Host '[bot2-fresh] start'
-Start-AgentLocalProcess -Name bot2 -Port 8797 -DataDirRel 'packages\server\data-bot2' @PSBoundParameters
+$startArgs = @{
+  Name       = 'bot2'
+  Port       = 8797
+  DataDirRel = 'packages\server\data-bot2'
+}
+if ($Watch) { $startArgs['Watch'] = $true }
+Start-AgentLocalProcess @startArgs
 Write-Host '[bot2-fresh] ready http://127.0.0.1:8797'

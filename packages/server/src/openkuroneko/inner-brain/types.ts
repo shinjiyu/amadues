@@ -270,7 +270,7 @@ export interface InnerMemory {
 
 // ── 新 FSM 控制器状态（独立于 legacy ControllerState） ──────────────────────
 
-export type DyflowMode = 'DESIGN' | 'RUN' | 'AWAITING' | 'DONE' | 'ERROR' | 'STOPPED';
+export type DyflowMode = 'DESIGN' | 'RUN' | 'ATTRIBUTE' | 'AWAITING' | 'DONE' | 'ERROR' | 'STOPPED';
 
 export interface DyflowState {
   mode: DyflowMode;

@@ -38,28 +38,30 @@ D1 保证元编程一层（Creator 提升仍是同一种 ref）；D2 不浪费 R
 ## 3. 状态机（替换旧 FSM）
 
 ```text
-controller-state.json mode:
-  DESIGN → RUN → AWAITING → DONE
+dyflow-state.json mode:
+  DESIGN → RUN → ATTRIBUTE → DESIGN | AWAITING → DONE
 ```
 
 | mode | 动作 | 谁主导 |
 |------|------|-------|
 | **DESIGN** | 读 goal + memory + last_failure + LocalNode index → 调 Designer Tools → 写 `local_dag.json` 或宣告 DONE | Designer LLM |
-| **RUN** | 顺序/依边走 `local_dag`；按 NodeInst 派发 baseNode / newNodeCreator | Runner（无 LLM 决策）|
+| **RUN** | 顺序/依边走 `local_dag`；按 NodeInst 派发 baseNode / newNodeCreator；结束写 `run-context.json` | Runner（无 LLM 决策）|
+| **ATTRIBUTE** | 读 run-context → Mandatory Attributor 写 `memory.facts` / `constraints` → 清 run-context；失败叠加 failure-distill | Attributor LLM（见 [`DYFLOW-ATTRIBUTION.md`](./DYFLOW-ATTRIBUTION.md)） |
 | **AWAITING** | `pendings.json` 等 timer / human；与 [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) §4–§6 一致 | 外脑 changeWatcher / awaitingInboundResolver |
 | **DONE** | 子进程退出；registry **DONE**；同 KPI canonical instance 可由外脑再 spawn | controller 自报 + 外脑 KPI 判定 |
 
 转移规则（与 `registryLifecycleReconcile` 对齐）：
 
 ```text
-DESIGN  → RUN          : Designer 输出 local_dag 非空
-DESIGN  → DONE         : Designer 自报「目标已完成」 / `memory.kpi_progress` 已满
-DESIGN  → AWAITING     : local_dag 含 wait_timer / ask_user
-RUN     → DESIGN       : 图跑完 / terminal failure
-RUN     → AWAITING     : RUN 结束后 `listActivePendings` 非空（`ask_user` / `wait_timer`）；**禁止**空转 DESIGN↔RUN
-AWAITING → DESIGN      : pendings 全部 resolved/timed_out；changeWatcher spawn 前 `markConsumed`（见 IM-NOTIFY-BOUNDARY §6–7）
-DONE    → DESIGN       : 同 instance 再 spawn（外脑 KPI 未完成）
-任意   → ERROR/STOPPED : 同旧 FSM
+DESIGN    → RUN          : Designer 输出 local_dag 非空
+DESIGN    → DONE         : Designer 自报「目标已完成」 / `memory.kpi_progress` 已满
+DESIGN    → AWAITING     : local_dag 含 wait_timer / ask_user
+RUN       → ATTRIBUTE    : 图跑完（成功或失败）；持久化 run-context
+ATTRIBUTE → DESIGN       : 归因完成；无 active pendings
+ATTRIBUTE → AWAITING     : 归因完成；有 pendings
+AWAITING  → DESIGN       : pendings 全部 resolved/timed_out；changeWatcher spawn 前 `markConsumed`（见 IM-NOTIFY-BOUNDARY §6–7）
+DONE      → DESIGN       : 同 instance 再 spawn（外脑 KPI 未完成）
+任意     → ERROR/STOPPED : 同旧 FSM
 ```
 
 旧 mode 映射（删除时清单）：
@@ -68,7 +70,7 @@ DONE    → DESIGN       : 同 instance 再 spawn（外脑 KPI 未完成）
 |--------|------|
 | `DECOMPOSE` | **删** — 不再有 milestones |
 | `EXECUTE` | → `RUN`（内核语义不同：猛猛干，无早停） |
-| `ATTRIBUTE` | **删** — Designer 替代决策；`memory.last_failure` 替代 `execution-context` |
+| `ATTRIBUTE` | **恢复（DyFlow）** — RUN 后强制归因；`run-context.json` 替代 legacy `execution-context`；详见 [`DYFLOW-ATTRIBUTION.md`](./DYFLOW-ATTRIBUTION.md) |
 | `BLOCKED` | 并入 `DESIGN`（high-confidence failure → Designer 决策 abort/换 ref） |
 
 ---
@@ -156,6 +158,30 @@ baseNode（preset/base 或 Creator 派生）
 **与上下文治理**：runtime 块随 system 前缀固定；ReAct 历史治理见 §6.5。
 
 实现：`buildRuntimeContextSection({ workDir, dataRoot? })` · 测试：`runtime-context.test.ts`。
+
+### 6.1d 资源预算披露（ResourceBudget，P0）
+
+> **动机**：仅框架硬截断（`safety_cap`）时 LLM 无轮次感知，易烧满预算；静态「最多 N 轮」写在首轮 prompt 会被长 ReAct 历史淹没。
+
+`inner-brain/resource-budget.ts` 统一读取 env，向 LLM **同时披露硬上限与当前用量**：
+
+| 角色 | env | 默认 | 披露方式 |
+|------|-----|------|----------|
+| **baseNode** | `INNER_BASE_NODE_MAX_ROUNDS` | 50 | system 静态块 + **每轮** 覆写首条 user 前缀（`upsertLiveBudgetMessage`） |
+| **baseNode fail-fast** | `INNER_BASE_NODE_FAIL_FAST_STREAK` | 5 | 同上，含「连续无进展 X/Y」 |
+| **Designer** | `INNER_DESIGNER_MAX_ROUNDS` | 20 | system 静态块（含单格 baseNode 预算提示）+ 每轮 live |
+| **Attributor** | `INNER_ATTRIBUTOR_MAX_ROUNDS` | 20 | system 静态块 + 每轮 live |
+
+**live 块内容**（每轮覆盖上一条，marker `## 资源预算（框架实时）`）：
+
+- `ReAct 轮次：k / max（pct%）`
+- `本阶段工具调用：n 次`
+- baseNode 另含 `连续无进展：streak / failFast`
+- **软阈值文案**：≥60% 提示收束；≥80% 强调；≥90% 紧急（写交付 / `CANNOT_CONTINUE(transient)`）
+
+**硬截断不变**：框架仍执行 `safety_cap` / `fail_fast`；披露是引导收束，非替代闸门。
+
+实现：`resolve*Budget()` · `buildStaticResourceBudgetSection()` · `buildLiveResourceBudgetSection()` · `upsertLiveBudgetMessage()` · 测试：`resource-budget.test.ts`。
 
 ### 6.1c 凭据传递链（P0，修正 keychain 语义）
 
@@ -615,7 +641,9 @@ burst 结束 → registry DONE；子进程退出
 
 | 模块 ID | 职责 | 主路径（计划） | 测试 |
 |---------|------|----------------|------|
-| **innerBrainController** | 新 FSM（DESIGN/RUN/AWAITING/DONE）| `openkuroneko/inner-brain/controller.ts` | ⏳ `innerBrainController.component.integration.test.ts` |
+| **innerBrainController** | 新 FSM（DESIGN/RUN/ATTRIBUTE/AWAITING/DONE）| `openkuroneko/inner-brain/controller.ts` | ✅ `controller.component.integration.test.ts` |
+| **dyflowAttributor** | RUN 后强制归因 | `openkuroneko/inner-brain/attributor.ts` | ✅ `attributor.test.ts` |
+| **runContextStore** | RUN→ATTRIBUTE 快照 | `openkuroneko/inner-brain/run-context-store.ts` | ✅ `run-context-store.test.ts` |
 | **designer** | DESIGN 阶段 LLM + Designer Tools | `…/designer.ts` | ⏳ `designer.component.integration.test.ts` + `.prompt.test.ts` |
 | **runner** | RUN 阶段：解析 `local_dag`，按 NodeInst 派发 baseNode / graph | `…/runner.ts` | ⏳ `runner.component.integration.test.ts` |
 | **baseNodeExecutor** | 单个 baseNode 的 LLM+tools ReAct（含 failure_summary 写入） | `…/base-node-executor.ts` | ⏳ `baseNodeExecutor.component.integration.test.ts` |

@@ -19,8 +19,12 @@ import type { NodeSharingDeps } from './designer-tools.js';
 import type { LocalNodeStore } from './local-node-store.js';
 import type { MemoryStore } from './memory-store.js';
 import type { DagHistoryEntry, LocalDag, LockedMilestone } from './types.js';
-
-const SAFETY_MAX_ROUNDS = 20;
+import {
+  buildLiveResourceBudgetSection,
+  buildStaticResourceBudgetSection,
+  resolveDesignerBudget,
+  upsertLiveBudgetMessage,
+} from './resource-budget.js';
 
 export const DESIGNER_SYSTEM = `你是 DyFlow 内脑的 Designer（编排者）。每个 DESIGN tick，你阅读全局 memory 与 LocalNode 库，
 输出一张「本轮执行图」（local_dag），或在目标已达成时宣告完成。
@@ -54,9 +58,10 @@ export const DESIGNER_SYSTEM = `你是 DyFlow 内脑的 Designer（编排者）�
 - **必读 constraints**：带 [run-failure] 前缀的是上轮 RUN 后 FailureDistill 强制红线，不得无视
 
 ## 反思与固化（每轮 DESIGN 先反思，再编排）
+- RUN 结束后框架已跑 **Mandatory Attributor** 写入 memory.facts/constraints；优先读这些，勿重复蒸馏
 - 先看「已完成节点结果摘要 + 最近 DAG 历史」：哪些子目标已 ok（视为锁定，勿重复编排）、哪条路线在连续失败
 - 固化两层（成本递减）：
-  - A 事实：知识/选择器/API 形状/**稳定脚本路径** → 让 baseNode 用 record_fact（脚本写明「python workspace/foo.py 做 X」）或排 preset/extract_facts
+  - A 事实：若 Attributor 未覆盖，可让 baseNode record_fact 或排 preset/extract_facts；通常不必
   - B 节点：某段战术已在历史中跑通且会复用 → **直接调 promote_local_node 固化**（DESIGN 内即时提升，无需 RUN 格）
 - 步骤已固定、无 LLM 分支的脚本动作：**不要造工具**，让 baseNode 把脚本路径与运行方式 record_fact，下次在 instruction 里要求 baseNode 直接 shell_exec 跑该脚本
 
@@ -77,6 +82,10 @@ export const DESIGNER_SYSTEM = `你是 DyFlow 内脑的 Designer（编排者）�
 - 当 memory 显示目标已达成（node_results 满足、kpi_progress 达标）→ report_done
 - **交付型目标必须给 report_done 附 verify=[{kind,target,describe?}]**（同 deliverable.checks 语义，用 file/json_key 给出可机械验的最终证据，如「workspace/report.md 存在」「result.json#published_count 非空」）。verify 不通过会被拒收，你得继续 commit_local_dag 补齐——**勿凭 node 摘要的文字断言就报完成**。
 - 否则必须 commit_local_dag（至少一个节点）`;
+
+export function buildDesignerSystemPrompt(): string {
+  return `${DESIGNER_SYSTEM}\n\n${buildStaticResourceBudgetSection('designer')}`;
+}
 
 export interface DesignerDeps {
   llm: LLMAdapter;
@@ -159,10 +168,22 @@ export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> 
 
   logger.info('designer', { event: 'design.start', data: { burstId } });
 
-  for (let round = 0; round < SAFETY_MAX_ROUNDS; round++) {
+  const budgetCfg = resolveDesignerBudget();
+  const systemPrompt = buildDesignerSystemPrompt();
+  let toolCalls = 0;
+
+  for (let round = 0; round < budgetCfg.maxRounds; round++) {
+    messages = upsertLiveBudgetMessage(
+      messages,
+      buildLiveResourceBudgetSection({
+        round,
+        maxRounds: budgetCfg.maxRounds,
+        toolCalls,
+      }),
+    );
     let result;
     try {
-      result = await llm.chat(DESIGNER_SYSTEM, messages, registry.schema());
+      result = await llm.chat(systemPrompt, messages, registry.schema());
     } catch (e) {
       logger.error('designer', { event: 'llm.error', data: { error: String(e) } });
       return { kind: 'empty', reason: `Designer LLM 调用失败：${String(e)}` };
@@ -185,6 +206,7 @@ export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> 
     const toolMsgs: Message[] = [assistantMsg];
 
     for (const tc of result.toolCalls) {
+      toolCalls += 1;
       const tool = registry.get(tc.name);
       let out: { ok: boolean; output: string };
       if (!tool) out = { ok: false, output: `Unknown tool: ${tc.name}` };
@@ -210,5 +232,5 @@ export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> 
   logger.warn('designer', { event: 'design.safety_cap', data: { burstId } });
   if (session.committedDag) return { kind: 'run', dag: session.committedDag };
   if (session.doneReason) return { kind: 'done', reason: session.doneReason };
-  return { kind: 'empty', reason: `Designer 达到安全轮次上限（${SAFETY_MAX_ROUNDS}）` };
+  return { kind: 'empty', reason: `Designer 达到安全轮次上限（${budgetCfg.maxRounds}）` };
 }

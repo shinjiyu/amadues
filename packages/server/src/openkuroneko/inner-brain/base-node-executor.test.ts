@@ -101,6 +101,33 @@ describe('runBaseNode', () => {
     expect(sawRuntime).toBe(true);
   });
 
+  it('injects static and live resource budget into prompts', async () => {
+    let sawStatic = false;
+    let sawLive = false;
+    const llm = createFakeLLM([
+      {
+        match: ({ systemPrompt, messages }) => {
+          sawStatic =
+            systemPrompt.includes('## 资源预算（框架硬上限）') &&
+            systemPrompt.includes('INNER_BASE_NODE_MAX_ROUNDS');
+          sawLive =
+            messages[0]?.role === 'user' &&
+            typeof messages[0]?.content === 'string' &&
+            messages[0].content.includes('## 资源预算（框架实时）') &&
+            messages[0].content.includes('1 / 50');
+          return true;
+        },
+        reply: { content: 'done after budget check with enough summary text' },
+      },
+    ]);
+    await runBaseNode(
+      { node: baseNode(), inst, memory: emptyMemory(), workDir: '/tmp/x' },
+      { llm, toolRegistry: createToolRegistry([]), logger: silentLogger() },
+    );
+    expect(sawStatic).toBe(true);
+    expect(sawLive).toBe(true);
+  });
+
   it('completes when LLM finishes without tool calls', async () => {
     const llm = createFakeLLM([{ label: 'done', match: 'fetch the data', reply: { content: 'fetched ok with data saved' } }]);
     const outcome = await runBaseNode(

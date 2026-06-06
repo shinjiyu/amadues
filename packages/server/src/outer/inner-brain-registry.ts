@@ -14,7 +14,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { resolveStoredWorkDir } from '../data-root.js';
 
-export type TaskStatus = 'RUNNING' | 'BLOCKED' | 'AWAITING' | 'DONE' | 'STOPPED' | 'ERROR';
+export type TaskStatus = 'RUNNING' | 'BLOCKED' | 'AWAITING' | 'DONE' | 'STOPPED' | 'ERROR' | 'ABORTED';
+
+/** ABORTED 来源：战略层显式 cull vs 静态超时兜底（见 STRATEGY-PLANNING-LAYER.md §9） */
+export type AbortedBy = 'strategy_reflect' | 'stale_awaiting_timeout';
 
 export interface TaskRecord {
   instanceId: string;
@@ -57,6 +60,12 @@ export interface TaskRecord {
    * 反思 burst 不计入 KPI 的 idleStreak，避免"反思失败 → 又触发反思"死循环。
    */
   isReflexionBurst?: boolean;
+  /** staleBurstReaper 写入：ABORTED 原因（cull reason / 'stale_awaiting_timeout'） */
+  abortReason?: string;
+  /** staleBurstReaper 写入：谁杀的 */
+  abortedBy?: AbortedBy;
+  /** staleBurstReaper 写入：ABORTED 时刻（ISO） */
+  abortedAt?: string;
 }
 
 export class InnerBrainRegistry {

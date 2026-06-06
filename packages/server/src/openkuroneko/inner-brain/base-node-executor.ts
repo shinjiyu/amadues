@@ -1,10 +1,10 @@
 /**
- * BaseNode Executor — 单个 baseNode 的「猛猛干」ReAct 执行。
+ * BaseNode Executor — 单个 baseNode 的 ReAct 执行。
  *
  * ADL：doc/structurizr/DYFLOW-INNER-EXECUTOR.md §6
  *
  * 与 legacy executor 的根本差异：
- *   - 不早停：围绕子目标持续 ReAct，直到成功或高置信失败。
+ *   - 围绕子目标持续 ReAct，直到目标达成或高置信失败。
  *   - 终止信号：LLM 自然结束（无 tool_calls）= 完成；content 含
  *     `CANNOT_CONTINUE:` = terminal failure。
  *   - 产出契约：interface.outputs 须满足；缺失即 terminal failure。
@@ -23,6 +23,12 @@ import {
   resolveInnerToolAuditPaths,
 } from './inner-tool-audit.js';
 import { buildRuntimeContextSection } from './runtime-context.js';
+import {
+  buildLiveResourceBudgetSection,
+  buildStaticResourceBudgetSection,
+  resolveBaseNodeBudget,
+  upsertLiveBudgetMessage,
+} from './resource-budget.js';
 import { pruneReActMessages } from './react-message-prune.js';
 import {
   shouldSlimToolCallArgs,
@@ -41,20 +47,6 @@ import type {
   NodeInst,
   NodeOutcomeStatus,
 } from './types.js';
-
-/**
- * 防烧：绝对轮次上限（默认 50）+ 连续无进展 fail-fast（默认 5，ADL §6.1）。
- * 环境变量可选覆盖（仅 baseNode；Designer 仍用固定 20 轮）。
- */
-function readPositiveIntEnv(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-const SAFETY_MAX_ROUNDS = readPositiveIntEnv('INNER_BASE_NODE_MAX_ROUNDS', 50);
-const FAIL_FAST_NO_PROGRESS_STREAK = readPositiveIntEnv('INNER_BASE_NODE_FAIL_FAST_STREAK', 5);
 
 export interface BaseNodeOutcome {
   ok: boolean;
@@ -146,7 +138,7 @@ function buildUserMessage(ctx: BaseNodeRunContext): string {
     `## 本节点需产出的 outputs（必须真实落地）\n${outputsContract}`,
     extraCtx.length ? `## 额外上下文\n${extraCtx.join('\n')}` : '',
     `## 工作目录\n${workDir}`,
-    `开始执行。猛猛干到目标达成并产出 outputs；只有高置信不可恢复时才输出 CANNOT_CONTINUE: <原因>。`,
+    `在资源预算内达成子目标并产出 outputs；接近上限时收束结论（写交付 / record_fact）；只有高置信不可恢复时才输出 CANNOT_CONTINUE: <原因>。`,
   ]
     .filter(Boolean)
     .join('\n\n---\n\n');
@@ -189,6 +181,7 @@ export async function runBaseNode(
   }
 
   const params = resolveParams(node, inst);
+  const budgetCfg = resolveBaseNodeBudget();
   const runtimeBlock = buildRuntimeContextSection({
     workDir: ctx.workDir,
     dataRoot: process.env['UTLRA_DATA_ROOT']?.trim(),
@@ -198,6 +191,7 @@ export async function runBaseNode(
       node.body.promptTemplate,
       node.body.systemSlice ?? '',
       runtimeBlock,
+      buildStaticResourceBudgetSection('baseNode'),
     ]
       .filter(Boolean)
       .join('\n\n'),
@@ -219,7 +213,17 @@ export async function runBaseNode(
   let noProgressStreak = 0;
   const shellStall = createShellStallGuard();
 
-  for (let round = 0; round < SAFETY_MAX_ROUNDS; round++) {
+  for (let round = 0; round < budgetCfg.maxRounds; round++) {
+    messages = upsertLiveBudgetMessage(
+      messages,
+      buildLiveResourceBudgetSection({
+        round,
+        maxRounds: budgetCfg.maxRounds,
+        toolCalls: executionLog.length,
+        noProgressStreak,
+        failFastStreak: budgetCfg.failFastStreak,
+      }),
+    );
     let result;
     try {
       result = await llm.chat(systemPrompt, messages, schema);
@@ -392,8 +396,9 @@ export async function runBaseNode(
       noProgressStreak = 0;
     } else {
       noProgressStreak += 1;
-      if (noProgressStreak >= FAIL_FAST_NO_PROGRESS_STREAK) {
-        const reason = `连续 ${FAIL_FAST_NO_PROGRESS_STREAK} 轮工具调用均无 ok:true 进展`;
+      const failFastStreak = budgetCfg.failFastStreak ?? 5;
+      if (noProgressStreak >= failFastStreak) {
+        const reason = `连续 ${failFastStreak} 轮工具调用均无 ok:true 进展`;
         logger.warn('base-node', {
           event: 'fail_fast',
           data: { nodeInstId: inst.id, streak: noProgressStreak },
@@ -411,7 +416,7 @@ export async function runBaseNode(
   }
 
   // 达到安全上限：按 transient 失败上交（可能只是没收敛）
-  logger.warn('base-node', { event: 'safety_cap', data: { nodeInstId: inst.id, cap: SAFETY_MAX_ROUNDS } });
+  logger.warn('base-node', { event: 'safety_cap', data: { nodeInstId: inst.id, cap: budgetCfg.maxRounds } });
   return {
     ok: false,
     status: 'capped',
@@ -420,7 +425,7 @@ export async function runBaseNode(
     failure: makeFailure(
       inst,
       node,
-      `达到安全轮次上限（${SAFETY_MAX_ROUNDS}）仍未收敛`,
+      `达到安全轮次上限（${budgetCfg.maxRounds}）仍未收敛`,
       executionLog,
       'low',
       true,

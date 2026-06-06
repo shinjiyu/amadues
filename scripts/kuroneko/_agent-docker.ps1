@@ -22,6 +22,7 @@ $script:AgentLegacyEnvMap = @{
   yuanbao  = '.env.yuanbao'
   bot1     = '.env.bot1'
   bot2     = '.env.bot2'
+  bot3     = '.env.bot3'
 }
 
 # Legacy root env filenames (migrated once into .env.<agent>)

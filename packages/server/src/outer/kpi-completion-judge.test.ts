@@ -51,4 +51,19 @@ describe('kpiCompletionJudge', () => {
     expect(block).toContain('KPI 完成态');
     expect(block).toContain(fx.kpiId);
   });
+
+  it('ongoing KPI：即使 DONE+产出 也不被 sweep 结案（永远 active）', () => {
+    fx = createKpiScenarioFixture('24h 情报常驻', 'ongoing');
+    fx.simulateBurstExit({
+      verdict: 'success',
+      deliverables: ['report.md'],
+      postComplete: true,
+    });
+    // onExit 不应 auto-achieve
+    expect(fx.kpiRegistry.get(fx.kpiId)?.status).toBe('active');
+    // sweep 也跳过 ongoing
+    const r = sweepKpiCompletions(fx.kpiRegistry, fx.innerBrainRegistry);
+    expect(r.marked).not.toContain(fx.kpiId);
+    expect(fx.kpiRegistry.get(fx.kpiId)?.status).toBe('active');
+  });
 });

@@ -10,7 +10,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { KpiRegistry, type ReflexionSummary } from './kpi-registry.js';
+import {
+  KpiRegistry,
+  MOMENTUM_MAX,
+  MOMENTUM_MIN,
+  type ReflexionSummary,
+} from './kpi-registry.js';
 
 let tmpRoot: string;
 
@@ -59,6 +64,58 @@ describe('KpiRegistry.create / get / list', () => {
 
     const abandoned = reg.list({ status: 'abandoned' });
     expect(abandoned.map((k) => k.kpiId)).toEqual([k2.kpiId]);
+  });
+});
+
+describe('KpiRegistry.kind (delivery / ongoing)', () => {
+  it('默认 kind=delivery、momentum=0', () => {
+    const reg = new KpiRegistry(tmpRoot);
+    const k = reg.create({ description: '一次性目标', createdBy: 'u' });
+    expect(k.kind).toBe('delivery');
+    expect(k.momentum).toBe(0);
+  });
+
+  it('create 可指定 kind=ongoing 并持久化', () => {
+    const reg1 = new KpiRegistry(tmpRoot);
+    const k = reg1.create({ description: '24h 情报常驻', createdBy: 'u', kind: 'ongoing' });
+    expect(k.kind).toBe('ongoing');
+
+    const reg2 = new KpiRegistry(tmpRoot);
+    expect(reg2.get(k.kpiId)?.kind).toBe('ongoing');
+  });
+});
+
+describe('KpiRegistry.adjustMomentum (多巴胺反馈调节)', () => {
+  it('正/负增量累加并返回更新值', () => {
+    const reg = new KpiRegistry(tmpRoot);
+    const k = reg.create({ description: '...', createdBy: 'u' });
+    expect(reg.adjustMomentum(k.kpiId, 2)).toBe(2);
+    expect(reg.adjustMomentum(k.kpiId, 1)).toBe(3);
+    expect(reg.adjustMomentum(k.kpiId, -2)).toBe(1);
+  });
+
+  it('clamp 在 [MOMENTUM_MIN, MOMENTUM_MAX]', () => {
+    const reg = new KpiRegistry(tmpRoot);
+    const k = reg.create({ description: '...', createdBy: 'u' });
+    reg.adjustMomentum(k.kpiId, 100);
+    expect(reg.get(k.kpiId)?.momentum).toBe(MOMENTUM_MAX);
+    reg.adjustMomentum(k.kpiId, -100);
+    expect(reg.get(k.kpiId)?.momentum).toBe(MOMENTUM_MIN);
+  });
+
+  it('delta=0 或 KPI 不存在时安全', () => {
+    const reg = new KpiRegistry(tmpRoot);
+    const k = reg.create({ description: '...', createdBy: 'u' });
+    expect(reg.adjustMomentum(k.kpiId, 0)).toBe(0);
+    expect(reg.adjustMomentum('nope', 5)).toBe(0);
+  });
+
+  it('momentum 跨实例持久化', () => {
+    const reg1 = new KpiRegistry(tmpRoot);
+    const k = reg1.create({ description: '...', createdBy: 'u' });
+    reg1.adjustMomentum(k.kpiId, 3);
+    const reg2 = new KpiRegistry(tmpRoot);
+    expect(reg2.get(k.kpiId)?.momentum).toBe(3);
   });
 });
 

@@ -20,6 +20,7 @@ const AGENTS = [
   { label: '元宝 / Lab（8793）', apiPrefix: '/api5' },
   { label: 'Bot1 / Coding（8796）', apiPrefix: '/api6' },
   { label: 'Bot2 / FP8（8797）', apiPrefix: '/api7' },
+  { label: 'Bot3 / Legacy（8798）', apiPrefix: '/api8' },
 ] as const;
 type AgentConfig = typeof AGENTS[number];
 

@@ -20,6 +20,8 @@ function makeKpi(overrides: Partial<KpiRecord> = {}): KpiRecord {
     createdBy: 'test:user',
     createdAt: '2026-01-01T00:00:00.000Z',
     status: 'active',
+    kind: 'delivery',
+    momentum: 0,
     bursts: [],
     consecutiveIdleBursts: 0,
     reflexionTrail: [],
@@ -149,6 +151,32 @@ describe('shouldAutoAchieveKpi', () => {
       }),
     ).toBe(false);
   });
+
+  it('kind=ongoing → false（常驻 KPI 永不自动结案，先于一切条件）', () => {
+    expect(
+      shouldAutoAchieveKpi({
+        reflexion: successReflexion,
+        deliverableCount: 5,
+        isAwaiting: false,
+        exitedWithError: false,
+        isPostComplete: true,
+        kind: 'ongoing',
+      }),
+    ).toBe(false);
+  });
+
+  it('kind=delivery（显式）→ 与默认一致 true', () => {
+    expect(
+      shouldAutoAchieveKpi({
+        reflexion: successReflexion,
+        deliverableCount: 1,
+        isAwaiting: false,
+        exitedWithError: false,
+        isPostComplete: true,
+        kind: 'delivery',
+      }),
+    ).toBe(true);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -190,6 +218,18 @@ describe('suggestKpiAction · active 状态', () => {
       lastReflexionVerdict: null,
     });
     expect(suggestKpiAction(makeKpi(), [link]).action).toBe('achieved');
+  });
+
+  it('ongoing KPI：交付完成不结案，返回 continue（常驻巡检）', () => {
+    const link = makeLink({
+      registryStatus: 'DONE',
+      isPostComplete: true,
+      deliverableCount: 2,
+      lastReflexionVerdict: 'success',
+    });
+    const r = suggestKpiAction(makeKpi({ kind: 'ongoing' }), [link]);
+    expect(r.action).toBe('continue');
+    expect(r.reason).toContain('ongoing');
   });
 
   it('有 burst 在 async waiting + ask_user → awaiting_human', () => {

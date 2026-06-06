@@ -317,7 +317,13 @@ DATA_ROOT/strategy/
 
 | 阶段 | 交付 | 行为变化 |
 |------|------|----------|
-| **P0** | `strategyStore` + `strategyPlanner.plan()`（合并 reflect/design 单 LLM call）+ dispatcher 退化为读 strategy；`staleBurstReaper` 静态超时兜底 | dispatcher 不再自由选 KPI；7d AWAITING 自动死 |
+| **P0 🟡** | `strategyStore` + `strategyPlanner.plan()`（合并 reflect/design 单 LLM call）+ dispatcher 退化为读 strategy；`staleBurstReaper` 静态超时兜底 | dispatcher 不再自由选 KPI；7d AWAITING 自动死 |
+
+> **P0 落地状态（2026-06-06）**：`outer/strategy/` 八模块 + `runStrategyPhase` 编排已实现并接入 live 心跳（gated），单测全绿（store/trigger/artifact/planner/dispatch/reaper/live-adapter/run-phase，52 例）：
+> - `strategyPlanner.planNext` 合并 REFLECT+DESIGN 单 LLM call（caller 注入，FakeLLM 可测）；WHY+HOW 缺失或解析失败 → **reject 回退** lastStrategy / 最小安全 artifact（按 momentum 排 active）。
+> - `staleBurstReaper`：静态超时兜底（`maxAwaitingMs`）+ `cullDirectives(grace='now')`；`peekPendingMatch` 跳过即将醒来者；`killProcess`/`archive` 注入；经 `ABORTED` 状态迁移（`TaskStatus` 已加 `ABORTED` + `abortReason/abortedBy/abortedAt`）。`grace='warn_in_im_then_kill'` 留 P1。
+> - **已接 live 心跳（常开，无 flag）**：`outer/strategy/live-adapter.ts` 把注入点接到真实 `kpiRegistry`/`innerBrainRegistry`/真 LLM(`llmRawChatCompletion`)/`process.kill`/`action-log`；`autonomyPipeline` 在 `verdict=idle` 时**始终**跑 `runLiveStrategyPhase`（plan + reap），并把 `strategy.focusOrder` + `strategyMode` 注入 `autonomyTaskDispatcher`——dispatcher 的 `pickActiveKpi` 改按 focusOrder∩active 选；交集空 → `strategy_no_focus`（不掷闲聊）。`UTLRA_STRATEGY_LAYER_ENABLED` 开关已移除（2026-06-07）。
+> - **待办（P1）**：`grace='warn_in_im_then_kill'` IM 预警流程、Dashboard 战略面板、`reflect/design` 拆双 call、`userMessageSinceLast` 触发源接 `outerBrainFacade`、planner→真实 archive 接线。
 | **P1** | `cullDirectives` LLM 输出落地；reaper grace 模式（warn_in_im）+ Dashboard 战略面板 | 战略层主动 cull |
 | **P2** | reflect/design 拆为两次 LLM call（先 lessons 再 forward）；触发器细化（env_event_threshold）；与 `performanceGoalEngine` 双向反馈 | 决策质量提升 |
 
@@ -335,9 +341,80 @@ DATA_ROOT/strategy/
 
 测试与组件映射见 [`COMPONENT-TEST-MAP.md`](./COMPONENT-TEST-MAP.md)。
 
-## 16. 修订
+## 16. 反馈调节（多巴胺回路 · P0-interim）
+
+> **English:** A lightweight **feedback regulation** ("dopamine") loop on the *existing* dispatcher, **before** the full `strategyPlanner` lands. Each KPI carries a scalar `momentum`; burst outcomes raise it (productive → keep pushing) or lower it (idle/failed → back off). The dispatcher orders candidate KPIs by `momentum` instead of always picking the newest. This is the **quantified, code-level** complement to the LLM-narrative `recentLessons` / `focusOrder` (§5); when `strategyPlanner` lands, `focusOrder` becomes the authority and `momentum` feeds it as one input.
+
+> **定位**：用户口中的「多巴胺系统」= **给外脑战略层引入反馈调节**。战略层三件套（`strategyPlanner` 等）目前零代码，因此先在**现有 `autonomyTaskDispatcher` + `kpiBurstHooks`** 上落一个**最小可量化的正/负反馈回路**，不引入新调度器。
+
+### 16.1 闭环
+
+```mermaid
+flowchart LR
+  BURST[burst onExit] -->|verdict + deliverable| SIG[BurstFeedbackSignal]
+  SIG -->|computeMomentumDelta| ADJ[kpiRegistry.adjustMomentum]
+  ADJ --> M[(KpiRecord.momentum<br/>clamp -5..+5)]
+  M -->|selectKpiByMomentum| DISP[autonomyTaskDispatcher]
+  DISP --> BURST
+  M -.->|digest 可见| HB[心跳 / view_kpi]
+```
+
+### 16.2 信号 → 增量（`kpi-feedback.ts` 纯函数）
+
+```typescript
+interface BurstFeedbackSignal {
+  verdict: 'success' | 'partial' | 'failed' | null;
+  deliverableCount: number;
+  isAwaiting: boolean;
+  exitedWithError: boolean;
+}
+```
+
+| 情形 | Δmomentum | 含义 |
+|------|-----------|------|
+| `isAwaiting` | `0` | 等外部，不奖不罚（与 idle streak 口径一致） |
+| `exitedWithError` | `-2` | 进程级失败，强负反馈 |
+| `verdict=success` 且 deliverable>0 | `+2` | 高奖赏：有效推进 |
+| `verdict=success` 且 deliverable=0 | `+1` | 轻奖赏 |
+| `verdict=partial` 且 deliverable>0 | `+1` | 轻奖赏 |
+| `verdict=partial` 且 deliverable=0 | `0` | 中性 |
+| `verdict=failed` | `-2` | 强负反馈 |
+| 无 reflexion 且 deliverable>0 | `+1` | 有产出即弱奖赏 |
+| 无 reflexion 且 deliverable=0 | `-1` | 空转弱惩罚 |
+
+`momentum` 经 `clampMomentum` 限制在 `[-5, +5]`；deterministic（同输入同输出，单测可断言）。
+
+### 16.3 调节行为
+
+- **选 KPI**：`selectKpiByMomentum(activeKpis)` — momentum 降序，平手按 `createdAt` 新者优先。dispatcher 的 `kpi_inner_goal` / `casual_chat defer` 一律用它，**取代**原先固定的 `list({active})[0]`。
+- **正反馈延续**：连续有效推进的 KPI momentum 高 → 持续优先派活。
+- **负反馈退避**：连续 idle/failed 的 KPI momentum 跌 → 让位给更有产出的 KPI；跌到底叠加既有 `consecutiveIdleBursts` 阈值仍触发 `stuck_reflexion`。
+- **可见性**：`formatKpiDigest` 增 `momentum` 行；心跳 / `view_kpi` 可读，便于人/战略层审计。
+
+### 16.4 与既有机制的边界
+
+| 机制 | 角色 | 与 momentum 关系 |
+|------|------|-------------------|
+| `consecutiveIdleBursts` | 卡死检测（触发 meta 反思 burst） | 互补；idle 既加 streak 又扣 momentum |
+| `reflexionTrail` | per-KPI 叙事记忆 | momentum 是其**标量投影** |
+| `recentLessons` / `focusOrder`（§5） | 战略层 LLM 叙事调度 | **未来**：`strategyPlanner` 落地后 `focusOrder` 为权威，momentum 作为输入量之一 |
+| `reflexion 续 burst`（`UTLRA_KPI_AUTO_NEXT_BURST`） | burst 自动续跑 | **降级**：默认关闭，trail 作审计；续跑改由 momentum 驱动的 dispatch 决策 |
+
+### 16.5 守门
+
+| 禁止 | 守门 |
+|------|------|
+| momentum 依赖 random / LLM | `computeMomentumDelta` 纯函数 + 单测 deterministic |
+| momentum 无界增长 | `clampMomentum` 硬上下限 ±5 |
+| ongoing KPI 被 momentum 顶成 achieved | momentum 只影响**派活顺序**，不进完成判定（见 [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) §3b） |
+
+## 17. 修订
 
 | 日期 | 说明 |
 |------|------|
 | 2026-06-01 | 初版 ADL：strategyStore + strategyPlanner + staleBurstReaper；dispatcher 退化为按 strategy 派遣；解决 AWAITING 历史僵尸 |
 | 2026-06-02 | §2b WHY+HOW 必填；`whyNow` 字段；与 OUTER-HEARTBEAT-OVERSIGHT 边界 |
+| 2026-06-06 | §16 反馈调节（多巴胺回路）：`kpi-feedback.ts` + `KpiRecord.momentum` + dispatcher 按 momentum 选 KPI（P0-interim，先于 strategyPlanner） |
+| 2026-06-06 | P0 代码落地：`outer/strategy/` 七模块（store/trigger/artifact/planner/dispatch/reaper/facade）+ `runStrategyPhase` 编排；`TaskStatus` 加 `ABORTED`；6 套单测 43 例全绿；依赖的环境模型 P0 已先行落地 |
+| 2026-06-06 | P0 接 live 心跳（gated 默认关）：`live-adapter.ts`（真 registry/LLM/process.kill/action-log）+ `autonomyPipeline` 在 idle 时跑 `runLiveStrategyPhase` 并把 `focusOrder`/`strategyMode` 注入 dispatcher（`pickActiveKpi` 按 focusOrder∩active 选）；`UTLRA_STRATEGY_LAYER_ENABLED` 关时零行为差；新增 live-adapter/run-phase/dispatch-focusorder 测，strategy 套共 52 例全绿 |
+| 2026-06-07 | 移除 `UTLRA_STRATEGY_LAYER_ENABLED` 开关（`isStrategyLayerEnabled` 删除）：战略层在 `verdict=idle` 时常开。副作用：idle tick 会先跑一次 strategy 规划（受 `shouldReevaluate` 触发门控）；同步更新 KPI-sprint 组件测断言 |

@@ -13,14 +13,14 @@
 
 import type { LocalNode } from './types.js';
 
-export const PRESET_BASE_PROMPT = `你是一个 baseNode 执行器（DyFlow）。你拿到一个明确的子目标，**猛猛干到底**：
+export const PRESET_BASE_PROMPT = `你是一个 baseNode 执行器（DyFlow）。你拿到一个明确的子目标，负责把它执行到位。
 
-## 执行哲学
-- 你**不做早停**。围绕目标持续调用工具、观察反馈、调整策略，直到：
+## 执行方式
+- 围绕子目标持续 ReAct（调用工具、观察反馈、调整策略），直到：
   1. 目标达成且本节点 interface.outputs 全部产出 → 正常结束
   2. 判定为**高置信的不可恢复失败** → 输出 \`CANNOT_CONTINUE: <一句话原因>\` 后停止
-- 工具失败先自修：重试、换路径、改参数、换工具组合。能自己解决的绝不上交。
-- 只有当你**确信**再试也不会成功（路径不存在、权限永久缺失、契约根本无法满足）才放弃。
+- 工具失败先自行修复：重试、换路径、改参数、换工具组合。能自己解决的不要上交。
+- 仅当确信再试也不会成功（路径不存在、权限永久缺失、契约根本无法满足）才放弃。
 
 ## 上下文
 - 你会看到：本节点目标(instruction)、全局 memory（goal / facts / constraints / 上轮 last_failure）。
@@ -52,7 +52,7 @@ export const PRESET_BASE: LocalNode = {
   id: 'preset/base',
   version: '1.2.0',
   displayName: 'Base Executor',
-  description: '通用 baseNode：LLM + 全工具 ReAct，猛猛干直到成功或高置信失败。Designer 默认用它执行任意子目标。',
+  description: '通用 baseNode：LLM + 全工具 ReAct，执行子目标直到成功或高置信失败。Designer 默认用它执行任意子目标。',
   tags: ['preset', 'executor', 'general'],
   interface: {
     inputs: [{ key: 'instruction', type: 'string' }],

@@ -18,8 +18,15 @@ import type { LocalNodeStore } from './local-node-store.js';
 import { createMemoryStore } from './memory-store.js';
 import type { MemoryStore } from './memory-store.js';
 import { seedPresetNodes } from './preset-seeder.js';
+import { runDyflowAttributor } from './attributor.js';
 import { runDesigner } from './designer.js';
 import { applyFailureDistill, distillRunFailures } from './failure-distill.js';
+import {
+  buildRunContext,
+  clearRunContext,
+  readRunContext,
+  writeRunContext,
+} from './run-context-store.js';
 import { maybeEmitBurstStallAlert } from './burst-stall-alert.js';
 import { runLocalDag } from './runner.js';
 import type { RunnerResult } from './runner.js';
@@ -181,18 +188,44 @@ export function createDyflowController(
           const res = await runLocalDag(dag, { llm, toolRegistry, store, memory, logger, workDir });
           clearLocalDag(workDir);
           archiveDagHistory(memory, dag, res);
-          if (!res.ok) {
+          writeRunContext(workDir, buildRunContext(dag, res));
+          writeState({
+            mode: 'ATTRIBUTE',
+            designStreak: 0,
+            reason: res.ok ? null : `RUN failed at ${res.failedAt}`,
+          });
+          return { hadWork: true };
+        }
+
+        case 'ATTRIBUTE': {
+          const runCtx = readRunContext(workDir);
+          if (!runCtx) {
+            logger.warn('dyflow-controller', { event: 'attribute.no.context', data: { burstId } });
+            writeState({ mode: 'DESIGN', designStreak: 0 });
+            return { hadWork: true };
+          }
+
+          const attr = await runDyflowAttributor(runCtx, { llm, logger, memory });
+          logger.info('dyflow-controller', {
+            event: 'attribute.finished',
+            data: { burstId, ok: attr.ok, toolCalls: attr.toolCalls, runOk: runCtx.ok },
+          });
+
+          if (!runCtx.ok) {
             const distilled = distillRunFailures({
-              results: res.results,
+              results: runCtx.results,
               lastFailure: memory.read().last_failure,
             });
             const added = applyFailureDistill(memory, distilled);
             logger.info('dyflow-controller', {
               event: 'failure.distill',
-              data: { burstId, failedAt: res.failedAt, distilled: distilled.length, added },
+              data: { burstId, failedAt: runCtx.failedAt, distilled: distilled.length, added },
             });
-            checkStallAndAlert(`failure.distill:${res.failedAt ?? 'unknown'}`);
+            checkStallAndAlert(`failure.distill:${runCtx.failedAt ?? 'unknown'}`);
           }
+
+          clearRunContext(workDir);
+
           const brainDir = path.join(workDir, '.brain');
           const activePendings = fs.existsSync(path.join(brainDir, 'pendings.json'))
             ? listActivePendings(brainDir)
@@ -201,12 +234,15 @@ export function createDyflowController(
             writeState({
               mode: 'AWAITING',
               designStreak: 0,
-              reason: res.ok ? null : `RUN failed at ${res.failedAt}`,
+              reason: runCtx.ok ? null : `RUN failed at ${runCtx.failedAt}`,
             });
             return { hadWork: false };
           }
-          // 无 pending：回 DESIGN 继续规划
-          writeState({ mode: 'DESIGN', designStreak: 0, reason: res.ok ? null : `RUN failed at ${res.failedAt}` });
+          writeState({
+            mode: 'DESIGN',
+            designStreak: 0,
+            reason: runCtx.ok ? null : `RUN failed at ${runCtx.failedAt}`,
+          });
           return { hadWork: true };
         }
 

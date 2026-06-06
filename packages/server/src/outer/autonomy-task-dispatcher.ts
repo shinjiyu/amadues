@@ -7,7 +7,8 @@ import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
 import { llmRawChatCompletion } from '../llm/raw.js';
 import { loadInboundConfigFromEnv } from './inbound-policy.js';
 import { getGroupParticipationState, recordProactiveSpeak } from './participation-state.js';
-import type { KpiRegistry } from './kpi-registry.js';
+import type { KpiRegistry, KpiRecord } from './kpi-registry.js';
+import { selectKpiByMomentum } from './kpi-feedback.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { executeOuterTool, type OuterToolContext } from './outer-tools.js';
 import { loadSoul } from './soul.js';
@@ -54,14 +55,34 @@ export interface AutonomyDispatchDeps {
   memoryStore?: OuterMemoryStore;
   loadThreads?: () => LooseThreadStore;
   identityRegistry?: IdentityRegistry;
+  /**
+   * 战略层 focusOrder（STRATEGY-PLANNING-LAYER.md §8/§10）：提供时 dispatcher 不再自由按 momentum 选，
+   * 而是按 focusOrder ∩ active 顺序挑；交集为空 → 不派 KPI。由 pipeline 在 idle 时注入。
+   */
+  focusOrder?: string[];
+  /** 战略模式：focusOrder 无可派 KPI 时跳过闲聊（避免战略/KPI 漂移时乱跑） */
+  strategyMode?: boolean;
 }
 
 function taskConfig(policy: AutonomyPolicy, id: AutonomyTaskType) {
   return policy.taskTypes[id] ?? { enabled: false, cooldownMs: 0, maxPerDay: 0 };
 }
 
-function hasActiveKpi(kpiRegistry: KpiRegistry): boolean {
-  return kpiRegistry.list({ status: 'active' }).length > 0;
+/**
+ * 选要推进的 active KPI：
+ *   - 有 strategy.focusOrder（战略层启用）→ 按 focusOrder ∩ active 顺序挑第一个；交集空 → undefined（不派）。
+ *   - 否则 → 多巴胺反馈调节按 momentum 选（取代固定 list[0]；见 STRATEGY-PLANNING-LAYER.md §16）。
+ */
+function pickActiveKpi(kpiRegistry: KpiRegistry, focusOrder?: string[]): KpiRecord | undefined {
+  const active = kpiRegistry.list({ status: 'active' });
+  if (focusOrder && focusOrder.length > 0) {
+    for (const id of focusOrder) {
+      const k = active.find((x) => x.kpiId === id);
+      if (k) return k;
+    }
+    return undefined;
+  }
+  return selectKpiByMomentum(active);
 }
 
 function canSpawnInner(snapshot: ResourceSnapshot, _registry: InnerBrainRegistry, policy: AutonomyPolicy): boolean {
@@ -92,9 +113,8 @@ async function draftKpiGoal(
   deps: AutonomyDispatchDeps,
   snapshot: ResourceSnapshot,
 ): Promise<{ goal: string; kpiId: string } | null> {
-  const kpis = deps.kpiRegistry.list({ status: 'active' });
-  if (kpis.length === 0) return null;
-  const kpi = kpis[0]!;
+  const kpi = pickActiveKpi(deps.kpiRegistry, deps.focusOrder);
+  if (!kpi) return null;
 
   const soul = loadSoul(deps.dataRoot);
   const plannerContext = await buildKpiGoalPlannerContext({
@@ -249,8 +269,9 @@ async function executeCasualChat(
   if (!threadId) return { dispatched: false, reason: 'no_default_thread' };
 
   // 有 active KPI 时优先推进任务，不做无关闲聊
-  if (hasActiveKpi(deps.kpiRegistry)) {
-    const activeKpi = deps.kpiRegistry.list({ status: 'active' })[0]!;
+  const focusKpi = pickActiveKpi(deps.kpiRegistry, deps.focusOrder);
+  if (focusKpi) {
+    const activeKpi = focusKpi;
     const live = findLiveBurstForKpi(deps.registry, activeKpi.kpiId);
     if (live) {
       return { dispatched: false, reason: 'casual_chat_kpi_in_progress' };
@@ -290,7 +311,7 @@ async function executeCasualChat(
   if (!env) return { dispatched: false, reason: 'no_llm_env' };
 
   const agentName = process.env['UTLRA_AGENT_NAME']?.trim() || deps.agentSid;
-  const activeKpi = deps.kpiRegistry.list({ status: 'active' })[0];
+  const activeKpi = pickActiveKpi(deps.kpiRegistry, deps.focusOrder);
   const kpiFocusLine = activeKpi
     ? `当前 KPI：${activeKpi.description.slice(0, 120)}。闲聊不得耽误 KPI 推进。`
     : '无 active KPI 时也只接与自己工作相关的话，不管别人闲事。';
@@ -333,9 +354,10 @@ export async function dispatchAutonomyTasks(
   const policy = loadAutonomyPolicy(deps.dataRoot);
   const personality = loadPersonality(deps.dataRoot);
 
-  // 1. KPI 优先（同 KPI 已有 RUNNING/AWAITING/BLOCKED 时绝不重复派发）
-  if (hasActiveKpi(deps.kpiRegistry)) {
-    const activeKpi = deps.kpiRegistry.list({ status: 'active' })[0]!;
+  // 1. KPI 优先（focusOrder 或 momentum 选；同 KPI 已有 RUNNING/AWAITING/BLOCKED 时绝不重复派发）
+  const focusKpi = pickActiveKpi(deps.kpiRegistry, deps.focusOrder);
+  if (focusKpi) {
+    const activeKpi = focusKpi;
     const live = findLiveBurstForKpi(deps.registry, activeKpi.kpiId);
     if (live) {
       const result: AutonomyDispatchResult = {
@@ -351,8 +373,8 @@ export async function dispatchAutonomyTasks(
     }
   }
 
-  if (hasActiveKpi(deps.kpiRegistry) && canSpawnInner(snapshot, deps.registry, policy)) {
-    const activeKpi = deps.kpiRegistry.list({ status: 'active' })[0]!;
+  if (focusKpi && canSpawnInner(snapshot, deps.registry, policy)) {
+    const activeKpi = focusKpi;
     const kpiDecision = evaluateKpiAutonomyDispatch(
       deps.kpiRegistry,
       deps.registry,
@@ -379,6 +401,14 @@ export async function dispatchAutonomyTasks(
         return result;
       }
     }
+  }
+
+  // 战略模式：存在 active KPI 但 strategy 选了空 focus（交集空）→ 这是有意 hold，不掷闲聊（ADL §8/§10）。
+  // 注意：无任何 active KPI 时没有可 hold 的目标，落到正常 idle 行为（闲聊），避免空跑期 agent 彻底静默。
+  if (deps.strategyMode && !focusKpi && deps.kpiRegistry.list({ status: 'active' }).length > 0) {
+    const result: AutonomyDispatchResult = { dispatched: false, reason: 'strategy_no_focus' };
+    logAutonomyDispatch(deps.dataRoot, snapshot, result);
+    return result;
   }
 
   // 2. 闲聊候选（无 KPI 或无法 spawn）

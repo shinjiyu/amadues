@@ -28,6 +28,8 @@ export function sweepKpiCompletions(
 
   for (const kpi of kpiRegistry.list({ status: 'active' })) {
     if (kpi.bursts.length === 0) continue;
+    // 常驻 KPI 永不自动结案（KPI-COMPLETION-JUDGE.md §3b）
+    if (kpi.kind === 'ongoing') continue;
     const links = buildKpiBurstLinks(kpi, innerRegistry);
     const { action, reason } = suggestKpiAction(kpi, links);
     if (action !== 'achieved') continue;

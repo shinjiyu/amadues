@@ -1,7 +1,7 @@
 /**
  * KPI 进展推断 — 纯函数，供 burst onExit、view_kpi、场景 harness 共用。
  */
-import type { ReflexionSummary, KpiRecord } from './kpi-registry.js';
+import type { ReflexionSummary, KpiRecord, KpiKind } from './kpi-registry.js';
 import type { InnerBrainRegistry, TaskRecord, TaskStatus } from './inner-brain-registry.js';
 import { buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
 import { LIVE_KPI_BURST_STATUSES } from './kpi-dispatch-guard.js';
@@ -31,7 +31,11 @@ export function shouldAutoAchieveKpi(input: {
   isAwaiting: boolean;
   exitedWithError: boolean;
   isPostComplete: boolean;
+  /** KPI 类型；'ongoing' 永不 auto-achieve（KPI-COMPLETION-JUDGE.md §3b） */
+  kind?: KpiKind;
 }): boolean {
+  // 常驻 / 周期 / 监督类 KPI：交付物只是节拍产出，禁止自动结案
+  if (input.kind === 'ongoing') return false;
   if (input.exitedWithError || input.isAwaiting) return false;
   if (!input.isPostComplete) return false;
   if (input.deliverableCount < 1) return false;
@@ -116,6 +120,10 @@ export function suggestKpiAction(
   if (latestDone && latest.deliverableCount > 0) {
     const v = latest.lastReflexionVerdict;
     if (v === 'success' || v === 'partial' || v === null) {
+      // ongoing 常驻 KPI：交付完成不结案，继续巡检（KPI-COMPLETION-JUDGE.md §3b）
+      if (kpi.kind === 'ongoing') {
+        return { action: 'continue', reason: 'ongoing 常驻：交付后继续巡检' };
+      }
       return { action: 'achieved', reason: '最近 burst 已 DONE 且里程碑完成并有产出' };
     }
   }
@@ -151,10 +159,11 @@ export function formatKpiDigest(
   const links = buildKpiBurstLinks(kpi, innerRegistry);
   const { action, reason } = suggestKpiAction(kpi, links, stuckThreshold);
   const lines: string[] = [
-    `KPI ${kpi.kpiId} [${kpi.status}]`,
+    `KPI ${kpi.kpiId} [${kpi.status}/${kpi.kind}]`,
     `描述：${kpi.description}`,
     `建议动作：${action}（${reason}）`,
     `连续 idle：${kpi.consecutiveIdleBursts}`,
+    `momentum：${kpi.momentum}`,
     `bursts：${kpi.bursts.length}`,
   ];
   if (links.length > 0) {

@@ -16,7 +16,7 @@ export type { BaseNodeOutcome } from './base-node-executor.js';
 export { createCommitLocalNodeTool } from './commit-local-node-tool.js';
 export { runLocalDag } from './runner.js';
 export type { RunnerResult, RunnerDeps } from './runner.js';
-export { runDesigner, DESIGNER_SYSTEM } from './designer.js';
+export { runDesigner, DESIGNER_SYSTEM, buildDesignerSystemPrompt } from './designer.js';
 export type { DesignerOutcome } from './designer.js';
 export { createDesignerTools } from './designer-tools.js';
 export type { NodeSharingDeps } from './designer-tools.js';

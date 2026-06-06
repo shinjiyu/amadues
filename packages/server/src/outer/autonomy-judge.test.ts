@@ -27,7 +27,9 @@ describe('autonomy-judge', () => {
   it('blocks when running inner brains at cap', () => {
     const policy = defaultAutonomyPolicy();
     const verdict = evaluateAutonomyVerdict(
-      baseSnapshot({ innerBrains: { running: 1, awaiting: 0, blocked: 0, asyncWaiting: 0 } }),
+      baseSnapshot({
+        innerBrains: { running: policy.hardGates.maxRunningInnerBrains, awaiting: 0, blocked: 0, asyncWaiting: 0 },
+      }),
       policy,
     );
     expect(verdict.level).toBe('busy');

@@ -38,7 +38,7 @@ function Stop-AgentLocalProcess {
   if (Test-Path $pidFile) {
     $oldPid = Get-Content $pidFile -ErrorAction SilentlyContinue
     if ($oldPid) {
-      & taskkill.exe /F /T /PID $oldPid 2>$null | Out-Null
+      try { & taskkill.exe /F /T /PID $oldPid 2>&1 | Out-Null } catch { }
       Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
     }
     Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
@@ -46,7 +46,7 @@ function Stop-AgentLocalProcess {
   $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
   foreach ($c in $conns) {
     if (-not $c.OwningProcess) { continue }
-    & taskkill.exe /F /T /PID $c.OwningProcess 2>$null | Out-Null
+    try { & taskkill.exe /F /T /PID $c.OwningProcess 2>&1 | Out-Null } catch { }
   }
   Start-Sleep -Milliseconds 400
 }
@@ -56,10 +56,13 @@ function Start-AgentLocalProcess {
     [Parameter(Mandatory = $true)][string]$Name,
     [Parameter(Mandatory = $true)][int]$Port,
     [Parameter(Mandatory = $true)][string]$DataDirRel,
+    [string]$RepoRoot,
+    [string]$EnvRepoRoot,
     [switch]$Watch
   )
-  $root = Get-KuronekoRepoRootForDocker
-  Ensure-AgentInstanceEnvFile $root $Name
+  $root = if ($RepoRoot) { (Resolve-Path $RepoRoot).Path } else { Get-KuronekoRepoRootForDocker }
+  $envRoot = if ($EnvRepoRoot) { (Resolve-Path $EnvRepoRoot).Path } else { $root }
+  Ensure-AgentInstanceEnvFile $envRoot $Name
 
   $container = switch ($Name) {
     'kuroneko' { 'utlra-agent-kuroneko' }
@@ -69,15 +72,16 @@ function Start-AgentLocalProcess {
     'yuanbao'  { 'utlra-agent-yuanbao' }
     'bot1'     { 'utlra-agent-bot1' }
     'bot2'     { 'utlra-agent-bot2' }
+    'bot3'     { 'utlra-agent-bot3' }
     default    { $null }
   }
   if ($container) {
-    & docker stop $container 2>$null | Out-Null
+    try { & docker stop $container 2>&1 | Out-Null } catch { }
   }
 
   Stop-AgentLocalProcess -Name $Name -Port $Port
 
-  $envPath = Join-Path (Get-AgentEnvDir $root) "$Name.env"
+  $envPath = Join-Path (Get-AgentEnvDir $envRoot) "$Name.env"
   Import-AgentEnvFile $envPath
 
   $dataRootPath = Join-Path $root $DataDirRel

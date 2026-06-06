@@ -22,6 +22,17 @@ import crypto from 'node:crypto';
 export type KpiStatus = 'active' | 'paused' | 'achieved' | 'abandoned';
 
 /**
+ * KPI 类型（ADL KPI-COMPLETION-JUDGE.md §3b）。
+ *   - delivery：一次性交付目标，满足完成条件可 auto-achieve（默认）
+ *   - ongoing：常驻 / 周期 / 监督类，**永不** auto-achieve，交付物只是节拍产出
+ */
+export type KpiKind = 'delivery' | 'ongoing';
+
+/** momentum（多巴胺反馈调节）取值上下限；见 STRATEGY-PLANNING-LAYER.md §16 */
+export const MOMENTUM_MIN = -5;
+export const MOMENTUM_MAX = 5;
+
+/**
  * 单次 burst 结束后生成的反思摘要（精简版，原始 reflexion JSON 保留在 archive 里）。
  *
  * 注意：这里有意不引入 reflexion.ts 的类型依赖（避免外脑 ↔ inner-brain 反向耦合）。
@@ -50,6 +61,15 @@ export interface KpiRecord {
   createdBy: string;
   createdAt: string;
   status: KpiStatus;
+  /**
+   * KPI 类型；默认 'delivery'。ongoing 类禁止 auto-achieve（见 KPI-COMPLETION-JUDGE.md §3b）。
+   */
+  kind: KpiKind;
+  /**
+   * 多巴胺反馈调节标量（STRATEGY-PLANNING-LAYER.md §16）：burst 有效推进 → 升，
+   * idle/failed → 降，clamp 在 [MOMENTUM_MIN, MOMENTUM_MAX]。dispatcher 按它选 KPI。
+   */
+  momentum: number;
   /** 完成 / 放弃时间 */
   finalizedAt?: string;
   /** 完成原因 / 放弃原因 */
@@ -73,6 +93,8 @@ export interface CreateKpiInput {
   description: string;
   createdBy: string;
   notes?: string;
+  /** KPI 类型；默认 'delivery' */
+  kind?: KpiKind;
 }
 
 export class KpiRegistry {
@@ -98,6 +120,8 @@ export class KpiRegistry {
   private _normalize(r: KpiRecord): KpiRecord {
     return {
       ...r,
+      kind: r.kind ?? 'delivery',
+      momentum: typeof r.momentum === 'number' ? r.momentum : 0,
       bursts: r.bursts ?? [],
       consecutiveIdleBursts: r.consecutiveIdleBursts ?? 0,
       reflexionTrail: r.reflexionTrail ?? [],
@@ -130,6 +154,8 @@ export class KpiRegistry {
       createdBy: input.createdBy,
       createdAt: new Date().toISOString(),
       status: 'active',
+      kind: input.kind ?? 'delivery',
+      momentum: 0,
       bursts: [],
       consecutiveIdleBursts: 0,
       reflexionTrail: [],
@@ -192,6 +218,23 @@ export class KpiRegistry {
       k.consecutiveIdleBursts = 0;
       this._save();
     }
+  }
+
+  /**
+   * 多巴胺反馈调节：按 delta 调整 momentum 并 clamp 在 [MOMENTUM_MIN, MOMENTUM_MAX]。
+   * 返回更新后的 momentum；KPI 不存在或 delta 为 0 时不写盘。
+   * 增量计算见 `kpi-feedback.ts`（纯函数，便于单测）。
+   */
+  adjustMomentum(kpiId: string, delta: number): number {
+    const k = this.kpis.get(kpiId);
+    if (!k) return 0;
+    if (delta === 0) return k.momentum;
+    const next = Math.max(MOMENTUM_MIN, Math.min(MOMENTUM_MAX, k.momentum + delta));
+    if (next !== k.momentum) {
+      k.momentum = next;
+      this._save();
+    }
+    return k.momentum;
   }
 
   /** 追加一条 reflexion 摘要到 trail */

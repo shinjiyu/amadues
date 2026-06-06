@@ -20,6 +20,7 @@ describe('createDyflowController (integration)', () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'dyflow-ctrl-'));
     fs.mkdirSync(path.join(root, '.brain'), { recursive: true });
     fs.writeFileSync(path.join(root, '.brain', 'goal.md'), 'collect and summarize weather', 'utf8');
+    fs.writeFileSync(path.join(root, 'weather.txt'), 'sunny weather summary for acceptance', 'utf8');
   });
   afterEach(() => { if (root) fs.rmSync(root, { recursive: true, force: true }); });
 
@@ -31,11 +32,21 @@ describe('createDyflowController (integration)', () => {
     expect(createMemoryStore(root).read().goal).toBe('collect and summarize weather');
   });
 
-  it('runs DESIGN -> RUN -> DESIGN(done) across ticks', async () => {
+  it('runs DESIGN -> RUN -> ATTRIBUTE -> DESIGN(done) across ticks', async () => {
     const completes: string[] = [];
-    // DESIGN tick 1: commit a 1-node dag (referencing fetch). RUN tick: base node finishes.
-    // DESIGN tick 2: report_done.
+    const node = {
+      id: 'n1',
+      ref: 'preset/base',
+      instruction: 'fetch weather',
+      deliverable: { summary: 'weather file', checks: [{ kind: 'file', target: 'weather.txt' }] },
+    };
     const llm = createFakeLLM([
+      {
+        label: 'design-commit',
+        match: ({ systemPrompt, messages }) =>
+          systemPrompt.includes('Designer') && lastUser(messages).includes('请规划本轮'),
+        reply: { content: '', toolCalls: [{ id: 'd1', name: 'commit_local_dag', args: { nodes: [node] } }] },
+      },
       {
         label: 'design-done',
         match: ({ systemPrompt, messages }) =>
@@ -43,52 +54,66 @@ describe('createDyflowController (integration)', () => {
         reply: { content: '', toolCalls: [{ id: 'd2', name: 'report_done', args: { reason: 'goal achieved' } }] },
       },
       {
+        label: 'attributor',
+        match: ({ systemPrompt }) => systemPrompt.includes('Mandatory Attributor'),
+        reply: { content: 'distilled ok run' },
+      },
+      {
         label: 'base-run',
         match: ({ systemPrompt }) => systemPrompt.includes('baseNode 执行器'),
         reply: { content: 'weather fetched and summarized with enough detail for acceptance' },
       },
-      {
-        label: 'design-commit',
-        match: ({ systemPrompt }) => systemPrompt.includes('Designer'),
-        reply: { content: '', toolCalls: [{ id: 'd1', name: 'commit_local_dag', args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'fetch weather' }] } }] },
-      },
-    ]);
+    ], { consumeOnMatch: true });
 
     const controller = createDyflowController(
       { workDir: root, burstId: 'b1' },
       { llm, toolRegistry: createToolRegistry([]), logger: silentLogger(), onComplete: r => { completes.push(r); } },
     );
 
-    const t1 = await controller.tick(); // DESIGN -> RUN
+    const t1 = await controller.tick();
     expect(t1.hadWork).toBe(true);
     expect(readMode(root)).toBe('RUN');
 
-    const t2 = await controller.tick(); // RUN -> DESIGN
+    const t2 = await controller.tick();
     expect(t2.hadWork).toBe(true);
-    expect(readMode(root)).toBe('DESIGN');
+    expect(readMode(root)).toBe('ATTRIBUTE');
     expect(createMemoryStore(root).read().node_results['n1']?.ok).toBe(true);
+    expect(fs.existsSync(path.join(root, '.brain', 'run-context.json'))).toBe(true);
 
-    const t3 = await controller.tick(); // DESIGN -> DONE
+    const t3 = await controller.tick();
+    expect(t3.hadWork).toBe(true);
+    expect(readMode(root)).toBe('DESIGN');
+    expect(fs.existsSync(path.join(root, '.brain', 'run-context.json'))).toBe(false);
+
+    const t4 = await controller.tick();
     expect(readMode(root)).toBe('DONE');
     expect(completes).toEqual(['goal achieved']);
 
-    const t4 = await controller.tick(); // DONE idle
-    expect(t4.hadWork).toBe(false);
+    const t5 = await controller.tick();
+    expect(t5.hadWork).toBe(false);
   });
 
-  it('distills constraints after failed RUN before next DESIGN', async () => {
+  it('distills constraints after failed RUN via ATTRIBUTE before next DESIGN', async () => {
+    const failNode = {
+      id: 'n1',
+      ref: 'preset/base',
+      instruction: 'will fail',
+      deliverable: { summary: 'out', checks: [{ kind: 'file', target: 'x.txt' }] },
+    };
     const llm = createFakeLLM([
       {
         label: 'design-commit',
-        match: ({ systemPrompt }) => systemPrompt.includes('Designer'),
+        match: ({ systemPrompt, messages }) =>
+          systemPrompt.includes('Designer') && lastUser(messages).includes('请规划本轮'),
         reply: {
           content: '',
-          toolCalls: [{
-            id: 'd1',
-            name: 'commit_local_dag',
-            args: { nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'will fail' }] },
-          }],
+          toolCalls: [{ id: 'd1', name: 'commit_local_dag', args: { nodes: [failNode] } }],
         },
+      },
+      {
+        label: 'attributor',
+        match: ({ systemPrompt }) => systemPrompt.includes('Mandatory Attributor'),
+        reply: { content: 'noted failure' },
       },
       {
         label: 'base-fail',
@@ -97,16 +122,18 @@ describe('createDyflowController (integration)', () => {
           lastUser(messages).includes('will fail'),
         reply: { content: 'CANNOT_CONTINUE: API path wrong permanently' },
       },
-    ]);
+    ], { consumeOnMatch: true });
     const controller = createDyflowController(
       { workDir: root, burstId: 'b1' },
       { llm, toolRegistry: createToolRegistry([]), logger: silentLogger() },
     );
     await controller.tick();
     await controller.tick();
+    await controller.tick();
     const mem = createMemoryStore(root).read();
     expect(mem.constraints.some(c => c.startsWith('[run-failure]'))).toBe(true);
     expect(mem.node_results['n1']?.ok).toBe(false);
+    expect(readMode(root)).toBe('DESIGN');
   });
 
   it('gives up after repeated empty DESIGN ticks', async () => {

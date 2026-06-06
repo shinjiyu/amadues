@@ -116,7 +116,8 @@ agentServer 进程 load (index.ts)
 
 | 文件 | 续跑用途 |
 |------|----------|
-| `.brain/dyflow-state.json` | `mode`（DESIGN / RUN / …） |
+| `.brain/dyflow-state.json` | `mode`（DESIGN / RUN / ATTRIBUTE / …） |
+| `.brain/run-context.json` | RUN→ATTRIBUTE 临时执行快照（归因后删除） |
 | `.brain/memory.json` | `node_results`、`last_failure`、`facts` |
 | `.brain/local_dag.json` | 当前轮 DAG（RUN 中可能存在） |
 | `.brain/local_nodes/` | preset + 已 pack 节点 |
