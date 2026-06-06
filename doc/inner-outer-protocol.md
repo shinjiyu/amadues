@@ -178,9 +178,9 @@ body：
 |------|------|
 | **内脑** `POST /api/inner/:ws/llm-step` | 支持 **附图**（`imageBase64` + `mimeType`）→ 智谱多模态；**与 goal.md 独立**。 |
 | **内脑 Pi-mono** | Decomposer / Executor 将 **goal.md 当纯文本** 注入 LLM；**不会**自动把 `![](.run/outer-task-media/…)` 当 vision 请求解析。 |
-| **外脑** `POST /api/outer/roundtrip` | 现已支持 **`parts[]`**：`attachment` + `data:image/...;base64,...` 写入 workspace **`.run/outer-task-media/`**，goal.md 中为 **Markdown 图片相对路径**。内脑侧 **先以文本+路径形式** 看见任务；若需「看图执行」，需后续：外脑先 **视觉摘要进 goal**、或 **扩展 Pi-mono 读图**、或 **工具链读文件送多模态**。 |
+| **外脑** `POST /api/outer/roundtrip` | 现已支持 **`parts[]`**：`attachment` + `data:image/...;base64,...` 写入 workspace **`.run/outer-task-media/`**，goal.md 中为 **Markdown 图片相对路径**。内脑侧 **先以文本+路径形式** 看见任务；运行时识图用内脑工具 **`describe_image`**（见 [`INNER-VISION-TOOL.md`](structurizr/INNER-VISION-TOOL.md)）；spawn 前可选 **`UTLRA_GOAL_VISION_ENRICH`**。 |
 
-**结论**：**存储与任务描述已可对齐到同一 workspace**；**感知对齐（LLM 真看图）尚未自动完成**，属于下一阶段产品决策。
+**结论**：**存储与任务描述已对齐**；**运行时识图**通过 `describe_image` 显式调用 vision 模型（ReAct 仍文本循环）；自动把每张图塞进多模态消息仍非默认。
 
 ### 7.3 外脑能否「实时、深入」检查内脑工作状态
 

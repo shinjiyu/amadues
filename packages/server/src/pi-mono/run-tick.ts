@@ -115,6 +115,7 @@ async function createPiMonoController(params: {
     : createObSkillProvider(process.env['OPENKURONEKO_OB_SKILL_POOL']);
 
   const executorToolRegistry = createToolRegistry([
+    toolsDefs.describeImageTool,
     toolsDefs.readFileTool,
     toolsDefs.writeFileTool,
     toolsDefs.editFileTool,

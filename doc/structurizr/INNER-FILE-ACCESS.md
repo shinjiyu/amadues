@@ -41,6 +41,7 @@
 发现：.inbox/README.md | list_peer_files | search_files / search_peer_files
 定位：search_* 返回 path:line
 读取：read_file(path, offset_line?, limit_lines?)  ← 默认 limit=200
+识图：describe_image(path, prompt?)  ← 栅格图 / 截图（见 INNER-VISION-TOOL.md）
 大文件：read_peer_file 同参数；或 shell_exec head/tail
 ```
 
@@ -65,7 +66,7 @@
 | 规则 | 行为 |
 |------|------|
 | **R1** | 文件 > `UTLRA_READ_FILE_WHOLE_MAX_BYTES`（默认 64KiB）且未传 limit → 强制分页模式 |
-| **R2** | 二进制 / 非 UTF-8 → 拒绝，提示 `shell_exec` 或只读 bytes 统计 |
+| **R2** | 二进制 / 非 UTF-8 → 拒绝；栅格图用 `describe_image`（见 [`INNER-VISION-TOOL.md`](./INNER-VISION-TOOL.md)） |
 | **R3** | `read_peer_file` 共享同一分页实现 |
 | **R4** | executor prompt：大产物先 `.inbox` 目录 → `search_*` → 分页 `read_*` |
 

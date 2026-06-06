@@ -32,6 +32,7 @@ export async function analyzeImageWithMcp(
   const child = spawn(MCP_SERVER_CMD, MCP_SERVER_ARGS, {
     env: { ...process.env, Z_AI_API_KEY: apiKey, Z_AI_MODE: 'ZHIPU' },
     stdio: ['pipe', 'pipe', 'pipe'],
+    shell: process.platform === 'win32',
   });
 
   const initReq = {
