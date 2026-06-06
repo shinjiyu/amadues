@@ -68,9 +68,9 @@ $script:KuronekoServices = @{
     Label          = 'Dashboard'
     NpmScript      = 'dev:dashboard'
     Port           = 5173
-    HealthUrl      = $null
+    HealthUrl      = 'http://127.0.0.1:5173/'
     OpenUrl        = 'http://127.0.0.1:5173/'
-    StartupWaitSec = 60
+    StartupWaitSec = 90
   }
   'drive9-explorer' = @{
     Label            = 'Drive9 Explorer'

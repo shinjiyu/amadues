@@ -13,7 +13,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    host: '127.0.0.1',
     port: 7779,
+    strictPort: true,
     proxy: {
       '/api': { target: 'http://127.0.0.1:7777', changeOrigin: true },
     },

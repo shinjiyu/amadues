@@ -24,14 +24,33 @@ if (-not (Test-Path $mergeScript)) {
 $destScripts = Join-Path $LocalDashboardRoot 'scripts\kuroneko'
 New-Item -ItemType Directory -Force -Path $destScripts | Out-Null
 
-Copy-Item -Force (Join-Path $KuronekoRoot 'scripts\kuroneko-utlra.bundle.json') (Join-Path $LocalDashboardRoot 'scripts\kuroneko-utlra.bundle.json')
+$bundleTemplate = Get-Content -LiteralPath (Join-Path $KuronekoRoot 'scripts\kuroneko-utlra.bundle.json') -Raw -Encoding UTF8
+$kuronekoRootNorm = ($KuronekoRoot -replace '\\', '/')
+$bundleResolved = $bundleTemplate.Replace('{{KURONEKO_ROOT}}', $kuronekoRootNorm)
+$bundleDest = Join-Path $LocalDashboardRoot 'scripts\kuroneko-utlra.bundle.json'
+[System.IO.File]::WriteAllText($bundleDest, $bundleResolved, [System.Text.UTF8Encoding]::new($false))
+
 Copy-Item -Force (Join-Path $KuronekoRoot 'scripts\kuroneko\*.ps1') $destScripts
 
 $repoRootFile = Join-Path $destScripts 'repo-root.txt'
 Set-Content -Path $repoRootFile -Value $KuronekoRoot -Encoding ascii -NoNewline
 Write-Host "[sync] repo   -> $repoRootFile ($KuronekoRoot)"
 
-Write-Host "[sync] bundle -> $LocalDashboardRoot\scripts\kuroneko-utlra.bundle.json"
+# local-dashboard 进程不自动读 .env；写入供 start.ps1 手动 source 或用户注入
+$ldEnv = Join-Path $LocalDashboardRoot '.env'
+$envLine = "KURONEKO_ROOT=$KuronekoRoot"
+if (Test-Path $ldEnv) {
+  $lines = Get-Content $ldEnv -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*KURONEKO_ROOT=' }
+  ($lines + $envLine) | Set-Content -Path $ldEnv -Encoding utf8
+} else {
+  @(
+    '# 由 scripts/sync-local-dashboard.ps1 维护',
+    $envLine
+  ) | Set-Content -Path $ldEnv -Encoding utf8
+}
+Write-Host "[sync] env    -> $ldEnv (KURONEKO_ROOT)"
+
+Write-Host "[sync] bundle -> $bundleDest (paths -> $kuronekoRootNorm)"
 Write-Host "[sync] ps1    -> $destScripts"
 
 Push-Location $LocalDashboardRoot
@@ -42,7 +61,7 @@ try {
 
   # 反注册：从 registry 移除 bundle 中已删除的 kuroneko-* 服务
   $registryPath = Join-Path $LocalDashboardRoot 'registry.json'
-  $bundlePath = Join-Path $KuronekoRoot 'scripts\kuroneko-utlra.bundle.json'
+  $bundlePath = $bundleDest
   node -e @"
 const fs = require('fs');
 const registryPath = process.argv[1];

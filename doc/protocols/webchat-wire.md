@@ -71,6 +71,7 @@
 
 - 端点：`GET /ws`（HTTP upgrade）。无 query 参数；身份通过 `hello` 事件声明。
 - 协议：每条消息是一个 JSON 对象，含 `type` 字段。
+- **保活**：Agent（`webchat-bridge`）每 **30s** 发 WebSocket **ping 帧**（`ws.ping()`）；服务端 `ws` 自动 pong。浏览器端无法发 ping 帧，每 30s 发**空串**作应用层保活，服务端静默忽略。用于穿透 nginx/运营商 idle 超时。
 
 ### 2.1 client → server
 

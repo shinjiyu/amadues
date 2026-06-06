@@ -24,6 +24,11 @@ export interface WebChatWsOptions {
 
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000];
 const HELLO_TIMEOUT_MS = 15_000;
+/**
+ * 浏览器 WebSocket API 无法发协议层 ping 帧；用空串作应用层保活（与 agent 侧 ws.ping 等效目的）。
+ * 间隔与 agent bridge 一致：30s。
+ */
+const WS_KEEPALIVE_INTERVAL_MS = 30_000;
 
 function deriveWsUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -38,6 +43,7 @@ export class WebChatWs {
   private retryIdx = 0;
   private status: ConnectionStatus = 'idle';
   private helloAckTimer: ReturnType<typeof setTimeout> | null = null;
+  private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   private isReady = false;
 
   constructor(private readonly opts: WebChatWsOptions) {}
@@ -81,6 +87,7 @@ export class WebChatWs {
       clearTimeout(this.helloAckTimer);
       this.helloAckTimer = null;
     }
+    this.clearKeepaliveTimer();
     this.ws?.close();
     this.ws = null;
     this.setStatus('closed');
@@ -101,6 +108,7 @@ export class WebChatWs {
 
     ws.onopen = () => {
       this.retryIdx = 0;
+      this.startKeepalive(ws);
       this.sendRaw({
         type: 'hello',
         user_id: this.opts.identity.user_id,
@@ -147,6 +155,7 @@ export class WebChatWs {
         clearTimeout(this.helloAckTimer);
         this.helloAckTimer = null;
       }
+      this.clearKeepaliveTimer();
       this.isReady = false;
       this.ws = null;
       if (!this.closed) {
@@ -171,6 +180,25 @@ export class WebChatWs {
       this.ws.send(JSON.stringify(ev));
     } catch (e) {
       console.warn('[webchat-ws] send failed', e);
+    }
+  }
+
+  private startKeepalive(ws: WebSocket): void {
+    this.clearKeepaliveTimer();
+    this.keepaliveTimer = setInterval(() => {
+      if (this.closed || ws.readyState !== WebSocket.OPEN) return;
+      try {
+        ws.send('');
+      } catch (e) {
+        console.warn('[webchat-ws] keepalive send failed', e);
+      }
+    }, WS_KEEPALIVE_INTERVAL_MS);
+  }
+
+  private clearKeepaliveTimer(): void {
+    if (this.keepaliveTimer) {
+      clearInterval(this.keepaliveTimer);
+      this.keepaliveTimer = null;
     }
   }
 

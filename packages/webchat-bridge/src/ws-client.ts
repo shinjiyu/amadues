@@ -8,9 +8,8 @@ import { ClientEventSchema, ServerEventSchema, type ClientEvent, type ServerEven
 
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000];
 const HELLO_TIMEOUT_MS = 15_000;
-/** 经 nginx/运营商 idle 断连时保活；连续 2 次无 pong 则 terminate 触发重连 */
-const WS_PING_INTERVAL_MS = 25_000;
-const WS_PING_MISS_LIMIT = 2;
+/** 经 nginx/运营商 idle 断连时保活：每 30s 发 WebSocket 协议层 ping 帧 */
+const WS_KEEPALIVE_INTERVAL_MS = 30_000;
 
 function wsLog(userId: string, msg: string, extra?: Record<string, unknown>): void {
   const suffix = extra && Object.keys(extra).length > 0 ? ` ${JSON.stringify(extra)}` : '';
@@ -41,8 +40,7 @@ export class WebChatWsClient {
   private retryIdx = 0;
   private status: ConnectionStatus = 'idle';
   private helloAckTimer: NodeJS.Timeout | null = null;
-  private pingTimer: NodeJS.Timeout | null = null;
-  private pingMissStreak = 0;
+  private keepaliveTimer: NodeJS.Timeout | null = null;
   private isReady = false;
   private socketOpenedAt: number | null = null;
 
@@ -66,7 +64,7 @@ export class WebChatWsClient {
       clearTimeout(this.helloAckTimer);
       this.helloAckTimer = null;
     }
-    this.clearPingTimer();
+    this.clearKeepaliveTimer();
     this.isReady = false;
     const ws = this.ws;
     this.ws = null;
@@ -93,7 +91,7 @@ export class WebChatWsClient {
       clearTimeout(this.helloAckTimer);
       this.helloAckTimer = null;
     }
-    this.clearPingTimer();
+    this.clearKeepaliveTimer();
     try { this.ws?.close(); } catch { /* ignore */ }
     this.ws = null;
     this.setStatus('closed');
@@ -151,14 +149,9 @@ export class WebChatWsClient {
     }
     this.ws = ws;
 
-    ws.on('pong', () => {
-      this.pingMissStreak = 0;
-    });
-
     ws.on('open', () => {
       this.socketOpenedAt = Date.now();
-      this.pingMissStreak = 0;
-      this.startPing(ws);
+      this.startKeepalive(ws);
       wsLog(this.opts.userId, 'socket open, hello sent', { attempt });
       this.retryIdx = 0;
       const helloPayload: ClientEvent = {
@@ -238,7 +231,7 @@ export class WebChatWsClient {
         clearTimeout(this.helloAckTimer);
         this.helloAckTimer = null;
       }
-      this.clearPingTimer();
+      this.clearKeepaliveTimer();
       const wasReady = this.isReady;
       this.isReady = false;
       this.ws = null;
@@ -269,36 +262,28 @@ export class WebChatWsClient {
     }
   }
 
-  private startPing(ws: NodeWebSocket): void {
-    this.clearPingTimer();
-    this.pingTimer = setInterval(() => {
+  private startKeepalive(ws: NodeWebSocket): void {
+    this.clearKeepaliveTimer();
+    this.keepaliveTimer = setInterval(() => {
       if (this.closed || ws.readyState !== NodeWebSocket.OPEN) return;
-      this.pingMissStreak += 1;
-      if (this.pingMissStreak > WS_PING_MISS_LIMIT) {
-        wsWarn(this.opts.userId, 'ping timeout, terminating socket', {
-          missStreak: this.pingMissStreak,
-        });
+      try {
+        ws.ping();
+      } catch (e) {
+        wsWarn(this.opts.userId, 'keepalive ping failed, terminating socket', { error: String(e) });
         try {
           ws.terminate();
         } catch {
           /* ignore */
         }
-        return;
       }
-      try {
-        ws.ping();
-      } catch (e) {
-        wsWarn(this.opts.userId, 'ws ping failed', { error: String(e) });
-      }
-    }, WS_PING_INTERVAL_MS);
+    }, WS_KEEPALIVE_INTERVAL_MS);
   }
 
-  private clearPingTimer(): void {
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
+  private clearKeepaliveTimer(): void {
+    if (this.keepaliveTimer) {
+      clearInterval(this.keepaliveTimer);
+      this.keepaliveTimer = null;
     }
-    this.pingMissStreak = 0;
   }
 
   private scheduleReconnect(cause: string): void {

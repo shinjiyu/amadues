@@ -12,13 +12,18 @@
       "page": "kuroneko",
       "kind": "h5",
       "openUrl": "http://127.0.0.1:5173/",
+      "ports": [5173],
+      "logs": {
+        "enabled": true,
+        "path": "{{KURONEKO_ROOT}}/scripts/local-dashboard/.logs/dashboard.log"
+      },
       "commands": {
-        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-dashboard.ps1",
-        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-dashboard.ps1",
-        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-dashboard.ps1"
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/health.ps1\" -Service dashboard",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/start.ps1\" -Service dashboard",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/stop.ps1\" -Service dashboard"
       },
       "healthTimeoutMs": 10000,
-      "startTimeoutMs": 60000
+      "startTimeoutMs": 90000
     },
     {
       "id": "kuroneko-drive9-explorer",
@@ -26,12 +31,17 @@
       "page": "kuroneko",
       "kind": "h5",
       "openUrl": "http://127.0.0.1:7782/",
-      "commands": {
-        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\health-drive9.ps1",
-        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\start-drive9.ps1",
-        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\kuroneko\\stop-drive9.ps1"
+      "ports": [7782, 7780],
+      "logs": {
+        "enabled": true,
+        "path": "{{KURONEKO_ROOT}}/scripts/local-dashboard/.logs/drive9-explorer.log"
       },
-      "startTimeoutMs": 90000,
+      "commands": {
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/health.ps1\" -Service drive9-explorer",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/start.ps1\" -Service drive9-explorer",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/stop.ps1\" -Service drive9-explorer"
+      },
+      "startTimeoutMs": 120000,
       "healthTimeoutMs": 15000
     }
   ]

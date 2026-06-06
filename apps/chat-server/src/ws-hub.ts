@@ -112,6 +112,9 @@ export class WsHub {
   }
 
   private async handleMessage(state: ConnectionState, raw: string): Promise<void> {
+    // 浏览器端应用层空串保活（agent 用协议层 ping，由 ws 自动 pong，不进 message）
+    if (!raw.trim()) return;
+
     let payload: unknown;
     try {
       payload = JSON.parse(raw);
