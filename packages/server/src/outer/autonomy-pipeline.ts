@@ -39,7 +39,6 @@ export interface AutonomyPipelineDeps {
   memoryStore?: OuterMemoryStore;
   getLlmEnv: () => InnerLlmEnv | null;
   getOrchestratorStats?: ResourceProbeDeps['getOrchestratorStats'];
-  scheduleReflexionBurst?: (kpiId: string) => string | null;
   scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   loadThreads?: () => LooseThreadStore;
   identityRegistry?: IdentityRegistry;
@@ -118,7 +117,6 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
     memoryStore: deps.memoryStore,
     innerBrainRegistry: deps.registry,
     kpiRegistry: deps.kpiRegistry,
-    scheduleReflexionBurst: deps.scheduleReflexionBurst,
     scheduleNextKpiBurst: deps.scheduleNextKpiBurst,
   };
 

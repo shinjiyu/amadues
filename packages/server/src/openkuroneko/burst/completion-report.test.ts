@@ -29,7 +29,7 @@ describe('buildCompletionReport', () => {
     expect(text).toContain('## 任务目标（摘要）');
     expect(text).toContain('调研 Kuroneko 项目结构');
     expect(text).toContain('## 里程碑进度');
-    expect(text).toContain('## 关键结果(knowledge.md)');
+    expect(text).toContain('## 关键事实');
     expect(text).toContain('monorepo 结构');
     expect(text).toContain('## 产出文件');
     expect(text).toContain('- report.md');
@@ -54,7 +54,7 @@ describe('buildCompletionReport', () => {
     expect(text).toContain('## 核心结论');
     expect(text).toContain('A B C');
     expect(text).toContain('## 执行器末轮总结');
-    expect(text).not.toContain('## 关键结果(knowledge.md)');
+    expect(text).not.toContain('## 关键事实');
     expect(text).not.toContain('## 产出文件');
     expect(text).not.toContain('## 自评(reflexion)');
   });
@@ -85,7 +85,7 @@ describe('buildCompletionReport', () => {
       deliverables: [],
     }, verbose);
     expect(text.length).toBeLessThan(3500);
-    expect(text).toContain('## 关键结果(knowledge.md)');
+    expect(text).toContain('## 关键事实');
   });
 
   it('includes knowledge as core conclusion and still shows executor summary', () => {

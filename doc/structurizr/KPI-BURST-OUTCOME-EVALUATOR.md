@@ -81,7 +81,7 @@ interface BurstOutcomeEvaluation {
 |------|------|
 | `write_memo` → mem9 `:tasks` | 删除（无人读） |
 | per-burst `reflexion.json` → `reflexionTrail` | `outcomeEvaluation` |
-| `scheduleReflexionBurst`（idle streak） | 评估失败 → `suggestedRetryCharter` + `scheduleNextKpiBurst` |
+| `scheduleReflexionBurst` / `POST /api/kpis/:id/reflect` | 评估失败 → `suggestedRetryCharter` + `scheduleNextKpiBurst`；reflect API **410** |
 | `evaluateKpiAutonomyDispatch` 的 `kpi_stuck_reflexion` 硬挡 | 移除；`suggestKpiAction.stuck_retry` 提示战略层 / outcome 换向 |
 | burst onExit 事实晋升 | `record_fact` 实时 `sharedFactSink`（见 `DRIVE9-KNOWLEDGE-SHARED.md`） |
 

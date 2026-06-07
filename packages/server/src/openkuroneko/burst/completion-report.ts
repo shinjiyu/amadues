@@ -135,11 +135,11 @@ function buildVerboseCompletionReport(input: {
 
   if (knowledgeText && excerpt) {
     sections.push('');
-    sections.push('## 关键结果(knowledge.md)');
+    sections.push('## 关键事实');
     sections.push(BrainFS.tail(knowledgeText, REPORT_KNOWLEDGE_MAX));
   } else if (knowledgeText && !excerpt) {
     sections.push('');
-    sections.push('## 关键结果(knowledge.md)');
+    sections.push('## 关键事实');
     sections.push(BrainFS.tail(knowledgeText, REPORT_KNOWLEDGE_MAX));
   }
 

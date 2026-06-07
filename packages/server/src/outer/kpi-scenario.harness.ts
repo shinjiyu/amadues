@@ -54,15 +54,10 @@ export function createKpiScenarioFixture(
   const innerBrainRegistry = new InnerBrainRegistry(dataRoot);
   const kpi = kpiRegistry.create({ description, createdBy: 'test:harness', kind });
 
-  const reflexionBurstsScheduled: string[] = [];
   const nextBurstsScheduled: string[] = [];
   const deps: BurstExitDeps = {
     kpiRegistry,
     innerBrainRegistry,
-    scheduleReflexionBurst: (kid) => {
-      reflexionBurstsScheduled.push(kid);
-      return `ib-reflexion-${reflexionBurstsScheduled.length}`;
-    },
     scheduleNextKpiBurst: (kid) => {
       nextBurstsScheduled.push(kid);
       return `ib-next-${nextBurstsScheduled.length}`;

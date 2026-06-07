@@ -92,38 +92,17 @@ function formatReflexionTrailDigest(recentReflexions: ReflexionSummary[]): strin
     .join('\n\n');
 }
 
-/** Meta 反思 burst 的 goal.md 正文 */
+/** @deprecated reflexion meta burst 已退役；保留供历史测试引用 */
 export function buildKpiMetaReflexionGoal(
   kpi: KpiRecord,
   recentReflexions: ReflexionSummary[],
 ): string {
   const trailDigest = formatReflexionTrailDigest(recentReflexions);
-  return `# KPI 卡点反思（meta-burst）
-
-origin_user: ${kpi.createdBy}
-
-## KPI
-${kpi.description}
-
-## 状态
-- 已连续 ${kpi.consecutiveIdleBursts} 次 EXECUTE 周期 idle 且无产出
-- KPI 已记录 ${kpi.bursts.length} 个 burst id（同一内脑实例复用）
-- 已记录 ${kpi.reflexionTrail.length} 条反思
-
-## 历次反思摘要（最近 5 条）
-${trailDigest}
-
-## 你的任务
-**不要再执行 KPI 本身**——这是一次 meta 反思周期。
-请评估：
-1. 这个 KPI 是否已陷入"重复撞墙"模式？哪些方向已经死了？
-2. 还有什么**手段层面未尝试**的方向？
-3. 这个 KPI 是否**根本不可达**？如果是，建议直接放弃。
-
-请将分析结论写入 knowledge.md / constraints.md；周期结束时会写入
-.brain/reflexion.json 并进入 KPI reflexionTrail。
-
-输出格式约束：保持原样输出 markdown，不要包 markdown 代码块。`;
+  return (
+    `# KPI 卡点反思（已废弃 meta-burst）\n\n` +
+    `origin_user: ${kpi.createdBy}\n\n## KPI\n${kpi.description}\n\n` +
+    `请改用外脑 outcomeEvaluator + advance_kpi。\n\n${trailDigest}`
+  );
 }
 
 /** 自动 / 手动续跑真任务时的 goal.md 正文 */

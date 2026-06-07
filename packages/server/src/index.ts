@@ -68,7 +68,6 @@ import { KpiRegistry } from './outer/kpi-registry.js';
 import { processBurstExitForKpi } from './outer/kpi-burst-hooks.js';
 import {
   findCanonicalBurstForKpi,
-  buildKpiMetaReflexionGoal,
   buildKpiContinuationGoal,
   patchCanonicalForContinuation,
 } from './outer/inner-brain-kpi-reuse.js';
@@ -275,7 +274,7 @@ function spawnAndAttachWorker(
             exitedWithError: isError,
             isAwaiting,
           },
-          { kpiRegistry, innerBrainRegistry, scheduleReflexionBurst, scheduleNextKpiBurst },
+          { kpiRegistry, innerBrainRegistry, scheduleNextKpiBurst },
         );
 
         if (isError) {
@@ -352,53 +351,7 @@ function spawnAndAttachWorker(
 }
 
 /**
- * Meta 反思周期：在 **同一 canonical 内脑** 上换 goal 续跑（不新开 workspace）。
- */
-function scheduleReflexionBurst(kpiId: string): string | null {
-  const kpi = kpiRegistry.get(kpiId);
-  if (!kpi) return null;
-
-  if (findLiveBurstForKpi(innerBrainRegistry, kpiId)) {
-    console.warn(`[utlra][kpi] reflexion skipped: burst in flight for ${kpiId}`);
-    return null;
-  }
-
-  const canonical = findCanonicalBurstForKpi(innerBrainRegistry, kpiRegistry, kpiId);
-  if (!canonical) {
-    console.warn(`[utlra][kpi] reflexion skipped: no canonical inner brain for ${kpiId}`);
-    return null;
-  }
-
-  const goal = buildKpiMetaReflexionGoal(kpi, kpiRegistry.recentReflexions(kpiId, 5));
-  const originThread = resolveKpiBurstOriginThread(kpi.bursts, innerBrainRegistry);
-  patchCanonicalForContinuation(innerBrainRegistry, canonical.instanceId, canonical.workDir, {
-    goal,
-    isReflexionBurst: true,
-    originThread,
-  });
-
-  const record: TaskRecord = {
-    ...canonical,
-    goal,
-    originThread,
-    status: 'RUNNING',
-    isReflexionBurst: true,
-  };
-
-  const res = spawnAndAttachWorker(record);
-  if (!res.ok) {
-    innerBrainRegistry.update(canonical.instanceId, {
-      status: 'ERROR',
-      finishedAt: new Date().toISOString(),
-      errorMessage: `反思续跑 spawn 失败: ${res.error}`,
-    });
-    return null;
-  }
-  return canonical.instanceId;
-}
-
-/**
- * 自动续跑真任务：复用 canonical instance，注入 KPI + reflexionTrail。
+ * 自动续跑真任务：复用 canonical instance，注入 KPI + burst 执行史。
  */
 function scheduleNextKpiBurst(kpiId: string, excludeInstanceId?: string): string | null {
   const kpi = kpiRegistry.get(kpiId);
@@ -1486,17 +1439,17 @@ app.post('/api/kpis/:id/resume', (c) => {
   return c.json({ ok: true, kpi: kpiRegistry.get(k.kpiId) });
 });
 
-/**
- * 手动触发一次反思 burst（不等 progress detector 阈值）。
- * 给 ops-console "调试" 按钮用：怀疑 KPI 跑偏时立刻派一个 meta 反思 burst。
- */
+/** @deprecated reflexion burst 已退役；用 dispatch / advance_kpi + outcomeEvaluator */
 app.post('/api/kpis/:id/reflect', (c) => {
   const k = kpiRegistry.get(c.req.param('id'));
   if (!k) return c.json({ error: 'KPI 不存在' }, 404);
-  if (k.status !== 'active') return c.json({ error: `KPI 状态为 ${k.status}，不可反思` }, 409);
-  const instanceId = scheduleReflexionBurst(k.kpiId);
-  if (!instanceId) return c.json({ error: '反思 burst 派发失败' }, 500);
-  return c.json({ ok: true, reflexionBurstId: instanceId });
+  return c.json(
+    {
+      error: 'reflexion_burst 已退役；请 POST /api/kpis/:id/dispatch 或外脑 advance_kpi',
+      hint: '失败换向由 kpiBurstOutcomeEvaluator.suggestedRetryCharter 自动续跑',
+    },
+    410,
+  );
 });
 
 /** Ops / E2E：直连 set_goal(kpi_id)，见 KPI-CLOSED-LOOP.md §API dispatch */
@@ -1517,7 +1470,6 @@ app.post('/api/kpis/:id/dispatch', async (c) => {
       workspaceStore: store,
       repoStore,
       memoryStore: globalMemoryStore,
-      scheduleReflexionBurst,
       scheduleNextKpiBurst,
       defaultThreadId:
         process.env['UTLRA_OUTER_HEARTBEAT_THREAD_ID']?.trim() || 'thread:ops',
@@ -1762,7 +1714,6 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     repoRoot: REPO_ROOT,
     innerBrainRegistry,
     kpiRegistry,
-    scheduleReflexionBurst,
     scheduleNextKpiBurst,
     memoryStore,
     memoryBlockStore,
@@ -1812,7 +1763,6 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     outerBrain,
     innerBrainRegistry,
     kpiRegistry,
-    scheduleReflexionBurst,
     scheduleNextKpiBurst,
     getOrchestratorStats: () => outerBrain.getOrchestratorStats(),
     config: loadHeartbeatConfigFromEnv(),

@@ -140,7 +140,6 @@ export interface OuterBrainDeps {
    * 派发反思 burst 的回调（由 server 注入）。
    * outer-tools 的 set_goal onExit 用它在 KPI idle streak 达阈值时触发反思。
    */
-  scheduleReflexionBurst?: (kpiId: string) => string | null;
   scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   /** 外脑记忆层（支持 mem9 云端存储） */
   memoryStore?: OuterMemoryStore;
@@ -535,7 +534,6 @@ export class OuterBrain {
       actionLogStore: this.deps.actionLogStore,
       innerBrainRegistry,
       kpiRegistry: this.deps.kpiRegistry,
-      scheduleReflexionBurst: this.deps.scheduleReflexionBurst,
       scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
       loadThreads,
       memoryStore: this.deps.memoryStore,

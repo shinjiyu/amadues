@@ -593,7 +593,6 @@ export interface HeartbeatDeps {
   innerBrainRegistry?: InnerBrainRegistry;
   /** KPI 注册表（autonomy kpi_inner_goal 必需） */
   kpiRegistry?: KpiRegistry;
-  scheduleReflexionBurst?: (kpiId: string) => string | null;
   scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   getOrchestratorStats?: ResourceProbeDeps['getOrchestratorStats'];
   /**
@@ -796,7 +795,6 @@ export class OuterHeartbeat {
           memoryStore: this.deps.memoryStore,
           getLlmEnv: this.deps.getLlmEnv,
           getOrchestratorStats: this.deps.getOrchestratorStats,
-          scheduleReflexionBurst: this.deps.scheduleReflexionBurst,
           scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
           loadThreads: this.deps.loadThreads,
           identityRegistry: this.deps.identityRegistry,
@@ -833,7 +831,6 @@ export class OuterHeartbeat {
         memoryStore: this.deps.memoryStore,
         innerBrainRegistry: this.deps.innerBrainRegistry,
         kpiRegistry: this.deps.kpiRegistry,
-        scheduleReflexionBurst: this.deps.scheduleReflexionBurst,
         scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
       };
 

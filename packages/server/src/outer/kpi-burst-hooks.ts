@@ -87,8 +87,6 @@ export interface BurstExitInput {
 export interface BurstExitDeps {
   kpiRegistry: KpiRegistry;
   innerBrainRegistry: InnerBrainRegistry;
-  /** @deprecated 由 outcomeEvaluator + scheduleNextKpiBurst 替代 */
-  scheduleReflexionBurst?: (kpiId: string) => string | null;
   scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   stuckThreshold?: number;
 }

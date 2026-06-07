@@ -134,16 +134,15 @@ function formatBurstDetail(
     }
   }
 
-  const trail = kpi.reflexionTrail.filter((r) => r.burstInstanceId === record.instanceId);
-  if (trail.length > 0) {
-    const r = trail[trail.length - 1]!;
+  const run = kpi.burstRunHistory.find((r) => r.instanceId === record.instanceId);
+  const ev = run?.outcomeEvaluation;
+  if (ev) {
     lines.push(
       '',
-      '**该 burst 反思：**',
-      `- verdict=${r.verdict}`,
-      r.hardFailures.length ? `- hard: ${r.hardFailures.join('；')}` : '',
-      r.softFailures.length ? `- soft: ${r.softFailures.join('；')}` : '',
-      r.nextStrategy ? `- next: ${r.nextStrategy}` : '',
+      '**该 burst 结果评估：**',
+      `- successConfirmed=${ev.successConfirmed}`,
+      ev.evidenceSummary ? `- evidence: ${ev.evidenceSummary.slice(0, 200)}` : '',
+      ev.failureReasons.length ? `- failures: ${ev.failureReasons.slice(0, 3).join('；')}` : '',
     );
   }
 

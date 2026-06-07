@@ -28,8 +28,6 @@ export interface KpiAdvancerDeps {
   defaultThreadId: string;
   focusOrder?: string[];
   strategyMode?: boolean;
-  /** @deprecated outcomeEvaluator 已替代 reflexion burst */
-  scheduleReflexionBurst?: (kpiId: string) => string | null;
   stuckThreshold?: number;
 }
 

@@ -117,7 +117,6 @@ async function executeKpiAdvancerTick(
     defaultThreadId: deps.defaultThreadId,
     focusOrder: deps.focusOrder,
     strategyMode: deps.strategyMode,
-    scheduleReflexionBurst: deps.toolCtx.scheduleReflexionBurst,
   };
 
   const tickFn = deps.kpiAdvancerTick ?? tickKpiAdvancer;

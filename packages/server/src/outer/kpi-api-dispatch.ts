@@ -37,7 +37,6 @@ export interface KpiApiDispatchDeps {
   skillStore?: SkillMemoryStore;
   skillDrive9Store?: SkillDrive9Store;
   knowledgeDrive9Store?: KnowledgeDrive9Store;
-  scheduleReflexionBurst?: (kpiId: string) => string | null;
   scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   defaultThreadId?: string;
   agentSid?: string;
@@ -75,7 +74,6 @@ function buildToolCtx(deps: KpiApiDispatchDeps, threadId: string): OuterToolCont
     skillStore: deps.skillStore,
     skillDrive9Store: deps.skillDrive9Store,
     knowledgeDrive9Store: deps.knowledgeDrive9Store,
-    scheduleReflexionBurst: deps.scheduleReflexionBurst,
     scheduleNextKpiBurst: deps.scheduleNextKpiBurst,
     allowKpiSetGoal: true,
   };
@@ -126,7 +124,6 @@ export async function dispatchKpiBurst(
       toolCtx: buildToolCtx(deps, threadId),
       workspaceId: deps.workspaceId ?? resolveWorkspaceId(),
       defaultThreadId: threadId,
-      scheduleReflexionBurst: deps.scheduleReflexionBurst,
     },
     kpiId,
   );

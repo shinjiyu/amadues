@@ -65,6 +65,30 @@ export function readLastCompleteEvent(workDir: string): CompleteOutputEvent | nu
   return null;
 }
 
+/** DyFlow memory.json active 事实；fallback legacy knowledge.md */
+function readWorkspaceFacts(workDir: string): string | null {
+  const memoryPath = path.join(workDir, '.brain', 'memory.json');
+  const raw = safeReadFile(memoryPath);
+  if (raw) {
+    try {
+      const mem = JSON.parse(raw) as {
+        fact_records?: Array<{ status?: string; content: string }>;
+        facts?: string[];
+      };
+      const active = (mem.fact_records ?? []).filter((r) => r.status === 'active' || r.status == null);
+      if (active.length > 0) {
+        return active.map((r) => r.content).join('\n');
+      }
+      if (mem.facts?.length) {
+        return mem.facts.join('\n');
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return safeReadFile(path.join(workDir, '.brain', 'knowledge.md'));
+}
+
 function safeReadFile(fp: string): string | null {
   try {
     if (!fs.existsSync(fp)) return null;
@@ -136,7 +160,7 @@ export function buildCompletionMessageFromWorkspace(
   const deliverables = collectDeliverablePaths(workDir, completeEv?.deliverables);
   const goal = safeReadFile(path.join(workDir, '.brain', 'goal.md')) ?? '';
   const milestonesRaw = safeReadFile(path.join(workDir, '.brain', 'milestones.md')) ?? '';
-  const knowledge = safeReadFile(path.join(workDir, '.brain', 'knowledge.md'));
+  const knowledge = readWorkspaceFacts(workDir);
   const resultExcerpt = pickDeliverableExcerpt(workDir, deliverables);
 
   const audience = options?.audience ?? 'im';

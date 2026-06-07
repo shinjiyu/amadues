@@ -64,7 +64,6 @@ export async function routeInboundKpiOrAdHoc(
       toolCtx: deps.toolCtx,
       workspaceId: deps.workspaceId,
       defaultThreadId: deps.defaultThreadId,
-      scheduleReflexionBurst: deps.toolCtx.scheduleReflexionBurst,
     };
 
     const adv = await advanceKpi(advancerDeps, kpi.kpiId);

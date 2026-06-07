@@ -22,7 +22,6 @@ export interface AgentStackFixture extends TestDataRoot {
   kpiRegistry: KpiRegistry;
   innerBrainRegistry: InnerBrainRegistry;
   im: FakeImChannel;
-  reflexionBurstsScheduled: string[];
   nextBurstsScheduled: string[];
   /** 注册 KPI 并返回 kpiId */
   createKpi(description: string): string;
@@ -49,16 +48,11 @@ export function createAgentStackFixture(): AgentStackFixture {
   const kpiRegistry = new KpiRegistry(root.dataRoot);
   const innerBrainRegistry = new InnerBrainRegistry(root.dataRoot);
   const im = new FakeImChannel();
-  const reflexionBurstsScheduled: string[] = [];
   const nextBurstsScheduled: string[] = [];
 
   const burstDeps: BurstExitDeps = {
     kpiRegistry,
     innerBrainRegistry,
-    scheduleReflexionBurst: (kid) => {
-      reflexionBurstsScheduled.push(kid);
-      return `ib-reflexion-${reflexionBurstsScheduled.length}`;
-    },
     scheduleNextKpiBurst: (kid) => {
       nextBurstsScheduled.push(kid);
       return `ib-next-${nextBurstsScheduled.length}`;
@@ -71,7 +65,6 @@ export function createAgentStackFixture(): AgentStackFixture {
     kpiRegistry,
     innerBrainRegistry,
     im,
-    reflexionBurstsScheduled,
     nextBurstsScheduled,
     createKpi(description) {
       return kpiRegistry.create({ description, createdBy: 'test:harness' }).kpiId;

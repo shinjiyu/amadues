@@ -671,8 +671,7 @@ export interface OuterToolContext {
    * 派发"反思 burst"的函数；progress detector 在 idle streak 阈值触发时调用。
    * 由 index.ts 通过 ctx 注入（避免 outer-tools ↔ index 循环依赖）。
    */
-  scheduleReflexionBurst?: (kpiId: string) => string | null;
-  /** meta 反思后自动续跑真 burst（UTLRA_KPI_AUTO_NEXT_BURST=1） */
+  /** outcome 评估失败后自动续跑（UTLRA_KPI_AUTO_NEXT_BURST=1） */
   scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   loadThreads?: () => LooseThreadStore;
   /**
@@ -988,7 +987,6 @@ async function execSetGoal(
                 {
                   kpiRegistry: ctx.kpiRegistry,
                   innerBrainRegistry: registry,
-                  scheduleReflexionBurst: ctx.scheduleReflexionBurst,
                   scheduleNextKpiBurst: ctx.scheduleNextKpiBurst,
                 },
               )
@@ -1312,7 +1310,6 @@ async function execSetKpi(
         toolCtx: { ...ctx, allowKpiSetGoal: true },
         workspaceId: ctx.workspaceId,
         defaultThreadId: ctx.threadId,
-        scheduleReflexionBurst: ctx.scheduleReflexionBurst,
         scheduleNextKpiBurst: ctx.scheduleNextKpiBurst,
       },
       kpi.kpiId,
@@ -1350,7 +1347,6 @@ async function execAdvanceKpi(
       toolCtx: { ...ctx, allowKpiSetGoal: true },
       workspaceId: ctx.workspaceId,
       defaultThreadId: ctx.threadId,
-      scheduleReflexionBurst: ctx.scheduleReflexionBurst,
       scheduleNextKpiBurst: ctx.scheduleNextKpiBurst,
     },
     kpiId,
