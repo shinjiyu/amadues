@@ -6,6 +6,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import {
   buildCompletionMessageFromWorkspace,
   readLastCompleteEvent,
+  shouldNotifyUserOnBurstExit,
 } from './completion-notify.js';
 
 describe('completion-notify', () => {
@@ -68,5 +69,11 @@ describe('completion-notify', () => {
     expect(message).not.toContain('输入范围');
     expect(message).not.toContain('## 任务目标');
     expect(message).not.toContain('## 自评');
+  });
+
+  it('shouldNotifyUserOnBurstExit：KPI 不通知，ad-hoc 通知', () => {
+    expect(shouldNotifyUserOnBurstExit({ kpiId: 'kpi-1' })).toBe(false);
+    expect(shouldNotifyUserOnBurstExit({})).toBe(true);
+    expect(shouldNotifyUserOnBurstExit({ kpiId: '' })).toBe(true);
   });
 });

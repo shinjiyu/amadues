@@ -79,6 +79,42 @@ describe('memoryStore', () => {
     store.appendConstraint('never delete prod');
     expect(store.read().facts).toEqual(['the moon is bright']);
     expect(store.read().constraints).toEqual(['never delete prod']);
+    expect(store.read().fact_records?.[0]?.citeCount).toBe(1);
+  });
+
+  it('migrates legacy facts[] to fact_records on read', () => {
+    const brain = path.join(root, '.brain');
+    fs.mkdirSync(brain, { recursive: true });
+    fs.writeFileSync(
+      path.join(brain, 'memory.json'),
+      JSON.stringify({ constraints: [], facts: ['legacy a', 'legacy b'], node_results: {} }),
+      'utf8',
+    );
+    const mem = createMemoryStore(root).read();
+    expect(mem.fact_records).toHaveLength(2);
+    expect(mem.facts).toEqual(['legacy a', 'legacy b']);
+  });
+
+  it('recordFact supersedes same topic', () => {
+    const store = createMemoryStore(root);
+    store.recordFact({ content: 'selector .a works', topic: 'fanqie.ui.editor' });
+    store.recordFact({ content: 'selector .b works', topic: 'fanqie.ui.editor' });
+    const mem = store.read();
+    expect(mem.facts).toEqual(['selector .b works']);
+    expect(mem.fact_records?.filter(r => r.status === 'active')).toHaveLength(1);
+    expect(mem.fact_records?.filter(r => r.status === 'superseded')).toHaveLength(1);
+  });
+
+  it('sweepFacts persists superseded cold records', () => {
+    const store = createMemoryStore(root);
+    store.recordFact({
+      content: 'stale uncited',
+      topic: 'general.stale',
+      source: { at: '2026-01-01T00:00:00.000Z', via: 'record_fact' },
+    });
+    const sweep = store.sweepFacts();
+    expect(sweep.superseded.length).toBeGreaterThan(0);
+    expect(store.read().facts).toHaveLength(0);
   });
 
   it('appendDagHistory accumulates and rings to INNER_DAG_HISTORY_MAX', () => {
@@ -108,5 +144,18 @@ describe('memoryStore', () => {
     const locked = store.read().locked_milestones ?? [];
     expect(locked).toHaveLength(2);
     expect(locked.find(m => m.id === 'book_created')?.summary).toBe('建书(更新)');
+  });
+
+  it('onFactRecorded 在 recordFact 后回调', () => {
+    const seen: string[] = [];
+    const store = createMemoryStore(root, {
+      onFactRecorded: (rec) => { seen.push(rec.topic); },
+    });
+    store.recordFact({
+      content: 'shared endpoint is /api/v1/foo',
+      topic: 'api.foo',
+      source: { via: 'record_fact', at: new Date().toISOString() },
+    });
+    expect(seen).toContain('api.foo');
   });
 });

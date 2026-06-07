@@ -14,6 +14,13 @@ export { shellProbeTool } from './shell-probe.js';
 export { shellExecBgTool } from './shell-exec-bg.js';
 export { shellReadOutputTool } from './shell-read-output.js';
 export { shellKillTool } from './shell-kill.js';
+export {
+  browserOpenTool,
+  browserActTool,
+  browserCloseTool,
+  browserListTool,
+  browserRunStepsTool,
+} from './browser-tools.js';
 export { setWorkDirGuard, isPathAllowed, isPathReadable, isPathWritable, setPeerWorkspaces, listPeerWorkspaces } from './workdir-guard.js';
 export { webSearchTool } from './web-search/index.js';
 export { getTimeTool } from './get-time.js';
@@ -31,4 +38,3 @@ export {
   brainDirFromWorkDir,
 } from './async-wait.js';
 export { verifySelfUpdateTool, rollbackSelfUpdateTool, readSelfUpdatePlanTool } from './self-update.js';
-export { writeMemoTool } from './write-memo.js';

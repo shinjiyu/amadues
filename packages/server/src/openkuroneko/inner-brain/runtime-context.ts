@@ -58,7 +58,8 @@ export function buildRuntimeContextSection(input: RuntimeContextInput): string {
     'Windows 上 shell_exec 走 PowerShell：勿用 bash 语法（||、$_.Prop 在 -Command 中易被吃掉）。',
     '环境/凭据探测优先 shell_probe（多条命令一次返回），大文件用 read_file(offset_line, limit_lines)。',
     '截图/栅格图（.png 等）勿 read_file（会拒二进制）；用 describe_image(path, prompt?) 调 vision 模型得文字描述。',
-    '大段代码 write_file 一次即可；后续用 edit_file 小改，勿每轮重写整文件；稳定脚本用 record_fact 记路径，下次 shell_exec 直接跑。',
+    '大段代码 write_file 同路径仅一次 overwrite；后续 edit_file 或 append。勿把 __SLIM_REF__ / [N chars omitted…] 当作 write_file content。',
+    'UI 自动化：browser_open → browser_act（探索）或 browser_run_steps（稳定脚本/playbook）→ browser_close；勿 write_file Playwright 脚本再 shell_exec。截图用 describe_image。',
     'web_search fetch 有字数上限；稳定结论用 record_fact，避免重复试探。',
   ];
 

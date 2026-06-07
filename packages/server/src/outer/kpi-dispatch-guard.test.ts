@@ -114,7 +114,7 @@ describe('evaluateKpiAutonomyDispatch', () => {
     expect(d.reason).toMatch(/next_burst|ok/);
   });
 
-  it('idle streak 达阈值时拒绝并走反思路径', () => {
+  it('idle streak 达阈值仍允许 autonomy 派发（由 outcomeEvaluator 换 charter）', () => {
     setup();
     const kpiId = kpiRegistry.create({
       description: 'test kpi',
@@ -132,7 +132,7 @@ describe('evaluateKpiAutonomyDispatch', () => {
       finishedAt: new Date().toISOString(),
     });
     const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
-    expect(d.ok).toBe(false);
-    expect(d.reason).toMatch(/kpi_stuck_reflexion/);
+    expect(d.ok).toBe(true);
+    expect(d.reason).toBe('next_burst');
   });
 });

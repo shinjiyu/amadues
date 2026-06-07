@@ -66,6 +66,8 @@ export interface DyflowControllerDeps {
   onComplete?: (reason: string) => void | Promise<void>;
   /** P1：节点共享 */
   nodeSharing?: NodeSharingConfig;
+  /** drive9 共享事实：record_fact 后同步（由 run-tick 注入，内脑不 import drive9） */
+  sharedFactSink?: (fact: import('./types.js').FactRecord) => void;
 }
 
 export interface DyflowTickResult {
@@ -104,7 +106,11 @@ export function createDyflowController(
     });
   }
   const store = deps.store ?? createLocalNodeStore(workDir);
-  const memory = deps.memory ?? createMemoryStore(workDir);
+  const memory = deps.memory ?? createMemoryStore(workDir, {
+    onFactRecorded: (record) => {
+      if (record.status === 'active') deps.sharedFactSink?.(record);
+    },
+  });
   const statePath = path.join(workDir, '.brain', 'dyflow-state.json');
 
   // P1：从 nodeSharing 派生 designer.sharing（含 sourceAgent，供 promote_local_node 自动导出 drive9）
@@ -206,9 +212,17 @@ export function createDyflowController(
           }
 
           const attr = await runDyflowAttributor(runCtx, { llm, logger, memory });
+          const factSweep = memory.sweepFacts();
           logger.info('dyflow-controller', {
             event: 'attribute.finished',
-            data: { burstId, ok: attr.ok, toolCalls: attr.toolCalls, runOk: runCtx.ok },
+            data: {
+              burstId,
+              ok: attr.ok,
+              toolCalls: attr.toolCalls,
+              runOk: runCtx.ok,
+              factSweep: factSweep.superseded.length,
+              factsActive: factSweep.remainingActive,
+            },
           });
 
           if (!runCtx.ok) {

@@ -58,7 +58,7 @@ describe('inner-brain-kpi-reuse', () => {
   it('buildKpiContinuationGoal 含续跑约束', () => {
     setup();
     const kpi = kpiRegistry.create({ description: '对战 KPI', createdBy: 'u' });
-    const text = buildKpiContinuationGoal(kpi, []);
+    const text = buildKpiContinuationGoal(kpi);
     expect(text).toContain('同一内脑实例');
     expect(text).toContain('一小步');
   });

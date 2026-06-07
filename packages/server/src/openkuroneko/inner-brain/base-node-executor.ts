@@ -22,6 +22,7 @@ import {
   recordInnerToolResult,
   resolveInnerToolAuditPaths,
 } from './inner-tool-audit.js';
+import { selectFactsForPrompt } from './fact-governor.js';
 import { buildRuntimeContextSection } from './runtime-context.js';
 import {
   buildLiveResourceBudgetSection,
@@ -29,11 +30,19 @@ import {
   resolveBaseNodeBudget,
   upsertLiveBudgetMessage,
 } from './resource-budget.js';
+import { closeBrowserSessionsForNode } from '../browser/session-registry.js';
+import {
+  clearBrowserSessionScope,
+  setBrowserSessionScope,
+} from '../browser/session-scope.js';
 import { pruneReActMessages } from './react-message-prune.js';
 import {
-  shouldSlimToolCallArgs,
-  slimAssistantToolCallsAfterSuccess,
-} from './react-tool-call-slim.js';
+  isRejectedWriteContent,
+  isWriteFileOverwriteGuardEnabled,
+  normalizeWorkRelPath,
+  REJECTED_OVERWRITE_MSG,
+  REJECTED_WRITE_CONTENT_MSG,
+} from '../tools/write-content-guard.js';
 import { createShellStallGuard } from './shell-stall-guard.js';
 import { compressToolOutputForContext } from './tool-output-spill.js';
 import {
@@ -133,12 +142,12 @@ function buildUserMessage(ctx: BaseNodeRunContext): string {
     `## 你的子目标\n${objective}`,
     `## 全局目标\n${memory.goal ?? '（未指定）'}`,
     `## 约束（必须严格遵守）\n${memory.constraints.length ? memory.constraints.map(c => `- ${c}`).join('\n') : '（无）'}`,
-    `## 已知事实\n${memory.facts.length ? memory.facts.map(f => `- ${f}`).join('\n') : '（无）'}`,
+    selectFactsForPrompt(memory.fact_records ?? []).section,
     lastFailureBlock,
     `## 本节点需产出的 outputs（必须真实落地）\n${outputsContract}`,
     extraCtx.length ? `## 额外上下文\n${extraCtx.join('\n')}` : '',
     `## 工作目录\n${workDir}`,
-    `在资源预算内达成子目标并产出 outputs；接近上限时收束结论（写交付 / record_fact）；只有高置信不可恢复时才输出 CANNOT_CONTINUE: <原因>。`,
+    `在资源预算内达成子目标并产出 outputs。重复失败或卡住时应尽早 CANNOT_CONTINUE（永久）或 CANNOT_CONTINUE(transient) 上交 Designer，勿空转；接近上限时收束或上报。`,
   ]
     .filter(Boolean)
     .join('\n\n---\n\n');
@@ -212,7 +221,11 @@ export async function runBaseNode(
 
   let noProgressStreak = 0;
   const shellStall = createShellStallGuard();
+  /** 本节点内已成功 overwrite 的路径（禁止二次整文件覆盖） */
+  const committedOverwritePaths = new Set<string>();
 
+  setBrowserSessionScope(ctx.workDir, inst.id);
+  try {
   for (let round = 0; round < budgetCfg.maxRounds; round++) {
     messages = upsertLiveBudgetMessage(
       messages,
@@ -295,7 +308,6 @@ export async function runBaseNode(
       })),
     };
     const toolResultMsgs: Message[] = [];
-    const slimAfterSuccess: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> = [];
     const roundToolOk: boolean[] = [];
 
     for (const tc of result.toolCalls) {
@@ -321,6 +333,38 @@ export async function runBaseNode(
         continue;
       }
       let toolResult: { ok: boolean; output: string };
+      if (tc.name === 'write_file') {
+        const filePath = String(tc.args['path'] ?? '');
+        const content = String(tc.args['content'] ?? '');
+        const modeRaw = String(tc.args['mode'] ?? 'overwrite').trim().toLowerCase();
+        const mode = modeRaw === 'append' ? 'append' : 'overwrite';
+        const rel = normalizeWorkRelPath(ctx.workDir, filePath);
+        if (isRejectedWriteContent(content)) {
+          toolResultMsgs.push({
+            role: 'tool',
+            content: JSON.stringify({ ok: false, output: REJECTED_WRITE_CONTENT_MSG }),
+            tool_call_id: tc.id,
+          });
+          executionLog.push({ toolName: tc.name, args: tc.args, result: { ok: false, output: REJECTED_WRITE_CONTENT_MSG } });
+          roundToolOk.push(false);
+          continue;
+        }
+        if (
+          isWriteFileOverwriteGuardEnabled() &&
+          mode === 'overwrite' &&
+          rel &&
+          committedOverwritePaths.has(rel)
+        ) {
+          toolResultMsgs.push({
+            role: 'tool',
+            content: JSON.stringify({ ok: false, output: REJECTED_OVERWRITE_MSG }),
+            tool_call_id: tc.id,
+          });
+          executionLog.push({ toolName: tc.name, args: tc.args, result: { ok: false, output: REJECTED_OVERWRITE_MSG } });
+          roundToolOk.push(false);
+          continue;
+        }
+      }
       const t0 = Date.now();
       recordInnerToolCall({
         dataRoot: auditPaths.dataRoot,
@@ -385,12 +429,14 @@ export async function runBaseNode(
       roundToolOk.push(toolResult.ok);
       executionLog.push({ toolName: tc.name, args: tc.args, result: compressed });
       toolResultMsgs.push({ role: 'tool', content: JSON.stringify(compressed), tool_call_id: tc.id });
-      if (toolResult.ok && shouldSlimToolCallArgs(tc.name)) {
-        slimAfterSuccess.push({ toolCallId: tc.id, toolName: tc.name, args: tc.args });
+      if (isWriteFileOverwriteGuardEnabled() && toolResult.ok && tc.name === 'write_file') {
+        const modeRaw = String(tc.args['mode'] ?? 'overwrite').trim().toLowerCase();
+        if (modeRaw !== 'append') {
+          const rel = normalizeWorkRelPath(ctx.workDir, String(tc.args['path'] ?? ''));
+          if (rel) committedOverwritePaths.add(rel);
+        }
       }
     }
-
-    assistantMsg = slimAssistantToolCallsAfterSuccess(assistantMsg, slimAfterSuccess);
 
     if (roundHadToolProgress(roundToolOk)) {
       noProgressStreak = 0;
@@ -432,6 +478,10 @@ export async function runBaseNode(
       lastContent.slice(-1024),
     ),
   };
+  } finally {
+    await closeBrowserSessionsForNode(inst.id).catch(() => {});
+    clearBrowserSessionScope();
+  }
 }
 
 function collectOutputs(node: LocalNode, lastContent: string): Record<string, unknown> {

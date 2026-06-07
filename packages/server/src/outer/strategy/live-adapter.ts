@@ -52,14 +52,14 @@ export function buildPlanInputKpis(kpis: KpiRecord[]): StrategyPlanInput['kpis']
     status: k.status,
     kind: k.kind,
     momentum: k.momentum,
-    ...(k.reflexionTrail.length > 0
-      ? {
-          reflexionDigest: (() => {
-            const r = k.reflexionTrail[k.reflexionTrail.length - 1]!;
-            return `${r.verdict}: ${r.nextStrategy}`.slice(0, 120);
-          })(),
-        }
-      : {}),
+    ...(() => {
+      const ev = k.burstRunHistory[k.burstRunHistory.length - 1]?.outcomeEvaluation;
+      if (!ev) return {};
+      const label = ev.successConfirmed ? 'ok' : 'fail';
+      return {
+        reflexionDigest: `${label}: ${ev.evidenceSummary}`.slice(0, 120),
+      };
+    })(),
   }));
 }
 
@@ -89,7 +89,8 @@ export function buildStrategyLlmCaller(env: InnerLlmEnv | null): StrategyLlmCall
       body: {
         model: env.textModel,
         temperature: 0.3,
-        max_tokens: 1400,
+        // GLM-5.1-FP8 在 1400 上限时常 finish_reason=length 且 content 为空（token 耗在 reasoning 通道）→ parse_failed
+        max_tokens: Math.min(env.maxTokensText, 8192),
         thinking: { type: 'disabled' },
         messages: [
           { role: 'system', content: system },

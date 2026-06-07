@@ -38,6 +38,17 @@ export type KpiCadence =
 /** 单轮 sprint 执行史（同一 canonical burst 内多轮） */
 export type BurstRunExitStatus = 'DONE' | 'AWAITING' | 'ERROR' | 'PREEMPTED' | 'ABORTED';
 
+/** KPI burst 外脑评估结果 — ADL KPI-BURST-OUTCOME-EVALUATOR.md §4 */
+export interface BurstOutcomeEvaluation {
+  evaluatedAt: string;
+  successConfirmed: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  failureReasons: string[];
+  evidenceSummary: string;
+  suggestedRetryCharter?: string;
+  processReportDigest: string;
+}
+
 export interface BurstRunRecord {
   runId: string;
   instanceId: string;
@@ -48,7 +59,9 @@ export interface BurstRunRecord {
   charter: string;
   ticks: number;
   deliverableCount: number;
+  /** @deprecated 不再写入；读历史兼容 */
   reflexionSummary?: ReflexionSummary;
+  outcomeEvaluation?: BurstOutcomeEvaluation;
 }
 
 /** momentum（多巴胺反馈调节）取值上下限；见 STRATEGY-PLANNING-LAYER.md §16 */

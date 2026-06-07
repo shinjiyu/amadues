@@ -38,7 +38,9 @@
 | awaitingNotify | **AWAITING 人类通知** | `outer/awaiting-notify.ts` | onExit AWAITING + ask_user → `⏸` IM（dedup） |
 | innerSpawner | spawn 子进程 | `pi-mono/inner-brain-spawner.ts` | goal/workDir → child |
 | kpiRegistry | KPI 与反思 burst | `outer/kpi-registry.ts` | set_kpi → trail / idleStreak |
-| kpiBurstHooks | burst 退出 hook | `outer/kpi-burst-hooks.ts` | reflexion.json → trail；streak → meta；AUTO_NEXT → 下一 burst |
+| kpiBurstHooks | burst 退出 hook | `outer/kpi-burst-hooks.ts` | outcomeEvaluator → burstRunHistory；失败 → charter 续跑 |
+| **kpiBurstOutcomeEvaluator** | **KPI 结果评估** | `outer/kpi/kpi-burst-outcome-evaluator.ts` | 摘要+过程 → success / retry charter |
+| **burstProcessReport** | **过程报告组装** | `outer/kpi/burst-process-report.ts` | tool-logs + memory.json + deliverables |
 | **kpiCompletionJudge** | **KPI 完成判定（心跳 sweep）** | `outer/kpi-completion-judge.ts` | active KPI → achieved / digest |
 | **nodeDefDrive9Store** | **drive9 `/nodes/shared/` 客户端（P1）** | `drive9/node-def-drive9-store.ts` | put/search/tombstone NodeDef + index |
 | **nodeDefEviction** | **NodeDef 治理 sweep（P2，外脑心跳级）** | `outer/node-def-eviction.ts` | dedupe + quota + cold tombstone |
@@ -144,6 +146,7 @@
 | **memoryStore** | **全局 memory.json**（P0） | `inner-brain/memory-store.ts` | patch/get goal/facts/constraints/last_failure/node_results/dag_history(环形)/locked_milestones |
 | **factTopic** | **事实 topic 归一化**（⏳ P0） | `inner-brain/fact-topic.ts` | content → merge key；见 FACTS-KNOWLEDGE-GOVERNANCE |
 | **factGovernor** | **事实合并/淘汰/注入上限**（⏳ P0） | `inner-brain/fact-governor.ts` | supersede-on-write · quota/cold · prompt select |
+| **drive9KnowledgeShared** | **drive9 `/knowledge/shared/` 完全共享读写** | `outer/knowledge-promote.ts` · `drive9/knowledge-drive9-store.ts` | `createDrive9FactSyncSink` / `seedDrive9FactsToMemory`；ADL [`DRIVE9-KNOWLEDGE-SHARED.md`](./DRIVE9-KNOWLEDGE-SHARED.md) |
 | **factDrive9Eviction** | **drive9 共享事实淘汰**（⏳ P2） | `outer/fact-drive9-eviction.ts` | 对齐 nodeDefEviction |
 | **designerToolRegistry** | **Designer 专用工具集**（P0） | `inner-brain/designer-tools.ts` | list_local_nodes / read_memory / search_and_instance / commit_local_dag(拦截已锁里程碑) / report_done(verify 闸门) / promote_local_node(成功提升 fire-and-forget auto-export) / lock_milestone |
 | **presetSeeder** | **首次 spawn 注入 preset/***（P0） | `inner-brain/preset-seeder.ts` | workDir → preset/base + node_creator + extract_facts（TS 常量幂等 seed） |

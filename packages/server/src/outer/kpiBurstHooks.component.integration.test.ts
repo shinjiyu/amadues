@@ -24,13 +24,13 @@ describe('component: kpiBurstHooks', () => {
     expect(fx.kpiRegistry.get(kpiId)?.status).toBe('achieved');
   });
 
-  it('连续 failed → 调度 reflexion burst', () => {
+  it('无产出 → outcome 评估失败并调度续跑', () => {
     fx = createAgentStackFixture();
-    const kpiId = fx.createKpi('反思型');
-    fx.simulateBurstExit(kpiId, { verdict: 'failed' });
-    fx.simulateBurstExit(kpiId, { verdict: 'failed' });
-    const last = fx.simulateBurstExit(kpiId, { verdict: 'failed' });
-    expect(last.outcome.reflexionBurstId).toMatch(/^ib-reflexion-/);
-    expect(fx.reflexionBurstsScheduled).toContain(kpiId);
+    const kpiId = fx.createKpi('重试型');
+    const { outcome } = fx.simulateBurstExit(kpiId, { verdict: 'failed', deliverables: [] });
+    expect(outcome.outcomeEvaluation?.successConfirmed).toBe(false);
+    expect(outcome.reflexionBurstId).toBeNull();
+    expect(outcome.nextKpiBurstId).toMatch(/^ib-next-/);
+    expect(fx.nextBurstsScheduled).toContain(kpiId);
   });
 });

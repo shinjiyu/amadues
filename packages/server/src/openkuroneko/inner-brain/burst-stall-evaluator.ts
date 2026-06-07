@@ -61,7 +61,10 @@ export function evaluateBurstStall(input: EvaluateBurstStallInput): BurstStallVe
   const results = nodeResultsList(input.memory);
   const capped = results.filter(isCapped);
   const okNodes = results.filter(r => r.ok);
-  const factsCount = input.memory.facts?.length ?? 0;
+  const factsCount =
+    input.memory.fact_records?.filter(r => r.status === 'active').length ??
+    input.memory.facts?.length ??
+    0;
   const runFailureConstraintCount = (input.memory.constraints ?? []).filter(c =>
     String(c).includes('[run-failure]'),
   ).length;

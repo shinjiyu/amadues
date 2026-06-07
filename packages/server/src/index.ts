@@ -79,7 +79,11 @@ import { createChangeWatcher, type ChangeWatcher } from './pi-mono/change-watche
 import { registryLifecycleReconcile, startRegistryLifecycleReconcileInterval } from './outer/registry-lifecycle-reconcile.js';
 import { isBrainAwaitingAsync } from './outer/brain-async-snapshot.js';
 import { notifyInnerBrainAwaitingHuman } from './outer/awaiting-notify.js';
-import { notifyInnerBrainTaskComplete, type CompletionNotifyDeps } from './outer/completion-notify.js';
+import {
+  notifyInnerBrainTaskComplete,
+  shouldNotifyUserOnBurstExit,
+  type CompletionNotifyDeps,
+} from './outer/completion-notify.js';
 import { PushLoop } from './outer/push-loop.js';
 import { OuterHeartbeat, loadHeartbeatConfigFromEnv } from './outer/outer-heartbeat.js';
 import { resolveKpiBurstOriginThread } from './outer/default-im-thread.js';
@@ -261,7 +265,6 @@ function spawnAndAttachWorker(
         const isError = exitCode !== 0 && signal == null;
         const isAwaiting = detectAwaitingFromBrain(record.workDir);
 
-        // 跑 KPI hook：读 deliverables / reflexion，更新 KPI streak，可能触发反思 burst
         const kpiOutcome = processBurstExitForKpi(
           {
             instanceId: id,
@@ -303,8 +306,9 @@ function spawnAndAttachWorker(
           pid:              undefined,
         });
 
+        const notifyUser = shouldNotifyUserOnBurstExit(record);
         if (record.originThread && completionNotifyDeps) {
-          if (finalStatus === 'DONE') {
+          if (finalStatus === 'DONE' && notifyUser) {
             void notifyInnerBrainTaskComplete(completionNotifyDeps, {
               instanceId: id,
               workspaceId: record.workspaceId,
@@ -329,8 +333,7 @@ function spawnAndAttachWorker(
         console.log(
           `[utlra][inner-brain] burst done (${id}): finalStatus=${finalStatus} ticks=${ticks}` +
           ` deliverables=${kpiOutcome.deliverableCount} kpi=${record.kpiId ?? '-'}` +
-          ` verdict=${kpiOutcome.reflexion?.verdict ?? '-'}` +
-          (kpiOutcome.reflexionBurstId ? ` → 派发反思 burst ${kpiOutcome.reflexionBurstId}` : '') +
+          ` ok=${kpiOutcome.outcomeEvaluation?.successConfirmed ?? '-'}` +
           (kpiOutcome.nextKpiBurstId ? ` → 自动续跑 burst ${kpiOutcome.nextKpiBurstId}` : ''),
         );
       },
@@ -412,7 +415,7 @@ function scheduleNextKpiBurst(kpiId: string, excludeInstanceId?: string): string
     return null;
   }
 
-  const goal = buildKpiContinuationGoal(kpi, kpiRegistry.recentReflexions(kpiId, 5));
+  const goal = buildKpiContinuationGoal(kpi);
   const originThread = resolveKpiBurstOriginThread(kpi.bursts, innerBrainRegistry);
   patchCanonicalForContinuation(innerBrainRegistry, canonical.instanceId, canonical.workDir, {
     goal,

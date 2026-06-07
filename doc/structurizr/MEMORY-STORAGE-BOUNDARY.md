@@ -1,6 +1,6 @@
 # 记忆与知识存储边界（ADL ↔ 实现）
 
-> 与 `workspace.dsl` 外脑 `knowledgeRetrieval` / `outerMemory` / `memoryBlockStore`、内脑 `write_memo` / `write_skill` 对齐。
+> 与 `workspace.dsl` 外脑 `knowledgeRetrieval` / `outerMemory` / `memoryBlockStore`、内脑 `write_skill` / `record_fact` 对齐。
 
 ## 存储层（勿混）
 
@@ -8,12 +8,12 @@
 |----|------|------------|------|------|
 | **工作区 File-as-State** | 本地磁盘 | `<workDir>/.brain/*`、`.run/*` | 内脑阶段机、外脑 `set_goal` | Controller、Dashboard |
 | **执行轨 Repository** | `FilesystemRepositoryStore` | `DATA_ROOT/repository/` | 晋升 `promote-from-workspace` | **外脑** `knowledgeRetrieval`（K/S/P） |
-| **外脑记忆 mem9** | HTTPS | mem9 `${sid}:chat` / `:tasks` | `OuterMemoryStore`、`write_memo` | `readMemoryContext` |
+| **外脑记忆 mem9** | HTTPS | mem9 `${sid}:chat` | `OuterMemoryStore`、`ingestInnerOutput` | `readMemoryContext` |
 | **技能 drive9** | HTTPS | `/skills/shared/` | 内脑 `write_skill`、burst 结束 merge skills | `seedInnerBrainSharedContext`（含 drive9+本地池并集）、`get_skill_content` |
-| **事实 drive9（方案 B）** | HTTPS | `/knowledge/shared/` | burst 结束 `mergeWorkDirKnowledgeToDrive9`（从 `knowledge.md` 过滤晋升） | `seedInnerBrainSharedContext` → 写入新 burst `.brain/knowledge.md` |
+| **事实 drive9（完全共享）** | HTTPS | `/knowledge/shared/` | `record_fact` → `sharedFactSink` → `storeShared`（实时） | `seedDrive9FactsToMemory` → `.brain/memory.json` `fact_records`；见 [`DRIVE9-KNOWLEDGE-SHARED.md`](./DRIVE9-KNOWLEDGE-SHARED.md) |
 | **节点 drive9（DyFlow，P1）** | HTTPS | `/nodes/shared/` | 内脑 `nodeAbstractor`（Creator commit auto-export）+ 外脑 `nodeDefEviction`（tombstone, P2） | Designer tool `search_and_instance` → `nodeAssembler` → `imported/*` LocalNode |
 | **节点 LocalNode（DyFlow，P0）** | **本地** | `<workDir>/.brain/local_nodes/{preset,creator,imported}/*.json` | `presetSeeder` / `nodeCreatorExecutor` / `nodeAssembler` | `localNodeStore` → `designer` / `runner` |
-| **DyFlow 全局 memory（P0）** | **本地** | `<workDir>/.brain/memory.json` | `runner`（node_results / last_failure）+ 外脑 set_goal seed（goal/constraints/facts） | `memoryStore` → `designer` / `baseNodeExecutor` |
+| **DyFlow 全局 memory（P0）** | **本地** | `<workDir>/.brain/memory.json` | `runner`（node_results / last_failure）+ 外脑 set_goal seed（goal/constraints/facts） | `memoryStore` → `designer` / `baseNodeExecutor`；facts 治理 ⏳ [`FACTS-KNOWLEDGE-GOVERNANCE.md`](./FACTS-KNOWLEDGE-GOVERNANCE.md) |
 | **Memory Block** | **本地** | `DATA_ROOT/vault/blocks/`（索引 + entries） | 外脑 `memory_block_*` | 外脑 CRUD；**不**上 drive9/mem9 |
 | **Belief 修订索引** | 本地 JSON | `DATA_ROOT/belief/{agentSid}.json` | `memory-belief-reconcile`（用户取消/完成） | `read_memory` 折叠提示 |
 
@@ -30,15 +30,16 @@
 2. **内脑 burst（legacy 三件套）**  
    - 战术：`.brain/*`（BrainFS）  
    - 归档：archive sessions  
-   - 软记忆：`write_memo` → mem9（**非** secret）  
+   - 软记忆：~~`write_memo`~~ 已删除；KPI 过程见 `kpiBurstOutcomeEvaluator`  
    - 可复用步骤：`write_skill` → drive9 `/skills/shared/`
-   - 环境事实：`knowledge.md` 中 `[事实]` → burst 结束晋升 drive9 `/knowledge/shared/`（脱敏/截断/去重）；下轮 `set_goal` seed 进 `.brain/knowledge.md`
+   - 环境事实（legacy）：`knowledge.md` 路径已退役；DyFlow 见下条
 
 3. **内脑 burst（DyFlow target，P0→P2 落地）**  
    - 战术节点：`localNodeStore` → `.brain/local_nodes/{preset,creator,imported}/*.json`（**保留全部** 跨 burst）  
    - 全局 memory：`memoryStore` → `.brain/memory.json`（goal/constraints/facts/last_failure/node_results/kpi_progress）  
+   - 跨 burst 事实：**drive9 `/knowledge/shared/`** ↔ `memory.fact_records`（写同步 / 读 seed，无 burst 晋升）  
    - 节点共享（P1+）：`nodeAbstractor`（Creator commit auto-export → drive9 `/nodes/shared/`）+ `nodeAssembler`（drive9 → `imported/*` LocalNode）  
-   - 软记忆：仍走 `write_memo` → mem9（与 legacy 一致）  
+   - KPI 结果：burst onExit → `kpiBurstOutcomeEvaluator`（见 [`KPI-BURST-OUTCOME-EVALUATOR.md`](./KPI-BURST-OUTCOME-EVALUATOR.md)）  
    - **退役（P2）**：`write_skill` / `write_knowledge` / `write_constraint` 工具 + `.brain/skills/` / `.brain/knowledge.md` / `.brain/constraints.md` 接口被 LocalNode + memory.facts/constraints 取代；具体迁移见 [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §11
 
 4. **禁止**  
@@ -61,7 +62,7 @@
 | 内脑写 mem9 | `openkuroneko/tools/definitions/write-memo.ts` |
 | 内脑写技能（legacy） | `openkuroneko/tools/definitions/write-skill.ts` |
 | drive9 技能（legacy） | `drive9/skill-drive9-store.ts` |
-| drive9 事实晋升/seed（legacy） | `drive9/knowledge-drive9-store.ts` · `outer/knowledge-promote.ts` · `outer/agent-pool.ts` `seedInnerBrainSharedContext` |
+| drive9 共享事实读写 | `drive9/knowledge-drive9-store.ts` · `outer/knowledge-promote.ts` · `outer/agent-pool.ts` · `pi-mono/run-tick.ts` `sharedFactSink` |
 | drive9 技能检索（Executor，legacy） | `openkuroneko/skills/drive9-provider.ts` |
 | **DyFlow LocalNode 库（P0）** | `openkuroneko/inner-brain/local-node-store.ts` |
 | **DyFlow 全局 memory（P0）** | `openkuroneko/inner-brain/memory-store.ts` |

@@ -245,13 +245,40 @@ export interface DagHistoryEntry {
 
 // ── 全局 memory（.brain/memory.json） ───────────────────────────────────────
 
+export type FactStatus = 'active' | 'superseded' | 'retracted';
+export type FactConfidence = 'verified' | 'hypothesis' | 'obsolete';
+
+export interface FactSource {
+  burstId?: string;
+  nodeInstId?: string;
+  at: string;
+  via?: 'record_fact' | 'attributor' | 'seed' | 'promote';
+}
+
+/** 结构化事实记录（ADL：FACTS-KNOWLEDGE-GOVERNANCE.md §3） */
+export interface FactRecord {
+  id: string;
+  topic: string;
+  content: string;
+  status: FactStatus;
+  confidence: FactConfidence;
+  source: FactSource;
+  supersedes?: string;
+  citeCount: number;
+  lastCitedAt?: string;
+  tags: string[];
+  needsReconcile?: boolean;
+}
+
 export interface InnerMemory {
   /** 战略目标（外脑/seed 写） */
   goal?: string;
   /** KPI 级红线（外脑 set_goal / KPI policy 写） */
   constraints: string[];
-  /** 环境事实（extract_facts / 外脑 seed 写） */
+  /** 环境事实（extract_facts / 外脑 seed 写）；与 fact_records 中 active 同步 */
   facts: string[];
+  /** 结构化事实（治理主存储；facts[] 为 prompt 兼容投影） */
+  fact_records?: FactRecord[];
   /** runner 写入的最近一次 terminal failure */
   last_failure?: FailureSummary | null;
   /** @deprecated 旧 node_creator pack 失败；node_creator 已移除（2026-06-06），仅为读旧 memory 保留 */

@@ -17,6 +17,7 @@ import type { Logger } from '../logger/index.js';
 import { createDesignerTools } from './designer-tools.js';
 import type { NodeSharingDeps } from './designer-tools.js';
 import type { LocalNodeStore } from './local-node-store.js';
+import { selectFactsForPrompt } from './fact-governor.js';
 import type { MemoryStore } from './memory-store.js';
 import type { DagHistoryEntry, LocalDag, LockedMilestone } from './types.js';
 import {
@@ -112,7 +113,7 @@ function buildUserMessage(memory: MemoryStore, store: LocalNodeStore): string {
   return [
     `## 全局目标\n${mem.goal ?? '（未指定）'}`,
     `## 约束\n${mem.constraints.length ? mem.constraints.map(c => `- ${c}`).join('\n') : '（无）'}`,
-    `## 已知事实\n${mem.facts.length ? mem.facts.map(f => `- ${f}`).join('\n') : '（无）'}`,
+    selectFactsForPrompt(mem.fact_records ?? []).section,
     lastFailure,
     `## 已完成节点结果摘要\n${summarizeResults(mem.node_results)}`,
     `## 最近 DAG 历史（patch vs redesign 依据）\n${summarizeDagHistory(mem.dag_history)}`,

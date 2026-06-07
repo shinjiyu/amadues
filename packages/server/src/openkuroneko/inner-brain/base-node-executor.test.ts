@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 
 import { createFakeLLM } from '../../testing/fake-llm.js';
 import { createToolRegistry } from '../tools/index.js';
 import type { Tool } from '../tools/index.js';
 import type { Logger } from '../logger/index.js';
+import { writeFileTool } from '../tools/definitions/write-file.js';
+import { setWorkDirGuard } from '../tools/definitions/workdir-guard.js';
 import { runBaseNode, renderTemplate, resolveParams, __internal } from './base-node-executor.js';
 import type { InnerMemory, LocalNode, NodeInst } from './types.js';
 
@@ -232,6 +237,115 @@ describe('runBaseNode', () => {
     expect(outcome.failure?.transient).toBe(true);
     expect(outcome.failure?.summary).toMatch(/连续 \d+ 轮工具调用均无 ok:true 进展/);
     expect(outcome.executionLog.length).toBeGreaterThanOrEqual(5);
+  });
+
+  describe('write_file guards', () => {
+    let workRoot = '';
+
+    beforeEach(() => {
+      workRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'base-node-write-'));
+      setWorkDirGuard(workRoot, workRoot, []);
+    });
+
+    afterEach(() => {
+      if (workRoot) fs.rmSync(workRoot, { recursive: true, force: true });
+    });
+
+    it('rejects second overwrite to the same path in one node run', async () => {
+      const llm = createFakeLLM([
+        {
+          match: ({ messages }) => messages.length === 1,
+          reply: {
+            content: '',
+            toolCalls: [
+              { id: 'w1', name: 'write_file', args: { path: 'a.txt', content: 'first version' } },
+            ],
+          },
+        },
+        {
+          match: () => true,
+          reply: {
+            content: '',
+            toolCalls: [
+              { id: 'w2', name: 'write_file', args: { path: 'a.txt', content: 'second overwrite' } },
+            ],
+          },
+        },
+        { match: () => true, reply: { content: 'done after blocked rewrite with enough text' } },
+      ]);
+      const node = baseNode({ body: { kind: 'executor', promptTemplate: 'x', tools: ['write_file'] } });
+      const outcome = await runBaseNode(
+        { node, inst, memory: emptyMemory(), workDir: workRoot },
+        { llm, toolRegistry: createToolRegistry([writeFileTool]), logger: silentLogger() },
+      );
+      expect(outcome.executionLog[0]?.result.ok).toBe(true);
+      expect(outcome.executionLog[1]?.result.ok).toBe(false);
+      expect(outcome.executionLog[1]?.result.output).toContain('overwrite to this path already succeeded');
+      expect(fs.readFileSync(path.join(workRoot, 'a.txt'), 'utf8')).toBe('first version');
+    });
+
+    it('allows append after successful overwrite', async () => {
+      const toolResultCount = (messages: { role: string }[]) =>
+        messages.filter((m) => m.role === 'tool').length;
+      const llm = createFakeLLM([
+        {
+          match: ({ messages }) => messages.length === 1,
+          reply: {
+            content: '',
+            toolCalls: [
+              { id: 'w1', name: 'write_file', args: { path: 'log.txt', content: 'line1\n' } },
+            ],
+          },
+        },
+        {
+          match: ({ messages }) => toolResultCount(messages) === 1,
+          reply: {
+            content: '',
+            toolCalls: [
+              { id: 'w2', name: 'write_file', args: { path: 'log.txt', content: 'line2\n', mode: 'append' } },
+            ],
+          },
+        },
+        {
+          match: ({ messages }) => toolResultCount(messages) >= 2,
+          reply: { content: 'done after append with enough summary text' },
+        },
+      ]);
+      const node = baseNode({ body: { kind: 'executor', promptTemplate: 'x', tools: ['write_file'] } });
+      const outcome = await runBaseNode(
+        { node, inst, memory: emptyMemory(), workDir: workRoot },
+        { llm, toolRegistry: createToolRegistry([writeFileTool]), logger: silentLogger() },
+      );
+      expect(outcome.executionLog[1]?.result.ok).toBe(true);
+      expect(fs.readFileSync(path.join(workRoot, 'log.txt'), 'utf8')).toBe('line1\nline2\n');
+    });
+
+    it('rejects placeholder content without writing', async () => {
+      const llm = createFakeLLM([
+        {
+          match: () => true,
+          reply: {
+            content: '',
+            toolCalls: [
+              {
+                id: 'w1',
+                name: 'write_file',
+                args: { path: 'bad.txt', content: '[99 chars omitted; file on disk at bad.txt]' },
+              },
+            ],
+          },
+        },
+        { match: () => true, reply: { content: 'gave up placeholder write, finished ok here' } },
+      ]);
+      const node = baseNode({ body: { kind: 'executor', promptTemplate: 'x', tools: ['write_file'] } });
+      const outcome = await runBaseNode(
+        { node, inst, memory: emptyMemory(), workDir: workRoot },
+        { llm, toolRegistry: createToolRegistry([writeFileTool]), logger: silentLogger() },
+      );
+      expect(outcome.executionLog[0]?.result.ok).toBe(false);
+      expect(outcome.executionLog[0]?.result.output).toContain('slim placeholder');
+      expect(fs.existsSync(path.join(workRoot, 'bad.txt'))).toBe(false);
+    });
   });
 
   it('enforces tool allowlist', async () => {

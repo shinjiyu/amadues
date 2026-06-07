@@ -11,7 +11,7 @@ describe('slimToolCallArgs', () => {
       path: 'bot.cjs',
       content: 'x'.repeat(500),
     });
-    expect(String(slim.content)).toContain('500 chars omitted');
+    expect(String(slim.content)).toBe('__SLIM_REF__:bot.cjs');
     expect(slim.path).toBe('bot.cjs');
   });
 
@@ -26,8 +26,8 @@ describe('slimToolCallArgs', () => {
       old_string: 'a'.repeat(300),
       new_string: 'b'.repeat(400),
     });
-    expect(String(slim.old_string)).toContain('300 chars omitted');
-    expect(String(slim.new_string)).toContain('400 chars omitted');
+    expect(String(slim.old_string)).toBe('__SLIM_EDIT_OLD__:300');
+    expect(String(slim.new_string)).toBe('__SLIM_EDIT_NEW__:400');
   });
 });
 
@@ -46,6 +46,6 @@ describe('slimAssistantMessageToolCalls', () => {
       ],
     });
     const parsed = JSON.parse(msg.tool_calls![0]!.function.arguments) as { content: string };
-    expect(parsed.content).toContain('1000 chars omitted');
+    expect(parsed.content).toBe('__SLIM_REF__:p.cjs');
   });
 });

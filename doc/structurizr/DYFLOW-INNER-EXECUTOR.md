@@ -115,7 +115,7 @@ local_dag {
 
 ---
 
-## 6. baseNode：猛猛干 + 高置信失败
+## 6. baseNode：执行到位 + 尽早上交
 
 ### 6.1 执行约定
 
@@ -125,8 +125,8 @@ baseNode（preset/base 或 Creator 派生）
     prompt = systemSlice(LocalNode.body.executor.promptTemplate)
            + userSlice(memory + goal + NodeInst.instruction?)
     tools  = LocalNode.body.executor.tools  (allowlist)
-    LLM ReAct loop（**无早停**；有兜底防烧）
-      工具失败 → 自行重试 / 换路径 / 改参数
+    LLM ReAct loop（prompt 鼓励**尽早上交**，框架 fail-fast / 轮次上限兜底）
+      工具失败 → **有限**自救（改参 / 换一条路径各试一次）；同模式重复 2～3 次 → 鼓励 CANNOT_CONTINUE
       **连续无进展**（默认 5 轮内无任何 `ok:true` 工具结果，`INNER_BASE_NODE_FAIL_FAST_STREAK`）→ transient `last_failure`，上交 Designer（可由 Designer 安排重试）
       **绝对轮次上限**（默认 50，`INNER_BASE_NODE_MAX_ROUNDS`）→ 同上 transient；无进展仍由 fail-fast（5 轮）提前上交 Designer
       达到「不可继续」判定 → 写 failure_summary，退出
@@ -347,7 +347,8 @@ InnerMemory.dag_history?: DagHistoryEntry[]
 |------|------|------|----------|
 | **Tool 输出压缩** | `tool-output-spill.ts` | 超 `INNER_TOOL_OUTPUT_INLINE_MAX`（3000）→ head/tail + 全文写入 `.run/tool-output/` | `INNER_TOOL_OUTPUT_INLINE_MAX` |
 | **旧轮 prune** | `react-message-prune.ts` | 保留首条 `user` + 最近 **2** 轮完整 tool；更早轮 tool → `[react-prune]` 占位（含落盘路径提示） | `INNER_REACT_PRUNE=1`，`INNER_REACT_PRUNE_PROTECT_ROUNDS=2`，`INNER_REACT_PRUNE=0` 关闭 |
-| **Tool 参数瘦身（P2.5）** | `react-tool-call-slim.ts` | `write_file`/`edit_file` 成功后 assistant 参数替换为 `[N chars omitted…]`；旧轮同样瘦身 | `INNER_TOOL_ARGS_SLIM_MIN=200` |
+| **Tool 参数瘦身（P2.5）** | `react-tool-call-slim.ts` + `write-content-guard.ts` | 仅**保护窗口外**旧轮 assistant 参数替换为 `__SLIM_REF__:<path>`（非人类/模型可复述格式）；**最近 N 轮保留完整 write/edit 参数**；禁止把 slim 占位或 `__SLIM_REF__` 写入磁盘 | `INNER_TOOL_ARGS_SLIM_MIN=200`，`INNER_REACT_PRUNE_PROTECT_ROUNDS=2` |
+| **write_file 同路径保护** | `base-node-executor.ts` | 节点内同路径首次 `overwrite` 成功后，再次 `overwrite` 拒绝（须 `edit_file` 或 `append`）；失败可重试 | — |
 | **web_search fetch 上限** | `web-search/index.ts` | 默认 **4000** 字符（`truncatePage`）；可 `max_chars` / `OPENKURONEKO_WEB_SEARCH_FETCH_MAX_CHARS` | — |
 | **Shell stall** | `shell-stall-guard.ts` | 同一 `shell_exec` 命令连续 **4** 次 `ok:false` → transient failure | `INNER_SHELL_STALL_GUARD=1`，`INNER_SHELL_STALL_MAX_REPEAT=4` |
 | **Burst stall alert** | `burst-stall-evaluator.ts` + `burst-stall-alert.ts` | 多节点 cap / 无 facts / 长跑无 deliverable → **立即** `DATA_ROOT/stall-alerts/` 定位包 + Dashboard | [`INNER-BURST-STALL-ALERT.md`](./INNER-BURST-STALL-ALERT.md)；`INNER_BURST_STALL_ALERT=1` |
@@ -367,7 +368,22 @@ InnerMemory.dag_history?: DagHistoryEntry[]
 | **行为** | 顺序 `runCommand`；首个 exit 0 且非空输出可提前结束 |
 | **提示** | `runtime-context.ts` + preset 约束：环境探测优先 `shell_probe`，大文件用分页 `read_file` |
 
+### 6.6b 浏览器会话工具（P0，2026-06-07）
+
+> **动机**：`shell_exec` 跑自写 Playwright 脚本 = 每次全量 launch/close；弹窗等中间态无法续跑。专篇 [`BROWSER-SESSION-TOOL.md`](./BROWSER-SESSION-TOOL.md)。
+
+| 工具 | 职责 |
+|------|------|
+| `browser_open` | 创建 `session_id`；可选 cookies/storage_state |
+| `browser_act` | 增量 `goto` / `click` / `fill` / `screenshot` / `snapshot` / … |
+| `browser_close` | 释放 session |
+| `browser_list` | 列出本 workDir 活跃 session |
+| `browser_run_steps` | 内联 `steps` 或 `playbook` JSON 顺序执行（脚本化，同 session 增量） |
+
+**生命周期**：`runBaseNode` 任意退出路径 → `closeSessionsForNode(nodeInstId)`。UI 自动化禁止 monolithic Playwright 脚本（preset §浏览器）；稳定路径用 playbook + `record_fact`。
+
 ### 6.4 内脑工具审计（baseNode / Designer）
+
 
 DyFlow 每次工具调用落盘 JSONL，便于按节点分析 token 与行为（对齐外脑 `outer/tool-logs`）：
 
@@ -424,7 +440,7 @@ DATA_ROOT/inner/tool-logs/<workspaceId>/YYYY-MM-DD.jsonl
 
 | 层 | 载体 | 谁调用 | 成本 | 适用 |
 |----|------|--------|------|------|
-| **A 事实** | `memory.facts`（`record_fact` / `preset/extract_facts`） | Designer / baseNode 读上下文 | 读 | 知识、选择器、API 形状、账号归属、**稳定脚本路径 + 运行方式** |
+| **A 事实** | `memory.facts` / `fact_records`（`record_fact` / `preset/extract_facts`） | Designer / baseNode 读上下文 | 读 | 知识、选择器、API 形状、账号归属、**稳定脚本路径 + 运行方式**；**治理**见 [`FACTS-KNOWLEDGE-GOVERNANCE.md`](./FACTS-KNOWLEDGE-GOVERNANCE.md)（topic 合并 + 淘汰 + prompt 上限） |
 | **B 节点** | LocalNode（`preset/node_creator` pack） | Designer 排 `ref: local/…`，**仍 LLM ReAct** | 中（prompt 更短，仍多轮） | **仍需临场判断分支 / 改参 / 组合多工具 / 解释失败** 的战术 |
 
 **晋升判定（RUN 结束复盘按序问）：**

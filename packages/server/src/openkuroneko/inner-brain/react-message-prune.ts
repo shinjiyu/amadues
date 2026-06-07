@@ -6,6 +6,7 @@
  */
 
 import type { Message } from '../adapter/index.js';
+import { isToolArgsSlimEnabled } from '../tools/write-content-guard.js';
 import { slimAssistantMessageToolCalls } from './react-tool-call-slim.js';
 
 export interface ReactPruneOptions {
@@ -90,14 +91,18 @@ export function pruneReActMessages(messages: Message[], opts: ReactPruneOptions 
   const protectRounds = opts.protectRecentRounds ?? readPositiveIntEnv('INNER_REACT_PRUNE_PROTECT_ROUNDS', 2);
   const { head, rounds } = splitIntoRounds(messages);
   if (rounds.length <= protectRounds) {
-    return [...head, ...rounds.flatMap((b) => [slimAssistantMessageToolCalls(b.assistant), ...b.tools])];
+    return [...head, ...rounds.flatMap((b) => [b.assistant, ...b.tools])];
   }
 
   const keepFrom = rounds.length - protectRounds;
   const out: Message[] = [...head];
   for (let r = 0; r < rounds.length; r++) {
     const block = rounds[r]!;
-    out.push(slimAssistantMessageToolCalls(block.assistant));
+    const assistant =
+      r < keepFrom && isToolArgsSlimEnabled()
+        ? slimAssistantMessageToolCalls(block.assistant)
+        : block.assistant;
+    out.push(assistant);
     if (r < keepFrom) {
       for (const t of block.tools) out.push(pruneToolMessage(t));
     } else {

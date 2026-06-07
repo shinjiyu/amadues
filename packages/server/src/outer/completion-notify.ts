@@ -31,6 +31,11 @@ export interface CompletionNotifyDeps {
   getEngine: (workspaceId: string) => InnerBrainEngine;
 }
 
+/** KPI 挂接 burst 不走 IM 完成通知（ADL KPI-BURST-OUTCOME-EVALUATOR §1） */
+export function shouldNotifyUserOnBurstExit(record: { kpiId?: string }): boolean {
+  return !record.kpiId?.trim();
+}
+
 /** 从 output 取最后一条 COMPLETE（忽略其后可能写入的 PROGRESS） */
 export function readLastCompleteEvent(workDir: string): CompleteOutputEvent | null {
   const outputFile = path.join(workDir, '.run', 'pi-mono', 'output');

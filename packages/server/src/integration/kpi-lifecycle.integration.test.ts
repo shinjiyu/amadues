@@ -49,16 +49,17 @@ describe('integration: KPI lifecycle', () => {
     );
   });
 
-  it('连续失败 → idle=3 且调度反思 burst', () => {
+  it('连续无产出 → idle 累加且 outcome 评估失败', () => {
     fx = createAgentStackFixture();
     const kpiId = fx.createKpi('监督 Shiro');
 
-    let last = fx.simulateBurstExit(kpiId, { verdict: 'failed' }).outcome;
-    last = fx.simulateBurstExit(kpiId, { verdict: 'failed' }).outcome;
-    last = fx.simulateBurstExit(kpiId, { verdict: 'failed' }).outcome;
+    let last = fx.simulateBurstExit(kpiId, { verdict: 'failed', deliverables: [] }).outcome;
+    last = fx.simulateBurstExit(kpiId, { verdict: 'failed', deliverables: [] }).outcome;
+    last = fx.simulateBurstExit(kpiId, { verdict: 'failed', deliverables: [] }).outcome;
 
     expect(fx.kpiRegistry.get(kpiId)?.consecutiveIdleBursts).toBe(3);
-    expect(last.reflexionBurstId).toMatch(/^ib-reflexion-/);
-    expect(fx.reflexionBurstsScheduled).toContain(kpiId);
+    expect(last.outcomeEvaluation?.successConfirmed).toBe(false);
+    expect(last.reflexionBurstId).toBeNull();
+    expect(fx.nextBurstsScheduled.length).toBeGreaterThan(0);
   });
 });

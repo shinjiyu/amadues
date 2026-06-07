@@ -51,15 +51,23 @@ describe('buildRecentBursts', () => {
 });
 
 describe('buildPlanInputKpis', () => {
-  it('带 momentum/kind/reflexionDigest', () => {
+  it('带 momentum/kind/outcome digest', () => {
     const kpi = {
       kpiId: 'k1', description: '台湾情报收集', createdBy: 'u', createdAt: 'x',
       status: 'active', kind: 'ongoing', momentum: 3, bursts: [], consecutiveIdleBursts: 0,
-      reflexionTrail: [{ ts: 't', burstInstanceId: 'ib', verdict: 'partial', hardFailures: [], softFailures: [], nextStrategy: '换源' }],
+      reflexionTrail: [],
+      burstRunHistory: [{
+        runId: 'r1', instanceId: 'ib', kpiId: 'k1', startedAt: 'x', finishedAt: 'x',
+        exitStatus: 'DONE', charter: 'c', ticks: 1, deliverableCount: 0,
+        outcomeEvaluation: {
+          evaluatedAt: 'x', successConfirmed: false, confidence: 'high',
+          failureReasons: [], evidenceSummary: '无产物', processReportDigest: '',
+        },
+      }],
     } as unknown as KpiRecord;
     const r = buildPlanInputKpis([kpi]);
     expect(r[0]).toMatchObject({ id: 'k1', status: 'active', kind: 'ongoing', momentum: 3 });
-    expect(r[0]?.reflexionDigest).toContain('partial');
+    expect(r[0]?.reflexionDigest).toContain('fail');
   });
 });
 

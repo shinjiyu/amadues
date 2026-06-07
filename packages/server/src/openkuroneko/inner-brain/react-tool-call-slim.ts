@@ -5,6 +5,11 @@
  */
 
 import type { Message } from '../adapter/index.js';
+import {
+  formatSlimEditRef,
+  formatSlimWriteFileRef,
+  isToolArgsSlimEnabled,
+} from '../tools/write-content-guard.js';
 
 const BLOB_ARG_TOOLS = new Set(['write_file', 'edit_file']);
 
@@ -21,6 +26,7 @@ function slimMinChars(): number {
 
 /** 单条 tool 调用的参数瘦身（供 executor 按条应用） */
 export function slimToolCallArgs(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (!isToolArgsSlimEnabled()) return args;
   const min = slimMinChars();
   if (toolName === 'write_file') {
     const filePath = String(args['path'] ?? '');
@@ -30,7 +36,7 @@ export function slimToolCallArgs(toolName: string, args: Record<string, unknown>
     return {
       path: filePath,
       ...(mode ? { mode } : {}),
-      content: `[${content.length} chars omitted; file on disk at ${filePath}]`,
+      content: formatSlimWriteFileRef(filePath),
     };
   }
   if (toolName === 'edit_file') {
@@ -39,9 +45,9 @@ export function slimToolCallArgs(toolName: string, args: Record<string, unknown>
     const newS = String(args['new_string'] ?? '');
     const out: Record<string, unknown> = { path: filePath };
     out['old_string'] =
-      oldS.length > min ? `[${oldS.length} chars omitted]` : oldS;
+      oldS.length > min ? formatSlimEditRef('old', oldS.length) : oldS;
     out['new_string'] =
-      newS.length > min ? `[${newS.length} chars omitted]` : newS;
+      newS.length > min ? formatSlimEditRef('new', newS.length) : newS;
     return out;
   }
   return args;

@@ -70,6 +70,7 @@ export interface RunStrategyPhaseResult {
   reevaluated: boolean;
   triggers: string[];
   planRejected: boolean;
+  planRejectErrors: string[];
   abortedIds: string[];
   dispatch: StrategyDispatchSelection;
 }
@@ -90,6 +91,7 @@ export async function runStrategyPhase(deps: RunStrategyPhaseDeps): Promise<RunS
   });
 
   let planRejected = false;
+  let planRejectErrors: string[] = [];
   if (decision.reevaluate && deps.callLlm) {
     const before = strategy;
     const input: StrategyPlanInput = {
@@ -103,6 +105,7 @@ export async function runStrategyPhase(deps: RunStrategyPhaseDeps): Promise<RunS
     const t0 = nowMs;
     const res = await planNext(input, { callLlm: deps.callLlm, now: () => nowMs });
     planRejected = res.rejected;
+    planRejectErrors = res.rejectErrors;
     strategy = res.artifact;
     store.writeCurrent(strategy);
     store.appendJournal({
@@ -138,6 +141,7 @@ export async function runStrategyPhase(deps: RunStrategyPhaseDeps): Promise<RunS
     reevaluated: decision.reevaluate && Boolean(deps.callLlm),
     triggers: decision.triggers,
     planRejected,
+    planRejectErrors,
     abortedIds,
     dispatch,
   };

@@ -51,6 +51,24 @@ describe('pruneReActMessages', () => {
       (m, i) => m.role === 'assistant' && i > 0 && String(m.tool_calls?.[0]?.function.name) === 'write_file',
     );
     const parsed = JSON.parse(firstAssistant!.tool_calls![0]!.function.arguments) as { content: string };
-    expect(parsed.content).toContain('500 chars omitted');
+    expect(parsed.content).toBe('__SLIM_REF__:bot.cjs');
+  });
+
+  it('keeps write_file args intact within protectRecentRounds window', () => {
+    const bigArgs = JSON.stringify({ path: 'ch1.txt', content: 'x'.repeat(500) });
+    const messages: Message[] = [
+      { role: 'user', content: 'start' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'w1', type: 'function', function: { name: 'write_file', arguments: bigArgs } },
+        ],
+      },
+      { role: 'tool', content: JSON.stringify({ ok: true, output: 'Written' }), tool_call_id: 'w1' },
+    ];
+    const pruned = pruneReActMessages(messages, { enabled: true, protectRecentRounds: 2 });
+    const parsed = JSON.parse(pruned[1]!.tool_calls![0]!.function.arguments) as { content: string };
+    expect(parsed.content).toHaveLength(500);
   });
 });

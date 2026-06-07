@@ -3,13 +3,14 @@ import path from 'node:path';
 import { getWorkDir, isPathWritable, pathSecurityError } from './workdir-guard.js';
 import type { Tool } from '../index.js';
 import { prepareSelfUpdateMutation } from '../../../self-update/session.js';
+import { isRejectedWriteContent, REJECTED_WRITE_CONTENT_MSG } from '../write-content-guard.js';
 
 export const writeFileTool: Tool = {
   name: 'write_file',
   description:
     'Write text content to a file in the working directory.\n' +
     'mode=overwrite（默认）整文件覆盖；mode=append 在文件末尾追加（文件不存在则创建）。\n' +
-    '大段代码写入后对话历史会自动省略 content（文件已在 workDir）；后续请用 edit_file 小范围修改。',
+    '大段代码写入后旧轮对话历史会替换为 __SLIM_REF__（文件已在 workDir）；同路径禁止二次 overwrite，请用 edit_file 或 append。',
   parameters: {
     path:    { type: 'string', description: 'File path relative to workDir (e.g. "src/snake.js")' },
     content: { type: 'string', description: 'Text content to write or append' },
@@ -26,6 +27,9 @@ export const writeFileTool: Tool = {
     const modeRaw  = String(args['mode'] ?? 'overwrite').trim().toLowerCase();
     const mode     = modeRaw === 'append' ? 'append' : 'overwrite';
     if (!filePath) return { ok: false, output: 'Missing required argument: path' };
+    if (isRejectedWriteContent(content)) {
+      return { ok: false, output: REJECTED_WRITE_CONTENT_MSG };
+    }
     const abs = path.isAbsolute(filePath) ? filePath : path.join(getWorkDir(), filePath);
     if (!isPathWritable(abs)) return { ok: false, output: pathSecurityError(abs) };
     try {

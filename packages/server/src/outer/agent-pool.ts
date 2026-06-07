@@ -17,8 +17,7 @@ import type { SkillDrive9Store } from '../drive9/skill-drive9-store.js';
 import { serializeSkill, deserializeSkill, SHARED_SKILLS_DIR } from '../drive9/skill-drive9-store.js';
 import type { KnowledgeDrive9Store } from '../drive9/knowledge-drive9-store.js';
 import {
-  mergeWorkDirKnowledgeToDrive9,
-  seedRelevantKnowledgeToWorkDir,
+  seedDrive9FactsToMemory,
 } from './knowledge-promote.js';
 
 // ── 类型 ────────────────────────────────────────────────────────────────────
@@ -396,7 +395,7 @@ export async function seedInnerBrainSharedContext(opts: {
   }
 
   if (opts.knowledgeDrive9Store) {
-    await seedRelevantKnowledgeToWorkDir(
+    await seedDrive9FactsToMemory(
       opts.knowledgeDrive9Store,
       opts.workDir,
       opts.goal,
@@ -405,7 +404,7 @@ export async function seedInnerBrainSharedContext(opts: {
   }
 }
 
-export { mergeWorkDirKnowledgeToDrive9, seedRelevantKnowledgeToWorkDir };
+export { seedDrive9FactsToMemory };
 
 /**
  * 将 workDir/.brain/skills 中的技能写入 drive9 shared 池（fire-and-forget）。

@@ -5,7 +5,6 @@ import type { KpiRegistry, KpiRecord } from '../kpi-registry.js';
 import type { InnerBrainRegistry } from '../inner-brain-registry.js';
 import { executeOuterTool, type OuterToolContext } from '../outer-tools.js';
 import { isSetGoalDispatched, buildKpiContinuationGoal } from '../inner-brain-kpi-reuse.js';
-import { formatKpiReflexionBlock } from '../kpi-registry.js';
 import { stopInnerBrainInstance } from '../stop-inner-brain.js';
 import { decomposeParentKpiIfNeeded } from './sub-kpi-decomposer.js';
 import { evaluateKpiSlotIdle } from './kpi-slot-idle.js';
@@ -29,6 +28,7 @@ export interface KpiAdvancerDeps {
   defaultThreadId: string;
   focusOrder?: string[];
   strategyMode?: boolean;
+  /** @deprecated outcomeEvaluator 已替代 reflexion burst */
   scheduleReflexionBurst?: (kpiId: string) => string | null;
   stuckThreshold?: number;
 }
@@ -84,9 +84,8 @@ function orderLeafKpis(
   return ordered;
 }
 
-export function buildKpiSprintGoal(kpi: KpiRecord, kpiRegistry: KpiRegistry): string {
+export function buildKpiSprintGoal(kpi: KpiRecord, _kpiRegistry?: KpiRegistry): string {
   const historyBlock = formatBurstRunDigest(kpi, 5);
-  const trailBlock = formatKpiReflexionBlock(kpiRegistry.recentReflexions(kpi.kpiId, 5));
   const charter = kpi.charter?.trim() || kpi.description;
   return (
     `# KPI sprint（外脑推进）\n\n` +
@@ -94,7 +93,6 @@ export function buildKpiSprintGoal(kpi: KpiRecord, kpiRegistry: KpiRegistry): st
     `## 本轮章程\n${charter}\n\n` +
     `## KPI\n${kpi.description}\n\n` +
     `${historyBlock}\n` +
-    (trailBlock || '\n（暂无 reflexion trail）\n') +
     `\n## 执行约束\n` +
     `- 本轮 EXECUTE 只完成**一小步**，完成后 REVIEW/REPLAN 并结束（外脑将按节拍再派）\n` +
     `- 沿用本 workspace 已有产出，增量更新\n` +
@@ -135,14 +133,6 @@ async function dispatchLeafSprint(
   deps: KpiAdvancerDeps,
   kpi: KpiRecord,
 ): Promise<KpiAdvanceResult> {
-  const threshold = deps.stuckThreshold ?? Math.max(1, Number(process.env['UTLRA_KPI_STUCK_THRESHOLD'] ?? 3));
-  if (kpi.consecutiveIdleBursts >= threshold && deps.scheduleReflexionBurst) {
-    const id = deps.scheduleReflexionBurst(kpi.kpiId);
-    if (id) {
-      return { ok: true, kpiId: kpi.kpiId, instanceId: id, reason: 'reflexion_burst' };
-    }
-  }
-
   preemptAwaitingBurst(deps, kpi);
 
   const slot = evaluateKpiSlotIdle(kpi, deps.innerBrainRegistry);
@@ -156,7 +146,7 @@ async function dispatchLeafSprint(
   const goal =
     kpi.burstRunHistory.length > 0 || kpi.bursts.length > 0
       ? buildKpiSprintGoal(kpi, deps.kpiRegistry)
-      : buildKpiContinuationGoal(kpi, deps.kpiRegistry.recentReflexions(kpi.kpiId, 5));
+      : buildKpiContinuationGoal(kpi);
 
   const toolOut = await executeOuterTool(
     'set_goal',
@@ -227,9 +217,6 @@ export async function tickKpiAdvancer(deps: KpiAdvancerDeps): Promise<KpiAdvance
     const r = await advanceKpi(deps, leaf.kpiId);
     results.push(r);
     if (r.ok && r.reason === 'kpi_sprint_dispatched') {
-      return { advanced: true, results };
-    }
-    if (r.ok && r.reason === 'reflexion_burst') {
       return { advanced: true, results };
     }
   }

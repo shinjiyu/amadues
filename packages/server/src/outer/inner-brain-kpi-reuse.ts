@@ -8,7 +8,7 @@ import path from 'node:path';
 
 import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { KpiRecord, KpiRegistry, ReflexionSummary } from './kpi-registry.js';
-import { formatKpiReflexionBlock } from './kpi-registry.js';
+import { formatBurstRunDigest } from './kpi/burst-run-history.js';
 
 /** set_goal 成功时的输出前缀（autonomy / heartbeat 判定用） */
 export const SET_GOAL_DISPATCHED_MARKERS = [
@@ -127,18 +127,17 @@ ${trailDigest}
 }
 
 /** 自动 / 手动续跑真任务时的 goal.md 正文 */
-export function buildKpiContinuationGoal(
-  kpi: KpiRecord,
-  recentReflexions: ReflexionSummary[],
-): string {
-  const trailBlock = formatKpiReflexionBlock(recentReflexions);
+export function buildKpiContinuationGoal(kpi: KpiRecord): string {
+  const historyBlock = formatBurstRunDigest(kpi, 5);
+  const charter = kpi.charter?.trim();
   return (
     `# KPI 续跑（同一内脑实例）\n\n` +
     `origin_user: ${kpi.createdBy}\n\n` +
     `## KPI\n${kpi.description}\n` +
-    (trailBlock || '\n（暂无 reflexion trail，请根据 KPI 描述与已有 knowledge 规划下一小步）\n') +
+    (charter ? `\n## 当前章程\n${charter}\n` : '') +
+    `\n${historyBlock}\n` +
     `\n## 执行约束\n` +
     `- 本轮 EXECUTE 只向 KPI 靠近**一小步**，完成后 REVIEW/REPLAN，不要一次 plan 走到底\n` +
-    `- 沿用本 workspace 已有 milestones / knowledge，必要时修订而非另起 workspace\n`
+    `- 沿用本 workspace 已有 memory.facts / deliverables，必要时修订而非另起 workspace\n`
   );
 }

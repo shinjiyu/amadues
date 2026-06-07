@@ -42,7 +42,8 @@
 | innerBrainRegistry | ❌ | ✅ `innerBrainRegistry.component.integration.test.ts` | — | |
 | innerSpawner | ❌ | ✅ `innerSpawner.component.integration.test.ts` | — | + 可选 `spawn-inner-worker-live`（`UTLRA_TEST_SPAWN_INNER=1`） |
 | kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | |
-| kpiBurstHooks | ✅ `kpi-burst-hooks.test.ts` | ✅ `kpiBurstHooks.component.integration.test.ts` | — | 与 `kpi-lifecycle.integration` 互补 |
+| kpiBurstHooks | ✅ `kpi-burst-hooks.test.ts` | ✅ `kpiBurstHooks.component.integration.test.ts` | — | onExit → outcomeEvaluator |
+| kpiBurstOutcomeEvaluator | ✅ `kpi-burst-outcome-evaluator.test.ts` + `burst-process-report` | — | — | ADL [`KPI-BURST-OUTCOME-EVALUATOR.md`](./KPI-BURST-OUTCOME-EVALUATOR.md) |
 | imIntentClassifier | ✅ `im-intent-classifier.test.ts` | ⏳ inbound IM fixture | — | ADL [`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) §2 |
 | subKpiDecomposer | ✅ `sub-kpi-decomposer.test.ts` | — | — | §3 首拆子 KPI |
 | kpiCadence | ✅ `kpi-cadence.test.ts` | — | — | §3 cadence due |

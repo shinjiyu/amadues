@@ -102,15 +102,6 @@ export function evaluateKpiAutonomyDispatch(
     return { ok: true, reason: 'first_burst' };
   }
 
-  // idle 卡死优先转反思，不再派新真任务
-  const threshold = Math.max(1, Number(process.env['UTLRA_KPI_STUCK_THRESHOLD'] ?? 3));
-  if (kpi.consecutiveIdleBursts >= threshold) {
-    return {
-      ok: false,
-      reason: `kpi_stuck_reflexion:连续 ${kpi.consecutiveIdleBursts} 次 idle 无产出`,
-    };
-  }
-
   if (kpi.isLeaf && kpi.kind === 'ongoing' && !isCadenceDue(kpi)) {
     return { ok: false, reason: 'cadence_not_due' };
   }

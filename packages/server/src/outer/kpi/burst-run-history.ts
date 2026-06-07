@@ -6,14 +6,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type {
+  BurstOutcomeEvaluation,
   BurstRunExitStatus,
   BurstRunRecord,
   KpiRecord,
   KpiRegistry,
-  ReflexionSummary,
 } from '../kpi-registry.js';
 import type { TaskRecord, TaskStatus } from '../inner-brain-registry.js';
-import { readReflexionFromWorkspace } from '../kpi-burst-hooks.js';
 import { refreshKpiNextDueAt } from './kpi-cadence.js';
 
 export function generateRunId(): string {
@@ -38,9 +37,8 @@ export function buildBurstRunRecord(input: {
   task: TaskRecord;
   exitStatus: BurstRunExitStatus;
   finishedAt?: string;
+  outcomeEvaluation?: BurstOutcomeEvaluation;
 }): BurstRunRecord {
-  const reflexion = readReflexionFromWorkspace(input.task.workDir, input.instanceId);
-  const summary: ReflexionSummary | undefined = reflexion ?? undefined;
   return {
     runId: generateRunId(),
     instanceId: input.instanceId,
@@ -51,7 +49,7 @@ export function buildBurstRunRecord(input: {
     charter: input.charter.slice(0, 2000),
     ticks: input.task.ticks ?? 0,
     deliverableCount: input.task.deliverableCount ?? 0,
-    ...(summary ? { reflexionSummary: summary } : {}),
+    ...(input.outcomeEvaluation ? { outcomeEvaluation: input.outcomeEvaluation } : {}),
   };
 }
 
@@ -60,11 +58,15 @@ export function formatBurstRunDigest(kpi: KpiRecord, maxRuns = 5): string {
   if (runs.length === 0) return '（暂无 burst 执行史）';
   const lines = ['## [Burst 执行史]（最近 sprint）'];
   for (const r of runs.reverse()) {
+    const ev = r.outcomeEvaluation;
     lines.push(
       `- ${r.finishedAt.slice(0, 16)} exit=${r.exitStatus} ticks=${r.ticks} ` +
         `deliverables=${r.deliverableCount}` +
-        (r.reflexionSummary ? ` verdict=${r.reflexionSummary.verdict}` : ''),
+        (ev ? ` ok=${ev.successConfirmed}` : ''),
     );
+    if (ev?.evidenceSummary) {
+      lines.push(`  evidence: ${ev.evidenceSummary.slice(0, 100)}`);
+    }
     if (r.charter) {
       lines.push(`  charter: ${r.charter.replace(/\s+/g, ' ').slice(0, 120)}…`);
     }
@@ -81,6 +83,7 @@ export function recordBurstRunOnExit(
     task: TaskRecord;
     exitStatus: BurstRunExitStatus;
     charter?: string;
+    outcomeEvaluation?: BurstOutcomeEvaluation;
   },
 ): void {
   const kpi = kpiRegistry.get(input.kpiId);
@@ -94,6 +97,7 @@ export function recordBurstRunOnExit(
       charter,
       task: input.task,
       exitStatus: input.exitStatus,
+      ...(input.outcomeEvaluation ? { outcomeEvaluation: input.outcomeEvaluation } : {}),
     }),
   );
   const finishedAt = new Date().toISOString();

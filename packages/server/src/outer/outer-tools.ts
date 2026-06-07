@@ -24,7 +24,6 @@ import { spawnInnerBrainWorker, readWorkerStatus } from '../pi-mono/inner-brain-
 import { isInnerBrainStoppable, stopInnerBrainInstance } from './stop-inner-brain.js';
 import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
-import { formatKpiReflexionBlock } from './kpi-registry.js';
 import { findLiveBurstForKpi } from './kpi-dispatch-guard.js';
 import { findCanonicalBurstForKpi } from './inner-brain-kpi-reuse.js';
 import { checkRunningInnerBrainCapacity } from './inner-brain-capacity.js';
@@ -33,6 +32,7 @@ import { formatKpiDigest, suggestKpiAction, buildKpiBurstLinks } from './kpi-pro
 import { ingestDeliverables } from './deliverables-ingest.js';
 import { collectPeerWorkspaceIds, prepareKpiPeerHandoff } from './workspace-inbox.js';
 import { processBurstExitForKpi } from './kpi-burst-hooks.js';
+import { formatBurstRunDigest } from './kpi/burst-run-history.js';
 import { advanceKpi } from './kpi/kpi-advancer.js';
 import {
   listActivePendings as listActivePendingsSync,
@@ -44,13 +44,12 @@ import {
   isBrainAwaitingAsync,
 } from './brain-async-snapshot.js';
 import { notifyInnerBrainAwaitingHuman } from './awaiting-notify.js';
-import { notifyInnerBrainTaskComplete } from './completion-notify.js';
+import { notifyInnerBrainTaskComplete, shouldNotifyUserOnBurstExit } from './completion-notify.js';
 import { expandAttachAssetIds, type AttachmentPart } from './attach-expand.js';
 import {
   mergeWorkDirSkillsToAgentPool,
   mergeWorkDirSkillsToMem9,
   mergeWorkDirSkillsToDrive9,
-  mergeWorkDirKnowledgeToDrive9,
   seedInnerBrainSharedContext,
 } from './agent-pool.js';
 import type { OuterMemoryStore } from './outer-memory.js';
@@ -897,14 +896,8 @@ async function execSetGoal(
       skillStore: ctx.skillStore,
     });
 
-    let dispatchGoal = goal;
-    if (resolvedKpiId && ctx.kpiRegistry) {
-      const trailBlock = formatKpiReflexionBlock(ctx.kpiRegistry.recentReflexions(resolvedKpiId, 5));
-      if (trailBlock) dispatchGoal = goal + trailBlock;
-    }
-
     const eng = ctx.getEngine(wsId);
-    eng.setGoal(dispatchGoal);
+    eng.setGoal(goal);
 
     const maxTicks = Math.min(10_000, Math.max(1, Number(process.env['UTLRA_PI_AUTO_MAX_TICKS'] ?? 500)));
 
@@ -981,8 +974,7 @@ async function execSetGoal(
           const isError = exitCode !== 0 && signal == null;
           const isAwaiting = isBrainAwaitingAsync(workDir);
 
-          // KPI hook（若挂 KPI 且系统注入了 scheduleReflexionBurst 才生效）
-          const kpiOutcome = (resolvedKpiId && ctx.kpiRegistry && ctx.scheduleReflexionBurst)
+          const kpiOutcome = (resolvedKpiId && ctx.kpiRegistry)
             ? processBurstExitForKpi(
                 {
                   instanceId,
@@ -1031,13 +1023,6 @@ async function execSetGoal(
             ...(kpiOutcome ? { deliverableCount: kpiOutcome.deliverableCount } : {}),
             pid: undefined,
           });
-          if (kpiOutcome?.reflexionBurstId) {
-            console.log(
-              `[utlra][outer-tools] kpi=${resolvedKpiId} 派发反思 burst ` +
-              `${kpiOutcome.reflexionBurstId} (idleStreak=${kpiOutcome.idleStreak})`,
-            );
-          }
-
           // 知识合并（无论 DONE/STOPPED 都执行）
           mergeWorkDirSkillsToAgentPool(ctx.dataRoot, workDir);
           if (ctx.skillDrive9Store) {
@@ -1045,20 +1030,15 @@ async function execSetGoal(
           } else if (ctx.skillStore) {
             mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
           }
-          if (ctx.knowledgeDrive9Store) {
-            mergeWorkDirKnowledgeToDrive9(ctx.knowledgeDrive9Store, workDir, ctx.agentSid);
-          }
+          const record = registry.get(instanceId);
+          const notifyUser = record ? shouldNotifyUserOnBurstExit(record) : true;
 
-          if (finalStatus === 'DONE') {
-            // 内脑 output → 外脑 mem9：自动提取工作成果为语义知识
+          if (finalStatus === 'DONE' && notifyUser) {
             ctx.memoryStore?.ingestInnerOutput(workDir, wsId);
           }
 
-          // 用户通知：onExit 是进程退出的确定性时机。
-          // PushLoop 只轮询 RUNNING/BLOCKED 实例，onExit 比 poll 更及时，统一在此处理。
-          const record = registry.get(instanceId);
           if (record?.originThread) {
-            if (finalStatus === 'DONE') {
+            if (finalStatus === 'DONE' && notifyUser) {
               void notifyInnerBrainTaskComplete(
                 {
                   imClient: ctx.imClient,
@@ -1253,16 +1233,14 @@ async function execStartSelfUpdate(
         } else if (ctx.skillStore) {
           mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
         }
-        if (ctx.knowledgeDrive9Store) {
-          mergeWorkDirKnowledgeToDrive9(ctx.knowledgeDrive9Store, workDir, ctx.agentSid);
-        }
+        const record = registry.get(instanceId);
+        const notifyUser = record ? shouldNotifyUserOnBurstExit(record) : true;
 
-        if (finalStatus === 'DONE') {
+        if (finalStatus === 'DONE' && notifyUser) {
           ctx.memoryStore?.ingestInnerOutput(workDir, wsId);
         }
 
-        const record = registry.get(instanceId);
-        if (record?.originThread && finalStatus === 'DONE') {
+        if (record?.originThread && finalStatus === 'DONE' && notifyUser) {
           void notifyInnerBrainTaskComplete(
             {
               imClient: ctx.imClient,
@@ -1420,20 +1398,10 @@ function execViewKpi(
   const k = ctx.kpiRegistry.get(id);
   if (!k) return { replied: false, output: `（KPI ${id} 不存在）` };
   const digest = formatKpiDigest(k, ctx.innerBrainRegistry);
-  const recent = ctx.kpiRegistry.recentReflexions(id, 5);
-  const reflexionText = recent.length === 0
-    ? '（暂无 reflexion）'
-    : recent.map((r, i) => {
-        return [
-          `第 ${i + 1} 次（${formatAgentIsoLocal(r.ts)}, verdict=${r.verdict}）`,
-          r.hardFailures.length > 0 ? `  硬失败：${r.hardFailures.join('；')}` : '',
-          r.softFailures.length > 0 ? `  软失败：${r.softFailures.join('；')}` : '',
-          r.nextStrategy ? `  换向建议：${r.nextStrategy}` : '',
-        ].filter(Boolean).join('\n');
-      }).join('\n\n');
+  const runHistory = formatBurstRunDigest(k, 5);
   return {
     replied: false,
-    output: [digest, '', '反思链（最近 5 条）：', reflexionText].join('\n'),
+    output: [digest, '', runHistory].join('\n'),
   };
 }
 

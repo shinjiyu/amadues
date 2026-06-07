@@ -230,3 +230,27 @@
                         "horizon.note" "见 INNER-VISION-TOOL.md"
                     }
                 }
+
+                browserSessionRegistry = component "Browser Session Registry" "进程内 Playwright 会话：open/act/close + node 结束清理" "TypeScript" {
+                    tags "Inner-Module" "Inner-Tools"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/browser/session-registry.ts"
+                        "horizon.intention" "增量 UI 自动化；替代 monolithic shell_exec 脚本"
+                        "horizon.in" "browser_open/browser_act args + workDir + nodeInstId"
+                        "horizon.out" "session_id; act result; auto-close on baseNode exit"
+                        "horizon.deps" "playwright; workdirGuard; baseNodeExecutor"
+                        "horizon.test.unit" "session-registry.test.ts; browser-tools.test.ts"
+                        "horizon.note" "见 BROWSER-SESSION-TOOL.md"
+                    }
+                }
+
+                browserTools = component "Browser Tools" "browser_open / browser_act / browser_close / browser_list" "TypeScript" {
+                    tags "Inner-Module" "Inner-Tools"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tools/definitions/browser-tools.ts"
+                        "horizon.in" "session_id + action + workdirGuard paths"
+                        "horizon.out" "JSON act result; snapshot/screenshot spill to workspace"
+                        "horizon.deps" "browserSessionRegistry"
+                        "horizon.test.unit" "browser-tools.test.ts"
+                    }
+                }

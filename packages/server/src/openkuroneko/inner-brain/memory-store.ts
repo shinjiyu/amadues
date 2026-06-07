@@ -2,16 +2,33 @@
  * Memory Store — .brain/memory.json 全局 memory 读写
  *
  * ADL：doc/structurizr/DYFLOW-INNER-EXECUTOR.md §11 / INNER-NODE-LIFECYCLE.md §11
+ * 事实治理：doc/structurizr/FACTS-KNOWLEDGE-GOVERNANCE.md
  *
  * 替代 legacy 的 .brain/knowledge.md / constraints.md / execution-context.json。
- * 承载 DyFlow 全局 memory：goal / constraints / facts / last_failure /
+ * 承载 DyFlow 全局 memory：goal / constraints / facts / fact_records / last_failure /
  * node_results / kpi_progress + 自由扩展键。
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { DagHistoryEntry, FailureSummary, InnerMemory, LockedMilestone, NodeResult } from './types.js';
+import {
+  migrateLegacyFacts,
+  recordFactGoverned,
+  sweepFacts,
+  syncLegacyFactsArray,
+  type RecordFactInput,
+  type RecordFactResult,
+  type SweepFactsResult,
+} from './fact-governor.js';
+import type {
+  DagHistoryEntry,
+  FactRecord,
+  FailureSummary,
+  InnerMemory,
+  LockedMilestone,
+  NodeResult,
+} from './types.js';
 
 /** dag_history 环形上限（§6.8） */
 const DAG_HISTORY_MAX = Number(process.env['INNER_DAG_HISTORY_MAX'] ?? 20) || 20;
@@ -32,16 +49,35 @@ export interface MemoryStore {
   appendDagHistory(entry: DagHistoryEntry): void;
   /** 锁定一个已完成里程碑（按 id 去重，replace；§9c） */
   lockMilestone(milestone: LockedMilestone): void;
+  /** @deprecated 请用 recordFact；保留兼容 record_fact 工具 */
   appendFact(fact: string): void;
+  /** 治理写入：topic 合并 + hash 去重 */
+  recordFact(input: RecordFactInput): RecordFactResult;
+  /** ATTRIBUTE 后 quota + cold 淘汰 */
+  sweepFacts(): SweepFactsResult;
   appendConstraint(constraint: string): void;
   readonly filePath: string;
 }
 
 function defaultMemory(): InnerMemory {
-  return { constraints: [], facts: [], node_results: {}, last_failure: null };
+  return { constraints: [], facts: [], fact_records: [], node_results: {}, last_failure: null };
 }
 
-export function createMemoryStore(workDir: string): MemoryStore {
+function ensureFactRecords(mem: InnerMemory): InnerMemory {
+  let records = Array.isArray(mem.fact_records) ? [...mem.fact_records] : [];
+  if (records.length === 0 && mem.facts.length > 0) {
+    records = migrateLegacyFacts(mem.facts);
+  }
+  const facts = syncLegacyFactsArray(records);
+  return { ...mem, fact_records: records, facts };
+}
+
+export interface CreateMemoryStoreOptions {
+  /** 事实写入 memory 后回调（供外脑同步 drive9，不 import drive9） */
+  onFactRecorded?: (record: FactRecord, result: RecordFactResult) => void;
+}
+
+export function createMemoryStore(workDir: string, opts?: CreateMemoryStoreOptions): MemoryStore {
   const brainDir = path.join(workDir, '.brain');
   const filePath = path.join(brainDir, 'memory.json');
 
@@ -49,24 +85,27 @@ export function createMemoryStore(workDir: string): MemoryStore {
     try {
       const raw = fs.readFileSync(filePath, 'utf8');
       const parsed = JSON.parse(raw) as Partial<InnerMemory>;
-      return {
+      const base: InnerMemory = {
         ...defaultMemory(),
         ...parsed,
         constraints: Array.isArray(parsed.constraints) ? parsed.constraints : [],
         facts: Array.isArray(parsed.facts) ? parsed.facts : [],
+        fact_records: Array.isArray(parsed.fact_records) ? parsed.fact_records : [],
         node_results:
           parsed.node_results && typeof parsed.node_results === 'object'
             ? parsed.node_results
             : {},
       };
+      return ensureFactRecords(base);
     } catch {
       return defaultMemory();
     }
   }
 
   function write(mem: InnerMemory): void {
+    const synced = ensureFactRecords(mem);
     fs.mkdirSync(brainDir, { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(mem, null, 2), 'utf8');
+    fs.writeFileSync(filePath, JSON.stringify(synced, null, 2), 'utf8');
   }
 
   return {
@@ -130,12 +169,31 @@ export function createMemoryStore(workDir: string): MemoryStore {
       write(mem);
     },
 
-    appendFact(fact: string): void {
+    recordFact(input: RecordFactInput): RecordFactResult {
       const mem = read();
-      if (fact.trim() && !mem.facts.includes(fact)) {
-        mem.facts.push(fact);
-        write(mem);
+      const records = Array.isArray(mem.fact_records) ? [...mem.fact_records] : [];
+      const result = recordFactGoverned(records, input);
+      mem.fact_records = result.records;
+      mem.facts = syncLegacyFactsArray(result.records);
+      write(mem);
+      if (result.record && result.action !== 'skipped') {
+        opts?.onFactRecorded?.(result.record, result);
       }
+      return result;
+    },
+
+    sweepFacts(): SweepFactsResult {
+      const mem = read();
+      const records = Array.isArray(mem.fact_records) ? [...mem.fact_records] : [];
+      const { records: swept, result } = sweepFacts(records);
+      mem.fact_records = swept;
+      mem.facts = syncLegacyFactsArray(swept);
+      write(mem);
+      return result;
+    },
+
+    appendFact(fact: string): void {
+      this.recordFact({ content: fact, source: { via: 'record_fact', at: new Date().toISOString() } });
     },
 
     appendConstraint(constraint: string): void {

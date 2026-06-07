@@ -1,104 +1,65 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { shouldRecordKpiIdle } from './kpi-burst-hooks.js';
-import type { ReflexionSummary } from './kpi-registry.js';
+import { shouldRecordKpiIdle, processBurstExitForKpi } from './kpi-burst-hooks.js';
 import { createKpiScenarioFixture, type KpiScenarioFixture } from './kpi-scenario.harness.js';
 
-const baseReflexion: ReflexionSummary = {
-  ts: '2026-01-01T00:00:00.000Z',
-  burstInstanceId: 'ib-test',
-  verdict: 'failed',
-  hardFailures: [],
-  softFailures: [],
-  nextStrategy: '',
-};
-
 describe('shouldRecordKpiIdle', () => {
-  it('failed verdict 计 idle，即使有 deliverable', () => {
+  it('successConfirmed 不计 idle', () => {
     expect(shouldRecordKpiIdle({
       exitedWithError: false,
       stoppedBy: 'idle',
       deliverableCount: 2,
-      reflexion: { ...baseReflexion, verdict: 'failed' },
-    })).toBe(true);
+      successConfirmed: true,
+    })).toBe(false);
   });
 
-  it('success verdict 重置 idle', () => {
+  it('无产出且未确认成功 → idle', () => {
     expect(shouldRecordKpiIdle({
       exitedWithError: false,
       stoppedBy: 'idle',
       deliverableCount: 0,
-      reflexion: { ...baseReflexion, verdict: 'success' },
-    })).toBe(false);
+      successConfirmed: false,
+    })).toBe(true);
   });
 
-  it('partial + deliverable 不算 idle', () => {
-    expect(shouldRecordKpiIdle({
-      exitedWithError: false,
-      stoppedBy: 'idle',
-      deliverableCount: 1,
-      reflexion: { ...baseReflexion, verdict: 'partial' },
-    })).toBe(false);
-  });
-
-  it('无 reflexion 时回退 idle+零 deliverable', () => {
+  it('AWAITING 不增 streak', () => {
     expect(shouldRecordKpiIdle({
       exitedWithError: false,
       stoppedBy: 'idle',
       deliverableCount: 0,
-      reflexion: null,
-    })).toBe(true);
+      isAwaiting: true,
+    })).toBe(false);
   });
 
-  it('ERROR 退出但有 deliverable 不计 idle', () => {
+  it('ERROR 且无 deliverable 计 idle', () => {
     expect(shouldRecordKpiIdle({
       exitedWithError: true,
       stoppedBy: 'stop_signal',
-      deliverableCount: 2,
-      reflexion: null,
-    })).toBe(false);
-  });
-
-  it('ERROR 退出且无 deliverable 计 idle', () => {
-    expect(shouldRecordKpiIdle({
-      exitedWithError: true,
-      stoppedBy: 'idle',
       deliverableCount: 0,
-      reflexion: null,
     })).toBe(true);
   });
 });
 
-describe('processBurstExitForKpi · 多巴胺反馈调节 (momentum)', () => {
+describe('processBurstExitForKpi · outcome evaluation', () => {
   let fx: KpiScenarioFixture;
   afterEach(() => fx?.cleanup());
 
-  it('success + 产出 → momentum +2', () => {
+  it('有 deliverable → outcomeEvaluation.successConfirmed + momentum', () => {
     fx = createKpiScenarioFixture('情报 KPI', 'ongoing');
     const { outcome } = fx.simulateBurstExit({
-      verdict: 'success',
       deliverables: ['a.md'],
       postComplete: true,
     });
-    expect(outcome.momentum).toBe(2);
-    expect(fx.kpiRegistry.get(fx.kpiId)?.momentum).toBe(2);
+    expect(outcome.outcomeEvaluation?.successConfirmed).toBe(true);
+    expect(outcome.reflexionBurstId).toBeNull();
+    expect(fx.kpiRegistry.get(fx.kpiId)?.burstRunHistory.at(-1)?.outcomeEvaluation).toBeDefined();
   });
 
-  it('failed 无产出 → momentum -2，累计后 clamp 不破下限', () => {
-    fx = createKpiScenarioFixture('情报 KPI', 'ongoing');
-    fx.simulateBurstExit({ verdict: 'failed', deliverables: [] });
-    fx.simulateBurstExit({ verdict: 'failed', deliverables: [] });
-    fx.simulateBurstExit({ verdict: 'failed', deliverables: [] });
-    // -2 * 3 = -6 → clamp 到 -5
-    expect(fx.kpiRegistry.get(fx.kpiId)?.momentum).toBe(-5);
-  });
-
-  it('AWAITING → momentum 不变', () => {
-    fx = createKpiScenarioFixture('情报 KPI', 'ongoing');
-    const { outcome } = fx.simulateBurstExit({
-      verdict: 'partial',
-      deliverables: ['x.md'],
-      asyncWaiting: true,
-    });
-    expect(outcome.momentum).toBe(0);
+  it('无 deliverable → 建议重试 charter 写入 KPI', () => {
+    fx = createKpiScenarioFixture('交付 KPI', 'delivery');
+    const { outcome } = fx.simulateBurstExit({ deliverables: [] });
+    expect(outcome.outcomeEvaluation?.successConfirmed).toBe(false);
+    expect(outcome.nextKpiBurstId).toBe('ib-next-1');
+    expect(fx.kpiRegistry.get(fx.kpiId)?.charter).toMatch(/换向重试/);
+    expect(fx.nextBurstsScheduled).toContain(fx.kpiId);
   });
 });

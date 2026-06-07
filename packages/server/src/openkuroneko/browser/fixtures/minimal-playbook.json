@@ -1,0 +1,8 @@
+{
+  "label": "fixture-click",
+  "stop_on_error": true,
+  "steps": [
+    { "action": "click", "text": "提交" },
+    { "action": "state" }
+  ]
+}

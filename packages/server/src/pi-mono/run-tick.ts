@@ -11,6 +11,8 @@ import path from 'node:path';
 import { createDyflowController } from '../openkuroneko/inner-brain/index.js';
 import { createNodeDefDrive9Store } from '../drive9/node-def-drive9-store.js';
 import { Drive9Client } from '../drive9/drive9-client.js';
+import { KnowledgeDrive9Store } from '../drive9/knowledge-drive9-store.js';
+import { createDrive9FactSyncSink } from '../outer/knowledge-promote.js';
 import {
   createIORegistry,
   createFileInputEndpoint,
@@ -129,6 +131,11 @@ async function createPiMonoController(params: {
     toolsDefs.shellExecBgTool,
     toolsDefs.shellReadOutputTool,
     toolsDefs.shellKillTool,
+    toolsDefs.browserOpenTool,
+    toolsDefs.browserActTool,
+    toolsDefs.browserCloseTool,
+    toolsDefs.browserListTool,
+    toolsDefs.browserRunStepsTool,
     toolsDefs.webSearchTool,
     toolsDefs.getTimeTool,
     toolsDefs.runAgentTool,
@@ -136,7 +143,6 @@ async function createPiMonoController(params: {
     toolsDefs.createQueryAvailableSkillsTool(skillProvider),
     toolsDefs.getSkillContentTool,
     toolsDefs.registerDeliverableTool,
-    toolsDefs.writeMemoTool,
     toolsDefs.askUserTool,
     toolsDefs.waitTimerTool,
     toolsDefs.waitSignalTool,
@@ -154,14 +160,24 @@ async function createPiMonoController(params: {
   const burstId = process.env['INNER_BURST_ID']?.trim() || innerKpiId || params.workspaceId;
 
   // P1：drive9 配置存在时启用节点共享（Designer search_and_instance + creator 自动导出）
-  const nodeSharing = drive9Config
+  const drive9Client = drive9Config
+    ? new Drive9Client({ apiKey: drive9Config.apiKey, apiUrl: drive9Config.apiUrl })
+    : undefined;
+
+  const nodeSharing = drive9Client
     ? {
-        defStore: createNodeDefDrive9Store(
-          new Drive9Client({ apiKey: drive9Config.apiKey, apiUrl: drive9Config.apiUrl }),
-        ),
+        defStore: createNodeDefDrive9Store(drive9Client),
         sourceAgent: params.workspaceId,
         env: { workDir: params.workDir },
       }
+    : undefined;
+
+  const sharedFactSink = drive9Client
+    ? createDrive9FactSyncSink(
+        new KnowledgeDrive9Store(drive9Client),
+        params.workspaceId,
+        path.basename(params.workDir),
+      )
     : undefined;
 
   const instanceId =
@@ -178,6 +194,7 @@ async function createPiMonoController(params: {
       toolRegistry: executorToolRegistry,
       logger,
       ...(nodeSharing ? { nodeSharing } : {}),
+      ...(sharedFactSink ? { sharedFactSink } : {}),
       onComplete: async (reason: string) => {
         try {
           const out = ioRegistry.getOutput('default');

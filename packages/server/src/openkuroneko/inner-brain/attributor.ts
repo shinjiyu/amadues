@@ -8,6 +8,7 @@ import type { Message, LLMAdapter } from '../adapter/index.js';
 import type { Logger } from '../logger/index.js';
 import type { ToolRegistry } from '../tools/index.js';
 import { createToolRegistry } from '../tools/index.js';
+import { selectFactsForPrompt } from './fact-governor.js';
 import type { MemoryStore } from './memory-store.js';
 import {
   createRecordConstraintTool,
@@ -78,7 +79,11 @@ export async function runDyflowAttributor(
     `## 本轮 RUN 结果\n${ctx.ok ? '✅ 全图成功' : `❌ 失败节点：${ctx.failedAt ?? '?'}`}`,
     `## 目标（摘要）\n${(mem.goal ?? '（无）').slice(0, 2000)}`,
     `## 已有 constraints（${mem.constraints.length}）\n${mem.constraints.length ? mem.constraints.slice(-8).map(c => `- ${c}`).join('\n') : '（无）'}`,
-    `## 已有 facts（${mem.facts.length}）\n${mem.facts.length ? mem.facts.slice(-8).map(f => `- ${f}`).join('\n') : '（无）'}`,
+    (() => {
+      const active = (mem.fact_records ?? []).filter(r => r.status === 'active');
+      const preview = selectFactsForPrompt(mem.fact_records ?? [], { max: 8 });
+      return `## 已有 facts（${active.length} active）\n${preview.lines.length ? preview.lines.join('\n') : '（无）'}`;
+    })(),
     `## 执行日志\n${formatRunContextForPrompt(ctx)}`,
   ].join('\n\n---\n\n');
 

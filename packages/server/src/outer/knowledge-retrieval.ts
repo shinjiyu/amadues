@@ -3,7 +3,7 @@
  * 合并为一段可直接注入外脑 LLM 上下文的 Markdown 字符串。
  *
  * 注意：drive9 存储 S/K/P（执行轨知识），不适合外脑对话检索。
- * 内脑运行中的任务发现/结论通过 write_memo 工具直接写入 mem9（外脑记忆），
+ * 内脑战术事实走 workspace memory / drive9；外脑对话记忆走 mem9 :chat。
  * 外脑对话时从 mem9 语义召回即可获取。
  */
 import type { FilesystemRepositoryStore } from '../workspace-kit/index.js';
@@ -158,7 +158,7 @@ function retrieveCrossThread(
  * 全面检索：合并执行轨知识 + 当前线程近期历史 + 跨线程相关消息。
  * 返回可直接注入外脑 LLM prompt 的上下文字符串，以及各来源命中数量。
  *
- * 内脑任务发现/结论由 write_memo 工具直接写入 mem9，外脑通过 OuterMemoryStore 召回，
+ * 外脑对话记忆由 OuterMemoryStore 从 mem9 :chat 召回；
  * 不在此函数中查询（mem9 召回已在外脑主流程 buildContext 中合并）。
  */
 export function retrieveComprehensiveKnowledge(opts: {
