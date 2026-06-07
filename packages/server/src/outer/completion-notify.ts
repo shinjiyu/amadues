@@ -178,7 +178,7 @@ export function buildCompletionMessageFromWorkspace(
       milestones: shortenMilestonesForReport(milestonesRaw),
       knowledge,
       lastExecLog: readExecutionLog(workDir),
-      reflexion: readCompletionAssessmentFromWorkDir(workDir),
+      completionAssessment: readCompletionAssessmentFromWorkDir(workDir),
       deliverables,
       resultExcerpt,
     },

@@ -41,7 +41,7 @@ describe('shouldAutoAchieveKpi', () => {
   it('post-complete + 有产出 → true', () => {
     expect(
       shouldAutoAchieveKpi({
-        reflexion: { verdict: 'success' },
+        successConfirmed: true,
         deliverableCount: 2,
         isAwaiting: false,
         exitedWithError: false,

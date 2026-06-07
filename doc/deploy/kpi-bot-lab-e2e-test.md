@@ -10,7 +10,7 @@
 | 层 | 命令 / 入口 | 时长 | 验证什么 |
 |----|-------------|------|----------|
 | **L0 单元** | `npm run test:unit -w @utlra/server -- --run src/outer/kpi-*.test.ts` | 秒级 | 规划上下文过滤、`suggestKpiAction`、burst hook |
-| **L1 集成** | `kpi-lifecycle.integration.test.ts` | 秒级 | 模拟 burst 退出 → achieved / reflexion |
+| **L1 集成** | `kpi-lifecycle.integration.test.ts` | 秒级 | 模拟 burst 退出 → achieved / outcome 评估 |
 | **L2 Bot Lab E2E**（本文） | bot1/bot2 + IM 或 HTTP | 15–45 min | 真实 LLM、autonomy、自动续跑、日志与落盘 |
 
 L2 在合并 KPI 修复后**必须**跑一轮，L0/L1 不能替代。
@@ -60,7 +60,7 @@ curl.exe -fsS http://127.0.0.1:8796/api/health
 
 | # | 观测点 | 预期 |
 |---|--------|------|
-| G | 首 burst `DONE` 且 deliverables=0 | `consecutiveIdleBursts` 增加；达 3 触发 meta reflexion 或 `UTLRA_KPI_AUTO_NEXT_BURST` 续跑 |
+| G | 首 burst `DONE` 且 deliverables=0 | `consecutiveIdleBursts` 增加；outcome 换 charter + `UTLRA_KPI_AUTO_NEXT_BURST` 续跑 |
 | H | 首 burst 已成功且 post_complete | 自动 `achieved` 或外脑 `achieve_kpi`；autonomy 不再派同主题 `kpi_inner_goal` |
 
 ---
@@ -119,7 +119,7 @@ Select-String -Path $log -Pattern '\[utlra\]\[(kpi|autonomy|outer-tools)\]' | Se
 | 模式 | 含义 |
 |------|------|
 | `dispatched task=kpi_inner_goal` | autonomy 在推 KPI |
-| `skip kpi_inner_goal:` | 记录 reason（`kpi_burst_in_flight` / `kpi_stuck_reflexion` / cooldown） |
+| `skip kpi_inner_goal:` | 记录 reason（`kpi_burst_in_flight` / `stuck_retry` / cooldown） |
 | `auto continue on` | 自动续跑触发 |
 | `burst done.*deliverables=` | burst 退出 |
 | `casual_chat_defer_to_kpi` | 仅当 `kpi_inner_goal` 在 cooldown 时常见，不应 30min 仅此项 |

@@ -19,6 +19,25 @@ const REPORT_IM_MAX_DELIVERABLE_LINES = 8;
 /** `im` = 用户 IM 通知（结果优先、去过程噪音）；`verbose` = 外脑记忆/排障（保留完整章节） */
 export type CompletionReportAudience = 'im' | 'verbose';
 
+/** 完成报告中的执行评估块（通常来自 memory.json last_failure） */
+export interface CompletionAssessment {
+  verdict: string;
+  hardFailures: string[];
+  softFailures: string[];
+  nextStrategy: string;
+}
+
+export interface CompletionReportInput {
+  goal: string;
+  milestones: string;
+  knowledge: string | null;
+  lastExecLog: import('../brain/index.js').ExecutionEntry[] | null;
+  completionAssessment: CompletionAssessment | null;
+  deliverables: string[];
+  /** 主产物文件摘要（报告类 .md） */
+  resultExcerpt?: string | null;
+}
+
 /** 里程碑只保留一行标题，去掉「输入范围/必交付物」等过程约束 */
 export function shortenMilestonesForReport(milestonesMd: string): string {
   const lines = milestonesMd.split('\n');
@@ -71,21 +90,7 @@ export function pickDeliverableExcerpt(workDir: string, deliverablePaths: string
 }
 
 export function buildCompletionReport(
-  input: {
-    goal: string;
-    milestones: string;
-    knowledge: string | null;
-    lastExecLog: import('../brain/index.js').ExecutionEntry[] | null;
-    reflexion: {
-      verdict: string;
-      hardFailures: string[];
-      softFailures: string[];
-      nextStrategy: string;
-    } | null;
-    deliverables: string[];
-    /** 主产物文件摘要（报告类 .md） */
-    resultExcerpt?: string | null;
-  },
+  input: CompletionReportInput,
   options?: { audience?: CompletionReportAudience },
 ): string {
   if ((options?.audience ?? 'im') === 'im') {
@@ -94,20 +99,7 @@ export function buildCompletionReport(
   return buildVerboseCompletionReport(input);
 }
 
-function buildVerboseCompletionReport(input: {
-  goal: string;
-  milestones: string;
-  knowledge: string | null;
-  lastExecLog: import('../brain/index.js').ExecutionEntry[] | null;
-  reflexion: {
-    verdict: string;
-    hardFailures: string[];
-    softFailures: string[];
-    nextStrategy: string;
-  } | null;
-  deliverables: string[];
-  resultExcerpt?: string | null;
-}): string {
+function buildVerboseCompletionReport(input: CompletionReportInput): string {
   const sections: string[] = [];
   sections.push('所有里程碑已完成。');
 
@@ -158,8 +150,8 @@ function buildVerboseCompletionReport(input: {
     );
   }
 
-  if (input.reflexion) {
-    const r = input.reflexion;
+  if (input.completionAssessment) {
+    const r = input.completionAssessment;
     sections.push('');
     sections.push('## 执行评估');
     sections.push(`- verdict: ${r.verdict}`);
@@ -187,20 +179,7 @@ function buildVerboseCompletionReport(input: {
 }
 
 /** 用户 IM：只保留结论 + 产出列表 + 硬失败；不重复 milestones / 执行评估软噪音 */
-function buildImCompletionReport(input: {
-  goal: string;
-  milestones: string;
-  knowledge: string | null;
-  lastExecLog: import('../brain/index.js').ExecutionEntry[] | null;
-  reflexion: {
-    verdict: string;
-    hardFailures: string[];
-    softFailures: string[];
-    nextStrategy: string;
-  } | null;
-  deliverables: string[];
-  resultExcerpt?: string | null;
-}): string {
+function buildImCompletionReport(input: CompletionReportInput): string {
   const sections: string[] = [];
   const excerpt = (input.resultExcerpt ?? '').trim();
   const knowledgeText = (input.knowledge ?? '').trim();
@@ -233,7 +212,7 @@ function buildImCompletionReport(input: {
     }
   }
 
-  const hard = input.reflexion?.hardFailures.filter((s) => s.trim()) ?? [];
+  const hard = input.completionAssessment?.hardFailures.filter((s) => s.trim()) ?? [];
   if (hard.length > 0) {
     sections.push('');
     sections.push('## 需注意');

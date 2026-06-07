@@ -12,13 +12,13 @@ const verbose = { audience: 'verbose' as const };
 const im = { audience: 'im' as const };
 
 describe('buildCompletionReport', () => {
-  it('includes goal + milestones + knowledge + deliverables + reflexion', () => {
+  it('includes goal + milestones + knowledge + deliverables + completionAssessment', () => {
     const text = buildCompletionReport({
       goal: '调研 Kuroneko 项目结构',
       milestones: '- [m1] [Completed] 扫描根目录\n- [m2] [Completed] 输出报告',
       knowledge: '## 已查清\n- 项目使用 monorepo 结构\n- 主要语言:TypeScript',
       lastExecLog: null,
-      reflexion: {
+      completionAssessment: {
         verdict: 'success',
         hardFailures: [],
         softFailures: ['首次拆解略宽'],
@@ -48,7 +48,7 @@ describe('buildCompletionReport', () => {
         { toolName: 'shell_exec', args: {}, result: { ok: true, output: 'tool stdout' } },
         { toolName: 'write_memo', args: {}, result: { ok: true, output: '总结:任务完成,A B C 都跑了。' } },
       ],
-      reflexion: null,
+      completionAssessment: null,
       deliverables: [],
     }, verbose);
     expect(text).toContain('## 核心结论');
@@ -65,7 +65,7 @@ describe('buildCompletionReport', () => {
       milestones: '',
       knowledge: null,
       lastExecLog: null,
-      reflexion: null,
+      completionAssessment: null,
       deliverables: [],
     }, verbose);
     expect(text).toContain('所有里程碑已完成');
@@ -81,7 +81,7 @@ describe('buildCompletionReport', () => {
       milestones: 'm',
       knowledge: huge,
       lastExecLog: null,
-      reflexion: null,
+      completionAssessment: null,
       deliverables: [],
     }, verbose);
     expect(text.length).toBeLessThan(3500);
@@ -96,7 +96,7 @@ describe('buildCompletionReport', () => {
       lastExecLog: [
         { toolName: 'echo', args: {}, result: { ok: true, output: '执行器补充一句' } },
       ],
-      reflexion: null,
+      completionAssessment: null,
       deliverables: [],
     }, verbose);
     expect(text).toContain('关键事实写到这里');
@@ -110,7 +110,7 @@ describe('buildCompletionReport', () => {
       milestones: '- [M1] [Completed] 一步',
       knowledge: null,
       lastExecLog: null,
-      reflexion: null,
+      completionAssessment: null,
       deliverables: ['report.md'],
       resultExcerpt: '（摘自 `report.md`）\n\n## 结论\n完成了。',
     }, verbose);
@@ -119,14 +119,14 @@ describe('buildCompletionReport', () => {
   });
 
   describe('audience: im', () => {
-    it('prioritizes excerpt, omits milestones/goal/reflexion soft noise', () => {
+    it('prioritizes excerpt, omits milestones/goal/assessment soft noise', () => {
       const text = buildCompletionReport(
         {
           goal: '调研 Kuroneko',
           milestones: '- [m1] [Completed] 扫描\n> 输入范围：不应出现',
           knowledge: '[事实] 冗余 knowledge',
           lastExecLog: null,
-          reflexion: {
+          completionAssessment: {
             verdict: 'success',
             hardFailures: [],
             softFailures: ['略宽'],
@@ -154,7 +154,7 @@ describe('buildCompletionReport', () => {
           milestones: 'm',
           knowledge: null,
           lastExecLog: null,
-          reflexion: {
+          completionAssessment: {
             verdict: 'partial',
             hardFailures: ['产物缺失 final_report.md'],
             softFailures: [],

@@ -21,7 +21,7 @@
 > - ✅ cyclic 超限路径补 `safeArchive`（与 BLOCK / REPLAN_LIMIT 对齐）
 > - ⏳ **P5 LLM round 级幂等**（`.brain/llm-history.json`，下一阶段）
 > - ⏳ P6 跨 workspace 的 `kind=subtask` 与 SubtaskWatcher
-> - ⏳ P8 reflexion 基于 git diff 重写
+> - ~~P8 per-burst reflexion~~ → 已退役；KPI 用 `kpiBurstOutcomeEvaluator` + `burstRunHistory`（2026-06-07）
 
 ---
 
@@ -102,7 +102,7 @@ tick : (S, e) → S'
 | EXECUTE→ATTRIBUTE 之间用 `execution-context.json` 持久传递 | `BrainFS.{read,write}ExecutionContext` |
 | 服务器重启可恢复 in-flight 任务 | `autoResumeStaleTasks`（启动时扫注册表） |
 | 工具副作用（创建/修改文件）天然持久 | tools 直接写盘 |
-| KPI / Reflexion 链路 | `kpi-registry.json` + `<workDir>/.brain/reflexion.json` |
+| KPI 闭环 | `kpi-registry.json`（`burstRunHistory`）+ 外脑 `kpiBurstOutcomeEvaluator` |
 
 ### 2.2 仍属进程视角 ✗（本文档要消除）
 
@@ -158,7 +158,8 @@ tick : (S, e) → S'
 |------|------|------|------|-----|
 | `.brain/controller-state.json` | `mode` / `replanCount` / `cycleCount` / `sleepUntil` / `blockedReason` | Controller | Controller | ✓ |
 | `.brain/pendings.json` *(规划)* | **所有挂起项**：等用户 / 等子任务 / 等定时 / 等外部 | Controller + ChangeWatcher | Controller + ChangeWatcher | ✓ |
-| `.brain/reflexion.json` | 本次 burst 的反思摘要 | `runReflexion` | KPI hook + decomposer | ✓ |
+| `.brain/memory.json` | DyFlow 全局 memory（`last_failure` / `fact_records` / `node_results`） | baseNode / `record_fact` | Designer / 外脑 outcome 评估 | ✓ |
+| ~~`.brain/reflexion.json`~~ | **已退役** | — | — | — |
 
 ### 3.5 IO 与产物层
 
@@ -503,7 +504,7 @@ class GitBackedBrainFS extends BrainFS {
 
 **注意事项**（不是限制，是契约）：
 - LLM 改 git 历史时，**不要硬删 commit**——它如果 force-push 自己的主分支，下一次 tick 启动时框架会检测 HEAD 跳变并记录到 `.brain/git-anomaly.log`，但不会阻止。
-- 如果 LLM 把 workspace 玩坏了，由 reflexion / 外脑 / 用户来回收，不在框架层兜底。
+- 如果 LLM 把 workspace 玩坏了，由外脑 outcome 评估 / 用户来回收，不在框架层兜底。
 
 ### 7.5 关于 `hutao` 规则
 
@@ -570,16 +571,16 @@ while (未到 stop_reason):
 
 ## 9. 与现有子设计的对照
 
-### 9.1 KPI / Reflexion
+### 9.1 KPI / burst 结果评估
 
-`packages/server/docs/kpi-reflexion-design.md` 已落地的 Phase A–D 完全符合本架构：
+权威 ADL：[`structurizr/KPI-BURST-OUTCOME-EVALUATOR.md`](structurizr/KPI-BURST-OUTCOME-EVALUATOR.md)。
 
-- `reflexion.json` 是数据
-- `kpi-registry.json` 是数据
-- Reflexion 触发完全由 burst onExit 这个"数据状态变化"驱动
-- Meta reflexion burst 是另一段 spawn，不是常驻进程
+- `kpi-registry.json` + `burstRunHistory.outcomeEvaluation` 是数据
+- `memory.json`（`last_failure` / `fact_records`）是 burst 内过程真相
+- 评估由 burst onExit → `processBurstExitForKpi` 驱动（程序化，非内脑 reflexion）
+- 续跑是同一 canonical instance 换 charter，非 meta reflexion burst
 
-将来的 Phase F/G 也按本文档 §5 模板做。
+~~`packages/server/docs/kpi-reflexion-design.md`~~ 已标历史参考。
 
 ### 9.2 内外脑协议
 
@@ -607,7 +608,7 @@ while (未到 stop_reason):
 | **P5 LLM Round 落盘** | `.brain/llm-history.json` 写入 + 重启续跑 | `executor.ts` / `attributor.ts` | 高（粒度最细的改动） |
 | **P6 子任务 pending** | `kind=subtask`、跨 workspace 的 SubtaskWatcher | `change-watcher.ts` + 子 workspace 协议 | 中 |
 | **P7 LLM 自由用 git 的支持** | `shell_exec` 不拦截 git；commit message 标注 author | `shell_exec.ts` 工具 | 低 |
-| **P8 反思读 diff** | Reflexion 改为基于 git diff 而非摘要 | `reflexion.ts` | 低 |
+| ~~**P8 per-burst reflexion**~~ | 已退役 → 外脑 outcomeEvaluator | `kpi-burst-outcome-evaluator.ts` | — |
 
 **实施纪律**：每个 Phase 完成后回头审视：「这次改动，我有没有违背本文档第 §5 的扩展协议？」如有违背，**重做**。
 
