@@ -31,15 +31,17 @@ describe('KPI scenario harness', () => {
     expect(fx.kpiRegistry.get(fx.kpiId)?.consecutiveIdleBursts).toBe(1);
   });
 
-  it('场景 C：连续 3 次失败 → 触发反思 burst 调度', () => {
+  it('场景 C：连续 3 次失败 → idle 达阈值并换向续跑', () => {
     fx = createKpiScenarioFixture('监督 Shiro');
     let lastOutcome = fx.simulateBurstExit({ verdict: 'failed', deliverables: [] }).outcome;
     lastOutcome = fx.simulateBurstExit({ verdict: 'failed', deliverables: [] }).outcome;
     lastOutcome = fx.simulateBurstExit({ verdict: 'failed', deliverables: [] }).outcome;
     const k = fx.kpiRegistry.get(fx.kpiId)!;
     expect(k.consecutiveIdleBursts).toBe(3);
-    expect(k.reflexionTrail.length).toBe(3);
-    expect(lastOutcome.reflexionBurstId).toMatch(/^ib-reflexion-/);
+    expect(k.burstRunHistory.length).toBe(3);
+    expect(lastOutcome.reflexionBurstId).toBeNull();
+    expect(lastOutcome.nextKpiBurstId).toMatch(/^ib-next-/);
+    expect(lastOutcome.outcomeEvaluation?.suggestedRetryCharter).toContain('换向重试');
   });
 
   it('场景 D：AWAITING 等外部 → 不计 idle，建议 follow_up', () => {
@@ -76,7 +78,7 @@ describe('KPI scenario harness', () => {
     }
   });
 
-  it('场景 H：连续 3 次无产出 → idle 累加至反思，前 2 次可 auto next', () => {
+  it('场景 H：连续 3 次无产出 → 每次均可 outcome 换向续跑', () => {
     const prev = process.env['UTLRA_KPI_AUTO_NEXT_BURST'];
     process.env['UTLRA_KPI_AUTO_NEXT_BURST'] = '1';
     try {
@@ -87,9 +89,9 @@ describe('KPI scenario harness', () => {
       expect(fx.kpiRegistry.get(fx.kpiId)?.consecutiveIdleBursts).toBe(3);
       expect(o1.nextKpiBurstId).toMatch(/^ib-next-/);
       expect(o2.nextKpiBurstId).toMatch(/^ib-next-/);
-      expect(o3.nextKpiBurstId).toBeNull();
-      expect(o3.reflexionBurstId).toMatch(/^ib-reflexion-/);
-      expect(fx.nextBurstsScheduled).toHaveLength(2);
+      expect(o3.nextKpiBurstId).toMatch(/^ib-next-/);
+      expect(o3.reflexionBurstId).toBeNull();
+      expect(fx.nextBurstsScheduled).toHaveLength(3);
     } finally {
       if (prev === undefined) delete process.env['UTLRA_KPI_AUTO_NEXT_BURST'];
       else process.env['UTLRA_KPI_AUTO_NEXT_BURST'] = prev;

@@ -21,10 +21,7 @@ export function isSetGoalDispatched(output: string): boolean {
   return SET_GOAL_DISPATCHED_MARKERS.some((m) => output.includes(m));
 }
 
-/**
- * 同一 KPI 的 canonical 内脑：首个非 meta（非 isReflexionBurst）burst；
- * 若历史上仅有 meta burst，则回退到 kpi.bursts[0]。
- */
+/** 同一 KPI 的 canonical 内脑：kpi.canonicalInstanceId 或 bursts[0] */
 export function findCanonicalBurstForKpi(
   innerBrainRegistry: InnerBrainRegistry,
   kpiRegistry: KpiRegistry,
@@ -33,9 +30,10 @@ export function findCanonicalBurstForKpi(
   const kpi = kpiRegistry.get(kpiId);
   if (!kpi || kpi.bursts.length === 0) return undefined;
 
-  for (const id of kpi.bursts) {
-    const rec = innerBrainRegistry.get(id);
-    if (rec && rec.kpiId === kpiId && !rec.isReflexionBurst) return rec;
+  const preferred = kpi.canonicalInstanceId ?? kpi.bursts[0];
+  if (preferred) {
+    const rec = innerBrainRegistry.get(preferred);
+    if (rec && rec.kpiId === kpiId) return rec;
   }
   for (const id of kpi.bursts) {
     const rec = innerBrainRegistry.get(id);

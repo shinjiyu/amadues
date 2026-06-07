@@ -161,7 +161,7 @@ function buildVerboseCompletionReport(input: {
   if (input.reflexion) {
     const r = input.reflexion;
     sections.push('');
-    sections.push('## 自评(reflexion)');
+    sections.push('## 执行评估');
     sections.push(`- verdict: ${r.verdict}`);
     if (r.nextStrategy) sections.push(`- nextStrategy: ${r.nextStrategy}`);
     if (r.hardFailures.length > 0) sections.push(`- 硬失败:\n  - ${r.hardFailures.join('\n  - ')}`);

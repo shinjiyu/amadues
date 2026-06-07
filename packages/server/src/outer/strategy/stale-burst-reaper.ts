@@ -63,7 +63,7 @@ export interface ReaperDeps {
   peekPendingMatch?: (instanceId: string) => boolean;
   /** 终止 worker（SIGTERM→SIGKILL）；缺省为 no-op（已无活进程时） */
   killProcess?: (pid: number) => void | Promise<void>;
-  /** archive：让被杀 burst 仍产 reflexion 供下轮 reflect */
+  /** archive：让被杀 burst 仍归档工作区快照 */
   archive?: (task: TaskRecord, reason: string) => void | Promise<void>;
   /** 写 registry ABORTED 迁移 */
   abort: (

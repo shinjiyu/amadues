@@ -3,16 +3,16 @@
  *
  * KPI（Key Performance Indicator）= 给 agent 的一个长期目标，不像 inner-brain 任务那样
  * "一次 burst 跑完就归档"。一个 KPI 会跨越多个 burst：
- *   - 每个 burst 跑完写一份 reflexion（成功/失败/换框架建议）→ 追加到 reflexionTrail
+ *   - 每个 burst onExit 由 kpiBurstOutcomeEvaluator 写 burstRunHistory.outcomeEvaluation
  *   - 连续 N 个 burst idle 且无产出 → progress detector 标记 "卡住"，触发反思 burst
  *   - KPI 本身只有 "active / paused / achieved / abandoned" 四个状态
  *
  * 数据持久化：<dataRoot>/kpi-registry.json（原子写）
  *
- * 这是 Tier 4 改造的核心抓手——decomposer / reflexion / progress detector 都通过 kpiId
+ * 这是 Tier 4 改造的核心抓手——DyFlow 内脑 / outcome 评估 / kpiAdvancer 都通过 kpiId
  * 关联同一组 burst 的"共享记忆"。
  *
- * 设计文档与改造阶段：packages/server/docs/kpi-reflexion-design.md
+ * ADL：doc/structurizr/KPI-BURST-OUTCOME-EVALUATOR.md
  */
 
 import fs from 'node:fs';
@@ -69,9 +69,7 @@ export const MOMENTUM_MIN = -5;
 export const MOMENTUM_MAX = 5;
 
 /**
- * 单次 burst 结束后生成的反思摘要（精简版，原始 reflexion JSON 保留在 archive 里）。
- *
- * 注意：这里有意不引入 reflexion.ts 的类型依赖（避免外脑 ↔ inner-brain 反向耦合）。
+ * @deprecated 历史 reflexion 摘要；新路径用 BurstOutcomeEvaluation。字段保留只读兼容。
  * 双方仅靠这套字段约定通信。
  */
 export interface ReflexionSummary {
@@ -120,6 +118,7 @@ export interface KpiRecord {
    */
   consecutiveIdleBursts: number;
   /** 反思轨迹：按时间正序追加。retrieve 时取最近 N 条供 decomposer 参考 */
+  /** @deprecated 只读兼容；新写入走 burstRunHistory.outcomeEvaluation */
   reflexionTrail: ReflexionSummary[];
   /** 用户可选填的附加约束 / 提示（自由文本，会拼进 burst 的 constraints） */
   notes?: string;
@@ -332,7 +331,7 @@ export class KpiRegistry {
 
   /**
    * 记录一次 idle 无产出的 burst；返回更新后的 streak。
-   * Caller 用返回值判断是否达到阈值需要触发反思 burst。
+   * Caller 用返回值判断是否达到阈值需要 outcome 换向续跑。
    */
   recordIdle(kpiId: string): number {
     const k = this.kpis.get(kpiId);
@@ -369,7 +368,7 @@ export class KpiRegistry {
     return k.momentum;
   }
 
-  /** 追加一条 reflexion 摘要到 trail */
+  /** @deprecated 不再生产；保留供迁移/测试 */
   appendReflexion(kpiId: string, summary: ReflexionSummary): void {
     const k = this.kpis.get(kpiId);
     if (!k) return;
@@ -378,6 +377,7 @@ export class KpiRegistry {
   }
 
   /** 取 trail 最近 N 条，按时间倒序（最新的在前） */
+  /** @deprecated 请读 burstRunHistory / formatBurstRunDigest */
   recentReflexions(kpiId: string, n = 5): ReflexionSummary[] {
     const k = this.kpis.get(kpiId);
     if (!k) return [];

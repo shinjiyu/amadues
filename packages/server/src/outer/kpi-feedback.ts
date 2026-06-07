@@ -16,7 +16,7 @@ import type { KpiRecord } from './kpi-registry.js';
 
 /** burst 退出时可观测的反馈信号（与 kpiBurstHooks.BurstExitOutcome 同源） */
 export interface BurstFeedbackSignal {
-  /** reflexion.verdict；无 reflexion 为 null */
+  /** outcome 等价 verdict；无产出且失败为 failed */
   verdict: 'success' | 'partial' | 'failed' | null;
   /** deliverables.json 条目数 */
   deliverableCount: number;
@@ -48,7 +48,7 @@ export function computeMomentumDelta(signal: BurstFeedbackSignal): number {
       return -2;
     case null:
     default:
-      // 无 reflexion：有产出弱奖赏，空转弱惩罚
+      // 未确认成功：有产出弱奖赏，空转弱惩罚
       return hasDeliverable ? 1 : -1;
   }
 }

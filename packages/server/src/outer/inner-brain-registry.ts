@@ -46,7 +46,7 @@ export interface TaskRecord {
   resumeCount?: number;
   /**
    * 关联的 KPI ID（来自 KpiRegistry）。同一 KPI 的多个 burst 共享反思/失败记忆，
-   * decomposer 会读取该 KPI 最近的 reflexionTrail 作为 plan 输入。
+   * DyFlow 内脑通过 seed 读 drive9 / memory；KPI 上下文由外脑 charter 注入。
    * 不挂 KPI 的 burst（self-update / 一次性任务）此字段为空。
    */
   kpiId?: string;
@@ -59,6 +59,7 @@ export interface TaskRecord {
    * 标记本任务是否为反思 burst（progress detector 自动派发的 meta 任务）。
    * 反思 burst 不计入 KPI 的 idleStreak，避免"反思失败 → 又触发反思"死循环。
    */
+  /** @deprecated meta reflexion burst 已退役；新记录恒为 false */
   isReflexionBurst?: boolean;
   /** staleBurstReaper 写入：ABORTED 原因（cull reason / 'stale_awaiting_timeout'） */
   abortReason?: string;

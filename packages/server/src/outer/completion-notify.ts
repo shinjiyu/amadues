@@ -98,25 +98,33 @@ function safeReadFile(fp: string): string | null {
   }
 }
 
-function readReflexionFromWorkDir(workDir: string): {
+/** 从 memory.json last_failure 组装完成报告评估块（不再读 reflexion.json） */
+function readCompletionAssessmentFromWorkDir(workDir: string): {
   verdict: string;
   hardFailures: string[];
   softFailures: string[];
   nextStrategy: string;
 } | null {
+  const raw = safeReadFile(path.join(workDir, '.brain', 'memory.json'));
+  if (!raw) return null;
   try {
-    const raw = safeReadFile(path.join(workDir, '.brain', 'reflexion.json'));
-    if (!raw) return null;
-    const obj = JSON.parse(raw) as Record<string, unknown>;
+    const mem = JSON.parse(raw) as {
+      last_failure?: {
+        summary?: string;
+        attempted?: string[];
+        confidence?: string;
+        transient?: boolean;
+      } | null;
+    };
+    const lf = mem.last_failure;
+    if (!lf?.summary?.trim()) return null;
+    const attempted = (lf.attempted ?? []).filter((s) => s.trim());
+    const isHigh = lf.confidence !== 'low';
     return {
-      verdict: String(obj['verdict'] ?? ''),
-      hardFailures: Array.isArray(obj['hardFailures'])
-        ? (obj['hardFailures'] as unknown[]).map(String)
-        : [],
-      softFailures: Array.isArray(obj['softFailures'])
-        ? (obj['softFailures'] as unknown[]).map(String)
-        : [],
-      nextStrategy: String(obj['nextStrategy'] ?? ''),
+      verdict: lf.transient ? 'partial' : isHigh ? 'failed' : 'partial',
+      hardFailures: isHigh ? [lf.summary.trim(), ...attempted].slice(0, 5) : [],
+      softFailures: isHigh ? [] : [lf.summary.trim(), ...attempted].slice(0, 5),
+      nextStrategy: '',
     };
   } catch {
     return null;
@@ -170,7 +178,7 @@ export function buildCompletionMessageFromWorkspace(
       milestones: shortenMilestonesForReport(milestonesRaw),
       knowledge,
       lastExecLog: readExecutionLog(workDir),
-      reflexion: readReflexionFromWorkDir(workDir),
+      reflexion: readCompletionAssessmentFromWorkDir(workDir),
       deliverables,
       resultExcerpt,
     },

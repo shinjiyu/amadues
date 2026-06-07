@@ -153,7 +153,7 @@ interface HourlyAggregate {
 | `time` | P1 | 墙钟 + agent TZ | `isQuietHours` / `dayOfWeekKind`（休息日 / 工作日） |
 | `mem9Health` | P2 | mem9-client 后台 ping | `staleness` / `errRate1h` |
 | `drive9Health` | P2 | drive9-client 后台 ping | `staleness` / `errRate1h` |
-| `kpiVelocity` | P2 | `kpiRegistry.reflexionTrail` | `avgBurstMs_perKpi` / `successRate1d` |
+| `kpiVelocity` | P2 | `kpiRegistry.burstRunHistory` | `avgBurstMs_perKpi` / `successRate1d` |
 | `costRate` | P3 | `llmUsageJournal` × 模型计价 | `usdPerHour` |
 | `userResponsiveness` | P3 | `awaitingInboundResolver` 历史 | `humanReplyP50_min` |
 
@@ -186,7 +186,7 @@ interface StrategyReflectInput {
   envCurrent: EnvironmentSnapshot;
   envEvents: EnvironmentEvent[];          // 仅未消费（consumedByStrategyAt 为空）
   envHourly: Record<string, HourlyAggregate[]>;   // 最近 24h / 7d 聚合
-  // + KPI / reflexionTrail / lastStrategy …（见 STRATEGY-PLANNING-LAYER.md §4）
+  // + KPI / burstRunHistory / lastStrategy …（见 STRATEGY-PLANNING-LAYER.md §4）
 }
 ```
 

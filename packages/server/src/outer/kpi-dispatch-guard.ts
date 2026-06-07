@@ -66,7 +66,7 @@ export interface KpiAutonomyDispatchDecision {
  * autonomy 定时器是否应为该 KPI 再派一发 burst。
  *
  * KPI 全力冲刺语义：同 KPI 已有 RUNNING/AWAITING/BLOCKED 在途 burst 时 **不再** 并行派发；
- * 等当前 burst 结束后再由 idle streak / reflexion 路径续派下一条。
+ * 等当前 burst 结束后再由 idle streak / outcome 换向续派下一条。
  */
 export function evaluateKpiAutonomyDispatch(
   kpiRegistry: KpiRegistry,

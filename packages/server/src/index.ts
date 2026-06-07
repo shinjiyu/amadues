@@ -218,10 +218,7 @@ function spawnAndAttachWorker(
 ): { ok: true; pid: number } | { ok: false; error: string } {
   try { fs.unlinkSync(path.join(record.workDir, '.stop-signal')); } catch { /* */ }
 
-  const baseMaxTicks = Math.min(10_000, Math.max(1, Number(process.env['UTLRA_PI_AUTO_MAX_TICKS'] ?? 500)));
-  // 反思 burst（progress detector 自动派发）用短 max_ticks，避免它自己也陷入死循环
-  const reflexionMaxTicks = Math.max(1, Number(process.env['UTLRA_KPI_REFLEXION_MAX_TICKS'] ?? 20));
-  const maxTicks = record.isReflexionBurst ? reflexionMaxTicks : baseMaxTicks;
+  const maxTicks = Math.min(10_000, Math.max(1, Number(process.env['UTLRA_PI_AUTO_MAX_TICKS'] ?? 500)));
   const id = record.instanceId;
   const eng = getEngine(record.workspaceId);
 
@@ -268,7 +265,6 @@ function spawnAndAttachWorker(
           {
             instanceId: id,
             kpiId: record.kpiId,
-            isReflexionBurst: record.isReflexionBurst,
             workDir: record.workDir,
             stoppedBy,
             exitedWithError: isError,

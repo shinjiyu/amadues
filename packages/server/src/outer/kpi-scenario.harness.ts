@@ -94,16 +94,26 @@ export function createKpiScenarioFixture(
       }
 
       const verdict = opts.verdict ?? 'success';
-      fs.writeFileSync(
-        path.join(workDir, '.brain', 'reflexion.json'),
-        JSON.stringify({
-          verdict,
-          hardFailures: verdict === 'failed' ? ['模拟硬失败'] : [],
-          softFailures: [],
-          nextStrategy: verdict === 'failed' ? '换方向' : '',
-        }),
-        'utf8',
-      );
+      if (verdict === 'failed') {
+        fs.writeFileSync(
+          path.join(workDir, '.brain', 'memory.json'),
+          JSON.stringify({
+            constraints: [],
+            facts: [],
+            fact_records: [],
+            node_results: {},
+            last_failure: {
+              nodeInstId: 'sim',
+              localRef: 'sim',
+              summary: '模拟硬失败',
+              attempted: [],
+              confidence: 'high',
+              at: new Date().toISOString(),
+            },
+          }),
+          'utf8',
+        );
+      }
 
       if (opts.postComplete) {
         fs.writeFileSync(

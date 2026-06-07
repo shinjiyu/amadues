@@ -37,7 +37,7 @@ FakeLLM 场景基准（[`FRAMEWORK-BENCHMARK.md`](./FRAMEWORK-BENCHMARK.md)）�
 |------|------|----------|
 | `usage/llm-usage.jsonl` | 每次 LLM 调用 token、source、model、**instanceId** | **成本主表** |
 | `inner-brain-registry.json` | burst 状态、ticks、deliverableCount、kpiId | **并行度、失败率、产出** |
-| `kpi-registry.json` | bursts[]、reflexionTrail、status | **战略漂移、反思是否重复** |
+| `kpi-registry.json` | bursts[]、burstRunHistory、status | **战略漂移、outcome 是否重复失败** |
 | `autonomy/action-log.jsonl` | 心跳 dispatch / skip 原因 | **外脑是否在空转派活** |
 | `performance/journal.jsonl` | 绩效目标（若有） | 长期目标对齐 |
 | `environment/events.jsonl` | 环境事件（P1 起） | 过载、token 速率趋势 |
@@ -89,7 +89,7 @@ Dashboard：**用量** Tab → `GET /api/usage/summary`（[`LLM-USAGE-JOURNAL.md
 |------|------|----------|
 | `burstCount` | registry 中 run 窗内新 instance 数 | ↓（同 outcome） |
 | `burstByStatus` | RUNNING/DONE/ERROR/STOPPED/AWAITING | ERROR↓ |
-| `metaBurstRate` | goal 含「诊断/分析 ib-」占比 | ↓ |
+| `pivotCharterRate` | outcome 换向 charter 占比 | 适度即可 |
 | `avgTicksPerBurst` | Σ ticks / burstCount | 异常高/低都查 |
 | `parallelRunningMax` | 同窗 max 同时 RUNNING | 并行浪费 |
 | `toolMix` | pi-mono logs：shell_exec / read_file / register_deliverable 占比 | shell↓ deliverable↑ |
@@ -100,8 +100,8 @@ Dashboard：**用量** Tab → `GET /api/usage/summary`（[`LLM-USAGE-JOURNAL.md
 
 | 指标 | 算法 | 调优希望 |
 |------|------|----------|
-| `reflexionCount` | kpi reflexionTrail 增量 | 多不一定坏 |
-| `hardFailureRepeatRate` | 新 burst goal 是否再犯 trail 中 hardFailure 主题 | ↓ |
+| `outcomeEvalCount` | burstRunHistory.outcomeEvaluation 增量 | 每 burst 应有 |
+| `hardFailureRepeatRate` | 新 burst 是否再犯 outcome failureReasons 主题 | ↓ |
 | `kpiSwitchCount` | abandoned + new kpi | 稳定任务应少 |
 | `idleDispatchSkips` | action-log `kpi_sprint_in_progress` 等 | 理解心跳 |
 

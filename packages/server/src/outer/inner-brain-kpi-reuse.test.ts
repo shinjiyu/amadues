@@ -24,11 +24,12 @@ describe('inner-brain-kpi-reuse', () => {
     innerBrainRegistry = new InnerBrainRegistry(root.dataRoot);
   }
 
-  it('findCanonicalBurstForKpi 优先首个非 meta burst', () => {
+  it('findCanonicalBurstForKpi 优先 canonicalInstanceId', () => {
     setup();
     const kpiId = kpiRegistry.create({ description: 'kpi', createdBy: 'u' }).kpiId;
     kpiRegistry.attachBurst(kpiId, 'ib-meta');
     kpiRegistry.attachBurst(kpiId, 'ib-main');
+    kpiRegistry.setCanonicalInstance(kpiId, 'ib-main');
     innerBrainRegistry.register({
       instanceId: 'ib-meta',
       workspaceId: 'task-ib-meta',

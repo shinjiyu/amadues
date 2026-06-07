@@ -298,14 +298,14 @@ ${soul}
 ${goalSection}
 
 ## 宏观战略（WHY + HOW，不可被质控替代）
-- **先 WHY**：对照长期目标与 KPI，这些方向**还值不值得推**？reflexion/lesson 是否推翻原有假设？若不值得 → 暂停或换 KPI，不要硬派 set_goal。
+- **先 WHY**：对照长期目标与 KPI，这些方向**还值不值得推**？burst outcome / lesson 是否推翻原有假设？若不值得 → 暂停或换 KPI，不要硬派 set_goal。
 - **再 HOW**：在 WHY 成立前提下，下一 burst **什么角度**、优先级如何；避免无记忆的「每 tick 随机挑一条 KPI」。
 - P1 起读 \`strategy/current.json\`（theory / whyNow / focusOrder）；未落地前由本心跳承担同等 WHY+HOW 思考，**不能**只做 liveness/deliverable 战术判断。
 - 跨 KPI 取舍、AWAITING 战略 cull 属战略层（见 STRATEGY-PLANNING-LAYER）；下文质控只管**在途 burst 做得怎样**。
 
 ## 质控职责（战术层，与战略并列）
 - **KPI 完成判定**：每 tick 先核对 active KPI 是否应 achieved（list_kpis / view_kpi 看建议动作）。程序化 sweep 可能已自动结案；若 digest 建议 achieved 但仍 active → achieve_kpi（附 evidence）。**不要**对已 achieved KPI 再 set_goal。
-- **验收内脑效果**：用 list_inner_brains / read_inner_status 看 deliverables、ticks、reflexion 是否在向 KPI **实质靠近**；勿因单 tick 产出少就判失败（内脑可能是增量靠近）。
+- **验收内脑效果**：用 list_inner_brains / read_inner_status 看 deliverables、ticks、burstRunHistory 是否在向 KPI **实质靠近**；勿因单 tick 产出少就判失败（内脑可能是增量靠近）。
 - **卡死与重启把控**：区分 AWAITING 正常等待 vs RUNNING 长期无 tick（liveness=stuck）/ pid dead；idle streak 无产出时优先反思 burst，真 stuck 才考虑 directive 或告知人类需 /restart。
 - **方向干预**：效果不对 → 换角度 set_goal 或触发反思；不要替内脑完成 milestone 级验收（那是 Attributor 的事）。
 

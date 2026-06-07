@@ -9,7 +9,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { BurstOutcomeEvaluation, KpiRegistry, ReflexionSummary } from './kpi-registry.js';
+import type { BurstOutcomeEvaluation, KpiRegistry } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
 import { recordBurstRunOnExit } from './kpi/burst-run-history.js';
@@ -17,33 +17,6 @@ import { mapRegistryStatusToRunExit, readCharterFromWorkDir } from './kpi/burst-
 import { evaluateKpiBurstOutcome } from './kpi/kpi-burst-outcome-evaluator.js';
 import { shouldAutoAchieveKpi } from './kpi-progress.js';
 import { computeMomentumDelta } from './kpi-feedback.js';
-
-/** @deprecated 仅 completion-notify 读历史文件；KPI 评估不再使用 */
-export function readReflexionFromWorkspace(
-  workDir: string,
-  burstInstanceId: string,
-): ReflexionSummary | null {
-  const p = path.join(workDir, '.brain', 'reflexion.json');
-  try {
-    if (!fs.existsSync(p)) return null;
-    const raw = JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, unknown>;
-    const verdictRaw = String(raw['verdict'] ?? 'failed').toLowerCase();
-    const verdict: ReflexionSummary['verdict'] =
-      verdictRaw === 'success' || verdictRaw === 'partial' ? verdictRaw : 'failed';
-    return {
-      ts: new Date().toISOString(),
-      burstInstanceId,
-      verdict,
-      hardFailures: Array.isArray(raw['hardFailures'])
-        ? (raw['hardFailures'] as unknown[]).map(String).slice(0, 10) : [],
-      softFailures: Array.isArray(raw['softFailures'])
-        ? (raw['softFailures'] as unknown[]).map(String).slice(0, 10) : [],
-      nextStrategy: String(raw['nextStrategy'] ?? '').trim(),
-    };
-  } catch {
-    return null;
-  }
-}
 
 /** 是否应将本次 burst 计为 KPI「无进展」（consecutiveIdleBursts） */
 export function shouldRecordKpiIdle(input: {
@@ -93,10 +66,10 @@ export interface BurstExitDeps {
 
 export interface BurstExitOutcome {
   deliverableCount: number;
-  /** @deprecated 恒为 null */
-  reflexion: ReflexionSummary | null;
-  /** @deprecated 恒为 null */
-  reflexionBurstId: string | null;
+  /** @deprecated 恒为 null；保留字段避免旧调用方类型断裂 */
+  reflexion: null;
+  /** @deprecated 恒为 null；meta reflexion burst 已退役 */
+  reflexionBurstId: null;
   outcomeEvaluation?: BurstOutcomeEvaluation;
   nextKpiBurstId?: string | null;
   idleStreak: number;

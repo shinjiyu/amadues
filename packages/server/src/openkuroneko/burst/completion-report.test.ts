@@ -34,7 +34,7 @@ describe('buildCompletionReport', () => {
     expect(text).toContain('## 产出文件');
     expect(text).toContain('- report.md');
     expect(text).toContain('- docs/structure.md');
-    expect(text).toContain('## 自评(reflexion)');
+    expect(text).toContain('## 执行评估');
     expect(text).toContain('verdict: success');
     expect(text).toContain('nextStrategy: 后续可加入 SBOM 列表');
   });
@@ -56,7 +56,7 @@ describe('buildCompletionReport', () => {
     expect(text).toContain('## 执行器末轮总结');
     expect(text).not.toContain('## 关键事实');
     expect(text).not.toContain('## 产出文件');
-    expect(text).not.toContain('## 自评(reflexion)');
+    expect(text).not.toContain('## 执行评估');
   });
 
   it('handles fully minimal inputs without throwing', () => {
