@@ -10,7 +10,7 @@ import { getGroupParticipationState, recordProactiveSpeak } from './participatio
 import type { KpiRegistry, KpiRecord } from './kpi-registry.js';
 import { selectKpiByMomentum } from './kpi-feedback.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
-import { executeOuterTool, type OuterToolContext } from './outer-tools.js';
+import type { OuterToolContext } from './outer-tools.js';
 import { loadSoul } from './soul.js';
 import {
   loadAutonomyPolicy,
@@ -18,13 +18,9 @@ import {
 } from './autonomy-policy-store.js';
 import { loadPersonality } from './personality.js';
 import { logAutonomyDispatch } from './autonomy-action-log.js';
-import {
-  evaluateKpiAutonomyDispatch,
-  findLiveBurstForKpi,
-} from './kpi-dispatch-guard.js';
-import { isSetGoalDispatched } from './inner-brain-kpi-reuse.js';
+import { findLiveBurstForKpi, isKpiSprintInProgress } from './kpi-dispatch-guard.js';
+import { tickKpiAdvancer, type KpiAdvancerDeps } from './kpi/kpi-advancer.js';
 import type { InnerBrainEngine } from '../workspace-kit/index.js';
-import { buildKpiGoalPlannerContext } from './kpi-goal-context.js';
 import type { OuterMemoryStore } from './outer-memory.js';
 import { formatRecentThreadMessagesForLlm } from './thread-history.js';
 import {
@@ -62,6 +58,8 @@ export interface AutonomyDispatchDeps {
   focusOrder?: string[];
   /** 战略模式：focusOrder 无可派 KPI 时跳过闲聊（避免战略/KPI 漂移时乱跑） */
   strategyMode?: boolean;
+  /** 测试注入：替换默认 kpiAdvancer.tick */
+  kpiAdvancerTick?: typeof import('./kpi/kpi-advancer.js').tickKpiAdvancer;
 }
 
 function taskConfig(policy: AutonomyPolicy, id: AutonomyTaskType) {
@@ -108,88 +106,37 @@ function taskEligible(
   return { ok: true, reason: 'ok' };
 }
 
-async function draftKpiGoal(
-  env: InnerLlmEnv,
+async function executeKpiAdvancerTick(
   deps: AutonomyDispatchDeps,
-  snapshot: ResourceSnapshot,
-): Promise<{ goal: string; kpiId: string } | null> {
-  const kpi = pickActiveKpi(deps.kpiRegistry, deps.focusOrder);
-  if (!kpi) return null;
-
-  const soul = loadSoul(deps.dataRoot);
-  const plannerContext = await buildKpiGoalPlannerContext({
-    dataRoot: deps.dataRoot,
-    kpi,
-    kpiRegistry: deps.kpiRegistry,
-    registry: deps.registry,
-    snapshot,
-    getEngine: deps.getEngine ?? deps.toolCtx.getEngine,
-    memoryStore: deps.memoryStore ?? deps.toolCtx.memoryStore,
-  });
-
-  const { raw } = await llmRawChatCompletion<{
-    choices?: Array<{ message?: { content?: string } }>;
-    error?: { message?: string };
-  }>({
-    provider: env.provider,
-    apiKey: env.apiKey,
-    baseUrl: env.baseUrl,
-    usageMeta: { source: 'autonomy', model: env.textModel, provider: env.provider },
-    body: {
-      model: env.textModel,
-      temperature: 0.35,
-      max_tokens: 1200,
-      thinking: { type: 'disabled' },
-      messages: [
-        {
-          role: 'system',
-          content:
-            `${soul}\n\n你是外脑 KPI 规划器。根据下方完整上下文，设计**一条**可执行的内脑 goal。` +
-            `只输出 goal 正文（Markdown），不要解释、不要 JSON、不要「好的」类前言。` +
-            `必须避免与在途 burst 或最近已完成 burst 重复同一任务主题。`,
-        },
-        {
-          role: 'user',
-          content: plannerContext,
-        },
-      ],
-    },
-  });
-  const goal = raw.choices?.[0]?.message?.content?.trim() ?? '';
-  if (!goal) return null;
-  return { goal, kpiId: kpi.kpiId };
-}
-
-async function executeKpiInnerGoal(
-  deps: AutonomyDispatchDeps,
-  snapshot: ResourceSnapshot,
 ): Promise<AutonomyDispatchResult> {
-  const env = deps.getLlmEnv();
-  if (!env) return { dispatched: false, reason: 'no_llm_env' };
+  const advancerDeps: KpiAdvancerDeps = {
+    kpiRegistry: deps.kpiRegistry,
+    innerBrainRegistry: deps.registry,
+    toolCtx: deps.toolCtx,
+    workspaceId: deps.workspaceId,
+    defaultThreadId: deps.defaultThreadId,
+    focusOrder: deps.focusOrder,
+    strategyMode: deps.strategyMode,
+    scheduleReflexionBurst: deps.toolCtx.scheduleReflexionBurst,
+  };
 
-  const draft = await draftKpiGoal(env, deps, snapshot);
-  if (!draft) return { dispatched: false, reason: 'kpi_goal_draft_failed' };
-
-  const toolOut = await executeOuterTool(
-    'set_goal',
-    JSON.stringify({
-      goal: draft.goal,
-      workspace_id: deps.workspaceId,
-      kpi_id: draft.kpiId,
-      origin_thread: deps.defaultThreadId.trim() || undefined,
-    }),
-    deps.toolCtx,
-  );
-
-  if (!isSetGoalDispatched(toolOut.output)) {
-    return { dispatched: false, reason: 'set_goal_failed', detail: toolOut.output.slice(0, 200) };
+  const tickFn = deps.kpiAdvancerTick ?? tickKpiAdvancer;
+  const tick = await tickFn(advancerDeps);
+  if (!tick.advanced) {
+    const last = tick.results[tick.results.length - 1];
+    return {
+      dispatched: false,
+      reason: last?.reason ?? 'kpi_advancer_no_dispatch',
+      detail: tick.results.map((r) => `${r.kpiId ?? '-'}:${r.reason}`).join('; ').slice(0, 300),
+    };
   }
 
+  const ok = tick.results.find((r) => r.ok);
   return {
     dispatched: true,
     taskType: 'kpi_inner_goal',
-    reason: 'kpi_inner_goal',
-    detail: toolOut.output.slice(0, 200),
+    reason: ok?.reason ?? 'kpi_advancer',
+    detail: ok?.detail ?? ok?.instanceId,
   };
 }
 
@@ -272,7 +219,7 @@ async function executeCasualChat(
   const focusKpi = pickActiveKpi(deps.kpiRegistry, deps.focusOrder);
   if (focusKpi) {
     const activeKpi = focusKpi;
-    const live = findLiveBurstForKpi(deps.registry, activeKpi.kpiId);
+    const live = findLiveBurstForKpi(deps.registry, activeKpi.kpiId, undefined, deps.kpiRegistry);
     if (live) {
       return { dispatched: false, reason: 'casual_chat_kpi_in_progress' };
     }
@@ -354,54 +301,31 @@ export async function dispatchAutonomyTasks(
   const policy = loadAutonomyPolicy(deps.dataRoot);
   const personality = loadPersonality(deps.dataRoot);
 
-  // 1. KPI 优先（focusOrder 或 momentum 选；同 KPI 已有 RUNNING/AWAITING/BLOCKED 时绝不重复派发）
-  const focusKpi = pickActiveKpi(deps.kpiRegistry, deps.focusOrder);
-  if (focusKpi) {
-    const activeKpi = focusKpi;
-    const live = findLiveBurstForKpi(deps.registry, activeKpi.kpiId);
-    if (live) {
-      const result: AutonomyDispatchResult = {
-        dispatched: false,
-        reason: 'kpi_sprint_in_progress',
-        detail: `${live.instanceId}:${live.status}`,
-      };
-      console.log(
-        `[utlra][autonomy] hold: kpi sprint in flight live=${live.instanceId} status=${live.status}`,
-      );
-      logAutonomyDispatch(deps.dataRoot, snapshot, result);
-      return result;
-    }
+  if (isKpiSprintInProgress(deps.registry, deps.kpiRegistry)) {
+    const result: AutonomyDispatchResult = {
+      dispatched: false,
+      reason: 'kpi_sprint_in_progress',
+    };
+    logAutonomyDispatch(deps.dataRoot, snapshot, result);
+    return result;
   }
 
-  if (focusKpi && canSpawnInner(snapshot, deps.registry, policy)) {
-    const activeKpi = focusKpi;
-    const kpiDecision = evaluateKpiAutonomyDispatch(
-      deps.kpiRegistry,
-      deps.registry,
-      activeKpi.kpiId,
-    );
-    if (!kpiDecision.ok) {
-      console.log(`[utlra][autonomy] skip kpi_inner_goal: ${kpiDecision.reason}`);
-      const result: AutonomyDispatchResult = {
-        dispatched: false,
-        reason: kpiDecision.reason,
-        detail: kpiDecision.liveInstanceId,
-      };
+  // 1. KPI 推进器（遍历 leaf KPI；ongoing DONE/AWAITING(timer) 不占槽 — KPI-ADVANCEMENT.md）
+  const hasActiveKpi = deps.kpiRegistry.list({ status: 'active' }).length > 0;
+  if (hasActiveKpi && canSpawnInner(snapshot, deps.registry, policy)) {
+    const elig = taskEligible(deps.dataRoot, policy, 'kpi_inner_goal');
+    if (elig.ok) {
+      const result = await executeKpiAdvancerTick(deps);
       logAutonomyDispatch(deps.dataRoot, snapshot, result);
-      return result;
-    } else {
-      const elig = taskEligible(deps.dataRoot, policy, 'kpi_inner_goal');
-      if (elig.ok) {
-        const result = await executeKpiInnerGoal(deps, snapshot);
-        logAutonomyDispatch(deps.dataRoot, snapshot, result);
-        if (result.dispatched) {
-          recordTaskDispatch(deps.dataRoot, 'kpi_inner_goal');
-          markAutonomousAction(deps.dataRoot);
-        }
+      if (result.dispatched) {
+        recordTaskDispatch(deps.dataRoot, 'kpi_inner_goal');
+        markAutonomousAction(deps.dataRoot);
         return result;
       }
     }
   }
+
+  const focusKpi = pickActiveKpi(deps.kpiRegistry, deps.focusOrder);
 
   // 战略模式：存在 active KPI 但 strategy 选了空 focus（交集空）→ 这是有意 hold，不掷闲聊（ADL §8/§10）。
   // 注意：无任何 active KPI 时没有可 hold 的目标，落到正常 idle 行为（闲聊），避免空跑期 agent 彻底静默。

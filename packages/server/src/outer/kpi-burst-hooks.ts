@@ -12,6 +12,8 @@ import path from 'node:path';
 import type { KpiRegistry, ReflexionSummary } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
+import { recordBurstRunOnExit } from './kpi/burst-run-history.js';
+import { mapRegistryStatusToRunExit, readCharterFromWorkDir } from './kpi/burst-run-history.js';
 import { buildKpiBurstLinks, shouldAutoAchieveKpi, suggestKpiAction } from './kpi-progress.js';
 import { computeMomentumDelta } from './kpi-feedback.js';
 
@@ -229,7 +231,27 @@ export function processBurstExitForKpi(
     autoAchieved = true;
   }
 
-  // 5) 真任务 burst 结束 → 可选立即续跑（UTLRA_KPI_AUTO_NEXT_BURST=1）
+  // 记录 burst 执行史 + 刷新 nextDueAt（KPI-ADVANCEMENT.md §6）
+  const taskRec = deps.innerBrainRegistry.get(input.instanceId);
+  if (taskRec && !input.isReflexionBurst) {
+    const exitStatus = mapRegistryStatusToRunExit(
+      input.exitedWithError ? 'ERROR' : input.isAwaiting ? 'AWAITING' : 'DONE',
+      false,
+    );
+    recordBurstRunOnExit(deps.kpiRegistry, {
+      kpiId: input.kpiId,
+      instanceId: input.instanceId,
+      task: {
+        ...taskRec,
+        deliverableCount,
+        ticks: taskRec.ticks,
+      },
+      exitStatus,
+      charter: readCharterFromWorkDir(input.workDir),
+    });
+  }
+
+  // 5) 真任务 burst 结束 → 可选立即续跑（UTLRA_KPI_AUTO_NEXT_BURST=1；ongoing 由 kpiAdvancer 续航）
   let nextKpiBurstId: string | null = null;
   const kpiAfter = deps.kpiRegistry.get(input.kpiId);
   if (
@@ -237,6 +259,7 @@ export function processBurstExitForKpi(
     !input.isAwaiting &&
     !autoAchieved &&
     kpiAfter?.status === 'active' &&
+    kpiAfter.kind !== 'ongoing' &&
     streak < threshold &&
     deps.scheduleNextKpiBurst &&
     isKpiAutoNextBurstEnabled()

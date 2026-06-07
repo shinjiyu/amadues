@@ -28,6 +28,29 @@ export type KpiStatus = 'active' | 'paused' | 'achieved' | 'abandoned';
  */
 export type KpiKind = 'delivery' | 'ongoing';
 
+/** KPI 节拍（ADL KPI-ADVANCEMENT.md §3） */
+export type KpiCadence =
+  | { type: 'once' }
+  | { type: 'interval'; everyMs: number }
+  | { type: 'cron'; hours: number[]; tz: string }
+  | { type: 'continuous'; minGapMs: number };
+
+/** 单轮 sprint 执行史（同一 canonical burst 内多轮） */
+export type BurstRunExitStatus = 'DONE' | 'AWAITING' | 'ERROR' | 'PREEMPTED' | 'ABORTED';
+
+export interface BurstRunRecord {
+  runId: string;
+  instanceId: string;
+  kpiId: string;
+  startedAt: string;
+  finishedAt: string;
+  exitStatus: BurstRunExitStatus;
+  charter: string;
+  ticks: number;
+  deliverableCount: number;
+  reflexionSummary?: ReflexionSummary;
+}
+
 /** momentum（多巴胺反馈调节）取值上下限；见 STRATEGY-PLANNING-LAYER.md §16 */
 export const MOMENTUM_MIN = -5;
 export const MOMENTUM_MAX = 5;
@@ -87,6 +110,22 @@ export interface KpiRecord {
   reflexionTrail: ReflexionSummary[];
   /** 用户可选填的附加约束 / 提示（自由文本，会拼进 burst 的 constraints） */
   notes?: string;
+  /** 父 KPI id；子 KPI 首拆后设置 */
+  parentKpiId?: string;
+  /** 子 KPI id 列表（仅父节点） */
+  children?: string[];
+  /** 是否叶子（可 dispatch）；父 KPI 为 false */
+  isLeaf: boolean;
+  /** 外脑推进节拍 */
+  cadence: KpiCadence;
+  /** 下一发 sprint 章程（战略层 / 推进器） */
+  charter?: string;
+  /** cadence 计算的下次 due 时刻 */
+  nextDueAt?: string;
+  /** 本 leaf 复用的 canonical instanceId */
+  canonicalInstanceId?: string;
+  /** 同一 burst 内多轮 sprint 执行史 */
+  burstRunHistory: BurstRunRecord[];
 }
 
 export interface CreateKpiInput {
@@ -95,6 +134,11 @@ export interface CreateKpiInput {
   notes?: string;
   /** KPI 类型；默认 'delivery' */
   kind?: KpiKind;
+  /**
+   * ongoing 默认建父节点（首拆延后）；delivery 默认叶子 + once。
+   * 显式 `asParent: true` 强制父节点。
+   */
+  asParent?: boolean;
 }
 
 export class KpiRegistry {
@@ -118,13 +162,21 @@ export class KpiRegistry {
 
   /** 老版本数据补字段，确保新字段不为 undefined（向下兼容） */
   private _normalize(r: KpiRecord): KpiRecord {
+    const kind = r.kind ?? 'delivery';
+    const isLeaf = r.isLeaf ?? (kind === 'delivery');
     return {
       ...r,
-      kind: r.kind ?? 'delivery',
+      kind,
       momentum: typeof r.momentum === 'number' ? r.momentum : 0,
       bursts: r.bursts ?? [],
       consecutiveIdleBursts: r.consecutiveIdleBursts ?? 0,
       reflexionTrail: r.reflexionTrail ?? [],
+      isLeaf,
+      children: r.children ?? [],
+      cadence: r.cadence ?? (kind === 'ongoing'
+        ? { type: 'continuous', minGapMs: 3 * 60 * 60 * 1000 }
+        : { type: 'once' }),
+      burstRunHistory: r.burstRunHistory ?? [],
     };
   }
 
@@ -148,22 +200,89 @@ export class KpiRegistry {
 
   /** 创建 KPI；status 默认 active */
   create(input: CreateKpiInput): KpiRecord {
+    const kind = input.kind ?? 'delivery';
+    const asParent = input.asParent ?? kind === 'ongoing';
     const kpi: KpiRecord = {
       kpiId: this.generateKpiId(),
       description: input.description.trim(),
       createdBy: input.createdBy,
       createdAt: new Date().toISOString(),
       status: 'active',
-      kind: input.kind ?? 'delivery',
+      kind,
       momentum: 0,
       bursts: [],
       consecutiveIdleBursts: 0,
       reflexionTrail: [],
       notes: input.notes?.trim() || undefined,
+      isLeaf: !asParent,
+      children: asParent ? [] : undefined,
+      cadence: kind === 'ongoing' && asParent
+        ? { type: 'continuous', minGapMs: 3 * 60 * 60 * 1000 }
+        : kind === 'ongoing'
+          ? { type: 'continuous', minGapMs: 3 * 60 * 60 * 1000 }
+          : { type: 'once' },
+      burstRunHistory: [],
     };
     this.kpis.set(kpi.kpiId, kpi);
     this._save();
     return kpi;
+  }
+
+  /** 注册子 KPI 并挂到父节点 children */
+  createChild(parentId: string, input: Omit<CreateKpiInput, 'asParent'> & {
+    cadence: KpiCadence;
+    charter?: string;
+  }): KpiRecord | undefined {
+    const parent = this.kpis.get(parentId);
+    if (!parent) return undefined;
+    const child: KpiRecord = {
+      kpiId: this.generateKpiId(),
+      description: input.description.trim(),
+      createdBy: input.createdBy,
+      createdAt: new Date().toISOString(),
+      status: 'active',
+      kind: input.kind ?? parent.kind,
+      momentum: 0,
+      bursts: [],
+      consecutiveIdleBursts: 0,
+      reflexionTrail: [],
+      notes: input.notes?.trim() || undefined,
+      parentKpiId: parentId,
+      isLeaf: true,
+      cadence: input.cadence,
+      charter: input.charter?.trim() || undefined,
+      burstRunHistory: [],
+    };
+    this.kpis.set(child.kpiId, child);
+    parent.children = [...(parent.children ?? []), child.kpiId];
+    parent.isLeaf = false;
+    this._save();
+    return child;
+  }
+
+  /** 列出所有 active 叶子 KPI（dispatch 遍历对象） */
+  listLeafKpis(filter?: { status?: KpiStatus }): KpiRecord[] {
+    return this.list(filter).filter((k) => k.isLeaf);
+  }
+
+  appendBurstRun(kpiId: string, run: BurstRunRecord): void {
+    const k = this.kpis.get(kpiId);
+    if (!k) return;
+    k.burstRunHistory.push(run);
+    if (k.burstRunHistory.length > 200) {
+      k.burstRunHistory = k.burstRunHistory.slice(-200);
+    }
+    this._save();
+  }
+
+  setCanonicalInstance(kpiId: string, instanceId: string): void {
+    const k = this.kpis.get(kpiId);
+    if (!k) return;
+    k.canonicalInstanceId = instanceId;
+    if (!k.bursts.includes(instanceId)) {
+      k.bursts.push(instanceId);
+    }
+    this._save();
   }
 
   get(kpiId: string): KpiRecord | undefined {

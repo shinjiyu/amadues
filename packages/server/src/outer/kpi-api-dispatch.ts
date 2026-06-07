@@ -1,7 +1,7 @@
 /**
- * Ops / E2E：HTTP 直连 `set_goal(kpi_id)`，绕过外脑 LLM。
+ * Ops / E2E：HTTP 直连 KPI 推进，绕过外脑 LLM。
  *
- * ADL：doc/structurizr/KPI-CLOSED-LOOP.md §API dispatch
+ * ADL：doc/structurizr/KPI-ADVANCEMENT.md · KPI-CLOSED-LOOP.md §API dispatch
  */
 import type { ChatAssetStore, ChatIRChannel } from '@utlra/chat-ir';
 import type {
@@ -14,10 +14,9 @@ import type { KnowledgeDrive9Store } from '../drive9/knowledge-drive9-store.js';
 import type { SkillMemoryStore } from '../mem9/skill-memory-store.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
-import { isSetGoalDispatched } from './inner-brain-kpi-reuse.js';
 import { evaluateKpiAutonomyDispatch } from './kpi-dispatch-guard.js';
+import { advanceKpi } from './kpi/kpi-advancer.js';
 import {
-  executeOuterTool,
   resolveAgentSid,
   resolveWorkspaceId,
   type OuterToolContext,
@@ -78,17 +77,12 @@ function buildToolCtx(deps: KpiApiDispatchDeps, threadId: string): OuterToolCont
     knowledgeDrive9Store: deps.knowledgeDrive9Store,
     scheduleReflexionBurst: deps.scheduleReflexionBurst,
     scheduleNextKpiBurst: deps.scheduleNextKpiBurst,
+    allowKpiSetGoal: true,
   };
 }
 
-/** 从 set_goal 工具输出解析 instance_id */
-function parseInstanceId(output: string): string | undefined {
-  const m = output.match(/instance_id=([^\s,，]+)/);
-  return m?.[1];
-}
-
 /**
- * 为 active KPI 派发一发内脑 burst（等同外脑 `set_goal` + `kpi_id`）。
+ * 为 active KPI 推进一发内脑 sprint（kpiAdvancer）。
  */
 export async function dispatchKpiBurst(
   deps: KpiApiDispatchDeps,
@@ -112,8 +106,8 @@ export async function dispatchKpiBurst(
     return { ok: false, output: '', reason: decision.reason };
   }
 
-  const goal = (input.goal?.trim() || kpi.description).trim();
-  if (!goal) {
+  const charter = (input.goal?.trim() || kpi.charter || kpi.description).trim();
+  if (!charter) {
     return { ok: false, output: '', reason: 'goal_empty' };
   }
 
@@ -123,24 +117,27 @@ export async function dispatchKpiBurst(
     process.env['UTLRA_OUTER_HEARTBEAT_THREAD_ID']?.trim() ||
     'thread:ops';
 
-  const toolOut = await executeOuterTool(
-    'set_goal',
-    JSON.stringify({
-      goal,
-      kpi_id: kpiId,
-      origin_thread: threadId,
-      ...(input.origin_user?.trim() ? { origin_user: input.origin_user.trim() } : {}),
-    }),
-    buildToolCtx(deps, threadId),
+  deps.kpiRegistry.update(kpiId, { charter });
+
+  const adv = await advanceKpi(
+    {
+      kpiRegistry: deps.kpiRegistry,
+      innerBrainRegistry: deps.innerBrainRegistry,
+      toolCtx: buildToolCtx(deps, threadId),
+      workspaceId: deps.workspaceId ?? resolveWorkspaceId(),
+      defaultThreadId: threadId,
+      scheduleReflexionBurst: deps.scheduleReflexionBurst,
+    },
+    kpiId,
   );
 
-  if (!isSetGoalDispatched(toolOut.output)) {
-    return { ok: false, output: toolOut.output, reason: 'set_goal_failed' };
+  if (!adv.ok) {
+    return { ok: false, output: adv.detail ?? '', reason: adv.reason };
   }
 
   return {
     ok: true,
-    output: toolOut.output,
-    instanceId: parseInstanceId(toolOut.output),
+    output: `KPI 推进：${adv.reason}${adv.instanceId ? ` instance_id=${adv.instanceId}` : ''}`,
+    instanceId: adv.instanceId,
   };
 }

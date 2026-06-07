@@ -79,9 +79,18 @@ describe('KpiRegistry.kind (delivery / ongoing)', () => {
     const reg1 = new KpiRegistry(tmpRoot);
     const k = reg1.create({ description: '24h 情报常驻', createdBy: 'u', kind: 'ongoing' });
     expect(k.kind).toBe('ongoing');
+    expect(k.isLeaf).toBe(false);
+    expect(k.burstRunHistory).toEqual([]);
 
     const reg2 = new KpiRegistry(tmpRoot);
     expect(reg2.get(k.kpiId)?.kind).toBe('ongoing');
+  });
+
+  it('delivery 默认 isLeaf + cadence once', () => {
+    const reg = new KpiRegistry(tmpRoot);
+    const k = reg.create({ description: '交付物', createdBy: 'u' });
+    expect(k.isLeaf).toBe(true);
+    expect(k.cadence).toEqual({ type: 'once' });
   });
 });
 

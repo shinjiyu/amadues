@@ -91,9 +91,13 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
       });
       strategyFocusOrder = phase.strategy?.focusOrder;
       if (phase.reevaluated && rawEvents.length > 0) env.journal.markEventsConsumed(rawEvents);
+      const rejectDetail =
+        phase.planRejected && phase.planRejectErrors.length > 0
+          ? ` rejectErrors=${phase.planRejectErrors.join(',')}`
+          : '';
       console.log(
         `[utlra][strategy] reeval=${phase.reevaluated} triggers=${phase.triggers.join(',')} ` +
-        `rejected=${phase.planRejected} aborted=${phase.abortedIds.length} focus=${(strategyFocusOrder ?? []).join('>')}`,
+        `rejected=${phase.planRejected}${rejectDetail} aborted=${phase.abortedIds.length} focus=${(strategyFocusOrder ?? []).join('>')}`,
       );
     } catch (e) {
       console.log(`[utlra][strategy] phase error: ${e instanceof Error ? e.message : String(e)}`);

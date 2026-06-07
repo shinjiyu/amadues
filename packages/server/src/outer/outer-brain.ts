@@ -39,6 +39,7 @@ import {
 } from './inbound-policy.js';
 import { retrieveComprehensiveKnowledge } from './knowledge-retrieval.js';
 import { runOuterConversationLoop } from './outer-conversation-loop.js';
+import { routeInboundKpiOrAdHoc } from './inbound/inbound-kpi-router.js';
 import { resolveAgentSid, resolveWorkspaceId } from './outer-tools.js';
 import { MessageRecordSchema } from '@utlra/chat-ir';
 import { ThreadOrchestrator, makeFreshCheck } from './thread-orchestrator.js';
@@ -516,6 +517,59 @@ export class OuterBrain {
     console.log(`[utlra][outer-brain] SPEAK decision: ${shouldReply} (${reason})`);
     if (!shouldReply) return;
 
+    workspaceStore.ensureWorkspace(workspaceId);
+    const triggerMessageId = ev.message.message_id;
+    const freshCheck = makeFreshCheck(seenTracker, threadId, triggerMessageId);
+    const toolCtxBase = {
+      threadId,
+      agentSid,
+      workspaceId,
+      repoRoot: this.deps.repoRoot,
+      imClient,
+      assetStore: this.deps.assetStore,
+      getEngine,
+      workspaceStore,
+      repoStore,
+      dataRoot,
+      freshCheck,
+      actionLogStore: this.deps.actionLogStore,
+      innerBrainRegistry,
+      kpiRegistry: this.deps.kpiRegistry,
+      scheduleReflexionBurst: this.deps.scheduleReflexionBurst,
+      scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
+      loadThreads,
+      memoryStore: this.deps.memoryStore,
+      skillStore: this.deps.skillStore,
+      skillDrive9Store: this.deps.skillDrive9Store,
+      knowledgeDrive9Store: this.deps.knowledgeDrive9Store,
+      memoryBlockStore: this.deps.memoryBlockStore,
+      inboundHumanSid: isHumanSender(senderSid) ? senderSid : undefined,
+    };
+
+    // ── Step 3.4: IM KPI / ad-hoc 分流（在 LLM 对话环之前，不依赖 API key）──
+    if (isHumanSender(senderSid) && this.deps.kpiRegistry) {
+      const routed = await routeInboundKpiOrAdHoc(
+        {
+          dataRoot,
+          kpiRegistry: this.deps.kpiRegistry,
+          toolCtx: toolCtxBase,
+          workspaceId,
+          defaultThreadId: threadId,
+          originUser: senderSid,
+        },
+        content,
+      );
+      if (routed.handled && routed.replyText) {
+        await imClient.postMessage(threadId, {
+          sender_sid: agentSid,
+          text: routed.replyText,
+          parse_mentions: true,
+        });
+        console.log(`[utlra][outer-brain] inbound-kpi-router: intent=${routed.intent.kind}`);
+        return;
+      }
+    }
+
     // ── Step 3.5: agent 链话题自然结束检查 ──────────────────────────────────
     // 当消息来自另一个 agent 且链已有一定深度时，用 LLM 判断话题是否已充分讨论。
     // 复用现有的 participationSpeakLlm，在 innerStatusSummary 中注入链上下文作为提示。
@@ -558,8 +612,6 @@ export class OuterBrain {
     }
 
     // ── Step 5: 外脑对话循环 ─────────────────────────────────────────────────
-    workspaceStore.ensureWorkspace(workspaceId);
-
     // 动态收集本 thread 出现过的所有 sender_sid，用于 LLM 系统提示中的 sid↔昵称映射
     const threadSids = resolveThreadSids(threadId, senderSid, loadThreads);
 
@@ -574,38 +626,9 @@ export class OuterBrain {
       ? memBlock + (knowledgeContext ? '\n\n---\n\n' + knowledgeContext : '')
       : knowledgeContext;
 
-    // 新鲜度检查：纯响应式，依赖 seenTracker 内存中记录的运行时观察
-    const triggerMessageId = ev.message.message_id;
-    const freshCheck = makeFreshCheck(seenTracker, threadId, triggerMessageId);
-
     const result = await withTypingActivity(imClient, threadId, () => runOuterConversationLoop({
       env: llmEnv,
-      ctx: {
-        threadId,
-        agentSid,
-        workspaceId,
-        repoRoot: this.deps.repoRoot,
-        imClient,
-        assetStore: this.deps.assetStore,
-        getEngine,
-        workspaceStore,
-        repoStore,
-        dataRoot,
-        freshCheck,
-        // ── IP-05: 将 actionLogStore 传入 OuterToolContext ────────────────
-        actionLogStore: this.deps.actionLogStore,
-        innerBrainRegistry,
-        kpiRegistry:            this.deps.kpiRegistry,
-        scheduleReflexionBurst: this.deps.scheduleReflexionBurst,
-        scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
-        loadThreads,
-        memoryStore:      this.deps.memoryStore,
-        skillStore:           this.deps.skillStore,
-        skillDrive9Store:     this.deps.skillDrive9Store,
-        knowledgeDrive9Store: this.deps.knowledgeDrive9Store,
-        memoryBlockStore:     this.deps.memoryBlockStore,
-        inboundHumanSid: isHumanSender(senderSid) ? senderSid : undefined,
-      },
+      ctx: toolCtxBase,
       registry,
       threadSids,
       userMessage: content,

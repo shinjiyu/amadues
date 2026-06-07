@@ -2,7 +2,8 @@
 
 > **English:** One **canonical inner brain** per KPI / long-running goal. Each EXECUTE cycle advances incrementally on the **same** `instanceId` + `workDir`; the plan is revised between cycles—not multiple parallel inner brains collaborating on one target.
 
-与 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)、[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) 互补。
+与 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)、[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)、[`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) 互补。  
+**粒度（2026-06-07）**：canonical 绑定 **leaf sub-KPI**（非父 KPI）；多轮 sprint 复用同一 instance，执行史见 `burstRunHistory`。
 
 ---
 

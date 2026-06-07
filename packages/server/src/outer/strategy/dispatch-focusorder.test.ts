@@ -69,11 +69,17 @@ describe('dispatcher focusOrder / strategyMode', () => {
     const registry = new InnerBrainRegistry(tmpRoot);
 
     const r = await dispatchAutonomyTasks(
-      deps(kpiRegistry, registry, { focusOrder: [kpi.kpiId], strategyMode: true }),
+      deps(kpiRegistry, registry, {
+        focusOrder: [kpi.kpiId],
+        strategyMode: true,
+        kpiAdvancerTick: async () => ({
+          advanced: false,
+          results: [{ ok: false, reason: 'mock_no_dispatch' }],
+        }),
+      }),
       snapshot(),
       idleVerdict,
     );
-    // getLlmEnv=null → KPI 草拟失败前会先因 no_llm_env 等中止，但绝不会是 strategy_no_focus
     expect(r.reason).not.toBe('strategy_no_focus');
   });
 });

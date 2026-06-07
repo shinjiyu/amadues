@@ -33,6 +33,7 @@ import { formatKpiDigest, suggestKpiAction, buildKpiBurstLinks } from './kpi-pro
 import { ingestDeliverables } from './deliverables-ingest.js';
 import { collectPeerWorkspaceIds, prepareKpiPeerHandoff } from './workspace-inbox.js';
 import { processBurstExitForKpi } from './kpi-burst-hooks.js';
+import { advanceKpi } from './kpi/kpi-advancer.js';
 import {
   listActivePendings as listActivePendingsSync,
   resolvePending as resolvePendingSync,
@@ -139,12 +140,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'set_goal',
       description:
-        '向内脑派发任务。**长期 KPI**：首次带 kpi_id 会创建 instance；**同一 KPI 后续只会复用该 instance 续跑**，禁止为同一目标再开新内脑。\n\n' +
-        '【持续 / 周期 / 监督类目标】只调用一次 set_goal（带 kpi_id），在 goal 正文写明检查周期；' +
-        '内脑用 wait_timer 或 [cyclic:N] 自行排期；**禁止**用「第二轮监督检查」再 set_goal。\n\n' +
-        '续跑前用 read_inner_status；若在 AWAITING 等定时/等回复则勿重复派发。\n\n' +
-        '【KPI 模式】set_kpi 后 **首次** set_goal 须传 kpi_id；之后系统自动或你手动 set_goal 时仍传同一 kpi_id，' +
-        '会在**同一 workspace** 上 EXECUTE 下一小步并修正计划。',
+        '向内脑派发**一次性**任务（无 kpi_id）。长期 KPI 请 set_kpi + advance_kpi，**禁止** set_goal(kpi_id)。\n\n' +
+        '续跑前用 read_inner_status；内脑 AWAITING 且 has_ask_user_pending 时勿重复派发。',
       parameters: {
         type: 'object',
         properties: {
@@ -163,8 +160,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           },
           kpi_id: {
             type: 'string',
-            description:
-              '（可选）关联 KPI。同一 kpi_id **始终复用同一内脑 instance**；勿为同一 KPI 开多个 instance。',
+            description: '（已废弃）请改用 advance_kpi；本工具勿传 kpi_id。',
           },
           peer_workspace_ids: {
             type: 'string',
@@ -184,9 +180,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
         '创建一个长期 KPI（关键绩效目标）——给你一个总目标，让你用一切手段去达成。' +
         '与 set_goal 区别：set_goal 派一个一次性 burst，KPI 是长期挂着的"探索目标"，' +
         '它本身不直接执行，但会作为多个 set_goal burst 的共同身份，让这些 burst 共享反思 / 失败记忆。\n\n' +
-        '典型用法：用户给一个高难度 / 开放式目标时（如"通过 X 拿到 Y"），先 set_kpi 创建身份，' +
-        '然后再调 set_goal 并传入 kpi_id 派发第一个尝试 burst；第一个 burst 跑完如果没成，' +
-        '系统会自动让你（或你 set_goal）派下一个换方向的 burst。\n\n' +
+        '典型用法：先 set_kpi 创建身份，再 **advance_kpi** 推进一发 sprint；心跳会按节拍自动续派。\n\n' +
         '连续 3 个 burst 都 idle 无产出会自动触发"反思 burst"，让 agent 自评 KPI 是否卡死并建议新方向。\n\n' +
         '【类型 kind】delivery（默认）=一次性交付，达成后自动结案；ongoing=常驻/周期/监督类' +
         '（如"24h 持续收集情报并每日汇报"），**永不**自动结案，避免常驻任务被某次报告误判完成。',
@@ -215,6 +209,26 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           },
         },
         required: ['description'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'advance_kpi',
+      description:
+        '推进 KPI 一发内脑 sprint（绑定 kpi_id、复用 canonical workspace）。' +
+        '长期/周期任务由心跳按节拍自动续派；需要立即推进或 set_kpi 后首派时调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          kpi_id: { type: 'string', description: 'KPI ID' },
+          charter: {
+            type: 'string',
+            description: '（可选）本轮 sprint 章程；缺省用 KPI 描述与执行史',
+          },
+        },
+        required: ['kpi_id'],
       },
     },
   },
@@ -682,6 +696,11 @@ export interface OuterToolContext {
    * 此上下文内 set_goal **不受** maxRunningInnerBrains 槽位限制（用户直派优先）。
    */
   inboundHumanSid?: string;
+  /**
+   * 仅 kpiAdvancer 内部续跑时允许 set_goal(kpi_id)；外脑 LLM 须用 advance_kpi。
+   * ADL KPI-ADVANCEMENT.md §2
+   */
+  allowKpiSetGoal?: boolean;
 }
 
 export interface ToolCallResult {
@@ -813,6 +832,13 @@ async function execSetGoal(
     const originThread = resolveTaskOriginThread(args.origin_thread, ctx.threadId);
 
     const kpiId = args.kpi_id?.trim() || undefined;
+    if (kpiId && !ctx.allowKpiSetGoal) {
+      return {
+        replied: false,
+        output:
+          '（禁止 set_goal(kpi_id)；长期 KPI 请用 advance_kpi(kpi_id)。一次性杂活勿传 kpi_id。）',
+      };
+    }
     const kpi = kpiId && ctx.kpiRegistry ? ctx.kpiRegistry.get(kpiId) : null;
     if (kpiId && !kpi) {
       console.warn(`[utlra][outer-tools] set_goal kpi_id=${kpiId} 不存在，本 burst 不挂 KPI`);
@@ -821,7 +847,7 @@ async function execSetGoal(
 
     // 同 KPI 在途 → 禁止并行（含 IM 直派）
     if (resolvedKpiId) {
-      const live = findLiveBurstForKpi(registry, resolvedKpiId);
+      const live = findLiveBurstForKpi(registry, resolvedKpiId, undefined, ctx.kpiRegistry);
       if (live) {
         return {
           replied: false,
@@ -1279,10 +1305,10 @@ async function execStartSelfUpdate(
 
 // ── KPI 工具实现 ────────────────────────────────────────────────────────────
 
-function execSetKpi(
+async function execSetKpi(
   args: { description?: string; created_by?: string; notes?: string; kind?: string },
   ctx: OuterToolContext,
-): ToolCallResult {
+): Promise<ToolCallResult> {
   if (!ctx.kpiRegistry) return { replied: false, output: '（KPI 注册表未启用）' };
   const description = args.description?.trim() ?? '';
   if (!description) return { replied: false, output: '（description 为空，已跳过）' };
@@ -1292,16 +1318,71 @@ function execSetKpi(
     description,
     createdBy,
     kind,
+    asParent: kind === 'ongoing',
     ...(args.notes?.trim() ? { notes: args.notes.trim() } : {}),
   });
   const kindNote =
     kind === 'ongoing'
       ? '\n类型：ongoing（常驻，永不自动结案；交付物为节拍产出）'
       : '';
+  let advanceLine = `下一步：调用 advance_kpi(kpi_id=${kpi.kpiId}) 推进首 sprint。`;
+  if (ctx.innerBrainRegistry && ctx.kpiRegistry) {
+    const adv = await advanceKpi(
+      {
+        kpiRegistry: ctx.kpiRegistry,
+        innerBrainRegistry: ctx.innerBrainRegistry,
+        toolCtx: { ...ctx, allowKpiSetGoal: true },
+        workspaceId: ctx.workspaceId,
+        defaultThreadId: ctx.threadId,
+        scheduleReflexionBurst: ctx.scheduleReflexionBurst,
+        scheduleNextKpiBurst: ctx.scheduleNextKpiBurst,
+      },
+      kpi.kpiId,
+    );
+    if (adv.ok) {
+      advanceLine = `已自动推进：${adv.reason}${adv.instanceId ? ` instance_id=${adv.instanceId}` : ''}`;
+    } else {
+      advanceLine = `自动推进未执行（${adv.reason}）；可稍后 advance_kpi 或等心跳。`;
+    }
+  }
   return {
     replied: false,
-    output: `KPI 已创建：kpi_id=${kpi.kpiId}\n描述：${kpi.description}${kindNote}\n` +
-      `下一步：调用 set_goal 并传入 kpi_id=${kpi.kpiId} 派发第一个尝试 burst。`,
+    output: `KPI 已创建：kpi_id=${kpi.kpiId}\n描述：${kpi.description}${kindNote}\n${advanceLine}`,
+  };
+}
+
+async function execAdvanceKpi(
+  args: { kpi_id?: string; charter?: string },
+  ctx: OuterToolContext,
+): Promise<ToolCallResult> {
+  if (!ctx.kpiRegistry || !ctx.innerBrainRegistry) {
+    return { replied: false, output: '（KPI / 内脑注册表未启用）' };
+  }
+  const kpiId = args.kpi_id?.trim() ?? '';
+  if (!kpiId) return { replied: false, output: '（kpi_id 为空）' };
+  const kpi = ctx.kpiRegistry.get(kpiId);
+  if (!kpi) return { replied: false, output: `（KPI 不存在：${kpiId}）` };
+  if (args.charter?.trim()) {
+    ctx.kpiRegistry.update(kpiId, { charter: args.charter.trim() });
+  }
+  const adv = await advanceKpi(
+    {
+      kpiRegistry: ctx.kpiRegistry,
+      innerBrainRegistry: ctx.innerBrainRegistry,
+      toolCtx: { ...ctx, allowKpiSetGoal: true },
+      workspaceId: ctx.workspaceId,
+      defaultThreadId: ctx.threadId,
+      scheduleReflexionBurst: ctx.scheduleReflexionBurst,
+      scheduleNextKpiBurst: ctx.scheduleNextKpiBurst,
+    },
+    kpiId,
+  );
+  if (!adv.ok) {
+    return { replied: false, output: `（KPI 推进未执行：${adv.reason}${adv.detail ? ` — ${adv.detail}` : ''}）` };
+  }
+  return {
+    replied: false,
+    output: `KPI 推进成功：${adv.reason}${adv.instanceId ? ` instance_id=${adv.instanceId}` : ''}`,
   };
 }
 
@@ -2209,6 +2290,8 @@ export async function executeOuterTool(
       );
     case 'set_kpi':
       return execSetKpi(args as { description?: string; created_by?: string; notes?: string; kind?: string }, ctx);
+    case 'advance_kpi':
+      return execAdvanceKpi(args as { kpi_id?: string; charter?: string }, ctx);
     case 'list_kpis':
       return execListKpis(args as { status?: string }, ctx);
     case 'view_kpi':

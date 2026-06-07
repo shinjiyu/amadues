@@ -1,6 +1,7 @@
 # KPI 闭环（ADL 与实现对齐）
 
-> 与 `workspace.dsl` 视图 `10-L2-KPI-Closed-Loop`、`10b-L3-Outer-KPI`、`10c-L3-Inner-Reflexion` 同步。
+> 与 `workspace.dsl` 视图 `10-L2-KPI-Closed-Loop`、`10b-L3-Outer-KPI`、`10c-L3-Inner-Reflexion` 同步。  
+> **外脑派遣主路径**（2026-06-07 起）见 [`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md)：`kpiAdvancer` 遍历 leaf KPI + burst 复用；本文 §闭环步骤 1–2 在实现迁移后由推进器替代「外脑 LLM set_goal」。
 
 ## 两条链路（勿混）
 

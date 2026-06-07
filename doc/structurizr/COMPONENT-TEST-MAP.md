@@ -28,13 +28,31 @@
 | **innerFileTools** | ✅ `read-file-lines.test.ts` | — | — | ADL [`INNER-FILE-ACCESS.md`](./INNER-FILE-ACCESS.md) |
 | **describeImageTool** | ✅ `describe-image.test.ts` | — | — | ADL [`INNER-VISION-TOOL.md`](./INNER-VISION-TOOL.md) |
 | **shellProbe** | ✅ `shell-probe.test.ts` | — | — | ADL [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §6.6 |
-| **reactToolCallSlim** | ✅ `react-tool-call-slim.test.ts` | — | — | ADL §6.5 P2.5 |
+| **browserSessionRegistry** | ✅ `session-registry.test.ts` | — | — | ADL [`BROWSER-SESSION-TOOL.md`](./BROWSER-SESSION-TOOL.md) |
+| **browserTools** | ✅ `browser-tools.test.ts` | — | — | P0 goto/click/snapshot；P1 run_steps + playbook + from_step |
+| **browserPlaybook** | ✅ `browser-playbook.test.ts` | — | — | ADL §2.5 步骤解析 |
+| **reactToolCallSlim** | ✅ `react-tool-call-slim.test.ts` | — | — | ADL §6.5 P2.5；`__SLIM_REF__` 格式 |
+| **writeContentGuard** | ✅ `write-content-guard.test.ts` | — | — | 占位符拒绝 + slim 引用格式 |
+| **baseNodeWriteGuard** | ✅ `base-node-executor.test.ts` | — | — | 同路径 overwrite 拒绝 |
+| **factTopic** | ✅ `fact-topic.test.ts` | — | — | ADL [`FACTS-KNOWLEDGE-GOVERNANCE.md`](./FACTS-KNOWLEDGE-GOVERNANCE.md) §4 |
+| **factGovernor** | ✅ `fact-governor.test.ts` | ⏳ | — | supersede · quota · prompt cap |
+| **factDrive9Eviction** | ⏳ | ⏳ | — | P2 drive9 sweep |
 | outerOrchestrator | 🟡 parse | ✅ `outerOrchestrator.component.integration.test.ts` | — | + `outer-roundtrip` / `outer-roundtrip-inner`（注入 spawn） |
 | innerBrainKpiReuse | ✅ `inner-brain-kpi-reuse.test.ts` | ⏳ | — | ADL [`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md) |
 | innerBrainRegistry | ❌ | ✅ `innerBrainRegistry.component.integration.test.ts` | — | |
 | innerSpawner | ❌ | ✅ `innerSpawner.component.integration.test.ts` | — | + 可选 `spawn-inner-worker-live`（`UTLRA_TEST_SPAWN_INNER=1`） |
 | kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | |
 | kpiBurstHooks | ✅ `kpi-burst-hooks.test.ts` | ✅ `kpiBurstHooks.component.integration.test.ts` | — | 与 `kpi-lifecycle.integration` 互补 |
+| imIntentClassifier | ✅ `im-intent-classifier.test.ts` | ⏳ inbound IM fixture | — | ADL [`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) §2 |
+| subKpiDecomposer | ✅ `sub-kpi-decomposer.test.ts` | — | — | §3 首拆子 KPI |
+| kpiCadence | ✅ `kpi-cadence.test.ts` | — | — | §3 cadence due |
+| kpiSlotIdle | ✅ `kpi-slot-idle.test.ts` | — | — | §5 ongoing 槽位 |
+| burstReuse | 🟡 via advancer | ⏳ spawn mock | — | §4 canonical 复用 |
+| burstRunHistory | 🟡 via `kpi-burst-hooks.test.ts` | — | — | §6 执行史 |
+| kpiAdvancer | ✅ `kpi-advancer.test.ts` + dispatcher | ✅ `autonomy-heartbeat` | — | §7 主推进 |
+| adHocBurstAllocator | ✅ `ad-hoc-burst-allocator.test.ts` | — | — | §8 一次性任务 |
+| inboundKpiRouter | ✅ `im-intent-classifier.test.ts` | ✅ `inbound-kpi-router.component.integration.test.ts` + `outer-brain-inbound-kpi-router.integration.test.ts` | — | §2 IM 分流 |
+| outerToolsKpiAdvancement | ✅ `outer-tools-kpi-advancement.test.ts` | — | — | `set_goal(kpi_id)` 封禁 |
 | kpiCompletionJudge | ✅ `kpi-completion-judge.test.ts` | — | — | ADL [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) §3b ongoing 不结案 |
 | kpiFeedback | ✅ `kpi-feedback.test.ts` | — | — | ADL [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) §16 多巴胺回路 |
 | outerHeartbeat | 🟡 death-detect | ✅ `outer-heartbeat.integration.test.ts` + `autonomy-heartbeat.component.integration.test.ts` | — | ADL [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) |

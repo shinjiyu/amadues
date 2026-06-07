@@ -59,7 +59,16 @@
 | **autonomyPolicyStore** | **闲忙规则（可聊天改）** | `outer/autonomy-policy-store.ts` | policy.json + rubric.md |
 | **autonomyJudge** | **闲忙判定（hard gates；P1 读派生量）** | `outer/autonomy-judge.ts` | snapshot+policy → idle/busy |
 | **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
-| **autonomyTaskDispatcher** | **自主任务分发（P0 自由选 KPI；P1 起按 strategy.focusOrder）** | `outer/autonomy-task-dispatcher.ts` | strategy + 资源 → set_goal/post_to_im |
+| **autonomyTaskDispatcher** | **自主任务分发（⏳ 退化：KPI 派遣 → kpiAdvancer；保留 ad-hoc 队列 + 闲聊）** | `outer/autonomy-task-dispatcher.ts` | strategy + 资源 → advance/ad-hoc/post_to_im |
+| **imIntentClassifier** | **入站意图（⏳ KPI vs ad-hoc vs chat）** | `outer/inbound/im-intent-classifier.ts` | IM 文本 → intent |
+| **subKpiDecomposer** | **子 KPI 首拆（⏳ 首次 advance 时）** | `outer/kpi/sub-kpi-decomposer.ts` | parent KpiRecord → leaf children + cadence |
+| **kpiCadence** | **节拍纯函数（⏳ isCadenceDue / nextDueAt）** | `outer/kpi/kpi-cadence.ts` | KpiRecord + now → due |
+| **kpiSlotIdle** | **ongoing 槽位判定（⏳ DONE/AWAITING=空闲）** | `outer/kpi/kpi-slot-idle.ts` | leaf KPI + registry + snapshot → idle? |
+| **burstReuse** | **Burst 复用 + preempt（⏳ per leaf canonical）** | `outer/kpi/burst-reuse.ts` | advance / preempt → spawn |
+| **burstRunHistory** | **Burst 执行史（⏳ 外脑读 run digest）** | `outer/kpi/burst-run-history.ts` | onExit → BurstRunRecord[] |
+| **kpiAdvancer** | **KPI 推进主循环（✅ 心跳 + advance_kpi + Ops API）** | `outer/kpi/kpi-advancer.ts` | focusOrder → dispatch sprint |
+| **adHocBurstAllocator** | **一次性任务 burst（✅ 无 kpi_id）** | `outer/ad-hoc-burst-allocator.ts` | ad_hoc goal → new instance |
+| **inboundKpiRouter** | **IM 入站 KPI/ad-hoc 分流（✅）** | `outer/inbound/inbound-kpi-router.ts` | classify → advance / ad-hoc |
 | **strategyStore** | **战略真相（✅ current.json + journal-YYYY-MM.jsonl）** | `outer/strategy/strategy-store.ts` | StrategyArtifact CRUD + journal append |
 | **strategyTrigger** | **战略 — 重评估触发器（✅ §6 表纯函数）** | `outer/strategy/strategy-trigger.ts` | ctx → {reevaluate, triggers} |
 | **strategyArtifact** | **战略 — StrategyArtifact 校验/规范化（✅ WHY+HOW 必填 + ⊆active 交集）** | `outer/strategy/strategy-artifact.ts` | raw → 校验后 artifact / errors |
@@ -133,6 +142,9 @@
 | **burstStallAlert** | **空转告警落盘 + 索引** | `inner-brain/burst-stall-alert.ts` | verdict → `stall-alerts/` 包 + `index.jsonl` |
 | **localNodeStore** | **LocalNode 库**（P0） | `inner-brain/local-node-store.ts` | commit / read / list + index |
 | **memoryStore** | **全局 memory.json**（P0） | `inner-brain/memory-store.ts` | patch/get goal/facts/constraints/last_failure/node_results/dag_history(环形)/locked_milestones |
+| **factTopic** | **事实 topic 归一化**（⏳ P0） | `inner-brain/fact-topic.ts` | content → merge key；见 FACTS-KNOWLEDGE-GOVERNANCE |
+| **factGovernor** | **事实合并/淘汰/注入上限**（⏳ P0） | `inner-brain/fact-governor.ts` | supersede-on-write · quota/cold · prompt select |
+| **factDrive9Eviction** | **drive9 共享事实淘汰**（⏳ P2） | `outer/fact-drive9-eviction.ts` | 对齐 nodeDefEviction |
 | **designerToolRegistry** | **Designer 专用工具集**（P0） | `inner-brain/designer-tools.ts` | list_local_nodes / read_memory / search_and_instance / commit_local_dag(拦截已锁里程碑) / report_done(verify 闸门) / promote_local_node(成功提升 fire-and-forget auto-export) / lock_milestone |
 | **presetSeeder** | **首次 spawn 注入 preset/***（P0） | `inner-brain/preset-seeder.ts` | workDir → preset/base + node_creator + extract_facts（TS 常量幂等 seed） |
 | **memoryTools** | **record_fact / record_constraint**（P2） | `inner-brain/memory-tools.ts` | memoryStore → baseNode 注入工具（写回 facts/constraints 去重） |
@@ -145,7 +157,11 @@
 | **innerFileTools** | **read/search/write + peer 读** | `read-file-lines.ts`; `read-file.ts`; `peer-file-tools.ts` | 分页读 ✅ INNER-FILE-ACCESS |
 | **describeImageTool** | **栅格图识图** | `describe-image.ts` | `describe_image` → visionModel；✅ INNER-VISION-TOOL |
 | **shellProbe** | **批量 shell 探测** | `shell-probe.ts` | commands[] → 合并输出；早停 |
-| **reactToolCallSlim** | **ReAct write/edit 参数瘦身** | `react-tool-call-slim.ts` | 落盘后省略 content 进 LLM 历史 |
+| **browserSessionRegistry** | **Playwright 增量会话** | `browser/session-registry.ts` | open/act/close；node 结束自动清理；✅ BROWSER-SESSION-TOOL |
+| **browserTools** | **browser_open/act/close/list/run_steps** | `browser-tools.ts` | UI 自动化；snapshot 落盘；playbook 脚本 |
+| **browserPlaybook** | **步骤脚本解析** | `browser/browser-playbook.ts` | 内联 steps / playbook JSON |
+| **reactToolCallSlim** | **ReAct write/edit 参数瘦身** | `react-tool-call-slim.ts` | 保护窗口外旧轮 `__SLIM_REF__`；最近 N 轮保留全文 |
+| **writeContentGuard** | **write_file 占位符拒绝 + 同路径保护** | `write-content-guard.ts` + `base-node-executor.ts` | 禁止 `[N chars omitted…]` / `__SLIM_REF__` 落盘；节点内二次 overwrite 拒绝 |
 | archiveStore | 归档 | `archive/fs-store.ts` | archive → session |
 
 **视图**：`09-L3-Inner-Phases`（DyFlow Phases）；`09b-L3-Inner-DyFlow`（DyFlow 全模块图）；`14-L2-DyFlow-Node-Lifecycle`（NodeDef 共享/治理）。

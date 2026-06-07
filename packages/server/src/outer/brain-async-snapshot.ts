@@ -39,6 +39,8 @@ export interface BrainAsyncSnapshot {
   is_async_waiting: boolean;
   /** 里程碑已全部完成；registry 应视为 DONE，勿再 set_goal「第 N 轮」 */
   is_post_complete: boolean;
+  /** 有 ask_user pending — ongoing KPI 槽位仍占（KPI-ADVANCEMENT.md §5） */
+  has_ask_user_pending: boolean;
 }
 
 function brainDirFor(workDir: string): string {
@@ -107,6 +109,10 @@ export function buildBrainAsyncSnapshot(workDir: string): BrainAsyncSnapshot {
     controller.blocked_reason === POST_COMPLETE_REASON ||
     active_pendings.some((p) => p.source === 'all-complete');
 
+  const has_ask_user_pending = active_pendings.some(
+    (p) => p.kind === 'ask_user' && p.status === 'pending',
+  );
+
   const is_async_waiting =
     !is_post_complete &&
     (controller.mode === 'AWAITING' ||
@@ -118,7 +124,13 @@ export function buildBrainAsyncSnapshot(workDir: string): BrainAsyncSnapshot {
     next_wake_at,
     is_async_waiting,
     is_post_complete,
+    has_ask_user_pending,
   };
+}
+
+/** KPI 推进槽位：ask_user 仍占槽 */
+export function hasAskUserPending(workDir: string): boolean {
+  return buildBrainAsyncSnapshot(workDir).has_ask_user_pending;
 }
 
 /** burst 退出后是否应标 AWAITING（与 ChangeWatcher 续跑语义一致） */
@@ -140,11 +152,12 @@ export function formatBrainAsyncSnapshotForLlm(snap: BrainAsyncSnapshot): BrainA
 
 /** 写入外脑 system prompt（对话 + 心跳共用） */
 export const OUTER_ASYNC_ORCHESTRATION_GUIDE = `
-## 内脑异步 / 定时（必读）
-- **持续监督、周期检查、等回复、等 SSE/限速**：只 **set_goal 一次**（可挂 kpi_id），在 goal 里写清周期与检查项；由内脑在执行中调用 **wait_timer**（或里程碑带 [cyclic:N]），到点后 **ChangeWatcher 自动在同一 instance/workDir 续跑**。
-- **禁止**为同一 KPI 再 set_goal「第 2/3 轮监督检查」——那会新建 instance，破坏工作区连续性。
-- burst 结束后先用 **read_inner_status** / **list_inner_brains** 看 \`async.is_async_waiting\`、\`next_wake_at\`、\`active_pendings\`：
-  - \`is_async_waiting=true\`：内脑在等定时/信号/真人，**不要**再 set_goal；需要催进度用 **send_directive**（AWAITING 实例可用）。
-  - \`is_post_complete=true\`：里程碑已全部完成，registry 应为 DONE；向用户汇报结果即可，**不要**再派同主题新 burst。
-- KPI 多手段探索：仍用 set_kpi + **首次** set_goal；后续优先等内脑 timer / 反思 burst，只有明确换路线时才再 set_goal（新尝试，非「第 N 轮」措辞）。
+## 内脑 sprint / 外脑续航（必读，KPI-ADVANCEMENT.md）
+- **KPI / ongoing 任务**：由外脑 **KPI 推进器**按节拍再派 sprint；内脑每轮 DONE 是正常行为。
+- **禁止**外脑 LLM 为 KPI 直接 set_goal 绕过推进器；IM 识别为 KPI 时走登记 + advance。
+- **一次性杂活**：ad-hoc set_goal（无 kpi_id），做完即结束。
+- burst 结束后看 **read_inner_status** / **list_inner_brains**：
+  - \`has_ask_user_pending=true\`：等人类，勿抢派。
+  - ongoing KPI：DONE 或仅 timer 的 AWAITING → 槽位空闲，心跳将再派。
+  - \`wait_timer\` 仅用于单次 sprint 内短等待（限速/retry），**不要**长睡到下一汇报点。
 `.trim();

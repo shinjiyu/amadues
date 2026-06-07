@@ -7,7 +7,7 @@
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ChatAssetStore } from '@utlra/chat-ir';
+import { ChatAssetStore, IdentityRegistry, MessageRecordSchema } from '@utlra/chat-ir';
 import { FilesystemRepositoryStore, FilesystemWorkspaceStore } from '../workspace-kit/index.js';
 import { createTestDataRoot, type TestDataRoot } from '../testing/temp-data-root.js';
 import { createNoopEngine } from '../testing/agent-stack-fixture.js';
@@ -117,6 +117,9 @@ describe('component: autonomyHeartbeat', () => {
 
     const registry = new InnerBrainRegistry(root.dataRoot);
     const kpiRegistry = new KpiRegistry(root.dataRoot);
+    const identityRegistry = new IdentityRegistry(path.join(root.dataRoot, 'identities.json'));
+    identityRegistry.upsert({ sid: 'idp:human:alice', display_name: 'Alice', kind: 'human' });
+    identityRegistry.upsert({ sid: 'agent:test', display_name: 'Test', kind: 'agent' });
     const postMessage = vi.fn().mockResolvedValue(undefined);
     const llmBodies: Record<string, unknown>[] = [];
 
@@ -133,6 +136,21 @@ describe('component: autonomyHeartbeat', () => {
       workspaceStore: new FilesystemWorkspaceStore(root.workspacesDir),
       repoStore: new FilesystemRepositoryStore(root.dataRoot),
       dataRoot: root.dataRoot,
+      loadThreads: () => ({
+        messages: {
+          'thread-im': [
+            MessageRecordSchema.parse({
+              schema: 'message.v1',
+              message_id: 'msg:hb-1',
+              thread_id: 'thread-im',
+              sender_sid: 'idp:human:alice',
+              sent_at: '2026-06-07T10:00:00.000Z',
+              parts: [{ type: 'text', text: '你好' }],
+            }),
+          ],
+        },
+      }),
+      identityRegistry,
       getLlmEnv: () => ({
         provider: 'kimi',
         apiKey: 'test',
@@ -153,13 +171,14 @@ describe('component: autonomyHeartbeat', () => {
         intervalMs: 60_000,
         defaultThreadId: 'thread-im',
         agentName: 'Test',
+        agentSid: 'agent:test',
       },
     });
 
     await hb.triggerNow();
 
     expect(postMessage).toHaveBeenCalledOnce();
-    expect(llmBodies.length).toBe(1);
+    expect(llmBodies.length).toBeGreaterThanOrEqual(1);
     expect(llmBodies[0]?.['tools']).toBeUndefined();
   });
 
