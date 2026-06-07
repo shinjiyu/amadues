@@ -416,7 +416,9 @@ export class KpiRegistry {
   }
 }
 
-/** 将 KPI 反思轨迹格式化为可注入 goal.md 的 Markdown 块 */
+/**
+ * @deprecated 请用 `formatBurstRunDigest`（`kpi/burst-run-history.ts`）
+ */
 export function formatKpiReflexionBlock(summaries: ReflexionSummary[]): string {
   if (summaries.length === 0) return '';
   const lines: string[] = [

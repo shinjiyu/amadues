@@ -71,6 +71,38 @@ describe('completion-notify', () => {
     expect(message).not.toContain('## 自评');
   });
 
+  it('buildCompletionMessageFromWorkspace surfaces memory.json last_failure as 需注意', () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'comp-notify-'));
+    const brain = path.join(tmp, '.brain');
+    const runDir = path.join(tmp, '.run', 'pi-mono');
+    fs.mkdirSync(brain, { recursive: true });
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(brain, 'goal.md'), 'g', 'utf8');
+    fs.writeFileSync(path.join(brain, 'milestones.md'), 'm', 'utf8');
+    fs.writeFileSync(
+      path.join(brain, 'memory.json'),
+      JSON.stringify({
+        constraints: [],
+        facts: [],
+        fact_records: [],
+        node_results: {},
+        last_failure: {
+          nodeInstId: 'n1',
+          localRef: 'r1',
+          summary: '产物缺失 final_report.md',
+          attempted: [],
+          confidence: 'high',
+          at: new Date().toISOString(),
+        },
+      }),
+      'utf8',
+    );
+
+    const { message } = buildCompletionMessageFromWorkspace(tmp);
+    expect(message).toContain('## 需注意');
+    expect(message).toContain('final_report.md');
+  });
+
   it('shouldNotifyUserOnBurstExit：KPI 不通知，ad-hoc 通知', () => {
     expect(shouldNotifyUserOnBurstExit({ kpiId: 'kpi-1' })).toBe(false);
     expect(shouldNotifyUserOnBurstExit({})).toBe(true);

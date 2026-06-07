@@ -77,7 +77,7 @@ export function formatKpiCompletionBlock(
 
   lines.push(
     '',
-    '完成判定：burst post_complete + 有 deliverable + reflexion 支持 → 程序化 achieved；',
+    '完成判定：burst post_complete + 有 deliverable + outcome successConfirmed → 程序化 achieved；',
     '开放式/监督类 KPI 须战略 WHY 判断后再 achieve_kpi（附 evidence）。',
   );
 

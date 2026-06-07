@@ -9,6 +9,15 @@ import { POST_COMPLETE_REASON } from '../outer/brain-async-snapshot.js';
 export interface SyntheticWorkspaceOpts {
   goal?: string;
   deliverables?: string[];
+  /** memory.json last_failure（DyFlow 路径） */
+  lastFailure?: {
+    summary: string;
+    attempted?: string[];
+    confidence?: 'high' | 'low';
+  };
+  /**
+   * @deprecated 映射为 memory.json last_failure；新测试请用 lastFailure
+   */
   reflexion?: {
     verdict: 'success' | 'partial' | 'failed';
     hardFailures?: string[];
@@ -17,6 +26,21 @@ export interface SyntheticWorkspaceOpts {
   postComplete?: boolean;
   asyncWaiting?: boolean;
   blockedReason?: string;
+}
+
+function resolveLastFailure(
+  opts: SyntheticWorkspaceOpts,
+): SyntheticWorkspaceOpts['lastFailure'] | null {
+  if (opts.lastFailure) return opts.lastFailure;
+  const ref = opts.reflexion;
+  if (!ref || ref.verdict === 'success') return null;
+  const hard = ref.hardFailures ?? (ref.verdict === 'failed' ? ['模拟失败'] : []);
+  if (hard.length === 0 && ref.verdict !== 'failed') return null;
+  return {
+    summary: hard[0] ?? '模拟失败',
+    attempted: hard.slice(1),
+    confidence: ref.verdict === 'partial' ? 'low' : 'high',
+  };
 }
 
 export function writeSyntheticWorkspace(
@@ -51,21 +75,28 @@ export function writeSyntheticWorkspace(
     }
   }
 
-  const verdict = opts.reflexion?.verdict ?? 'success';
-  fs.writeFileSync(
-    path.join(brain, 'reflexion.json'),
-    JSON.stringify({
-      verdict,
-      hardFailures: opts.reflexion?.hardFailures ?? (verdict === 'failed' ? ['模拟失败'] : []),
-      softFailures: [],
-      nextStrategy: opts.reflexion?.nextStrategy ?? '',
-    }),
-    'utf8',
-  );
+  const factLine = '[事实] 测试 knowledge 条目';
+  fs.writeFileSync(path.join(brain, 'knowledge.md'), `${factLine}\n`, 'utf8');
 
+  const lf = resolveLastFailure(opts);
   fs.writeFileSync(
-    path.join(brain, 'knowledge.md'),
-    '[事实] 测试 knowledge 条目\n',
+    path.join(brain, 'memory.json'),
+    JSON.stringify({
+      constraints: [],
+      facts: [factLine],
+      fact_records: [{ content: factLine, status: 'active' }],
+      node_results: {},
+      last_failure: lf
+        ? {
+            nodeInstId: 'test',
+            localRef: 'test',
+            summary: lf.summary,
+            attempted: lf.attempted ?? [],
+            confidence: lf.confidence ?? 'high',
+            at: new Date().toISOString(),
+          }
+        : null,
+    }),
     'utf8',
   );
 

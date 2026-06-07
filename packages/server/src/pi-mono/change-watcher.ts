@@ -47,7 +47,7 @@ export interface ChangeWatcherOptions {
   pollMs?: number;
   /**
    * spawn 一段新的 burst：由调用方注入,确保 onExit 走 KPI hook、
-   * deliverable / reflexion 处理等完整链路。
+   * deliverable / KPI onExit 处理等完整链路。
    * 返回 { ok: true } 即可,失败时 ChangeWatcher 会清理 inFlight 标记。
    */
   spawnTask: (task: TaskRecord) => { ok: boolean; error?: string };
@@ -137,7 +137,7 @@ export class ChangeWatcher {
     // 5. 消费 resolved pending，避免下一轮 tick 重复唤醒
     markConsumed(brainDir, unconsumed.map((p) => p.id));
 
-    // 6. spawn worker —— 委托给调用方提供的 spawnTask（含完整 KPI / reflexion hook）
+    // 6. spawn worker —— 委托给调用方提供的 spawnTask（含完整 KPI onExit hook）
     try {
       const res = this.opts.spawnTask(task);
       if (!res.ok) {

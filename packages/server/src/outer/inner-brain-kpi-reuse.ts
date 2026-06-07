@@ -54,7 +54,6 @@ export function patchCanonicalForContinuation(
   workDir: string,
   patch: {
     goal: string;
-    isReflexionBurst?: boolean;
     originThread?: string;
   },
 ): void {
@@ -66,7 +65,6 @@ export function patchCanonicalForContinuation(
     pid: undefined,
     errorMessage: undefined,
     lastTickAt: undefined,
-    isReflexionBurst: patch.isReflexionBurst ?? false,
     ...(patch.originThread ? { originThread: patch.originThread } : {}),
   });
 }

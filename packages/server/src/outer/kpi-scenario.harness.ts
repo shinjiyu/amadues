@@ -42,7 +42,6 @@ export interface SimulateBurstExitOpts {
   asyncWaiting?: boolean;
   exitedWithError?: boolean;
   stoppedBy?: 'idle' | 'max_ticks' | 'stop_signal';
-  isReflexionBurst?: boolean;
 }
 
 export function createKpiScenarioFixture(
@@ -144,7 +143,6 @@ export function createKpiScenarioFixture(
         finishedAt: opts.asyncWaiting ? undefined : new Date().toISOString(),
         kpiId: kpi.kpiId,
         deliverableCount: deliverables.length,
-        isReflexionBurst: opts.isReflexionBurst ?? false,
       });
       kpiRegistry.attachBurst(kpi.kpiId, instanceId);
 
@@ -156,7 +154,6 @@ export function createKpiScenarioFixture(
           stoppedBy: opts.stoppedBy ?? 'idle',
           exitedWithError: opts.exitedWithError ?? false,
           isAwaiting: opts.asyncWaiting ?? false,
-          isReflexionBurst: opts.isReflexionBurst ?? false,
         },
         deps,
       );

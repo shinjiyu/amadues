@@ -29,11 +29,10 @@ export interface AgentStackFixture extends TestDataRoot {
   simulateBurstExit(
     kpiId: string,
     opts: SyntheticWorkspaceOpts & {
-      /** 简写：等价于 reflexion.verdict */
+      /** 简写：failed → memory.json last_failure */
       verdict?: 'success' | 'partial' | 'failed';
       stoppedBy?: BurstExitInput['stoppedBy'];
       exitedWithError?: boolean;
-      isReflexionBurst?: boolean;
     },
   ): {
     instanceId: string;
@@ -93,7 +92,6 @@ export function createAgentStackFixture(): AgentStackFixture {
         finishedAt: asyncWaiting ? undefined : new Date().toISOString(),
         kpiId,
         deliverableCount: deliverables.length,
-        isReflexionBurst: opts.isReflexionBurst ?? false,
       };
       innerBrainRegistry.register(task);
       kpiRegistry.attachBurst(kpiId, instanceId);
@@ -106,7 +104,6 @@ export function createAgentStackFixture(): AgentStackFixture {
           stoppedBy: opts.stoppedBy ?? 'idle',
           exitedWithError: opts.exitedWithError ?? false,
           isAwaiting: asyncWaiting,
-          isReflexionBurst: opts.isReflexionBurst ?? false,
         },
         burstDeps,
       );

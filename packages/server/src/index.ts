@@ -368,17 +368,15 @@ function scheduleNextKpiBurst(kpiId: string, excludeInstanceId?: string): string
   const originThread = resolveKpiBurstOriginThread(kpi.bursts, innerBrainRegistry);
   patchCanonicalForContinuation(innerBrainRegistry, canonical.instanceId, canonical.workDir, {
     goal,
-    isReflexionBurst: false,
     originThread,
   });
-  // 勿在此 resetIdle：无产出 auto next 须累加 consecutiveIdleBursts 直至 meta 反思
+  // 勿在此 resetIdle：无产出 auto next 须累加 consecutiveIdleBursts 直至 outcome 换向
 
   const record: TaskRecord = {
     ...canonical,
     goal,
     originThread,
     status: 'RUNNING',
-    isReflexionBurst: false,
   };
 
   const res = spawnAndAttachWorker(record);

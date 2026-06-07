@@ -47,8 +47,6 @@ export function countDeliverables(workDir: string): number {
 export interface BurstExitInput {
   instanceId: string;
   kpiId?: string;
-  /** @deprecated legacy meta burst；新 KPI 路径不再派发 */
-  isReflexionBurst?: boolean;
   workDir: string;
   stoppedBy: 'idle' | 'max_ticks' | 'stop_signal' | string;
   exitedWithError: boolean;

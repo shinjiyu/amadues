@@ -931,7 +931,6 @@ async function execSetGoal(
       status: 'RUNNING',
       startedAt: reusingCanonical ? (canonical!.startedAt ?? new Date().toISOString()) : new Date().toISOString(),
       ...(resolvedKpiId ? { kpiId: resolvedKpiId } : {}),
-      isReflexionBurst: false,
     };
 
     if (reusingCanonical) {
@@ -944,7 +943,6 @@ async function execSetGoal(
         pid: undefined,
         errorMessage: undefined,
         lastTickAt: undefined,
-        isReflexionBurst: false,
       });
       fs.writeFileSync(path.join(workDir, '.brain', 'goal.md'), dispatchGoal, 'utf8');
     } else {
@@ -978,7 +976,6 @@ async function execSetGoal(
                 {
                   instanceId,
                   kpiId: resolvedKpiId,
-                  isReflexionBurst: taskRecord.isReflexionBurst,
                   workDir,
                   stoppedBy,
                   exitedWithError: isError,

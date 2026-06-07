@@ -53,7 +53,7 @@ describe('computeMomentumDelta', () => {
     expect(computeMomentumDelta({ verdict: 'failed', deliverableCount: 0, isAwaiting: false, exitedWithError: false })).toBe(-2);
   });
 
-  it('无 reflexion：有产出 +1、空转 -1', () => {
+  it('未确认成功：有产出 +1、空转 -1', () => {
     expect(computeMomentumDelta({ verdict: null, deliverableCount: 2, isAwaiting: false, exitedWithError: false })).toBe(1);
     expect(computeMomentumDelta({ verdict: null, deliverableCount: 0, isAwaiting: false, exitedWithError: false })).toBe(-1);
   });

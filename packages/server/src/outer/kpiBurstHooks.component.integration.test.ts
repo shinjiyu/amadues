@@ -1,5 +1,5 @@
 /**
- * ADL component: kpiBurstHooks — burst 退出 → KPI 状态 / reflexion 调度
+ * ADL component: kpiBurstHooks — burst 退出 → KPI outcome 评估与续跑
  */
 import { afterEach, describe, expect, it } from 'vitest';
 

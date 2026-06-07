@@ -186,7 +186,7 @@ function buildVerboseCompletionReport(input: {
   return sections.join('\n');
 }
 
-/** 用户 IM：只保留结论 + 产出列表 + 硬失败；不重复 milestones / reflexion 软噪音 */
+/** 用户 IM：只保留结论 + 产出列表 + 硬失败；不重复 milestones / 执行评估软噪音 */
 function buildImCompletionReport(input: {
   goal: string;
   milestones: string;

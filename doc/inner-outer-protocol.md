@@ -88,12 +88,12 @@ body：`{ "tenant_id": "default", "realm": "workspace:default" }`（均可选）
 | 外脑 `onExit` | 若末事件为 BLOCK → 注册表 `status=BLOCKED` + IM 通知用户 |
 | 解封 | 用户回复 → 外脑 `send_directive`（`[BLOCK解封] 用户回复：…`）→ 同一 burst 继续 |
 
-**与 KPI 的关系**（实现细节与改造清单见 [`packages/server/docs/kpi-reflexion-design.md`](../packages/server/docs/kpi-reflexion-design.md)）：
+**与 KPI 的关系**（权威 ADL：[`doc/structurizr/KPI-BURST-OUTCOME-EVALUATOR.md`](structurizr/KPI-BURST-OUTCOME-EVALUATOR.md)）：
 
-- BLOCK **不阻止** burst 退出后的 `processBurstExitForKpi`（idle streak / meta reflexion burst）。
+- BLOCK **不阻止** burst 退出后的 `processBurstExitForKpi`（idle streak / outcome 换向续跑）。
 - 若 BLOCK 前已 `register_deliverable`，当前逻辑可能 **resetIdle**，导致「卡住」计数涨不上去——与「探索报告式 deliverable」有关。
-- Per-burst `runReflexion` 应在 `safeArchive` 内执行并写 `reflexion.json`；**截至 2026-05-16 尚未接入**，故 `reflexionTrail` 常为空。
-- Meta reflexion burst 由 `UTLRA_KPI_STUCK_THRESHOLD`（默认 3）触发，与外脑是否 `send_directive` 无关。
+- KPI burst onExit 走 `kpiBurstOutcomeEvaluator` → `burstRunHistory`；**不**向用户发 IM 完成通知。
+- idle 达 `UTLRA_KPI_STUCK_THRESHOLD`（默认 3）→ pivot charter + `scheduleNextKpiBurst` / `advance_kpi`，与外脑是否 `send_directive` 无关。
 
 > **架构演进预告**：BLOCK / HITL 在后续将退化为 [`agent-data-state-machine.md`](./agent-data-state-machine.md) §5.2 描述的 `pendings.json[kind=ask_user]` 实例（统一收纳所有"等外部"的语义）。本节描述的是过渡期实现。
 

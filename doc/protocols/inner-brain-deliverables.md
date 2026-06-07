@@ -243,9 +243,9 @@ await imClient.postMessage(threadId, { sender_sid: agentSid, text: completionTex
 | 规则 | 说明 |
 |---|---|
 | **R6.4.1** | IM 通知**必须**结果优先：主章节为 `## 结果`（产物 excerpt > knowledge 尾段 > 执行器末句，三选一，不并列重复） |
-| **R6.4.2** | IM 通知**不得**包含：任务目标摘要、里程碑进度、reflexion 软失败/nextStrategy、执行器末轮总结（与结果重复时） |
+| **R6.4.2** | IM 通知**不得**包含：任务目标摘要、里程碑进度、执行评估软失败/nextStrategy、执行器末轮总结（与结果重复时） |
 | **R6.4.3** | 有登记产物时附 `## 产出文件`（路径列表，≤8 行）；正文**不**重复粘贴附件全文（R6.1） |
-| **R6.4.4** | 仅当 `reflexion.hardFailures` 非空时附 `## 需注意` |
+| **R6.4.4** | 仅当 `memory.json` `last_failure`（高置信）非空时附 `## 需注意` |
 | **R6.4.5** | 全文上限约 3200 字符；首行 `✅ {pickImSummary}` + 正文 + 附件提示 + `— \`instanceId\`` |
 | **R6.4.6** | 外脑 mem9 / 排障上下文用 `audience=verbose`（`outer-memory.ts`），与用户 IM 分离 |
 
