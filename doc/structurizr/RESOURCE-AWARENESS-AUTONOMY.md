@@ -30,13 +30,13 @@
 |----------|------|------|
 | **outerHeartbeat** | **编排宿主** | 每 tick：`resourceProbe` → `autonomyJudge` →（若 idle）`autonomyTaskDispatcher`；原有 long-term goal LLM 环保留，可合并为同一 tick 的 Phase B |
 | **participationPolicy** | **硬闸门（闲聊路径）** | 自主 `casual_chat` 仍须过同步冷却/频控；不替代 SPEAK/SILENT |
-| **kpiRegistry / kpiBurstHooks** | **KPI 路径数据源** | `kpi_inner_goal` 读 registry + reflexionTrail；与 meta burst **分工**：meta burst 仍由 idleStreak 驱动；本模块是 **外脑心跳侧的「主动找事做」** |
+| **kpiRegistry / kpiBurstHooks** | **KPI 路径数据源** | `kpi_inner_goal` 读 registry + `burstRunHistory`；idle 换向由 outcomeEvaluator / `kpiAdvancer` 驱动；本模块是 **外脑心跳侧的「主动找事做」** |
 | **performanceGoalEngine** | **KPI 路径数据源** | 长期绩效目标审阅结果可注入 judge；`set_goal` 可带 `performance_goal_id` |
 | **innerBrainRegistry** | **resourceProbe 输入** | RUNNING / AWAITING / BLOCKED 计数 |
 | **threadOrchestrator** | **resourceProbe 输入** | 各 thread 排队深度 |
 | **llmGateway** | **metrics 来源 + judge/dispatcher LLM** | 需在 gateway 层挂 **in-flight 计数** 与 **usage 滚动窗口** |
 
-**勿混**：KPI 闭环的 per-burst reflexion / meta burst 见 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)；本模块是 **外脑空闲时的补充自主行为**，两者可并存但 **共享 spawn 硬闸门**（例如 RUNNING≥1 且 async waiting 时不派新 goal）。
+**勿混**：KPI 闭环的 burst outcome 评估见 [`KPI-BURST-OUTCOME-EVALUATOR.md`](./KPI-BURST-OUTCOME-EVALUATOR.md)、[`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)；本模块是 **外脑空闲时的补充自主行为**，两者可并存但 **共享 spawn 硬闸门**（例如 RUNNING≥1 且 async waiting 时不派新 goal）。
 
 ---
 
@@ -364,7 +364,7 @@ flowchart TD
 流程：
 
 1. 检查 enabled + cooldown；**无**同 KPI 在途 burst（`findLiveBurstForKpi`）  
-2. LLM 输入：活跃 KPI 列表、最近 reflexionTrail 摘要、performance goal scorecards  
+2. LLM 输入：活跃 KPI 列表、最近 `burstRunHistory` / outcome 摘要、performance goal scorecards  
 3. 输出：`goal` markdown + 可选 `kpi_id` / `performance_goal_id`  
 4. `set_goal` → registry + spawn  
 

@@ -18,9 +18,9 @@
 
 | 层 | 谁判 | 依据 | 产出 |
 |----|------|------|------|
-| **程序化** | `kpiCompletionJudge.sweep` | `suggestKpiAction` + 无在途 burst + DONE/post_complete/deliverables/reflexion | 自动 `markAchieved` |
+| **程序化** | `kpiCompletionJudge.sweep` | `suggestKpiAction` + 无在途 burst + DONE/post_complete/deliverables + `successConfirmed` | 自动 `markAchieved` |
 | **心跳 LLM** | legacy `runHeartbeat` | `list_kpis` / `view_kpi` digest；语义上目标已到手 | `achieve_kpi(evidence)` |
-| **战略 WHY** | `strategyPlanner`（P1） | reflexionTrail + 长期目标；开放式 KPI 是否该结案 | `pausedKpis` 或 dispatch 前 achieve |
+| **战略 WHY** | `strategyPlanner`（P1） | `burstRunHistory` + 长期目标；开放式 KPI 是否该结案 | `pausedKpis` 或 dispatch 前 achieve |
 | **用户** | IM / 外脑对话 | 用户明确「完成了」 | `achieve_kpi` 或 belief reconcile |
 
 **勿混**：里程碑全完成 → 内脑 `is_post_complete`；KPI 达成 → registry `status=achieved`（可能需多 burst 或战略判断）。
@@ -33,7 +33,7 @@ active KPI 且**无** RUNNING/AWAITING/BLOCKED 在途 burst 时，最近 burst �
 
 - `registryStatus === DONE` 且 `isPostComplete === true`
 - `deliverableCount >= 1`
-- `lastReflexionVerdict` 为 `success` | `partial` | `null`
+- 最近 `outcomeEvaluation.successConfirmed === true`（或等价 verdict `success` | `partial`）
 
 监督类 / 未 post_complete → **不** achieved，继续 `follow_up` 或 `continue`。
 
@@ -44,7 +44,7 @@ active KPI 且**无** RUNNING/AWAITING/BLOCKED 在途 burst 时，最近 burst �
 | `awaiting_human` | `is_async_waiting` 且存在 `ask_user` pending | **勿**重复 set_goal；展示「等待人类」 |
 | `follow_up` | AWAITING 无 ask_user / safety_cap 循环 / 真 stuck | 介入、换路线或 reap |
 | `continue` | RUNNING 正常推进 | 观察 |
-| `stuck_reflexion` | idle streak 达阈值 | meta burst |
+| `stuck_retry` | idle streak 达阈值 | outcome 换 charter + `advance_kpi` |
 
 `shouldAutoAchieveKpi`：`isAwaiting` 仍返回 false（与 §3 一致）。
 

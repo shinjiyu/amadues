@@ -1,8 +1,11 @@
 # KPI 与 Reflexion 机制设计
 
-> **架构定位**：本文档是 [`doc/agent-data-state-machine.md`](../../../doc/agent-data-state-machine.md) 在「长期目标 / 跨 burst 反思」场景下的实例化。`kpi-registry.json` 与 `.brain/reflexion.json` 均为数据本体的一部分；reflexion 触发、meta burst 派发都是该宪法 §5 扩展协议的应用（"能力 = 字段 + 转移规则"）。
->
-> **实现状态（2026-05-19）**：**Phase A–E 已接通**——`controller.safeArchive` 调用 `runReflexion` 写 `reflexion.json`；`runDecomposer(..., kpiId)`；`run-tick` 传 `INNER_KPI_ID`；`processBurstExitForKpi` 读 trail；`scheduleReflexionBurst` / **`scheduleNextKpiBurst`**（`UTLRA_KPI_AUTO_NEXT_BURST=1`）。ADL：[`doc/structurizr/KPI-CLOSED-LOOP.md`](../../../doc/structurizr/KPI-CLOSED-LOOP.md)、视图 `10-L2` / `10b` / `10c`。待办：Phase F（归因器与自主 goal 冲突）、Phase G（Ops 可观测性）、`UTLRA_KPI_BLOCK_COUNTS_AS_IDLE`。
+> **⚠️ 已退役（2026-06-07）**  
+> Per-burst `reflexion.json`、`reflexionTrail`、`scheduleReflexionBurst` 已由外脑 **`kpiBurstOutcomeEvaluator`** 替代。  
+> **权威 ADL**：[`doc/structurizr/KPI-BURST-OUTCOME-EVALUATOR.md`](../../../doc/structurizr/KPI-BURST-OUTCOME-EVALUATOR.md)、[`KPI-CLOSED-LOOP.md`](../../../doc/structurizr/KPI-CLOSED-LOOP.md)、[`KPI-ADVANCEMENT.md`](../../../doc/structurizr/KPI-ADVANCEMENT.md)。  
+> 下文保留作历史参考，**勿按此实现**。
+
+> ~~**实现状态（2026-05-19）**~~：已由 DyFlow + outcome 评估路径取代。
 
 ---
 

@@ -16,8 +16,8 @@ probe → judge(闲忙硬闸门) → dispatcher(KPI优先 / 闲聊概率) → se
 
 | 层 | 反思机制 | 视野 |
 |----|----------|------|
-| 内脑 | `attributor`（per-milestone）+ `reflexionModule`（per-burst） | burst 内 / 单次 burst |
-| KPI | `kpiBurstHooks` + `reflexionTrail`（per-KPI 累加） | 单 KPI 跨 burst |
+| 内脑 | `attributor`（per-RUN）+ `record_fact` | burst 内写 `memory.json` |
+| KPI | `kpiBurstOutcomeEvaluator` + `burstRunHistory` | 单 KPI 跨 burst 结果史 |
 | **缺：跨 KPI 战略层** | — | **跨 KPI、跨 burst：方向对不对？某 KPI 是不是该 paused？长期 AWAITING 还要不要等？** |
 
 **核心症状**（用户痛点）：
@@ -33,16 +33,16 @@ probe → judge(闲忙硬闸门) → dispatcher(KPI优先 / 闲聊概率) → se
 | `outerHeartbeat` | **编排宿主 + 质控层** | tick 流程插入 STRATEGY 阶段；质控职责见 [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)；现有 `runHeartbeat()` long-term goal 环作为 cache fast path 仍生效 |
 | `autonomyJudge` | **闲忙硬闸门** | 不变（gate 还是 gate） |
 | `autonomyTaskDispatcher` | **KPI 优先 + 闲聊概率** | **退化**：读 strategy.focusOrder → 写 goal → spawn；**不再自由选 KPI** |
-| `kpiRegistry` | KPI 元数据 + reflexionTrail | 不变（仍是 KPI 真相源） |
+| `kpiRegistry` | KPI 元数据 + `burstRunHistory` | 不变（仍是 KPI 真相源） |
 | `performanceGoalEngine` | 长期绩效目标 | 不变；作为 strategy 输入 |
 | `environmentSensorRegistry` / `environmentJournal` | 环境模型 | strategy 主消费者 |
 | `innerBrainRegistry` | 内脑任务表 | `staleBurstReaper` 写入 ABORTED 状态 |
 | `awaitingInboundResolver` / `registryLifecycleReconcile` | AWAITING 醒来对账 | **互补**：本层管"该死怎么死" |
-| `kpiBurstHooks` | per-KPI 反思 | 提供给 strategy 反思的输入 |
+| `kpiBurstHooks` | per-KPI onExit 评估 | `outcomeEvaluation` → `burstRunHistory` |
 
 **勿混**：
 
-- `kpiBurstHooks.reflexion` = **per-KPI 累加**（不会问"换个 KPI 推进吗？"）
+- `burstRunHistory.outcomeEvaluation` = **per-burst 程序化评估**（不会问"换个 KPI 推进吗？"）
 - `strategyPlanner.reflect` = **跨 KPI 元反思**（看了 KPI 累加后，决定整体方向）
 - [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) 质控 = **在途 burst 做得怎样 / 是否卡死**；**不**写 `strategyStore`，**不**决定跨 KPI focusOrder
 
@@ -52,7 +52,7 @@ probe → judge(闲忙硬闸门) → dispatcher(KPI优先 / 闲聊概率) → se
 
 | 维度 | 必答问题 | 落盘字段 |
 |------|----------|----------|
-| **WHY** | 这些 KPI **为何**仍 active？哪条 **belief/假设** 被 reflexion 支持或推翻？某 KPI 是否应 **paused** 或 **achieved** 及理由？与 **长期目标 / performanceGoal** 是否仍一致？ | `theory`、`whyNow`、`pausedKpis[].reason`、`recentLessons`；达成则 `achieve_kpi` 或 sweep |
+| **WHY** | 这些 KPI **为何**仍 active？哪条 **belief/假设** 被最近 burst **outcome** 支持或推翻？某 KPI 是否应 **paused** 或 **achieved** 及理由？与 **长期目标 / performanceGoal** 是否仍一致？ | `theory`、`whyNow`、`pausedKpis[].reason`、`recentLessons`；达成则 `achieve_kpi` 或 sweep |
 | **HOW** | 在 WHY 成立前提下，**focusOrder** 为何如此？下一 burst **什么角度**？哪些 AWAITING **战略上**该 cull？ | `focusOrder`、`nextExpectation`、`cullDirectives` |
 
 **REFLECT** 偏 WHY（ lessons 、信念校验、pause 决策）；**DESIGN** 偏 HOW（顺序、角度、cull 指令）。P0 可合并为一次 LLM call，但 prompt/schema **两段必填**，缺 WHY 叙事则 reject artifact。
@@ -184,7 +184,7 @@ interface StrategyReflectInput {
 
   // KPI 真相
   kpis: KpiRecord[];                      // active + paused
-  kpiReflexionDigest: Record<string, ReflexionTrailDigest>;
+  kpiReflexionDigest: Record<string, ReflexionTrailDigest>; // 字段名保留；内容来自 burstRunHistory.outcomeEvaluation
 
   // 最近 burst 行为
   recentBursts: {
@@ -193,7 +193,7 @@ interface StrategyReflectInput {
     state: 'DONE' | 'BLOCK' | 'AWAITING' | 'ABORTED';
     durationMs: number;
     abortReason?: string;
-    reflexionSummary?: string;
+    outcomeSummary?: string;   // 来自 outcomeEvaluation；旧字段 reflexionSummary 只读兼容
   }[];
 
   // 上一份战略
@@ -246,9 +246,9 @@ interface StrategyReflectInput {
 ```text
 staleBurstReaper.execute(directive)
   ├─ peekPendingMatch(burstId) via awaitingInboundResolver  // 即将醒来 → 跳过本 tick
-  ├─ SIGTERM worker（让 safeArchive 跑一次，仍产 reflexion.json）
+  ├─ SIGTERM worker（让 safeArchive 跑一次）
   ├─ 等 graceMs（默认 5s）→ 仍活则 SIGKILL
-  ├─ archiveStore.commit(workDir, kpiId, reflexion)        // 给下一轮 reflect 看
+  ├─ archiveStore.commit(workDir, kpiId)                   // 归档工作区快照
   └─ innerBrainRegistry.update(id, {
        status: 'ABORTED',
        abortReason: directive.reason,
@@ -379,8 +379,8 @@ interface BurstFeedbackSignal {
 | `verdict=partial` 且 deliverable>0 | `+1` | 轻奖赏 |
 | `verdict=partial` 且 deliverable=0 | `0` | 中性 |
 | `verdict=failed` | `-2` | 强负反馈 |
-| 无 reflexion 且 deliverable>0 | `+1` | 有产出即弱奖赏 |
-| 无 reflexion 且 deliverable=0 | `-1` | 空转弱惩罚 |
+| outcome 未确认 且 deliverable>0 | `+1` | 有产出即弱奖赏（partial） |
+| outcome 未确认 且 deliverable=0 | `-1` | 空转弱惩罚 |
 
 `momentum` 经 `clampMomentum` 限制在 `[-5, +5]`；deterministic（同输入同输出，单测可断言）。
 
@@ -388,17 +388,17 @@ interface BurstFeedbackSignal {
 
 - **选 KPI**：`selectKpiByMomentum(activeKpis)` — momentum 降序，平手按 `createdAt` 新者优先。dispatcher 的 `kpi_inner_goal` / `casual_chat defer` 一律用它，**取代**原先固定的 `list({active})[0]`。
 - **正反馈延续**：连续有效推进的 KPI momentum 高 → 持续优先派活。
-- **负反馈退避**：连续 idle/failed 的 KPI momentum 跌 → 让位给更有产出的 KPI；跌到底叠加既有 `consecutiveIdleBursts` 阈值仍触发 `stuck_reflexion`。
+- **负反馈退避**：连续 idle/failed 的 KPI momentum 跌 → 让位给更有产出的 KPI；idle 达阈值由 outcomeEvaluator 换 charter 续跑（`stuck_retry`）。
 - **可见性**：`formatKpiDigest` 增 `momentum` 行；心跳 / `view_kpi` 可读，便于人/战略层审计。
 
 ### 16.4 与既有机制的边界
 
 | 机制 | 角色 | 与 momentum 关系 |
 |------|------|-------------------|
-| `consecutiveIdleBursts` | 卡死检测（触发 meta 反思 burst） | 互补；idle 既加 streak 又扣 momentum |
-| `reflexionTrail` | per-KPI 叙事记忆 | momentum 是其**标量投影** |
+| `consecutiveIdleBursts` | 卡死检测（触发 pivot charter） | 互补；idle 既加 streak 又扣 momentum |
+| `burstRunHistory` | per-KPI 执行史 + outcome | momentum 是其**标量投影** |
 | `recentLessons` / `focusOrder`（§5） | 战略层 LLM 叙事调度 | **未来**：`strategyPlanner` 落地后 `focusOrder` 为权威，momentum 作为输入量之一 |
-| `reflexion 续 burst`（`UTLRA_KPI_AUTO_NEXT_BURST`） | burst 自动续跑 | **降级**：默认关闭，trail 作审计；续跑改由 momentum 驱动的 dispatch 决策 |
+| outcome 换向续跑（`UTLRA_KPI_AUTO_NEXT_BURST`） | 评估失败自动 `scheduleNextKpiBurst` | 与 `kpiAdvancer` 节拍互补 |
 
 ### 16.5 守门
 

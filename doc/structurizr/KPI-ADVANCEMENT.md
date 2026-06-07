@@ -73,7 +73,7 @@ interface KpiRecord {
   canonicalInstanceId?: string;  // 本 leaf 的复用 burst（见 §4）
   burstRunHistory: BurstRunRecord[]; // 见 §6
   bursts: string[];              // 兼容：canonical instanceId 列表（length ≤ 1 per leaf）
-  // reflexionTrail, momentum, consecutiveIdleBursts, … 保留
+  // burstRunHistory, momentum, consecutiveIdleBursts, … 保留；reflexionTrail 只读兼容
 }
 ```
 
@@ -178,7 +178,7 @@ interface BurstRunRecord {
   charter: string;              // 本轮下发给内脑的章程摘要
   ticks: number;
   deliverableCount: number;
-  reflexionSummary?: ReflexionSummary;
+  outcomeEvaluation?: BurstOutcomeEvaluation; // 见 KPI-BURST-OUTCOME-EVALUATOR.md
   toolLogSpan?: { from: string; to: string }; // inner/tool-logs 日期文件 + 行号范围
 }
 ```
@@ -188,9 +188,9 @@ interface BurstRunRecord {
 | 来源 | 用途 |
 |------|------|
 | `TaskRecord` + onExit | 时间、ticks、exitStatus |
-| `.brain/reflexion.json` | `reflexionSummary` |
+| `kpiBurstOutcomeEvaluator` | `outcomeEvaluation`（successConfirmed、failureReasons、charter 建议） |
 | `inner/tool-logs/<ws>/` | 工具调用轨迹（[`TASK-RUN-OBSERVABILITY.md`](./TASK-RUN-OBSERVABILITY.md)） |
-| `.brain/run-context.json` | 末轮归因摘要 |
+| `.brain/memory.json` | `node_results` / `last_failure`（过程报告） |
 | `register_deliverable` 计数 | deliverableCount |
 
 模块：`outer/kpi/burst-run-history.ts` — `appendBurstRunOnExit`、`formatBurstRunDigest(kpiId, n)`  
@@ -206,7 +206,7 @@ interface BurstRunRecord {
 for leaf in traverseLeafKpis(focusOrder, momentum):
   if !isKpiSlotIdle(leaf): continue
   if !isCadenceDue(leaf): continue
-  if leaf.consecutiveIdleBursts >= threshold: dispatchReflexionBurst(leaf); continue
+  if leaf.consecutiveIdleBursts >= threshold: pivotCharterViaOutcomeEvaluator(leaf); continue
   dispatchKpiSprint(leaf)   // burst-reuse + charter + spawn
 ```
 

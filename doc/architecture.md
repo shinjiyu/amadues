@@ -23,7 +23,7 @@ flowchart TD
 
     OuterTools["🛠 OuterTools\nouter/outer-tools.ts\n─────────────\ntools:\n  set_goal / set_kpi / view_kpi\n  reply_to_user   → ChatIRChannel.postMessage\n  list_inner_brains / send_directive\n  stop_inner_brain\n  query_knowledge → KnowledgeRetrieval\n─────────────\nin:  LLM tool_call\nout: spawn 指令 → IBRegistry\n     KPI hook onExit → KpiRegistry\n     reply → DiscordChannel"]
 
-    KpiRegistry["📊 KpiRegistry\nouter/kpi-registry.json\n─────────────\nin:  set_kpi / burst onExit\nout: reflexionTrail, idleStreak\n     scheduleReflexionBurst (meta)"]
+    KpiRegistry["📊 KpiRegistry\nouter/kpi-registry.json\n─────────────\nin:  set_kpi / burst onExit\nout: burstRunHistory, idleStreak\n     outcomeEvaluator → scheduleNextKpiBurst"]
 
     %% ─────────────────────────────
     %% 内脑管理
@@ -193,19 +193,20 @@ sequenceDiagram
 | **BrainFS** | `openkuroneko/brain/brain-fs.ts` | write ops | 本地 .brain/ 文件 |
 | **RepositoryStore** | `repository/` + `archive/` | commit session | K/S/P 检索 |
 | **KnowledgeRetrieval** | `outer/knowledge-retrieval.ts` | query | 知识片段 |
-| **KpiRegistry** | `outer/kpi-registry.ts` | set_kpi, burst onExit | reflexionTrail, meta reflexion burst |
-| **KPI / Reflexion 设计** | `packages/server/docs/kpi-reflexion-design.md` | — | 双链路、BLOCK/HITL、改造阶段 |
+| **KpiRegistry** | `outer/kpi-registry.ts` | set_kpi, burst onExit | burstRunHistory, outcomeEvaluator |
+| **KPI 闭环 ADL** | `doc/structurizr/KPI-BURST-OUTCOME-EVALUATOR.md` | — | burst 结果评估、KPI vs ad-hoc 分流 |
 | **Agent 数据状态机（宪法）** | `doc/agent-data-state-machine.md` | — | 数据即本体；pendings + ChangeWatcher + git + LLM round 级幂等；扩展协议 |
 
 ---
 
-## KPI 与反思（摘要）
+## KPI 与 burst 结果评估（摘要）
 
-长期目标走 **KPI + 多 burst**；详见 [`packages/server/docs/kpi-reflexion-design.md`](../packages/server/docs/kpi-reflexion-design.md)。
+长期目标走 **KPI + 多 burst**；权威 ADL：[`doc/structurizr/KPI-BURST-OUTCOME-EVALUATOR.md`](structurizr/KPI-BURST-OUTCOME-EVALUATOR.md)、[`KPI-CLOSED-LOOP.md`](structurizr/KPI-CLOSED-LOOP.md)。
 
-- **Per-burst reflexion**：内脑归档前 `runReflexion` → `.brain/reflexion.json` → 知识库（按 `kpiId` 检索）。
-- **Meta reflexion burst**：连续 N 次 burst 无 KPI 进展 → `scheduleReflexionBurst`（短 goal，不执行 KPI 本身）。
-- **BLOCK（HITL）**：归因器触发；进程 idle 退出后仍跑 KPI hook；与「等人」并行，不替代 per-burst reflexion。
+- **Burst onExit**：`kpiBurstOutcomeEvaluator` 读 deliverables / `memory.json` / tool-logs → `burstRunHistory.outcomeEvaluation`。
+- **KPI 续跑**：评估失败或 idle 达阈值 → `suggestedRetryCharter` + `scheduleNextKpiBurst` / `advance_kpi`（非 meta reflexion burst）。
+- **Ad-hoc 任务**：onExit 仍走 `completionNotify` → 用户 IM；不写入 KPI registry。
+- **BLOCK（HITL）**：`AWAITING` + `ask_user`；KPI burst 仍走 outcome 评估，不替代用户通知边界。
 
 ---
 
@@ -214,5 +215,6 @@ sequenceDiagram
 | 日期 | 说明 |
 |------|------|
 | 2026-05-16 | 顶部引用 `agent-data-state-machine.md`（架构准则） |
-| 2026-05-16 | 增加 KpiRegistry 节点、模块表与 KPI/Reflexion 摘要 |
+| 2026-05-16 | 增加 KpiRegistry 节点、模块表与 KPI 摘要 |
+| 2026-06-07 | KPI 摘要改为 outcomeEvaluator 路径；退役 reflexion 设计引用 |
 | 2026-04-08 | 初版：整体数据流图、技能全链路、外脑对话序列、模块速查表 |

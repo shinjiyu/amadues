@@ -20,7 +20,7 @@
 - `onExit` 读 output 最后一条 BLOCK 发 IM（legacy；改读 `pendings.json`）
 - `completionNotify` 与 `pushLoop` 对同一 `COMPLETE` 双发（既有分工保持）
 
-**与 reflexion `BLOCK` 触发器**：归档/reflexion 的 `ArchiveTrigger=BLOCK` 表「burst 遇阻」语义，**不等于** IM 通知类型；IM 只用上表三行。
+**与内脑 `BLOCK` 状态**：registry `BLOCKED` / `AWAITING` 表「burst 遇阻或等人」语义，**不等于** IM 通知类型；IM 只用上表三行。
 
 ---
 
@@ -128,7 +128,7 @@ RUN 结束（local_dag 跑完或 failure distill 后）:
 | `awaiting_human` | 在途 burst `is_async_waiting` 且存在 `ask_user` pending | **正常等待**；勿重复 set_goal；勿当 stuck |
 | `follow_up` | 在途 AWAITING 但无 ask_user / safety_cap 失败循环 | 需外脑介入或换路线 |
 | `achieved` | 不变（`post_complete` + deliverables） | 结案 |
-| `stuck_reflexion` | 不变 | meta burst |
+| `stuck_retry` | idle streak 达阈值 | outcome 换 charter；**不**通知用户 |
 
 `formatKpiDigest` / 心跳块须展示 `awaiting_human` 与 `follow_up` 不同文案，避免 KPI「看起来像个 BLOCK」。
 

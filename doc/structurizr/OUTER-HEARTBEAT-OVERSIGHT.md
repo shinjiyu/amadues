@@ -2,7 +2,7 @@
 
 > **English:** **Outer heartbeat** is not only「闲了找活派」. Each tick it **supervises** inner brains: **acceptance** of burst effectiveness toward KPI, and **liveness / stuck / restart** decisions at the outer layer. Milestone-level validation stays inside **Attributor**; burst/KPI-level oversight is heartbeat's job.
 
-与 [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md)（调度管道）、[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)（**宏观战略 WHY+HOW**，不受本文影响）、[`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)（reflexion 闭环）互补。
+与 [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md)（调度管道）、[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)（**宏观战略 WHY+HOW**，不受本文影响）、[`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)（KPI 闭环）、[`KPI-BURST-OUTCOME-EVALUATOR.md`](./KPI-BURST-OUTCOME-EVALUATOR.md)（burst 结果评估）互补。
 
 ---
 
@@ -34,7 +34,7 @@
 
 | 职责 | 心跳在问什么 | 典型动作 |
 |------|--------------|----------|
-| **A 验收内脑工作效果** | 这轮 burst 是否在向 KPI/长期目标**实质靠近**？产出是否可信？是否在空转？ | 读 `list_inner_brains` / `read_inner_status`、deliverables、reflexionTrail；`kpi_stuck_reflexion`；换角度 `set_goal`；`post_to_im` 汇报硬阻塞 |
+| **A 验收内脑工作效果** | 这轮 burst 是否在向 KPI/长期目标**实质靠近**？产出是否可信？是否在空转？ | 读 `list_inner_brains` / `read_inner_status`、deliverables、`burstRunHistory.outcomeEvaluation`；`stuck_retry` / pivot charter；`advance_kpi`；`post_to_im` 汇报硬阻塞 |
 | **A′ KPI 完成判定** | **KPI 目标是否已达成**（非仅 burst post_complete）？ | [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md)：`sweep` / `view_kpi` / `achieve_kpi` |
 | **B 卡死与重启把控** | 实例是否还活着？tick 是否停滞？AWAITING 是否该继续等？是否该 reap / restart？ | `_checkAlive`、registry `liveness`、idle streak、（P1）`staleBurstReaper`、（P1）EXECUTE kill→resume、`POST …/restart` |
 
@@ -50,7 +50,7 @@
 
 ```text
 milestone 契约     ← Attributor（内脑 ATTRIBUTE）
-burst 产出/反思    ← kpiBurstHooks + reflexionTrail（burst 结束）
+burst 产出/评估    ← kpiBurstHooks + outcomeEvaluator（burst 结束）
 KPI 是否达成       ← kpiCompletionJudge + achieve_kpi（见 KPI-COMPLETION-JUDGE.md）
 KPI 是否推进       ← 心跳 + kpi-dispatch-guard +（P1）strategyPlanner
 agent 是否还活着   ← 心跳 _checkAlive + registry liveness
@@ -59,9 +59,9 @@ agent 是否还活着   ← 心跳 _checkAlive + registry liveness
 | 层 | 谁验收 | 信号 |
 |----|--------|------|
 | Milestone | Attributor | execution-context、契约「必交付物」、CONTROL |
-| Burst | onExit → reflexion | `.brain/reflexion.json`、deliverables 增量 |
+| Burst | onExit → outcomeEvaluator | `burstRunHistory`、deliverables 增量、`memory.json` fact_records |
 | KPI 达成 | kpiCompletionJudge + 心跳 LLM | `suggestKpiAction=achieved`、sweep、`achieve_kpi(evidence)` |
-| KPI 推进中 | 心跳 tick / autonomy | `consecutiveIdleBursts`、`reflexionTrail`、performanceBlock |
+| KPI 推进中 | 心跳 tick / autonomy | `consecutiveIdleBursts`、`burstRunHistory`、performanceBlock |
 | 实例存活 | 心跳 + API | `last_tick_at`、`liveness`、`pid_alive`、DEATH-DETECT |
 
 ---
@@ -80,7 +80,7 @@ flowchart TB
     DIS[dispatchByStrategy / legacy]
     D --> P --> ST --> V --> A
     A -->|正常推进| DIS
-    A -->|idle 无产出| R[scheduleReflexionBurst] --> DIS
+    A -->|idle 无产出| R[outcomeEvaluator 换 charter 续跑] --> DIS
     A -->|真 stuck| I[干预 directive/restart] --> DIS
     ST --> RP --> DIS
   end
@@ -97,7 +97,7 @@ flowchart TB
 | 外脑 action-log N tick 无变化 | `_checkAlive` | `console.error` 警告 | ⏳ 联动 IM 告警 / 强制 strategy 重评估 |
 | RUNNING 且 `last_tick_at` > 5min | `list_inner_brains` `liveness=stuck` | 暴露给 LLM / Dashboard | ⏳ 心跳自动 `send_directive` 或 `/restart`（见 todo exec-kill-resume） |
 | RUNNING 且 `pid_alive=false` | registry + spawner | startupResume 扫到 | ✅ 启动时 markStale + resume；运行中 ⏳ 心跳触发 |
-| KPI `consecutiveIdleBursts ≥ 阈值` | kpiRegistry | `kpi_stuck_reflexion` → meta burst | ✅ |
+| KPI `consecutiveIdleBursts ≥ 阈值` | kpiRegistry | outcome pivot charter + `scheduleNextKpiBurst` / `advance_kpi` | ✅ |
 | AWAITING 战略上不该再等 | — | — | ⏳ `staleBurstReaper`（[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)） |
 | 自动 resume 达上限 | `resumeCount` | 停自动 resume | ✅ 用户手动 `POST /api/inner-brains/:id/restart` |
 
@@ -110,8 +110,8 @@ flowchart TB
 DyFlow 内脑每 tick 在 DESIGN/RUN 间切换、baseNode 多轮自修（[`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md)）时：
 
 - 心跳**不应**因「单 burst 内 deliverable 少」就判失败；
-- 心跳应看 **跨 tick 趋势**：ticks 是否增长、deliverables 是否缓慢累积、reflexion 是否指出方向错误；
-- idle streak 无产出 → 优先 **反思 burst**，而非立刻 kill（除非 liveness=dead/stuck 且非 AWAITING）。
+- 心跳应看 **跨 tick 趋势**：ticks 是否增长、deliverables 是否缓慢累积、`outcomeEvaluation` 是否指出方向错误；
+- idle streak 无产出 → 优先 **outcome 换 charter 续跑**，而非立刻 kill（除非 liveness=dead/stuck 且非 AWAITING）。
 
 ---
 
@@ -121,8 +121,8 @@ DyFlow 内脑每 tick 在 DESIGN/RUN 间切换、baseNode 多轮自修（[`DYFLO
 |------|----------|
 | **outerHeartbeat** | tick 编排宿主；死亡检测；注入 oversight 上下文给 LLM / autonomy |
 | **kpiCompletionJudge** | 心跳 sweep + digest；[`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) |
-| **kpiBurstHooks** | burst onExit → trail；idle streak；onExit autoAchieved |
-| **kpi-dispatch-guard** |  sprint 中不并行派活；stuck → reflexion |
+| **kpiBurstHooks** | burst onExit → outcomeEvaluator + burstRunHistory；idle streak；onExit autoAchieved |
+| **kpi-dispatch-guard** | sprint 中不并行派活；stuck → `stuck_retry` / pivot charter |
 | **list_inner_brains / read_inner_status** | 验收与存活信号的唯一外脑读口 |
 | **staleBurstReaper**（P1） | 战略上 cull AWAITING / 僵尸 burst |
 | **innerBrainStartupResume** | 外脑进程重启恢复 RUNNING |
