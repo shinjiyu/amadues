@@ -11,6 +11,8 @@
 | 类型 | 触发 | 唯一发送点 | 模板前缀 | 去重 |
 |------|------|------------|----------|------|
 | **COMPLETE** | registry `DONE` + 有完成正文 | `completionNotify`（`onExit`） | `✅` + 结果摘要 | `completion-notified.json` |
+| **PARTIAL** | registry `ERROR` + `innerBurstExit` 检出 goal 缺口（如部署 `[BLOCKED]`）且仍有产出 | `completionNotify.notifyInnerBrainTaskPartial`（`onExit`） | `⚠️` 部分完成 + 需协助 | `completion-notified.json` |
+| **FAILED** | registry `ERROR`（崩溃/DyFlow 失败，非 partial） | `completionNotify.notifyInnerBrainTaskFailed` | `❌` 短原因 | — |
 | **AWAITING_HUMAN** | registry `AWAITING` + `ask_user` pending | `awaitingNotify`（`onExit`） | `⏸` 需您输入 | `im-notify-ledger.json` |
 | **PROGRESS** | 可选；长任务中途 | `pushLoop`（`UTLRA_PUSHLOOP_PROGRESS=1`） | `🔄` | ledger |
 
@@ -68,6 +70,23 @@
 1. 读/写 `<workDir>/.run/completion-notified.json`（`{ at, instanceId, deliverableCount }`）
 2. 若已存在且 `instanceId` 相同 → **skip** `postMessage`（仍允许 `setDeliverables` idempotent）
 
+### 4.1 IM 完成正文来源（`audience=im`）
+
+**禁止**把 `memory.json` 全量 active facts（含 drive9 seed）当作 IM `## 结果` fallback。
+
+按序命中即停：
+
+| 优先级 | 来源 | 说明 |
+|--------|------|------|
+| 1 | `pickDeliverableExcerpt` | `.md` / `.json` / `.txt` 产物摘要 |
+| 2 | `pi-mono/output` 最后一条 `COMPLETE.message` | DyFlow 官方结论 |
+| 3 | `execution-context.json` 末轮 executor 输出 | 短摘要 |
+| 4 | 固定句 | 「内脑已完成…详见产出文件」 |
+
+`knowledge` / `fact_records` **仅** `audience=verbose`（外脑记忆、排障）使用；与 `notifyInnerBrainTaskFailed`（❌ 短原因、不 dump facts）一致。
+
+实现：`completion-report.ts` `buildImCompletionReport` + `completion-notify.ts` `buildCompletionMessageFromWorkspace`。
+
 ---
 
 ## 5. `awaitingInboundResolver` 误匹配防护（修订 §5.2）
@@ -78,7 +97,7 @@
 |---|------|--------|
 | R1 | `senderSid` 在 **agent-mirror 表** | `sender_agent_mirror` |
 | R2 | 正文匹配 agent 通知模板 | `agent_notification_echo` |
-| R3 | 正文以 `✅` 或 `⚠️ 内脑任务被阻塞` 开头 | `agent_notification_echo` |
+| R3 | 正文以 `✅` / `❌ 内脑任务失败` / `⚠️ 内脑任务部分完成` / `⚠️ 内脑任务被阻塞` 开头 | `agent_notification_echo` |
 
 **agent-mirror 表**（MVP 硬编码 + 可扩展）：
 
@@ -155,3 +174,4 @@ RUN 结束（local_dag 跑完或 failure distill 后）:
 | 日期 | 说明 |
 |------|------|
 | 2026-06-06 | 初版：IM 三类通知、dedup、resolver 防 echo、markConsumed、DyFlow AWAITING、KPI awaiting_human |
+| 2026-06-08 | PARTIAL 通知：goal 含部署但 memory/dyflow 有 `[BLOCKED]` → `ERROR` + `⚠️` 部分完成（仍附产出） |

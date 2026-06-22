@@ -98,7 +98,7 @@ function safeReadFile(fp: string): string | null {
   }
 }
 
-/** 从 memory.json last_failure 组装完成报告评估块（不再读 reflexion.json） */
+/** 从 memory.json last_failure 组装完成报告评估块 */
 function readCompletionAssessmentFromWorkDir(workDir: string): {
   verdict: string;
   hardFailures: string[];
@@ -168,10 +168,10 @@ export function buildCompletionMessageFromWorkspace(
   const deliverables = collectDeliverablePaths(workDir, completeEv?.deliverables);
   const goal = safeReadFile(path.join(workDir, '.brain', 'goal.md')) ?? '';
   const milestonesRaw = safeReadFile(path.join(workDir, '.brain', 'milestones.md')) ?? '';
-  const knowledge = readWorkspaceFacts(workDir);
+  const audience = options?.audience ?? 'im';
+  const knowledge = audience === 'verbose' ? readWorkspaceFacts(workDir) : null;
   const resultExcerpt = pickDeliverableExcerpt(workDir, deliverables);
 
-  const audience = options?.audience ?? 'im';
   const rebuilt = buildCompletionReport(
     {
       goal,
@@ -181,6 +181,7 @@ export function buildCompletionMessageFromWorkspace(
       completionAssessment: readCompletionAssessmentFromWorkDir(workDir),
       deliverables,
       resultExcerpt,
+      completeMessage: completeEv?.message ?? null,
     },
     { audience },
   );
@@ -221,14 +222,15 @@ function markCompletionNotified(
   );
 }
 
-/** 向内脑任务发起人发送「任务完成」IM（含产物附件） */
-export async function notifyInnerBrainTaskComplete(
+async function postCompletionIm(
   deps: CompletionNotifyDeps,
   opts: {
     instanceId: string;
     workspaceId: string;
     workDir: string;
     originThread: string;
+    headerLine: string;
+    gapSummary?: string;
   },
 ): Promise<void> {
   const { message, deliverables } = buildCompletionMessageFromWorkspace(opts.workDir);
@@ -242,7 +244,6 @@ export async function notifyInnerBrainTaskComplete(
 
   const successCount = ingest.assets.length;
   const requested = deliverables.length;
-  const summary = pickImSummary(message);
   const fileNote =
     successCount > 0
       ? `\n\n📎 已附上 ${successCount} 个产出文件，请直接查看附件。`
@@ -250,7 +251,9 @@ export async function notifyInnerBrainTaskComplete(
         ? `\n\n⚠️ 登记了 ${requested} 个产物但附件吸收失败（见 .run/deliverables.log）。`
         : '';
 
-  const completionText = `✅ ${summary}\n\n${message.trim()}${fileNote}\n\n— \`${opts.instanceId}\``;
+  const gapBlock = opts.gapSummary?.trim() ? `${opts.gapSummary.trim()}\n\n---\n\n` : '';
+  const completionText =
+    `${opts.headerLine}\n\n${gapBlock}${message.trim()}${fileNote}\n\n— \`${opts.instanceId}\``;
 
   const attachmentParts: AttachmentPart[] = ingest.assets.map((d) => ({
     type: 'attachment',
@@ -283,4 +286,61 @@ export async function notifyInnerBrainTaskComplete(
   console.log(
     `[completion-notify] sent (${opts.instanceId}): deliverables ok=${successCount} requested=${requested}`,
   );
+}
+
+/** 向内脑任务发起人发送「任务完成」IM（含产物附件） */
+export async function notifyInnerBrainTaskComplete(
+  deps: CompletionNotifyDeps,
+  opts: {
+    instanceId: string;
+    workspaceId: string;
+    workDir: string;
+    originThread: string;
+  },
+): Promise<void> {
+  const { message } = buildCompletionMessageFromWorkspace(opts.workDir);
+  await postCompletionIm(deps, {
+    ...opts,
+    headerLine: `✅ ${pickImSummary(message)}`,
+  });
+}
+
+/** goal 未完全达成（如部署 BLOCKED）但本地有产出 — ⚠️ 部分完成 + 附件 */
+export async function notifyInnerBrainTaskPartial(
+  deps: CompletionNotifyDeps,
+  opts: {
+    instanceId: string;
+    workspaceId: string;
+    workDir: string;
+    originThread: string;
+    gapSummary: string;
+  },
+): Promise<void> {
+  await postCompletionIm(deps, {
+    ...opts,
+    headerLine: '⚠️ 内脑任务部分完成（未完全达成目标）',
+    gapSummary: opts.gapSummary,
+  });
+}
+
+/** 内脑 DyFlow 失败 / ERROR 终态 — 短消息，不 dump seed facts */
+export async function notifyInnerBrainTaskFailed(
+  deps: Pick<CompletionNotifyDeps, 'imClient' | 'agentSid'>,
+  opts: {
+    instanceId: string;
+    originThread: string;
+    reason: string;
+  },
+): Promise<void> {
+  const reason = opts.reason.trim() || '内脑未能完成任务';
+  const text =
+    `❌ 内脑任务失败（\`${opts.instanceId}\`）\n\n` +
+    `${reason.slice(0, 600)}` +
+    (reason.length > 600 ? '…' : '');
+  await deps.imClient.postMessage(opts.originThread, {
+    sender_sid: deps.agentSid,
+    text,
+    parse_mentions: true,
+  });
+  console.log(`[completion-notify] failure sent (${opts.instanceId}): ${reason.slice(0, 80)}`);
 }

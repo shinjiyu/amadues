@@ -103,9 +103,135 @@ describe('completion-notify', () => {
     expect(message).toContain('final_report.md');
   });
 
+  it('buildCompletionMessageFromWorkspace uses COMPLETE.message not seed facts for im', () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'comp-notify-seed-'));
+    const brain = path.join(tmp, '.brain');
+    const runDir = path.join(tmp, '.run', 'pi-mono');
+    fs.mkdirSync(brain, { recursive: true });
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(brain, 'goal.md'), 'test token', 'utf8');
+    fs.writeFileSync(path.join(brain, 'milestones.md'), 'm', 'utf8');
+    fs.writeFileSync(
+      path.join(brain, 'memory.json'),
+      JSON.stringify({
+        constraints: [],
+        facts: ['飞书 token 有效', '推演点 2/3'],
+        fact_records: [
+          { status: 'active', content: '飞书 token 有效' },
+          { status: 'active', content: '推演点 2/3' },
+        ],
+      }),
+      'utf8',
+    );
+    fs.mkdirSync(path.join(tmp, 'workspace'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, 'workspace', 'gh_token_test.json'),
+      JSON.stringify({ valid: true, username: 'shinjiyu' }),
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(runDir, 'output'),
+      JSON.stringify({
+        type: 'COMPLETE',
+        message: 'GitHub token 已测试有效。用户 shinjiyu，结果写入 workspace/gh_token_test.json。',
+        deliverables: ['workspace/gh_token_test.json'],
+      }) + '\n',
+      'utf8',
+    );
+
+    const { message } = buildCompletionMessageFromWorkspace(tmp);
+    // IM 优先展示产物摘要（json），不 dump memory seed facts
+    expect(message).toMatch(/shinjiyu|GitHub token 已测试有效/);
+    expect(message).not.toContain('飞书');
+    expect(message).not.toContain('推演点');
+  });
+
   it('shouldNotifyUserOnBurstExit：KPI 不通知，ad-hoc 通知', () => {
     expect(shouldNotifyUserOnBurstExit({ kpiId: 'kpi-1' })).toBe(false);
     expect(shouldNotifyUserOnBurstExit({})).toBe(true);
     expect(shouldNotifyUserOnBurstExit({ kpiId: '' })).toBe(true);
+  });
+});
+
+describe('notifyInnerBrainTaskFailed', () => {
+  it('sends short failure message without fact dump', async () => {
+    const { FakeImChannel } = await import('../testing/index.js');
+    const { notifyInnerBrainTaskFailed } = await import('./completion-notify.js');
+    const im = new FakeImChannel();
+    await notifyInnerBrainTaskFailed(
+      { imClient: im, agentSid: 'agent:k' },
+      {
+        instanceId: 'ib-test',
+        originThread: 't1',
+        reason: 'Designer LLM 调用失败：503',
+      },
+    );
+    expect(im.lastText('t1')).toContain('内脑任务失败');
+    expect(im.lastText('t1')).toContain('503');
+    expect(im.lastText('t1')).not.toContain('## 结果');
+  });
+});
+
+describe('notifyInnerBrainTaskPartial', () => {
+  let partialTmp = '';
+
+  afterEach(() => {
+    if (partialTmp) fs.rmSync(partialTmp, { recursive: true, force: true });
+  });
+
+  it('sends ⚠️ partial message with gap summary, not ✅', async () => {
+    const { FakeImChannel } = await import('../testing/index.js');
+    const { notifyInnerBrainTaskPartial } = await import('./completion-notify.js');
+    const { ChatAssetStore } = await import('@utlra/chat-ir');
+    const { createNoopEngine } = await import('../testing/agent-stack-fixture.js');
+
+    partialTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'comp-partial-'));
+    const brain = path.join(partialTmp, '.brain');
+    const runDir = path.join(partialTmp, '.run', 'pi-mono');
+    fs.mkdirSync(brain, { recursive: true });
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(brain, 'goal.md'), '部署到 onlyclaws.world', 'utf8');
+    fs.writeFileSync(path.join(brain, 'milestones.md'), 'm', 'utf8');
+    fs.writeFileSync(path.join(partialTmp, 'report.md'), '## 总结\n本地代码已完成。', 'utf8');
+    fs.writeFileSync(
+      path.join(runDir, 'output'),
+      JSON.stringify({
+        type: 'COMPLETE',
+        message: 'done',
+        deliverables: ['report.md'],
+      }) + '\n',
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(runDir, 'deliverables.json'),
+      JSON.stringify(['report.md']),
+      'utf8',
+    );
+
+    const im = new FakeImChannel();
+    const assetStore = new ChatAssetStore(path.join(partialTmp, 'uploads'));
+
+    await notifyInnerBrainTaskPartial(
+      {
+        imClient: im,
+        agentSid: 'agent:k',
+        assetStore,
+        getEngine: () => createNoopEngine(),
+      },
+      {
+        instanceId: 'ib-partial',
+        workspaceId: 'ws1',
+        workDir: partialTmp,
+        originThread: 't-partial',
+        gapSummary: '**未达成的目标：**\n· 未远程部署\n\n**需要你协助：**\n· 本地执行 deploy-auto.sh',
+      },
+    );
+
+    const text = im.lastText('t-partial');
+    expect(text).toMatch(/^⚠️ 内脑任务部分完成/);
+    expect(text).not.toMatch(/^✅/);
+    expect(text).toContain('未远程部署');
+    expect(text).toContain('report.md');
+    expect(text).toContain('已附上 1 个产出文件');
   });
 });

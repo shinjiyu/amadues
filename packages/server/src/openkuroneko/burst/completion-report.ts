@@ -36,6 +36,8 @@ export interface CompletionReportInput {
   deliverables: string[];
   /** 主产物文件摘要（报告类 .md） */
   resultExcerpt?: string | null;
+  /** pi-mono output 最后一条 COMPLETE.message（IM 优先于 knowledge） */
+  completeMessage?: string | null;
 }
 
 /** 里程碑只保留一行标题，去掉「输入范围/必交付物」等过程约束 */
@@ -71,17 +73,39 @@ export function pickDeliverableExcerpt(workDir: string, deliverablePaths: string
 
   const sorted = [...deliverablePaths].sort((a, b) => score(b) - score(a));
   for (const rel of sorted) {
-    if (!rel.toLowerCase().endsWith('.md')) continue;
     const abs = path.join(workDir, rel);
     try {
       if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
       const raw = fs.readFileSync(abs, 'utf8').trim();
-      if (raw.length < 40) continue;
-      const excerpt =
-        raw.length > REPORT_DELIVERABLE_EXCERPT_MAX
-          ? raw.slice(0, REPORT_DELIVERABLE_EXCERPT_MAX) + '\n\n…（全文见附件或工作区文件）'
-          : raw;
-      return `（摘自 \`${rel}\`）\n\n${excerpt}`;
+      if (raw.length < 20) continue;
+      const lower = rel.toLowerCase();
+      if (lower.endsWith('.md')) {
+        const excerpt =
+          raw.length > REPORT_DELIVERABLE_EXCERPT_MAX
+            ? raw.slice(0, REPORT_DELIVERABLE_EXCERPT_MAX) + '\n\n…（全文见附件或工作区文件）'
+            : raw;
+        return `（摘自 \`${rel}\`）\n\n${excerpt}`;
+      }
+      if (lower.endsWith('.json')) {
+        let body = raw;
+        try {
+          body = JSON.stringify(JSON.parse(raw), null, 2);
+        } catch {
+          /* keep raw */
+        }
+        const clip =
+          body.length > REPORT_DELIVERABLE_EXCERPT_MAX
+            ? body.slice(0, REPORT_DELIVERABLE_EXCERPT_MAX) + '\n\n…（全文见附件）'
+            : body;
+        return `（摘自 \`${rel}\`）\n\n\`\`\`json\n${clip}\n\`\`\``;
+      }
+      if (lower.endsWith('.txt')) {
+        const clip =
+          raw.length > REPORT_DELIVERABLE_EXCERPT_MAX
+            ? raw.slice(0, REPORT_DELIVERABLE_EXCERPT_MAX) + '\n\n…（全文见附件）'
+            : raw;
+        return `（摘自 \`${rel}\`）\n\n${clip}`;
+      }
     } catch {
       continue;
     }
@@ -178,19 +202,23 @@ function buildVerboseCompletionReport(input: CompletionReportInput): string {
   return sections.join('\n');
 }
 
-/** 用户 IM：只保留结论 + 产出列表 + 硬失败；不重复 milestones / 执行评估软噪音 */
+/** 用户 IM：只保留结论 + 产出列表 + 硬失败；不 dump memory seed facts */
 function buildImCompletionReport(input: CompletionReportInput): string {
   const sections: string[] = [];
   const excerpt = (input.resultExcerpt ?? '').trim();
-  const knowledgeText = (input.knowledge ?? '').trim();
+  const completeMessage = (input.completeMessage ?? '').trim();
   const lastContent = pickLastAssistantContent(input.lastExecLog);
 
   if (excerpt) {
     sections.push('## 结果');
     sections.push(stripExcerptPreamble(excerpt, REPORT_DELIVERABLE_EXCERPT_IM_MAX));
-  } else if (knowledgeText) {
+  } else if (completeMessage) {
     sections.push('## 结果');
-    sections.push(BrainFS.tail(knowledgeText, REPORT_KNOWLEDGE_IM_MAX));
+    const clip =
+      completeMessage.length > REPORT_DELIVERABLE_EXCERPT_IM_MAX
+        ? completeMessage.slice(0, REPORT_DELIVERABLE_EXCERPT_IM_MAX) + '\n\n…（全文见附件）'
+        : completeMessage;
+    sections.push(clip);
   } else if (lastContent) {
     sections.push('## 结果');
     const clip =

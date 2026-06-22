@@ -172,5 +172,27 @@ describe('buildCompletionReport', () => {
       const body = '## 结果\n\n完成了评估与打分。';
       expect(pickImSummary(body)).toContain('完成了评估');
     });
+
+    it('uses completeMessage instead of seed facts when no deliverable excerpt', () => {
+      const seedFacts =
+        '飞书 App cli_aabbb23d4a389beb 凭证有效\n' +
+        'Chapter 6 推演点连续性：Ch6正文显示推演点起始2/3';
+      const text = buildCompletionReport(
+        {
+          goal: 'test GitHub token',
+          milestones: '',
+          knowledge: seedFacts,
+          completeMessage: 'GitHub PAT 有效，用户 shinjiyu (ID 6233416)，free plan。',
+          lastExecLog: null,
+          completionAssessment: null,
+          deliverables: ['workspace/gh_token_test.json'],
+        },
+        im,
+      );
+      expect(text).toContain('GitHub PAT 有效');
+      expect(text).toContain('shinjiyu');
+      expect(text).not.toContain('飞书');
+      expect(text).not.toContain('推演点');
+    });
   });
 });
