@@ -540,8 +540,7 @@ function DataPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix:
 
         <h3 className="viz-core-h3">[调试] 执行轨知识库（Repository）</h3>
         <p className="viz-note" style={{ marginBottom: 10 }}>
-          仅用于本地排查索引是否写入；正式闭环由外脑编排完成（<code>POST /api/outer/roundtrip</code> 的{' '}
-          <code>after_burst</code> / 环境变量 <code>UTLRA_OUTER_AFTER_BURST</code>，以及{' '}
+          仅用于本地排查索引是否写入；正式闭环由外脑编排完成（<code>POST /api/outer/inbound</code> 或 IM 渠道，以及{' '}
           <code>POST /api/outer/workspace/…/shutdown</code>）。数据目录 <code>data/repository/{TENANT}/</code>。检索：{' '}
           <code>POST /api/repository/{TENANT}/retrieve</code>。
         </p>
@@ -574,7 +573,7 @@ function DataPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix:
           </div>
         ) : (
           <p className="viz-empty">
-            尚无晋升记录（生产路径应走外脑 roundtrip / shutdown；内脑页的「晋升并关闭」为调试/手动）
+            尚无晋升记录（生产路径应走外脑 inbound / shutdown；内脑页的「晋升并关闭」为调试/手动）
           </p>
         )}
       </div>
@@ -1130,7 +1129,7 @@ function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix
         <div className="card inner-nudge" style={{ borderColor: '#3d5a80' }}>
           <strong>[调试] 建议：manifest 晋升并关闭内脑</strong>
           <p style={{ marginBottom: 10 }}>
-            正式流程请用外脑：<code>POST /api/outer/roundtrip</code>（配 <code>after_burst: &quot;promote_and_shutdown_if_complete&quot;</code> 或环境变量）或{' '}
+            正式流程请用外脑：<code>POST /api/outer/inbound</code>（IM 同路径）或{' '}
             <code>POST /api/outer/workspace/{workspaceId}/shutdown</code>（<code>promote_manifest: true</code>）。
             此处按钮等价于内脑侧 <code>promote-and-shutdown</code>，便于本地验证。
           </p>

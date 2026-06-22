@@ -15,6 +15,7 @@
 
 import type { LLMAdapter, Message } from '../adapter/index.js';
 import type { Logger } from '../logger/index.js';
+import { isTransientLlmTransportError } from '../../llm/llm-transport-error.js';
 import type { ToolRegistry } from '../tools/index.js';
 import type { ExecutionEntry } from '../brain/index.js';
 import {
@@ -23,6 +24,7 @@ import {
   resolveInnerToolAuditPaths,
 } from './inner-tool-audit.js';
 import { selectFactsForPrompt } from './fact-governor.js';
+import { selectConstraintsForPrompt } from './constraint-governor.js';
 import { buildRuntimeContextSection } from './runtime-context.js';
 import {
   buildLiveResourceBudgetSection,
@@ -80,6 +82,8 @@ export interface BaseNodeRunContext {
   workDir: string;
   /** KPI burst，写入 inner tool-audit */
   burstId?: string;
+  /** 执行前加载的节点技能块（见 INNER-NODE-SKILLS.md §5） */
+  skillsSection?: string;
 }
 
 /** 替换 ${{ params.x }} / ${{ memory.x }} 占位 */
@@ -141,7 +145,7 @@ function buildUserMessage(ctx: BaseNodeRunContext): string {
   return [
     `## 你的子目标\n${objective}`,
     `## 全局目标\n${memory.goal ?? '（未指定）'}`,
-    `## 约束（必须严格遵守）\n${memory.constraints.length ? memory.constraints.map(c => `- ${c}`).join('\n') : '（无）'}`,
+    selectConstraintsForPrompt(memory.constraints, { max: 20 }).section,
     selectFactsForPrompt(memory.fact_records ?? []).section,
     lastFailureBlock,
     `## 本节点需产出的 outputs（必须真实落地）\n${outputsContract}`,
@@ -199,6 +203,7 @@ export async function runBaseNode(
     [
       node.body.promptTemplate,
       node.body.systemSlice ?? '',
+      ctx.skillsSection ?? '',
       runtimeBlock,
       buildStaticResourceBudgetSection('baseNode'),
     ]
@@ -243,11 +248,20 @@ export async function runBaseNode(
     } catch (e) {
       const errMsg = String(e);
       logger.error('base-node', { event: 'llm.error', data: { nodeInstId: inst.id, error: errMsg } });
+      const transient = isTransientLlmTransportError(errMsg);
       return {
         ok: false,
         executionLog,
         lastContent,
-        failure: makeFailure(inst, node, `LLM 调用失败：${errMsg}`, executionLog, 'high', false, errMsg),
+        failure: makeFailure(
+          inst,
+          node,
+          `LLM 调用失败：${errMsg}`,
+          executionLog,
+          transient ? 'low' : 'high',
+          transient,
+          errMsg,
+        ),
       };
     }
 

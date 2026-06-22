@@ -77,9 +77,18 @@ describe('memoryStore', () => {
     store.appendFact('the moon is bright');
     store.appendFact('the moon is bright');
     store.appendConstraint('never delete prod');
+    store.appendConstraint('never delete prod');
     expect(store.read().facts).toEqual(['the moon is bright']);
     expect(store.read().constraints).toEqual(['never delete prod']);
     expect(store.read().fact_records?.[0]?.citeCount).toBe(1);
+  });
+
+  it('appendConstraint replaces same-topic entries', () => {
+    const store = createMemoryStore(root);
+    store.appendConstraint('[避坑] /app/book/publish_article/v0/ 用 form-urlencoded');
+    store.appendConstraint('[避坑] publish_article 必须 charset=UTF-8');
+    expect(store.read().constraints).toHaveLength(1);
+    expect(store.read().constraints[0]).toContain('charset');
   });
 
   it('migrates legacy facts[] to fact_records on read', () => {

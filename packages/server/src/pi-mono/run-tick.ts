@@ -9,10 +9,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { createDyflowController } from '../openkuroneko/inner-brain/index.js';
+import { projectDyflowStatus } from '../openkuroneko/inner-brain/status-projection.js';
 import { createNodeDefDrive9Store } from '../drive9/node-def-drive9-store.js';
 import { Drive9Client } from '../drive9/drive9-client.js';
 import { KnowledgeDrive9Store } from '../drive9/knowledge-drive9-store.js';
 import { createDrive9FactSyncSink } from '../outer/knowledge-promote.js';
+import { createPlanReferencePort } from '../outer/plan-reference-search.js';
 import {
   createIORegistry,
   createFileInputEndpoint,
@@ -180,6 +182,18 @@ async function createPiMonoController(params: {
       )
     : undefined;
 
+  const dataRoot = process.env['UTLRA_DATA_ROOT']?.trim();
+  const planReferencePort = createPlanReferencePort({
+    ...(dataRoot ? { dataRoot } : {}),
+    ...(process.env['UTLRA_ARCHIVE_DIR']?.trim()
+      ? { archiveDir: process.env['UTLRA_ARCHIVE_DIR']!.trim() }
+      : {}),
+    tenantId: params.workspaceId,
+    ...(workspacesRoot ? { workspacesRoot } : {}),
+    ...(peerIds.length > 0 ? { peerWorkspaceIds: peerIds } : {}),
+  });
+  const planReference = { port: planReferencePort, ...(innerKpiId ? { kpiId: innerKpiId } : {}) };
+
   const instanceId =
     process.env['INNER_INSTANCE_ID']?.trim() ||
     (params.workspaceId.startsWith('task-')
@@ -188,13 +202,15 @@ async function createPiMonoController(params: {
   const burstStartedAt = process.env['INNER_BURST_STARTED_AT']?.trim() || null;
 
   const controller = createDyflowController(
-    { workDir: params.workDir, burstId, instanceId, burstStartedAt },
+    { workDir: params.workDir, workspaceId: params.workspaceId, burstId, instanceId, burstStartedAt },
     {
       llm,
       toolRegistry: executorToolRegistry,
       logger,
       ...(nodeSharing ? { nodeSharing } : {}),
       ...(sharedFactSink ? { sharedFactSink } : {}),
+      planReference,
+      skillProvider,
       onComplete: async (reason: string) => {
         try {
           const out = ioRegistry.getOutput('default');
@@ -280,7 +296,15 @@ export async function runOpenKuronekoPiMonoAuto(params: {
         }
         const { hadWork } = await controller.tick();
         ticks++;
-        params.onTick?.(ticks, new Date().toISOString());
+        const tickAt = new Date().toISOString();
+        projectDyflowStatus({
+          workspaceId: params.workspaceId,
+          workDir: params.workDir,
+          tickCount: ticks,
+          hadWork,
+          note: 'tick_done',
+        });
+        params.onTick?.(ticks, tickAt);
         if (!hadWork) {
           return { ok: true, ticks, lastHadWork: false, stoppedBy: 'idle' as const, dist: PI_MONO_RUNTIME_LABEL };
         }

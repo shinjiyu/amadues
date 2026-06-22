@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 
 import { seedPresetNodes } from './preset-seeder.js';
+import { PRESET_BASE } from './preset-nodes.js';
 import { createLocalNodeStore } from './local-node-store.js';
 import type { LocalNode } from './types.js';
 
@@ -48,7 +49,7 @@ describe('presetSeeder', () => {
     store.commit(old);
     const r = seedPresetNodes(root, { store });
     expect(r.upgraded).toContain('preset/base');
-    expect(store.read('preset/base')?.version).toBe('1.2.0');
+    expect(store.read('preset/base')?.version).toBe(PRESET_BASE.version);
   });
 
   it('preset nodes are flagged export=false', () => {

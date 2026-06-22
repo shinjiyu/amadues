@@ -97,7 +97,7 @@ curl -fsS http://127.0.0.1:<host-port>/api/health
 
 接 WebChat 时，查看容器日志应出现 channel 已连接、`ready (online)`。
 
-**离线调试**（未配渠道）：`POST /api/outer/roundtrip`，body 含 `message` / `thread_id` 等（见 [inner-outer-protocol.md](../inner-outer-protocol.md)）。
+**离线调试**（未配渠道）：`POST /api/outer/inbound`，body 含 `text` / `thread_id` / `sender_sid` 等（见 [inner-outer-protocol.md](../inner-outer-protocol.md)）。
 
 ---
 

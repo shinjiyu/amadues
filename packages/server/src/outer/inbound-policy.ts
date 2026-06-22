@@ -1,6 +1,6 @@
 /**
  * 外脑入站策略：是否应回复、是否参与群聊（对齐 openKuroneko outer-brain/index + participation）。
- * 渠道层（飞书/钉钉）只负责解析 raw 事件；**决策集中在本模块**，由 roundtrip 显式传入元数据。
+ * 渠道层（飞书/钉钉）只负责解析 raw 事件；**决策集中在本模块**，由外脑入站显式传入元数据。
  *
  * 可测性（doc/testing-strategy.md §S1、§S3）：
  * - env 经 `loadInboundConfigFromEnv()` 一次性解析为 `InboundConfig`；

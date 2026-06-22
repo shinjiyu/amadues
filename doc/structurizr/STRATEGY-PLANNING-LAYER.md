@@ -1,6 +1,8 @@
-# 战略规划层（ADL 权威）
+# 战略规划层
 
-> **English:** A layer between **heartbeat** and **task dispatch**: REFLECT on past bursts → DESIGN forward strategy → REAP stale bursts → DISPATCH next burst. Strategy is a **typed projection** over `kpiRegistry` + `EnvironmentSnapshot` ([`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)), not an independent source of truth. Auto-kills stale AWAITING that have lost strategic justification. **Thinking must cover WHY (worth doing / beliefs / lessons) and HOW (focus order / next angle)—not tactical dispatch alone.** **Not replaced** by burst-level oversight in [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md).
+> **⚠️ 已由 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 取代**（2026-06-07）：`strategyPlanner` / `strategyStore` / `dispatchByStrategy` 已删除；KPI 编排改由 `kpiManager` 负责。本文保留历史设计供对照。
+
+> **English (historical):** A layer between **heartbeat** and **task dispatch**: REFLECT on past bursts → DESIGN forward strategy → REAP stale bursts → DISPATCH next burst.
 
 > 与 `workspace.dsl` 视图 **`13-L3-Outer-Strategy`** 同步。
 
@@ -184,7 +186,7 @@ interface StrategyReflectInput {
 
   // KPI 真相
   kpis: KpiRecord[];                      // active + paused
-  kpiReflexionDigest: Record<string, ReflexionTrailDigest>; // 字段名保留；内容来自 burstRunHistory.outcomeEvaluation
+  kpiOutcomeDigest: Record<string, OutcomeTrailDigest>;
 
   // 最近 burst 行为
   recentBursts: {
@@ -193,7 +195,7 @@ interface StrategyReflectInput {
     state: 'DONE' | 'BLOCK' | 'AWAITING' | 'ABORTED';
     durationMs: number;
     abortReason?: string;
-    outcomeSummary?: string;   // 来自 outcomeEvaluation；旧字段 reflexionSummary 只读兼容
+    outcomeSummary?: string;
   }[];
 
   // 上一份战略

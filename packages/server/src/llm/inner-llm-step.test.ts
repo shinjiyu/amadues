@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { loadInnerLlmEnvFromProcess } from './inner-llm-step.js';
 
 const ENV_KEYS = [
+  'UTLRA_INNER_LLM_PROVIDER',
   'ZHIPU_API_KEY',
   'ZHIPU_BASE_URL',
   'ZHIPU_MODEL',
@@ -12,6 +13,12 @@ const ENV_KEYS = [
   'KIMI_MODEL',
   'KIMI_VISION_MODEL',
   'KIMI_THINKING',
+  'LOCALMODULE_API_KEY',
+  'LOCALMODULE_BASE_URL',
+  'LOCALMODULE_MODEL',
+  'LOCALMODULE_VISION_MODEL',
+  'LOCALMODULE_MAX_TOKENS',
+  'LOCALMODULE_MULTIMODAL_MAX_TOKENS',
 ] as const;
 
 const prevEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -26,12 +33,16 @@ afterEach(() => {
 
 describe('loadInnerLlmEnvFromProcess', () => {
   it('returns null when no provider key configured', () => {
+    delete process.env.UTLRA_INNER_LLM_PROVIDER;
     delete process.env.ZHIPU_API_KEY;
     delete process.env.KIMI_API_KEY;
+    delete process.env.LOCALMODULE_API_KEY;
     expect(loadInnerLlmEnvFromProcess()).toBeNull();
   });
 
   it('prefers zhipu when both zhipu and kimi keys exist', () => {
+    delete process.env.UTLRA_INNER_LLM_PROVIDER;
+    delete process.env.LOCALMODULE_API_KEY;
     process.env.ZHIPU_API_KEY = 'zk';
     process.env.ZHIPU_MODEL = 'glm-5.1';
     process.env.KIMI_API_KEY = 'kk';
@@ -44,6 +55,8 @@ describe('loadInnerLlmEnvFromProcess', () => {
   });
 
   it('loads kimi when zhipu is absent', () => {
+    delete process.env.UTLRA_INNER_LLM_PROVIDER;
+    delete process.env.LOCALMODULE_API_KEY;
     delete process.env.ZHIPU_API_KEY;
     process.env.KIMI_API_KEY = 'kk';
     process.env.KIMI_BASE_URL = 'https://api.moonshot.cn/v1';
@@ -63,6 +76,8 @@ describe('loadInnerLlmEnvFromProcess', () => {
   });
 
   it('falls back to default kimi model when KIMI_MODEL is blank', () => {
+    delete process.env.UTLRA_INNER_LLM_PROVIDER;
+    delete process.env.LOCALMODULE_API_KEY;
     delete process.env.ZHIPU_API_KEY;
     process.env.KIMI_API_KEY = 'kk';
     process.env.KIMI_MODEL = '   ';

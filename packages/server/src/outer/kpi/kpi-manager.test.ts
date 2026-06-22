@@ -1,0 +1,150 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { InnerBrainRegistry } from '../inner-brain-registry.js';
+import { KpiRegistry } from '../kpi-registry.js';
+import { defaultAutonomyPolicy, saveAutonomyPolicy } from '../autonomy-policy-store.js';
+import type { EnvironmentSnapshot } from '../environment/environment-types.js';
+import {
+  reapStaleBursts,
+  tickKpiManager,
+  type KpiManagerDeps,
+} from './kpi-manager.js';
+import * as outerTools from '../outer-tools.js';
+
+function idleEnvironment(innerRunning = 0): EnvironmentSnapshot {
+  const at = new Date().toISOString();
+  return {
+    capturedAt: at,
+    agentId: 'agent-test',
+    facets: {
+      innerBrains: {
+        sensorId: 'innerBrains',
+        capturedAt: at,
+        data: { running: innerRunning, awaiting: 0, blocked: 0, asyncWaiting: 0 },
+        derived: {},
+      },
+      llmUsage: {
+        sensorId: 'llmUsage',
+        capturedAt: at,
+        data: { inFlight: 0, tokensLast1h: { prompt: 0, completion: 0, total: 0 }, callsLast1h: 0 },
+        derived: {},
+      },
+      inbound: {
+        sensorId: 'inbound',
+        capturedAt: at,
+        data: { orchestratorQueuedTotal: 0, outerLoopActiveThreads: 0 },
+        derived: {},
+      },
+    },
+  };
+}
+
+describe('kpi-manager', () => {
+  let tmp = '';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function baseDeps(): KpiManagerDeps {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kpi-mgr-'));
+    const policy = defaultAutonomyPolicy();
+    policy.hardGates.minMsSinceLastAutonomousAction = 0;
+    policy.taskTypes.kpi_inner_goal = { enabled: true, cooldownMs: 0, maxPerDay: 99 };
+    saveAutonomyPolicy(tmp, policy);
+
+    const kpiRegistry = new KpiRegistry(tmp);
+    const registry = new InnerBrainRegistry(tmp);
+    return {
+      dataRoot: tmp,
+      kpiRegistry,
+      registry,
+      toolCtx: {
+        threadId: 'thread-1',
+        agentSid: 'agent:test',
+        workspaceId: 'default',
+        dataRoot: tmp,
+        imClient: { postMessage: async () => {} } as never,
+        assetStore: {} as never,
+        getEngine: () => ({ setGoal() {} }) as never,
+        workspaceStore: { ensureWorkspace() {} } as never,
+        repoStore: {} as never,
+        innerBrainRegistry: registry,
+        kpiRegistry,
+      },
+      workspaceId: 'default',
+      defaultThreadId: 'thread-1',
+    };
+  }
+
+  const idleVerdict = { level: 'idle' as const, reasons: ['hard_gates_pass'], judgedAt: new Date().toISOString() };
+  const busyVerdict = {
+    level: 'busy' as const,
+    reasons: ['llm_in_flight'],
+    blockedByHardGate: 'llm_in_flight',
+    judgedAt: new Date().toISOString(),
+  };
+
+  it('reapStaleBursts → 超时 AWAITING 标 ABORTED', async () => {
+    const deps = baseDeps();
+    const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    deps.registry.register({
+      instanceId: 'ib-stale',
+      workspaceId: 'task-ib-stale',
+      workDir: path.join(tmp, 'workspaces', 'task-ib-stale'),
+      goal: 'g',
+      originUser: 'u',
+      status: 'AWAITING',
+      startedAt: old,
+      lastTickAt: old,
+    });
+
+    const reaped = await reapStaleBursts(deps);
+    expect(reaped.abortedIds).toEqual(['ib-stale']);
+    expect(deps.registry.get('ib-stale')?.status).toBe('ABORTED');
+  });
+
+  it('busy gate → 不 advance 但仍 reap', async () => {
+    const deps = baseDeps();
+    const advancerTick = vi.fn().mockResolvedValue({ advanced: false, results: [] });
+    deps.advancerTick = advancerTick;
+
+    const result = await tickKpiManager(deps, idleEnvironment(), busyVerdict);
+    expect(result.dispatched).toBe(false);
+    expect(result.reason).toBe('llm_in_flight');
+    expect(advancerTick).not.toHaveBeenCalled();
+  });
+
+  it('inner slot 满 → 不 advance', async () => {
+    const deps = baseDeps();
+    deps.kpiRegistry.create({ description: '写 hello', createdBy: 'u' });
+    const policy = defaultAutonomyPolicy();
+    policy.hardGates.maxRunningInnerBrains = 1;
+    saveAutonomyPolicy(tmp, policy);
+
+    const advancerTick = vi.fn().mockResolvedValue({ advanced: false, results: [] });
+    deps.advancerTick = advancerTick;
+
+    const result = await tickKpiManager(deps, idleEnvironment(1), idleVerdict);
+    expect(result.dispatched).toBe(false);
+    expect(result.reason).toContain('running_inner');
+    expect(advancerTick).not.toHaveBeenCalled();
+  });
+
+  it('idle + active KPI → advance 成功', async () => {
+    const deps = baseDeps();
+    deps.kpiRegistry.create({ description: '写 hello', createdBy: 'u' });
+    vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
+      replied: false,
+      output: '已创建新内脑实例并启动任务。instance_id=ib-kpi-1',
+    });
+
+    const result = await tickKpiManager(deps, idleEnvironment(), idleVerdict);
+    expect(result.dispatched).toBe(true);
+    expect(result.instanceId).toBe('ib-kpi-1');
+  });
+});

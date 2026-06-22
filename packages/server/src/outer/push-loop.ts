@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ChatIRChannel } from '@utlra/chat-ir';
+import { readWorkerStatus } from '../pi-mono/inner-brain-spawner.js';
 import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 
 // ── 常量 ───────────────────────────────────────────────────────────────────
@@ -72,12 +73,28 @@ export class PushLoop {
   // ── 轮询主循环 ─────────────────────────────────────────────────────────
 
   private async tick(): Promise<void> {
+    this.syncRunningRegistryProgress();
     // RUNNING：正常轮询；BLOCKED / AWAITING：仍需扫 output 把通知发给用户
     const active = this.opts.registry.list().filter(
       (r) => r.status === 'RUNNING' || r.status === 'BLOCKED' || r.status === 'AWAITING',
     );
     for (const inst of active) {
       await this.tickInstance(inst);
+    }
+  }
+
+  /** RUNNING 期间从 worker 状态文件同步 ticks / lastTickAt（DyFlow 长 tick 也会 touch liveness） */
+  private syncRunningRegistryProgress(): void {
+    for (const inst of this.opts.registry.list()) {
+      if (inst.status !== 'RUNNING') continue;
+      const ws = readWorkerStatus(inst.workDir);
+      if (!ws) continue;
+      const patch: Partial<TaskRecord> = {};
+      if (ws.ticks != null && ws.ticks !== inst.ticks) patch.ticks = ws.ticks;
+      if (ws.lastTickAt && ws.lastTickAt !== inst.lastTickAt) patch.lastTickAt = ws.lastTickAt;
+      if (Object.keys(patch).length > 0) {
+        this.opts.registry.update(inst.instanceId, patch);
+      }
     }
   }
 

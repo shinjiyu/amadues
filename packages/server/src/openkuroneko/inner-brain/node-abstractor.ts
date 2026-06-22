@@ -20,6 +20,7 @@ import type {
   NodeDef,
   NodeDefPlaceholder,
 } from './types.js';
+import { createNodeSkillStore } from './node-skill-store.js';
 
 const MAX_PLACEHOLDERS = 16;
 const PLACEHOLDER_NAME = /^[A-Z][A-Z0-9_]*$/;
@@ -120,7 +121,7 @@ export function validateSanitized(
 export async function abstractLocalNode(
   local: LocalNode,
   deps: AbstractorDeps,
-  opts: { sourceAgent: string; env?: EnvSnapshot },
+  opts: { sourceAgent: string; env?: EnvSnapshot; workDir?: string },
 ): Promise<AbstractorResult> {
   const { llm, logger, store } = deps;
 
@@ -176,12 +177,14 @@ export async function abstractLocalNode(
   }
 
   const now = new Date().toISOString();
+  const skills = opts.workDir ? createNodeSkillStore(opts.workDir).exportSkills(local.id) : [];
   const def: NodeDef = {
     id: defId,
     version: '1.0.0',
     description: String(o['description'] ?? local.description),
     tags: Array.isArray(o['tags']) ? (o['tags'] as unknown[]).map(String) : local.tags,
     placeholders,
+    ...(skills.length > 0 ? { skills } : {}),
     interface: local.interface,
     body: sanitizedBody,
     metadata: {

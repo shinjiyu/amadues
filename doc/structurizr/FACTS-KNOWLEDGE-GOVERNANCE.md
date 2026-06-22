@@ -24,7 +24,7 @@
 |----|------|------|------|
 | **workspace memory** | `.brain/memory.json` → `facts: string[]` | `record_fact` / Attributor | ❌ 仅 `includes` 去重 |
 | **drive9 共享** | `/knowledge/shared/{kn-hash}.md` | `record_fact` → `createDrive9FactSyncSink`（实时，见 [`DRIVE9-KNOWLEDGE-SHARED.md`](./DRIVE9-KNOWLEDGE-SHARED.md)） | ❌ 无 eviction |
-| **constraints** | `memory.constraints[]` | `record_constraint` / failure-distill | 同 facts，但更短；可共用治理框架 |
+| **constraints** | `memory.constraints[]` | `record_constraint` / failure-distill | **topic 合并**（`constraint-governor.ts`）+ ATTRIBUTE sweep |
 
 ---
 
@@ -142,11 +142,11 @@ score(f) =
 | **retract** | Attributor / 外脑显式 `retract_fact` | `retracted`（红线性错误知识） |
 | **obsolete** | 新 fact 写入同 topic 时 | 旧 fact 自动 supersede（§4.2，非 eviction 扫） |
 
-### 5.3 矛盾启发式（P1 · 无 LLM）
+### 5.3 矛盾启发式（P1 · 无 LLM）✅
 
 同 topic 仅应 1 条 active；若迁移期出现多条：
 
-- 标记 `needs_reconcile=true`
+- 标记 `needsReconcile=true`
 - ATTRIBUTE 后优先进入 `reconcileFacts`（P2）
 
 跨 topic 矛盾（难）：
@@ -154,6 +154,14 @@ score(f) =
 - 关键词对：`已发布` vs `草稿` + 同一 `ch4` → flag
 - `不可用` vs `有效` + 同一 selector → flag  
 → 写入 `memory.fact_conflicts[]` 供 Dashboard / Attributor
+
+实现：`fact-conflict.ts` → `reconcileFactConflicts`（ATTRIBUTE sweep 内调用）
+
+- `deriveFactDomain` — 粗粒度 domain（`fanqie.publish.status|draft|inject` 等）
+- `detectFactConflicts` — 同 domain 极性相反 + 锚点/相似度
+- `resolveStaleStatusFacts` — `fanqie.publish.status` 多条 active 保留最新
+- `flagSameTopicDuplicates` — 同 topic 多条 active → `needsReconcile`
+- `memory.fact_conflicts[]` — sweep 后持久化；Attributor prompt 展示
 
 ### 5.4 执行时机
 
@@ -214,8 +222,9 @@ score(f) =
 
 | 模块 ID | 路径 | 职责 |
 |---------|------|------|
-| **factTopic** | `inner-brain/fact-topic.ts` | topic 归一化 |
+| **factTopic** | `inner-brain/fact-topic.ts` | topic 归一化（含 `fanqie.publish.*`） |
 | **factGovernor** | `inner-brain/fact-governor.ts` | supersede / score / sweep / prompt select |
+| **factConflict** | `inner-brain/fact-conflict.ts` | 矛盾启发式 · stale status · `fact_conflicts[]` |
 | **memoryStore** | `inner-brain/memory-store.ts` | `fact_records` CRUD + 惰性迁移 |
 | **factDrive9Eviction** | `outer/fact-drive9-eviction.ts` | drive9 共享事实淘汰（P2） |
 
@@ -226,7 +235,7 @@ score(f) =
 | 阶段 | 内容 | 测项 |
 |------|------|------|
 | **P0** | `FactRecord` + `deriveFactTopic` + supersede-on-write + `INNER_FACTS_MAX_ACTIVE` + prompt 上限 | `fact-topic.test.ts`, `fact-governor.test.ts`, `memory-store` 迁移 |
-| **P1** | ATTRIBUTE 后 cold+quota sweep；`citeCount` 计数；矛盾启发式 flag | `fact-governor.component.integration.test.ts` |
+| **P1** | ATTRIBUTE 后 cold+quota sweep；`citeCount` 计数；矛盾启发式 flag | `fact-conflict.test.ts`, `fact-governor.component.integration.test.ts` |
 | **P2** | Attributor `reconcileFacts`；drive9 eviction；`retract_fact` 工具 | `fact-drive9-eviction.test.ts` |
 
 ---

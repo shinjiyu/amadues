@@ -3,8 +3,8 @@
  *
  * KPI（Key Performance Indicator）= 给 agent 的一个长期目标，不像 inner-brain 任务那样
  * "一次 burst 跑完就归档"。一个 KPI 会跨越多个 burst：
- *   - 每个 burst onExit 由 kpiBurstOutcomeEvaluator 写 burstRunHistory.outcomeEvaluation
- *   - 连续 N 个 burst idle 且无产出 → progress detector 标记 "卡住"，触发反思 burst
+ *   - burst 执行史由 kpiAdvancer 路径写入 burstRunHistory（onExit 不再 hook 评估）
+ *   - 连续 N 个 burst idle 且无产出 → outcomeEvaluator 换 charter 续跑
  *   - KPI 本身只有 "active / paused / achieved / abandoned" 四个状态
  *
  * 数据持久化：<dataRoot>/kpi-registry.json（原子写）
@@ -28,7 +28,7 @@ export type KpiStatus = 'active' | 'paused' | 'achieved' | 'abandoned';
  */
 export type KpiKind = 'delivery' | 'ongoing';
 
-/** KPI 节拍（ADL KPI-ADVANCEMENT.md §3） */
+/** @deprecated 调度已移除（定时由 burst AWAITING/wait_timer + changeWatcher）；保留 schema 读旧 JSON */
 export type KpiCadence =
   | { type: 'once' }
   | { type: 'interval'; everyMs: number }
@@ -59,33 +59,12 @@ export interface BurstRunRecord {
   charter: string;
   ticks: number;
   deliverableCount: number;
-  /** @deprecated 不再写入；读历史兼容 */
-  reflexionSummary?: ReflexionSummary;
   outcomeEvaluation?: BurstOutcomeEvaluation;
 }
 
 /** momentum（多巴胺反馈调节）取值上下限；见 STRATEGY-PLANNING-LAYER.md §16 */
 export const MOMENTUM_MIN = -5;
 export const MOMENTUM_MAX = 5;
-
-/**
- * @deprecated 历史 reflexion 摘要；新路径用 BurstOutcomeEvaluation。字段保留只读兼容。
- * 双方仅靠这套字段约定通信。
- */
-export interface ReflexionSummary {
-  /** 反思生成时间 */
-  ts: string;
-  /** 该 reflexion 所属 burst 的 instanceId */
-  burstInstanceId: string;
-  /** 总体评价 */
-  verdict: 'success' | 'partial' | 'failed';
-  /** 硬失败列表（API 拒绝 / 明确错误），下一轮 decomposer 会读到，避免重撞 */
-  hardFailures: string[];
-  /** 软失败列表（路径没产出但没明确报错），弱权重提示 */
-  softFailures: string[];
-  /** 给下一轮的策略建议（"换什么方向"） */
-  nextStrategy: string;
-}
 
 export interface KpiRecord {
   kpiId: string;
@@ -114,12 +93,9 @@ export interface KpiRecord {
   lastBurstAt?: string;
   /**
    * 连续 idle 且无产出的 burst 数。任何一次有 deliverable 产出或换 strategy 的 burst
-   * 会把这个值重置为 0；progress detector 用它判断是否触发反思 burst。
+   * 会把这个值重置为 0；达阈值由 outcomeEvaluator 换 charter。
    */
   consecutiveIdleBursts: number;
-  /** 反思轨迹：按时间正序追加。retrieve 时取最近 N 条供 decomposer 参考 */
-  /** @deprecated 只读兼容；新写入走 burstRunHistory.outcomeEvaluation */
-  reflexionTrail: ReflexionSummary[];
   /** 用户可选填的附加约束 / 提示（自由文本，会拼进 burst 的 constraints） */
   notes?: string;
   /** 父 KPI id；子 KPI 首拆后设置 */
@@ -135,6 +111,7 @@ export interface KpiRecord {
   /** cadence 计算的下次 due 时刻 */
   nextDueAt?: string;
   /** 本 leaf 复用的 canonical instanceId */
+  /** @deprecated 扁平 KPI 多 burst；盘里 legacy 字段只读 */
   canonicalInstanceId?: string;
   /** 同一 burst 内多轮 sprint 执行史 */
   burstRunHistory: BurstRunRecord[];
@@ -147,8 +124,8 @@ export interface CreateKpiInput {
   /** KPI 类型；默认 'delivery' */
   kind?: KpiKind;
   /**
-   * ongoing 默认建父节点（首拆延后）；delivery 默认叶子 + once。
-   * 显式 `asParent: true` 强制父节点。
+   * KPI 类型；默认 'delivery'。
+   * @deprecated asParent — 扁平 KPI 模型，create 始终 isLeaf: true
    */
   asParent?: boolean;
 }
@@ -166,14 +143,26 @@ export class KpiRegistry {
     if (!fs.existsSync(this.registryPath)) return;
     try {
       const rows = JSON.parse(fs.readFileSync(this.registryPath, 'utf8')) as KpiRecord[];
-      for (const r of rows) this.kpis.set(r.kpiId, this._normalize(r));
+      for (const r of rows) {
+        this.kpis.set(r.kpiId, this._normalize(r as unknown as Record<string, unknown>));
+      }
     } catch {
       // 文件损坏时从空状态启动，旧文件留在原地供事后排查
     }
   }
 
-  /** 老版本数据补字段，确保新字段不为 undefined（向下兼容） */
-  private _normalize(r: KpiRecord): KpiRecord {
+  private static readonly _RECORD_KEYS: (keyof KpiRecord)[] = [
+    'kpiId', 'description', 'createdBy', 'createdAt', 'status', 'kind', 'momentum',
+    'finalizedAt', 'finalizedReason', 'bursts', 'lastBurstAt', 'consecutiveIdleBursts',
+    'notes', 'parentKpiId', 'children', 'isLeaf', 'cadence', 'charter', 'nextDueAt',
+    'canonicalInstanceId', 'burstRunHistory',
+  ];
+
+  /** 补默认字段；剥离盘里多出来的未知键 */
+  private _normalize(raw: Record<string, unknown>): KpiRecord {
+    const r = Object.fromEntries(
+      KpiRegistry._RECORD_KEYS.filter((k) => k in raw).map((k) => [k, raw[k]]),
+    ) as unknown as KpiRecord;
     const kind = r.kind ?? 'delivery';
     const isLeaf = r.isLeaf ?? (kind === 'delivery');
     return {
@@ -182,12 +171,9 @@ export class KpiRegistry {
       momentum: typeof r.momentum === 'number' ? r.momentum : 0,
       bursts: r.bursts ?? [],
       consecutiveIdleBursts: r.consecutiveIdleBursts ?? 0,
-      reflexionTrail: r.reflexionTrail ?? [],
       isLeaf,
       children: r.children ?? [],
-      cadence: r.cadence ?? (kind === 'ongoing'
-        ? { type: 'continuous', minGapMs: 3 * 60 * 60 * 1000 }
-        : { type: 'once' }),
+      cadence: r.cadence ?? { type: 'once' },
       burstRunHistory: r.burstRunHistory ?? [],
     };
   }
@@ -210,10 +196,9 @@ export class KpiRegistry {
     return `kpi-${ts}-${rand}`;
   }
 
-  /** 创建 KPI；status 默认 active */
+  /** 创建 KPI；status 默认 active（扁平 KPI，无子 KPI 首拆） */
   create(input: CreateKpiInput): KpiRecord {
     const kind = input.kind ?? 'delivery';
-    const asParent = input.asParent ?? kind === 'ongoing';
     const kpi: KpiRecord = {
       kpiId: this.generateKpiId(),
       description: input.description.trim(),
@@ -224,15 +209,9 @@ export class KpiRegistry {
       momentum: 0,
       bursts: [],
       consecutiveIdleBursts: 0,
-      reflexionTrail: [],
       notes: input.notes?.trim() || undefined,
-      isLeaf: !asParent,
-      children: asParent ? [] : undefined,
-      cadence: kind === 'ongoing' && asParent
-        ? { type: 'continuous', minGapMs: 3 * 60 * 60 * 1000 }
-        : kind === 'ongoing'
-          ? { type: 'continuous', minGapMs: 3 * 60 * 60 * 1000 }
-          : { type: 'once' },
+      isLeaf: true,
+      cadence: { type: 'once' },
       burstRunHistory: [],
     };
     this.kpis.set(kpi.kpiId, kpi);
@@ -257,7 +236,6 @@ export class KpiRegistry {
       momentum: 0,
       bursts: [],
       consecutiveIdleBursts: 0,
-      reflexionTrail: [],
       notes: input.notes?.trim() || undefined,
       parentKpiId: parentId,
       isLeaf: true,
@@ -287,6 +265,7 @@ export class KpiRegistry {
     this._save();
   }
 
+  /** @deprecated 扁平 KPI 不再写 canonical */
   setCanonicalInstance(kpiId: string, instanceId: string): void {
     const k = this.kpis.get(kpiId);
     if (!k) return;
@@ -368,23 +347,7 @@ export class KpiRegistry {
     return k.momentum;
   }
 
-  /** @deprecated 不再生产；保留供迁移/测试 */
-  appendReflexion(kpiId: string, summary: ReflexionSummary): void {
-    const k = this.kpis.get(kpiId);
-    if (!k) return;
-    k.reflexionTrail.push(summary);
-    this._save();
-  }
-
-  /** 取 trail 最近 N 条，按时间倒序（最新的在前） */
-  /** @deprecated 请读 burstRunHistory / formatBurstRunDigest */
-  recentReflexions(kpiId: string, n = 5): ReflexionSummary[] {
-    const k = this.kpis.get(kpiId);
-    if (!k) return [];
-    return k.reflexionTrail.slice(-n).reverse();
-  }
-
-  /** 主动放弃 KPI（用户或 agent 反思后判定不可达） */
+  /** 主动放弃 KPI（用户或 agent 判定不可达） */
   abandon(kpiId: string, reason?: string): void {
     const k = this.kpis.get(kpiId);
     if (!k) return;
@@ -414,30 +377,4 @@ export class KpiRegistry {
     k.status = 'active';
     this._save();
   }
-}
-
-/**
- * @deprecated 请用 `formatBurstRunDigest`（`kpi/burst-run-history.ts`）
- */
-export function formatKpiReflexionBlock(summaries: ReflexionSummary[]): string {
-  if (summaries.length === 0) return '';
-  const lines: string[] = [
-    '',
-    '---',
-    '## [KPI 历次反思]（派发前自动注入）',
-    '> 硬失败方向禁止重试；优先采纳换向建议。',
-  ];
-  for (const [i, r] of summaries.entries()) {
-    lines.push(`\n### 反思 ${summaries.length - i}（${r.ts.slice(0, 16)}, verdict=${r.verdict}）`);
-    if (r.hardFailures.length > 0) {
-      lines.push('- **硬失败：** ' + r.hardFailures.join('；'));
-    }
-    if (r.softFailures.length > 0) {
-      lines.push('- **软失败：** ' + r.softFailures.join('；'));
-    }
-    if (r.nextStrategy) {
-      lines.push('- **换向：** ' + r.nextStrategy);
-    }
-  }
-  return lines.join('\n');
 }

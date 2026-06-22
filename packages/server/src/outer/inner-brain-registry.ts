@@ -38,10 +38,7 @@ export interface TaskRecord {
   pid?: number;
   errorMessage?: string;
   /**
-   * 进程重启被自动 resume 的累计次数。
-   * 防止"任务陷入死循环 → server 重启 → 自动 resume → 再死循环 → 再重启"形成永动机。
-   * 受 `UTLRA_INNER_MAX_AUTO_RESUME`（默认 3）限制；达到上限后不再自动 resume，用户可手动 restart。
-   * 用户从 /api/inner-brains/:id/restart 手动 restart 时**不增加**这个计数（手动行为，无环境风险）。
+   * @deprecated 历史字段；启动 auto-resume 已删除，不再递增。
    */
   resumeCount?: number;
   /**
@@ -59,8 +56,6 @@ export interface TaskRecord {
    * 标记本任务是否为反思 burst（progress detector 自动派发的 meta 任务）。
    * 反思 burst 不计入 KPI 的 idleStreak，避免"反思失败 → 又触发反思"死循环。
    */
-  /** @deprecated meta reflexion burst 已退役；新记录恒为 false */
-  isReflexionBurst?: boolean;
   /** staleBurstReaper 写入：ABORTED 原因（cull reason / 'stale_awaiting_timeout'） */
   abortReason?: string;
   /** staleBurstReaper 写入：谁杀的 */
@@ -153,8 +148,7 @@ export class InnerBrainRegistry {
   /**
    * Server 启动时调用：将所有遗留的 RUNNING 任务标为 STOPPED 并返回它们。
    * 原因：内脑子进程是 agent 进程的子进程，agent 重启后这些子进程已被一起杀掉。
-   *
-   * 返回值用于自动 resume 流程（caller 决定是否对其中部分任务重新 spawn worker）。
+   * 不自动 respawn；续跑见 changeWatcher / kpiAdvancer / POST …/restart。
    */
   markStaleRunningAsStopped(): TaskRecord[] {
     const now = new Date().toISOString();

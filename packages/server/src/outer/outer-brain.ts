@@ -136,11 +136,6 @@ export interface OuterBrainDeps {
   innerBrainRegistry?: InnerBrainRegistry;
   /** KPI 注册表（可选，传入时启用 set_kpi / list_kpis / view_kpi 等工具） */
   kpiRegistry?: KpiRegistry;
-  /**
-   * 派发反思 burst 的回调（由 server 注入）。
-   * outer-tools 的 set_goal onExit 用它在 KPI idle streak 达阈值时触发反思。
-   */
-  scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   /** 外脑记忆层（支持 mem9 云端存储） */
   memoryStore?: OuterMemoryStore;
   /** 技能语义存储层（mem9 shared:skills 命名空间） */
@@ -534,7 +529,6 @@ export class OuterBrain {
       actionLogStore: this.deps.actionLogStore,
       innerBrainRegistry,
       kpiRegistry: this.deps.kpiRegistry,
-      scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
       loadThreads,
       memoryStore: this.deps.memoryStore,
       skillStore: this.deps.skillStore,

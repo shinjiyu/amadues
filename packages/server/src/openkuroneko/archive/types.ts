@@ -12,6 +12,14 @@ import type { BrainFS } from '../brain/index.js';
 /** 归档触发原因 */
 export type ArchiveTrigger = 'COMPLETE' | 'BLOCK' | 'REPLAN_LIMIT' | 'CYCLE_MAX';
 
+/** burst 结束时的结构化结果摘要（写入 session meta） */
+export interface BurstOutcomeArchive {
+  verdict: 'success' | 'partial' | 'failed';
+  hardFailures: string[];
+  softFailures: string[];
+  nextStrategy: string;
+}
+
 /** 单个归档 session 的元数据 */
 export interface SessionMeta {
   sessionId: string;
@@ -26,13 +34,8 @@ export interface SessionMeta {
   kpiId?: string;
   /** burst 结束判定：success / partial / failed */
   verdict?: 'success' | 'partial' | 'failed';
-  /** 结构化反思摘要（与 sessions/<id>/reflexion.json 一致） */
-  reflexion?: {
-    verdict: 'success' | 'partial' | 'failed';
-    hardFailures: string[];
-    softFailures: string[];
-    nextStrategy: string;
-  };
+  /** burst 结果摘要（仅 meta.json） */
+  burstOutcome?: BurstOutcomeArchive;
   counts: {
     constraints: number;
     skills: number;
@@ -82,13 +85,8 @@ export interface KnowledgeStore {
     goalText: string;
     /** 关联的 KPI ID（可选，同 KPI 多 burst 共享反思记忆） */
     kpiId?: string;
-    /** burst 反思结果（可选） */
-    reflexion?: {
-      verdict: 'success' | 'partial' | 'failed';
-      hardFailures: string[];
-      softFailures: string[];
-      nextStrategy: string;
-    };
+    /** burst 结果摘要（可选） */
+    burstOutcome?: BurstOutcomeArchive;
   }): Promise<void>;
 
   /**

@@ -6,6 +6,7 @@
  * P0 工具：
  *   list_local_nodes / read_local_node / read_memory / commit_local_dag / report_done
  * P1：search_and_instance（drive9 → Assembler）。
+ * P0：search_task_plans（方案参考检索，不写 facts）。
  *
  * 工具调用结果汇总到 DesignSession，供 designer driver 判定 DESIGN 终态。
  */
@@ -23,6 +24,15 @@ import type { EnvSnapshot } from './node-abstractor.js';
 import { writeLocalDag } from './local-dag-store.js';
 import { runDeliverableChecks } from './deliverable-check.js';
 import { createCommitLocalNodeTool } from './commit-local-node-tool.js';
+import {
+  appendPlanReferences,
+  formatPlanReferenceHits,
+  normalizePlanReferenceSources,
+  PLAN_REFERENCES_MEMORY_KEY,
+  type PlanReferencePort,
+  type PlanReferenceRecord,
+  type PlanReferenceSource,
+} from './plan-reference-port.js';
 import type { DeliverableCheck, LocalDag, LockedMilestone, NodeDeliverable, NodeInst } from './types.js';
 
 /** 单节点 instruction 上限：超过即视为「巨型单体」反模式，commit_local_dag 拒收 */
@@ -45,6 +55,11 @@ export interface NodeSharingDeps {
   sourceAgent?: string;
 }
 
+export interface PlanReferenceDeps {
+  port: PlanReferencePort;
+  kpiId?: string;
+}
+
 export interface DesignerToolDeps {
   store: LocalNodeStore;
   memory: MemoryStore;
@@ -52,6 +67,8 @@ export interface DesignerToolDeps {
   burstId: string;
   /** P1：提供后 Designer 多一个 search_and_instance 工具 */
   sharing?: NodeSharingDeps;
+  /** P0：提供后 Designer 多一个 search_task_plans 工具 */
+  planReference?: PlanReferenceDeps;
 }
 
 export interface DesignerTools {
@@ -108,7 +125,7 @@ function normalizeNodeInst(raw: unknown, idx: number): NodeInst | null {
 }
 
 export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
-  const { store, memory, workDir, burstId, sharing } = deps;
+  const { store, memory, workDir, burstId, sharing, planReference } = deps;
   const session: DesignSession = {};
 
   const listTool: Tool = {
@@ -252,18 +269,18 @@ export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
   // 反思期节点提升（§9b）：Designer 在 DESIGN 阶段直接固化跑通的战术，无需排 RUN 节点。
   // 复用 commit_local_node 组装逻辑，但作为 Designer 副作用工具（不构成 DESIGN 终态）。
   const promoteTool: Tool = (() => {
-    const inner = createCommitLocalNodeTool(store, { fromBurst: burstId });
     return {
       name: 'promote_local_node',
       description:
         '【反思】把一段已跑通、未来会复用的战术直接固化成可复用 LocalNode（origin=creator），供后续 commit_local_dag 以 ref 引用。' +
         '仅当某战术已在 node_results/dag_history 中验证成功且可复述时调用；调用后不结束本轮，可继续编排。' +
-        '入参：id(语义名,自动加 local/) / description / promptTemplate(固化步骤,可含 ${{params.x}}) / tools(allowlist,["*"]全部) / inputs? / outputs? / tags?。',
+        '入参：id(语义名,自动加 local/) / description / promptTemplate(固化步骤,可含 ${{params.x}}) / tools(allowlist,["*"]全部) / sourceRef?(拷贝绑定技能) / inputs? / outputs? / tags?。',
       parameters: {
         id: { type: 'string', description: '语义名，如 ps_open_battle；自动加 local/ 前缀' },
         description: { type: 'string', description: '一句话说明这个节点做什么，供 Designer 选用' },
         promptTemplate: { type: 'string', description: 'baseNode system prompt：固化的操作步骤，可含 ${{ params.x }} 占位' },
         tools: { type: 'array', description: '工具 allowlist（字符串数组）；用 ["*"] 表示全部' },
+        sourceRef: { type: 'string', description: '可选：源 LocalNode id，拷贝其绑定技能到新节点（如 preset/base）' },
         displayName: { type: 'string', description: '人类可读名（可选）' },
         tags: { type: 'array', description: '检索标签（字符串数组，可选）' },
         inputs: { type: 'array', description: 'inputs 契约：[{key,type}]（可选）' },
@@ -271,6 +288,7 @@ export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
       },
       required: ['id', 'description', 'promptTemplate', 'tools'],
       async call(args) {
+        const inner = createCommitLocalNodeTool(store, { fromBurst: burstId, workDir });
         const res = await inner.call(args);
         // 迁移自旧 node_creator 的 auto-export：提升成功且配置了 drive9 → 脱敏导出（fire-and-forget）
         if (res.ok && sharing?.defStore && sharing.sourceAgent) {
@@ -280,7 +298,7 @@ export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
             void abstractLocalNode(
               node,
               { llm: sharing.llm, logger: sharing.logger, store: sharing.defStore },
-              { sourceAgent: sharing.sourceAgent, ...(sharing.env ? { env: sharing.env } : {}) },
+              { sourceAgent: sharing.sourceAgent, workDir, ...(sharing.env ? { env: sharing.env } : {}) },
             ).catch(() => { /* 导出失败不影响提升 */ });
           }
         }
@@ -336,6 +354,50 @@ export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
   };
 
   const tools: Tool[] = [listTool, readNodeTool, readMemoryTool, commitDagTool, reportDoneTool, promoteTool, lockMilestoneTool];
+
+  if (planReference) {
+    const planSearchTool: Tool = {
+      name: 'search_task_plans',
+      description:
+        '按语义检索历史任务方案 / playbook / 同 KPI peer 经验（参考 only，禁止写入 facts）。' +
+        '在目标陌生、last_failure 换向、或编排前需要借鉴时使用；query 由你根据当前局面自拟。',
+      parameters: {
+        query: { type: 'string', description: '检索 query（描述你想找的方案线索）' },
+        sources: {
+          type: 'array',
+          description: '数据源：archive（历史 burst）/ repository（晋升 KSP）/ peer（同 KPI sibling）；默认全选',
+        },
+        topK: { type: 'number', description: '返回条数上限（默认 5）' },
+      },
+      required: ['query'],
+      async call(args) {
+        const query = String(args['query'] ?? '').trim();
+        if (!query) return { ok: false, output: 'search_task_plans: query 必填' };
+        const rawSources = Array.isArray(args['sources'])
+          ? (args['sources'] as unknown[]).map(String)
+          : undefined;
+        const sources = rawSources
+          ? normalizePlanReferenceSources(rawSources as PlanReferenceSource[])
+          : undefined;
+        const topK = typeof args['topK'] === 'number' ? (args['topK'] as number) : undefined;
+        const hits = await planReference.port.search({
+          query,
+          ...(planReference.kpiId ? { kpiId: planReference.kpiId } : {}),
+          ...(sources ? { sources } : {}),
+          ...(topK != null ? { topK } : {}),
+        });
+        const mem = memory.read();
+        const merged = appendPlanReferences(
+          mem[PLAN_REFERENCES_MEMORY_KEY] as PlanReferenceRecord[] | undefined,
+          query,
+          hits,
+        );
+        memory.patch(PLAN_REFERENCES_MEMORY_KEY, merged);
+        return { ok: true, output: formatPlanReferenceHits(hits) };
+      },
+    };
+    tools.push(planSearchTool);
+  }
 
   if (sharing) {
     const searchTool: Tool = {

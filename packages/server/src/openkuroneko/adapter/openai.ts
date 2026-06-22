@@ -4,6 +4,7 @@ import {
   endLlmCall,
   recordLlmUsageFromResponse,
 } from '../../outer/llm-usage-tracker.js';
+import { isTransientLlmTransportError } from '../../llm/llm-transport-error.js';
 
 // ── OpenAI wire types ─────────────────────────────────────────────────────────
 
@@ -291,7 +292,10 @@ export function createOpenAIAdapter(options?: {
     const startMs = Date.now();
     let streamUsage: OAIStreamChunk['usage'];
     try {
-      const res = await fetchWithRetry(
+      for (let attempt = 0; attempt <= LLM_MAX_RETRIES; attempt++) {
+        try {
+          streamUsage = undefined;
+          const res = await fetchWithRetry(
         `${baseUrl}/chat/completions`,
         {
           method: 'POST',
@@ -376,10 +380,19 @@ export function createOpenAIAdapter(options?: {
       });
 
       recordInnerPiMonoUsage(streamUsage, { ok: true, durationMs: Date.now() - startMs });
-      return { content: fullContent, toolCalls };
-    } catch (e) {
-      recordInnerPiMonoUsage(streamUsage, { ok: false, durationMs: Date.now() - startMs });
-      throw e;
+          return { content: fullContent, toolCalls };
+        } catch (e) {
+          const errMsg = String(e);
+          if (isTransientLlmTransportError(errMsg) && attempt < LLM_MAX_RETRIES) {
+            const delay = calcRetryDelay(503, attempt, null);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          recordInnerPiMonoUsage(streamUsage, { ok: false, durationMs: Date.now() - startMs });
+          throw e;
+        }
+      }
+      throw new Error('chat-stream: exhausted retries');
     } finally {
       endLlmCall();
     }

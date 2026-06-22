@@ -1,6 +1,8 @@
-# KPI 推进与 Burst 调度（ADL 权威）
+# KPI 推进与 Burst 调度
 
-> **English:** Outer brain **owns long-horizon sustainability**. Inner brain stays **sprint-shaped** (LLM closure bias). Chat inbound is classified (**KPI vs ad-hoc**); heartbeat **traverses KPI tree** and **advances** leaf KPIs whose slot is idle. Sub-KPIs are **split on first advancement**; each leaf has an independent **reused burst instance** and **run history**.
+> **⚠️ 已由 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 取代**（2026-06-07）：扁平 KPI、多 burst 并行、无 sub-KPI / canonical 复用。本文保留历史细节供对照。
+
+> **English (historical):** Outer brain **owns long-horizon sustainability**. Inner brain stays **sprint-shaped** (LLM closure bias). Chat inbound is classified (**KPI vs ad-hoc**); heartbeat **traverses KPI tree** and **advances** leaf KPIs whose slot is idle. Sub-KPIs are **split on first advancement**; each leaf has an independent **reused burst instance** and **run history**.
 
 > 与 `workspace.dsl` 视图 **`10b-L3-Outer-KPI`**、**`11-L3-Outer-Autonomy`**、**`07-L3-Outer-Inbound-IM`** 同步。  
 > 取代/修订：[`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md) §「外脑 set_goal 派 burst」为默认路径；[`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md) 粒度升为 **per leaf sub-KPI**；[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) §ongoing 例外见本文 §5。
@@ -39,10 +41,10 @@ flowchart LR
 |------|------|------|
 | `kpi_create` / `kpi_update` | 写入 `kpiRegistry`（父 KPI）→ **一次** `kpiAdvancer.advance(parentOrLeaf)` | 外脑 LLM **不得** `set_goal(kpi_id)` 绕过推进器 |
 | `ad_hoc_task` | `adHocBurstAllocator.create({ goal })`：新 instance、**无** `kpi_id`、做完归档 | 把长期任务塞进 ad-hoc |
-| `chat_only` | 回复 / 记忆；不派 burst | — |
+| `chat_only` | 回复 / 记忆；不派 burst；**含 KPI 只读查询**（汇报/列出/查看当前 KPI → `list_kpis`） | — |
 
 **分类器**：`imIntentClassifier`（LLM 结构化输出 + 规则兜底）。  
-长期/周期/监督/「每天」「持续」等 → KPI；「帮我查一下」「改这张图」→ ad-hoc。
+长期/周期/监督/「每天」「持续」/「建立…」等 → KPI create；「汇报/查看**当前** KPI」→ **chat_only**（禁止误建 KPI）；「帮我查一下」「改这张图」→ ad-hoc。
 
 实现落点：`outer/inbound/im-intent-classifier.ts` → `outer-conversation-loop` 在 tool 环之前调用。
 
@@ -73,7 +75,7 @@ interface KpiRecord {
   canonicalInstanceId?: string;  // 本 leaf 的复用 burst（见 §4）
   burstRunHistory: BurstRunRecord[]; // 见 §6
   bursts: string[];              // 兼容：canonical instanceId 列表（length ≤ 1 per leaf）
-  // burstRunHistory, momentum, consecutiveIdleBursts, … 保留；reflexionTrail 只读兼容
+  // burstRunHistory, momentum, consecutiveIdleBursts, …
 }
 ```
 
@@ -268,7 +270,7 @@ interface AdHocTask {
 |---------|------|------|
 | `imIntentClassifier` | `outer/inbound/im-intent-classifier.ts` | IM → kpi / ad_hoc / chat |
 | `subKpiDecomposer` | `outer/kpi/sub-kpi-decomposer.ts` | 首次 advance 拆 leaf + cadence |
-| `kpiCadence` | `outer/kpi/kpi-cadence.ts` | `isCadenceDue` / `nextDueAt` 纯函数 |
+| `kpiCadence` | **已删除**（2026-06-07）；调度 = 心跳 + eligibility；定时 = AWAITING |
 | `kpiSlotIdle` | `outer/kpi/kpi-slot-idle.ts` | ongoing DONE/AWAITING 槽位判定 |
 | `burstReuse` | `outer/kpi/burst-reuse.ts` | canonical 复用 + preempt |
 | `burstRunHistory` | `outer/kpi/burst-run-history.ts` | run 记录聚合与 digest |

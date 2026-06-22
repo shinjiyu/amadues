@@ -1,10 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isDyflowWorkDir } from '../openkuroneko/inner-brain/dyflow-inspector.js';
+import {
+  projectDyflowStatus,
+  projectDyflowStatusAfterAuto,
+  readDyflowMode,
+  seedDyflowBurstState,
+} from '../openkuroneko/inner-brain/status-projection.js';
 import type { RunManifest } from './manifest.js';
 import { emptyManifest } from './manifest.js';
 import { FilesystemWorkspaceStore } from './workspace-store.js';
 
-export type InnerPhase = 'idle' | 'planning' | 'executing' | 'paused';
+export type InnerPhase = 'idle' | 'executing' | 'paused';
+/** @deprecated 旧 status.json 可能仍含 planning；DyFlow 时代不再写入，读时按 executing 理解 */
+export type LegacyInnerPhase = InnerPhase | 'planning';
 
 /**
  * 内脑产物的 chat IR 资产视图（详见 doc/protocols/inner-brain-deliverables.md §4.2）。
@@ -53,7 +62,7 @@ const GOAL_FILE = path.join('.brain', 'goal.md');
 /** 历史遗留路径，仅 readGoal 回退；setGoal 会删除以免漂移 */
 const LEGACY_GOAL_FILE = path.join('.run', 'goal.md');
 
-/** 与 openKuroneko BrainFS.defaultState 一致，供完全重置后首 tick 从拆解开始 */
+/** 与 openKuroneko BrainFS.defaultState 一致；仅 fullResetForRetest 等测试/遗留路径保留 */
 const CONTROLLER_STATE_DECOMPOSE = JSON.stringify(
   {
     mode: 'DECOMPOSE',
@@ -139,28 +148,19 @@ export class InnerBrainEngine {
       /* 旧 workspace 可能无 .run/goal.md */
     }
 
-    // 新目标到来：无论当前控制器处于何种状态，都重置为 DECOMPOSE，从头规划。
-    // 同时删除旧任务的 execution-context，防止控制器误用过期上下文。
-    const brainDir = path.join(wd, '.brain');
-    fs.mkdirSync(brainDir, { recursive: true });
-    const controllerStatePath = path.join(brainDir, 'controller-state.json');
-    fs.writeFileSync(controllerStatePath, CONTROLLER_STATE_DECOMPOSE, 'utf8');
-    try {
-      fs.unlinkSync(path.join(brainDir, 'execution-context.json'));
-    } catch {
-      // 文件不存在时忽略
-    }
+    // DyFlow 是唯一内脑引擎：seed DESIGN 态，不再写 legacy controller-state / planning 相位。
+    seedDyflowBurstState(wd, this.workspaceId);
 
     this.tickCount = 0;
-    this.writeStatus({
-      phase: 'planning',
-      goalSummary: goalMarkdown.slice(0, 200),
+    projectDyflowStatus({
+      workspaceId: this.workspaceId,
+      workDir: wd,
       tickCount: 0,
-      lastAction: 'goal_set',
-      lastError: null,
-      deliverables: [],
+      hadWork: false,
+      dyflowMode: 'DESIGN',
+      note: 'goal_set',
     });
-    this.appendTelemetry({ event: 'goal_set', len: goalMarkdown.length });
+    this.appendTelemetry({ event: 'goal_set', len: goalMarkdown.length, engine: 'dyflow' });
     this.touchManifestTelemetry();
   }
 
@@ -174,6 +174,28 @@ export class InnerBrainEngine {
    * 执行 openKuroneko Pi-mono 一次 tick 后调用：读 `.brain/controller-state.json`，同步 Dashboard 用 inner-status + 遥测。
    */
   syncAfterPiMonoTick(pi: { hadWork: boolean }): InnerBrainStatus {
+    const wd = this.workDir();
+    if (isDyflowWorkDir(wd)) {
+      this.tickCount += 1;
+      const projected = projectDyflowStatus({
+        workspaceId: this.workspaceId,
+        workDir: wd,
+        tickCount: this.tickCount,
+        hadWork: pi.hadWork,
+        dyflowMode: readDyflowMode(wd),
+        note: 'pi_mono_tick',
+      });
+      if (projected) {
+        this.appendTelemetry({
+          event: 'pi_mono_tick',
+          hadWork: pi.hadWork,
+          mode: readDyflowMode(wd),
+          engine: 'dyflow',
+        });
+        this.touchManifestTelemetry();
+        return projected;
+      }
+    }
     const raw = this.store.readTextFile(this.workspaceId, '.brain/controller-state.json');
     let mode = 'UNKNOWN';
     if (raw) {
@@ -209,6 +231,23 @@ export class InnerBrainEngine {
     lastHadWork: boolean;
     stoppedBy: 'idle' | 'max_ticks' | 'stop_signal';
   }): InnerBrainStatus {
+    const wd = this.workDir();
+    if (isDyflowWorkDir(wd)) {
+      this.tickCount = Math.max(this.tickCount, pi.ticks);
+      const projected = projectDyflowStatusAfterAuto(wd, this.workspaceId, pi);
+      if (projected) {
+        this.appendTelemetry({
+          event: 'pi_mono_auto',
+          ticks: pi.ticks,
+          stoppedBy: pi.stoppedBy,
+          lastHadWork: pi.lastHadWork,
+          mode: readDyflowMode(wd),
+          engine: 'dyflow',
+        });
+        this.touchManifestTelemetry();
+        return projected;
+      }
+    }
     const raw = this.store.readTextFile(this.workspaceId, '.brain/controller-state.json');
     let mode = 'UNKNOWN';
     if (raw) {
@@ -496,7 +535,6 @@ export class InnerBrainEngine {
 function mapPiModeToInnerPhase(mode: string): InnerPhase {
   switch (mode) {
     case 'DECOMPOSE':
-      return 'planning';
     case 'EXECUTE':
     case 'ATTRIBUTE':
       return 'executing';

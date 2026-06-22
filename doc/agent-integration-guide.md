@@ -33,7 +33,7 @@
 4. **不要直接 import 任何具体 channel 实现**（如 `DiscordChannel`）——只 import 接口
 
 **当前唯一外部 channel 实现**：`DiscordChannel`（`packages/discord-bridge/`）。
-**兜底实现**：`NullChatIRChannel`（在 `packages/server/src/index.ts` 内置；未配 Discord 时使用，HTTP `/api/outer/roundtrip` 仍可用）。
+**兜底实现**：`NullChatIRChannel`（在 `packages/server/src/index.ts` 内置；未配 Discord 时使用，HTTP `POST /api/outer/inbound` 仍可用）。
 
 ### `@utlra/chat-ir` 的三种 import 路径
 
@@ -622,7 +622,7 @@ register_deliverable("a.md")  ─▶  读 COMPLETE.deliverables: string[]
 - `count*` / `hasAnother*` 始终返回 0 / false
 - 不会触发 `onAgentMessage`（没有入站源）
 
-HTTP `/api/outer/roundtrip` 不依赖 channel 出站，可作离线调试入口（直接读写 threads.json 即可）。
+HTTP `POST /api/outer/inbound` 不依赖 channel 出站（响应 `replies[]` 捕获），可作离线调试入口。
 
 ### 5.2 LLM 输出非法 SID
 
@@ -734,7 +734,7 @@ schema (`@utlra/chat-ir/schemas`) 已用 `z.string().datetime({ offset: true })`
 
 **HTTP 调试入口**（不依赖 channel 上线）：
 
-- [ ] `POST http://127.0.0.1:8787/api/outer/roundtrip` 用 `{ text, thread_id, sender_sid, workspace_id }` 触发一次端到端 roundtrip（直接读写 store，不走 Discord）
+- [ ] `POST http://127.0.0.1:8787/api/outer/inbound` 用 `{ text, thread_id, sender_sid }` 触发一次外脑入站（与 IM 同路径）
 
 ---
 

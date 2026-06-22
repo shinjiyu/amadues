@@ -54,8 +54,8 @@ function summarizeNodeResults(nodeResults: Record<string, NodeResult> | undefine
   }
   const lines: string[] = [];
   for (const [id, r] of Object.entries(nodeResults)) {
-    const status = r.status ?? 'unknown';
-    const summary = (r.summary ?? '').replace(/\s+/g, ' ').slice(0, 120);
+    const status = r.status ?? (r.ok ? 'ok' : 'failed');
+    const summary = (r.failure?.summary ?? '').replace(/\s+/g, ' ').slice(0, 120);
     lines.push(`- ${id}: ${status}${summary ? ` — ${summary}` : ''}`);
   }
   return lines.join('\n');
@@ -64,8 +64,8 @@ function summarizeNodeResults(nodeResults: Record<string, NodeResult> | undefine
 function formatLastFailure(f: FailureSummary | null | undefined): string | null {
   if (!f) return null;
   const parts = [
-    f.node_id ? `node=${f.node_id}` : '',
-    f.message?.slice(0, 300) ?? '',
+    f.nodeInstId ? `node=${f.nodeInstId}` : '',
+    f.summary?.slice(0, 300) ?? '',
   ].filter(Boolean);
   return parts.join(' | ') || null;
 }

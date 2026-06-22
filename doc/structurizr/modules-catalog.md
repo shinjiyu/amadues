@@ -21,25 +21,22 @@
 | 模块 ID | 职责 | 主路径 | In → Out |
 |---------|------|--------|----------|
 | **participationPolicy** | **是否说话 / 是否回复** | `outer/inbound-policy.ts` + `participation-state.ts` | `OuterInboundMeta` → `shouldReply` / SPEAK·SILENT |
-| outerBrainFacade | 外脑编排入口 | `outer/outer-brain.ts` | `ChatIRInboundEvent` → 调 loop / policy |
+| outerBrainFacade | 外脑编排入口（IM + HTTP） | `outer/outer-brain.ts`; `outer/outer-http-inbound.ts` | `ChatIRInboundEvent` / `POST /api/outer/inbound` |
+| structuredReplyParts | reply.v1 → MessagePart[] | `outer/structured-reply-parts.ts` | StructuredReply → parts |
 | knowledgeRetrieval | 知识检索 | `outer/knowledge-retrieval.ts` | query → K/S/P 片段 |
 | threadOrchestrator | 线程串行 + mention 感知 freshCheck + FIFO 排队 | `outer/thread-orchestrator.ts`; `chat-ir/seen-tracker.ts` | thread ops |
 | outerConversationLoop | 外脑多轮 LLM | `outer/outer-conversation-loop.ts` | context → tool_calls |
 | outerToolExecutor | 外脑工具执行 | `outer/outer-tools.ts` | tool_call → reply/spawn |
 | **workspaceInbox** | **同 KPI peer 互读 + `.inbox/` 目录** | `outer/workspace-inbox.ts` | peer ids → catalog（名字/摘要） |
-| outerOrchestrator | M6 roundtrip | `outer/orchestrator.ts` | 入站 → reply + spawn |
-| innerBrainKpiReuse | KPI 单实例复用 | `outer/inner-brain-kpi-reuse.ts` | `findCanonicalBurstForKpi`；续跑不新开 workspace |
-| innerBrainRegistry | 内脑任务表 | `outer/inner-brain-registry.ts` | spawn/stop → TaskRecord；`markStaleRunningAsStopped` |
-| innerBrainStartupResume | **外脑重启恢复 RUNNING** | `outer/inner-brain-startup-resume.ts` | 启动 → 同一 instance 再 spawn |
+| innerBrainKpiReuse | set_goal 派发判定 | `outer/inner-brain-kpi-reuse.ts` | `isSetGoalDispatched`（canonical 复用已删，见 KPI-MANAGER-LAYER.md） |
+| innerBrainRegistry | 内脑任务表 | `outer/inner-brain-registry.ts` | spawn/stop → TaskRecord；boot `markStaleRunningAsStopped`（**不** auto-resume，见 [`INNER-BRAIN-STARTUP-RESUME-REMOVED.md`](./INNER-BRAIN-STARTUP-RESUME-REMOVED.md)） |
 | brainAsyncSnapshot | workDir 异步快照 | `outer/brain-async-snapshot.ts` | workDir → `is_post_complete` 等 |
-| registryLifecycleReconcile | **registry↔workDir 对账** | `outer/registry-lifecycle-reconcile.ts` | 假 AWAITING → DONE |
+| **innerBurstExit** | **burst onExit 最小辅助** | `outer/inner-burst-exit.ts` | workDir → `countDeliverables`；**已移除** hook/reconcile 见 [`KPI-BURST-LIFECYCLE-REMOVED.md`](./KPI-BURST-LIFECYCLE-REMOVED.md) |
 | awaitingInboundResolver | **IM 回复解 pending** | `outer/awaiting-inbound-resolver.ts` | human IM → resolve → changeWatcher spawn；拒 agent-mirror/通知 echo |
 | imNotifyDedup | **IM 通知去重** | `outer/im-notify-dedup.ts` | ledger `.run/im-notify-ledger.json`；24h fingerprint |
 | awaitingNotify | **AWAITING 人类通知** | `outer/awaiting-notify.ts` | onExit AWAITING + ask_user → `⏸` IM（dedup） |
 | innerSpawner | spawn 子进程 | `pi-mono/inner-brain-spawner.ts` | goal/workDir → child |
-| kpiRegistry | KPI 与反思 burst | `outer/kpi-registry.ts` | set_kpi → trail / idleStreak |
-| kpiBurstHooks | burst 退出 hook | `outer/kpi-burst-hooks.ts` | outcomeEvaluator → burstRunHistory；失败 → charter 续跑 |
-| **kpiBurstOutcomeEvaluator** | **KPI 结果评估** | `outer/kpi/kpi-burst-outcome-evaluator.ts` | 摘要+过程 → success / retry charter |
+| kpiRegistry | KPI 与 burst 元数据 | `outer/kpi-registry.ts` | set_kpi → bursts / charter |
 | **burstProcessReport** | **过程报告组装** | `outer/kpi/burst-process-report.ts` | tool-logs + memory.json + deliverables |
 | **kpiCompletionJudge** | **KPI 完成判定（心跳 sweep）** | `outer/kpi-completion-judge.ts` | active KPI → achieved / digest |
 | **nodeDefDrive9Store** | **drive9 `/nodes/shared/` 客户端（P1）** | `drive9/node-def-drive9-store.ts` | put/search/tombstone NodeDef + index |
@@ -58,27 +55,27 @@
 | **environmentJournal** | **环境模型 — 时序日志（✅ ring + current.json + events.jsonl 月轮转 + hourly + 未消费查询/markConsumed）** | `outer/environment/journal.ts` | snapshot/events → 三层留存 + 未消费查询 |
 | **environmentChangeDetector** | **环境模型 — 派生指标 + 事件检测（✅ hysteresis/warmUp/rate·delta·streak）** | `outer/environment/change-detector.ts` | prev/next → derived + events |
 | **environmentModelFacade** | **环境模型 — facade（collectEnvironmentSnapshot / toResourceSnapshot 适配 / getSharedEnvironment）** | `outer/environment/index.ts` | deps → EnvironmentSnapshot ↔ ResourceSnapshot |
-| **autonomyPolicyStore** | **闲忙规则（可聊天改）** | `outer/autonomy-policy-store.ts` | policy.json + rubric.md |
-| **autonomyJudge** | **闲忙判定（hard gates；P1 读派生量）** | `outer/autonomy-judge.ts` | snapshot+policy → idle/busy |
+| **kpiSpawnCapacity** | **KPI spawn 槽位（读 facets + hardGates）** | `outer/environment/kpi-spawn-capacity.ts` | EnvironmentSnapshot + policy → canSpawn |
+| **autonomyPolicyStore** | **闲忙规则（可聊天改）** | `outer/environment/autonomy-policy-store.ts` | policy.json + rubric.md |
+| **autonomyJudge** | **闲忙判定（hard gates）** | `outer/environment/autonomy-judge.ts` | snapshot+policy → idle/busy |
 | **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
-| **autonomyTaskDispatcher** | **自主任务分发（⏳ 退化：KPI 派遣 → kpiAdvancer；保留 ad-hoc 队列 + 闲聊）** | `outer/autonomy-task-dispatcher.ts` | strategy + 资源 → advance/ad-hoc/post_to_im |
+| **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 由 kpiManager 派）** | `outer/casual-chat-dispatcher.ts` | verdict(idle) + personality → post_to_im |
 | **imIntentClassifier** | **入站意图（⏳ KPI vs ad-hoc vs chat）** | `outer/inbound/im-intent-classifier.ts` | IM 文本 → intent |
-| **subKpiDecomposer** | **子 KPI 首拆（⏳ 首次 advance 时）** | `outer/kpi/sub-kpi-decomposer.ts` | parent KpiRecord → leaf children + cadence |
-| **kpiCadence** | **节拍纯函数（⏳ isCadenceDue / nextDueAt）** | `outer/kpi/kpi-cadence.ts` | KpiRecord + now → due |
+| **subKpiDecomposer** | **【已删除】扁平 KPI** | — | 见 KPI-MANAGER-LAYER.md §2.1 |
+| **kpiBurstState** | **多 burst 资格 + 并行上限** | `outer/kpi/kpi-burst-state.ts` | R1/R2；`maxParallelBurstsPerKpi` |
+| **kpiAwaitingReview** | **AWAITING 审查 R3/R4** | `outer/kpi/kpi-awaiting-review.ts` | 不合理 AWAITING / ask_user 超时 → stop |
+| **kpiCadence** | **【已删除】** 调度改心跳即时派；定时 → AWAITING/wait_timer | — | 见 KPI-MANAGER-LAYER.md §2.3 |
 | **kpiSlotIdle** | **ongoing 槽位判定（⏳ DONE/AWAITING=空闲）** | `outer/kpi/kpi-slot-idle.ts` | leaf KPI + registry + snapshot → idle? |
-| **burstReuse** | **Burst 复用 + preempt（⏳ per leaf canonical）** | `outer/kpi/burst-reuse.ts` | advance / preempt → spawn |
+| **burstReuse** | **【已删除】每次 advance 新 workspace** | — | 见 KPI-MANAGER-LAYER.md §2.2 |
 | **burstRunHistory** | **Burst 执行史（⏳ 外脑读 run digest）** | `outer/kpi/burst-run-history.ts` | onExit → BurstRunRecord[] |
-| **kpiAdvancer** | **KPI 推进主循环（✅ 心跳 + advance_kpi + Ops API）** | `outer/kpi/kpi-advancer.ts` | focusOrder → dispatch sprint |
+| **kpiManager** | **KPI 编排（✅ reap 僵尸 + 心跳 advance；取代 strategyPlanner 心跳路径）** | `outer/kpi/kpi-manager.ts` | env idle → reap + set_goal |
+| **kpiAdvancer** | **KPI sprint 执行（IM/Ops/advance_kpi；心跳由 kpiManager 调）** | `outer/kpi/kpi-advancer.ts` | advanceKpi → set_goal |
 | **adHocBurstAllocator** | **一次性任务 burst（✅ 无 kpi_id）** | `outer/ad-hoc-burst-allocator.ts` | ad_hoc goal → new instance |
 | **inboundKpiRouter** | **IM 入站 KPI/ad-hoc 分流（✅）** | `outer/inbound/inbound-kpi-router.ts` | classify → advance / ad-hoc |
-| **strategyStore** | **战略真相（✅ current.json + journal-YYYY-MM.jsonl）** | `outer/strategy/strategy-store.ts` | StrategyArtifact CRUD + journal append |
-| **strategyTrigger** | **战略 — 重评估触发器（✅ §6 表纯函数）** | `outer/strategy/strategy-trigger.ts` | ctx → {reevaluate, triggers} |
-| **strategyArtifact** | **战略 — StrategyArtifact 校验/规范化（✅ WHY+HOW 必填 + ⊆active 交集）** | `outer/strategy/strategy-artifact.ts` | raw → 校验后 artifact / errors |
-| **strategyPlanner** | **战略 REFLECT + DESIGN（✅ planNext 注入 callLlm；事件驱动重评估；reject→fallback）** | `outer/strategy/strategy-planner.ts` | env+kpi+lessons → StrategyArtifact |
-| **dispatchByStrategy** | **战略 — dispatcher 退化选择（✅ focusOrder∩active 纯函数）** | `outer/strategy/dispatch-by-strategy.ts` | strategy+active → kpi/none |
-| **staleBurstReaper** | **杀僵尸（✅ P0 静态超时兜底 + cullDirectives grace=now；ABORTED 状态迁移 + kill 注入；grace=warn 属 P1）** | `outer/strategy/stale-burst-reaper.ts` | strategy + registry → ABORTED + archive |
-| **strategyLayerFacade** | **战略 — facade（runStrategyPhase 编排 store→trigger→plan→reaper→dispatch；常开，idle 时由 autonomyPipeline 调用）** | `outer/strategy/index.ts` | tick → RunStrategyPhaseResult |
-| **strategyLiveAdapter** | **战略 — live 接线（✅ 真 registry/LLM/process.kill/action-log；autonomyPipeline 在 idle 调用，注入 focusOrder/strategyMode 给 dispatcher）** | `outer/strategy/live-adapter.ts` | pipeline deps → RunStrategyPhaseResult |
+| **strategyPlanner** | **【已删除】** | — | 见 KPI-MANAGER-LAYER.md |
+| **strategyStore** | **【已删除】** | — | 见 KPI-MANAGER-LAYER.md |
+| **staleBurstReaper** | **僵尸清理（kpiManager R5）** | `outer/kpi/stale-burst-reaper.ts` | selectStaleAwaiting + reap → ABORTED |
+| **kpiAwaitingReviewLlm** | **AWAITING LLM 复审（P3）** | `outer/kpi/kpi-awaiting-review-llm.ts` | requireProgressSignal 后 optional LLM |
 | **kpiFeedback** | **多巴胺反馈调节（momentum 增量 + 选 KPI）** | `outer/kpi-feedback.ts` | BurstFeedbackSignal → Δmomentum / selectKpiByMomentum |
 | performanceGoalEngine | 长期绩效目标审阅 | `performance-goals/engine.ts` | goals → heartbeat block |
 
@@ -88,8 +85,8 @@
 |------|------|
 | `06-L3-Outer-AllModules` | 全部外脑组件 + 所有 L3 边 |
 | `07-L3-Outer-Inbound-IM` | IM 入站：Facade → **awaitingInboundResolver** → 检索/记忆/是否说话 → 对话环 → 工具 |
-| `07b-L3-Outer-Inbound-HTTP` | HTTP roundtrip：Orchestrator → policy → 直 spawn |
-| `08-L3-Outer-Inner-Lifecycle` | spawn、**startupResume**、**reconcile**、registry、changeWatcher、pushLoop、completionNotify、KPI |
+| `07b-L3-Outer-Inbound-HTTP` | HTTP 入站：Facade（与 IM 同路径）→ policy → conversationLoop |
+| `08-L3-Outer-Inner-Lifecycle` | spawn、registry markStale、changeWatcher、pushLoop、completionNotify、innerBurstExit、KPI |
 | `10-L2-KPI-Closed-Loop` | L2：agentServer ↔ innerWorker |
 | `10b-L3-Outer-KPI` / `10c-L3-Inner-Reflexion` | L3 外脑调度 / 内脑反思分图 |
 | **`11-L3-Outer-Autonomy`** | **心跳：probe → gates → 战略 WHY+HOW → 质控 → KPI dispatch** |
@@ -115,7 +112,7 @@
 
 **测试**（按 component）：[`COMPONENT-TESTING.md`](./COMPONENT-TESTING.md) · 清单 [`COMPONENT-TEST-MAP.md`](./COMPONENT-TEST-MAP.md)
 
-**双入口**：生产 IM 走 `outerBrainFacade`；`POST /api/outer/roundtrip` 走 `outerOrchestrator`（spawn 可不经过 registry）。
+**单入口**：生产 IM 与 HTTP 调试均走 `outerBrainFacade`（`POST /api/outer/inbound`）。
 
 ---
 
@@ -144,15 +141,19 @@
 | **burstStallAlert** | **空转告警落盘 + 索引** | `inner-brain/burst-stall-alert.ts` | verdict → `stall-alerts/` 包 + `index.jsonl` |
 | **localNodeStore** | **LocalNode 库**（P0） | `inner-brain/local-node-store.ts` | commit / read / list + index |
 | **memoryStore** | **全局 memory.json**（P0） | `inner-brain/memory-store.ts` | patch/get goal/facts/constraints/last_failure/node_results/dag_history(环形)/locked_milestones |
-| **factTopic** | **事实 topic 归一化**（⏳ P0） | `inner-brain/fact-topic.ts` | content → merge key；见 FACTS-KNOWLEDGE-GOVERNANCE |
-| **factGovernor** | **事实合并/淘汰/注入上限**（⏳ P0） | `inner-brain/fact-governor.ts` | supersede-on-write · quota/cold · prompt select |
+| **factTopic** | **事实 topic 归一化** | `inner-brain/fact-topic.ts` | content → merge key；含 `fanqie.publish.*` |
+| **factGovernor** | **事实合并/淘汰/注入上限** | `inner-brain/fact-governor.ts` | supersede-on-write · quota/cold · prompt select · conflict sweep |
+| **factConflict** | **事实矛盾启发式** | `inner-brain/fact-conflict.ts` | polarity · stale status · `fact_conflicts[]` |
 | **drive9KnowledgeShared** | **drive9 `/knowledge/shared/` 完全共享读写** | `outer/knowledge-promote.ts` · `drive9/knowledge-drive9-store.ts` | `createDrive9FactSyncSink` / `seedDrive9FactsToMemory`；ADL [`DRIVE9-KNOWLEDGE-SHARED.md`](./DRIVE9-KNOWLEDGE-SHARED.md) |
 | **factDrive9Eviction** | **drive9 共享事实淘汰**（⏳ P2） | `outer/fact-drive9-eviction.ts` | 对齐 nodeDefEviction |
 | **designerToolRegistry** | **Designer 专用工具集**（P0） | `inner-brain/designer-tools.ts` | list_local_nodes / read_memory / search_and_instance / commit_local_dag(拦截已锁里程碑) / report_done(verify 闸门) / promote_local_node(成功提升 fire-and-forget auto-export) / lock_milestone |
 | **presetSeeder** | **首次 spawn 注入 preset/***（P0） | `inner-brain/preset-seeder.ts` | workDir → preset/base + node_creator + extract_facts（TS 常量幂等 seed） |
 | **memoryTools** | **record_fact / record_constraint**（P2） | `inner-brain/memory-tools.ts` | memoryStore → baseNode 注入工具（写回 facts/constraints 去重） |
 | **preset/extract_facts** | **环境事实提取节点**（P2，preset baseNode） | `inner-brain/preset-nodes.ts` | 探查环境 → record_fact 写 memory.facts |
-| **nodeAbstractor** | **LocalNode → NodeDef（auto-export）**（P1） | `inner-brain/node-abstractor.ts` | LocalNode + envSnapshot → drive9 NodeDef |
+| **nodeAbstractor** | **LocalNode → NodeDef（auto-export）**（P1） | `inner-brain/node-abstractor.ts` | LocalNode + envSnapshot + skills → drive9 NodeDef |
+| **nodeSkillStore** | **节点绑定技能读写**（P1） | `inner-brain/node-skill-store.ts` | `.brain/local_nodes/skills/` |
+| **nodeSkillLoader** | **baseNode 执行前加载技能**（P1） | `inner-brain/node-skill-loader.ts` | 绑定技能 + 全局检索 → prompt |
+| **nodeSkillTools** | **Attributor record_skill**（P1） | `inner-brain/node-skill-tools.ts` | RUN 后蒸馏操作步骤 |
 | **nodeAssembler** | **NodeDef + binding → LocalNode**（P1） | `inner-brain/node-assembler.ts` | NodeDef + workDir + hints → imported LocalNode |
 | brainFs | File-as-State（DyFlow 主用 memory/local_nodes；brainFs 余通用文件读写） | `brain/brain-fs.ts` | 读写 `.brain/*` |
 | completionReport | burst DONE → 完成报告正文（im/verbose） | `openkuroneko/burst/completion-report.ts` | goal/milestones/deliverables → report |
@@ -166,6 +167,7 @@
 | **reactToolCallSlim** | **ReAct write/edit 参数瘦身** | `react-tool-call-slim.ts` | 保护窗口外旧轮 `__SLIM_REF__`；最近 N 轮保留全文 |
 | **writeContentGuard** | **write_file 占位符拒绝 + 同路径保护** | `write-content-guard.ts` + `base-node-executor.ts` | 禁止 `[N chars omitted…]` / `__SLIM_REF__` 落盘；节点内二次 overwrite 拒绝 |
 | archiveStore | 归档 | `archive/fs-store.ts` | archive → session |
+| **planReferenceSearch** | Designer 方案参考检索 | `outer/plan-reference-search.ts` · `inner-brain/plan-reference-port.ts` | `search_task_plans` → archive/repo/peer |
 
 **视图**：`09-L3-Inner-Phases`（DyFlow Phases）；`09b-L3-Inner-DyFlow`（DyFlow 全模块图）；`14-L2-DyFlow-Node-Lifecycle`（NodeDef 共享/治理）。
 

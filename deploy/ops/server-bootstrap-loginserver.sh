@@ -119,3 +119,12 @@ curl -sI http://127.0.0.1:3000/login | head -5 || true
 curl -sk https://127.0.0.1/auth-health -H 'Host: kuroneko.chat' || true
 echo
 docker compose -f docker-compose.prod.yml ps
+
+echo '=== daily restart cron ==='
+if [ -f /tmp/loginserver-daily-restart.sh ] && [ -f /tmp/install-loginserver-daily-restart.sh ]; then
+  bash /tmp/install-loginserver-daily-restart.sh /tmp/loginserver-daily-restart.sh
+elif [ -f /opt/kuroneko/deploy/ops/install-loginserver-daily-restart.sh ]; then
+  bash /opt/kuroneko/deploy/ops/install-loginserver-daily-restart.sh
+else
+  echo 'WARN: daily-restart scripts not found; skip cron install'
+fi

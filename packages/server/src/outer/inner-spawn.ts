@@ -1,6 +1,5 @@
 /**
  * 内脑子进程 burst 启动（供外脑工具 set_goal 调用）。
- * 与 orchestrator 中的 spawnInnerBurst 共享同一逻辑，抽取为独立模块避免循环依赖。
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';

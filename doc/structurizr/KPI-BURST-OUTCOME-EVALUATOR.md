@@ -85,7 +85,7 @@ interface BurstOutcomeEvaluation {
 | `evaluateKpiAutonomyDispatch` 的 `kpi_stuck_reflexion` 硬挡 | 移除；`suggestKpiAction.stuck_retry` 提示战略层 / outcome 换向 |
 | burst onExit 事实晋升 | `record_fact` 实时 `sharedFactSink`（见 `DRIVE9-KNOWLEDGE-SHARED.md`） |
 
-`reflexionTrail` 字段保留只读兼容；不再 append。续跑 goal 读 `burstRunHistory`，不读 trail。
+`reflexionTrail` 已从 registry 类型移除（旧盘加载时 strip）。续跑 goal 读 `burstRunHistory`。
 
 ---
 

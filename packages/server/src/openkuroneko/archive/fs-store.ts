@@ -17,13 +17,17 @@
  *       constraints.md
  *       skills.md
  *       knowledge.md
- *       reflexion.json      # 可选
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import type { KnowledgeStore, SessionMeta, RetrievedSession, RetrieveOptions } from './types.js';
+import type {
+  KnowledgeStore,
+  SessionMeta,
+  RetrievedSession,
+  RetrieveOptions,
+} from './types.js';
 import type { BrainFS } from '../brain/index.js';
 
 // ── 停用词（中英文常见虚词） ───────────────────────────────────────────────────
@@ -122,7 +126,7 @@ export function createFilesystemStore(baseDir?: string): KnowledgeStore {
   init();
 
   return {
-    async archive({ brain, agentId, workDir, trigger, triggerReason, goalText, kpiId, reflexion }) {
+    async archive({ brain, agentId, workDir, trigger, triggerReason, goalText, kpiId, burstOutcome }) {
       const sessionId = `${agentId}-${Date.now()}`;
       const wipDir    = path.join(sessionsDir, `${sessionId}-wip`);
       const finalDir  = path.join(sessionsDir, sessionId);
@@ -134,7 +138,7 @@ export function createFilesystemStore(baseDir?: string): KnowledgeStore {
 
       const hasBrainContent =
         !!constraints.trim() || !!skills.trim() || !!knowledge.trim();
-      if (!hasBrainContent && !reflexion) return;
+      if (!hasBrainContent && !burstOutcome) return;
 
       const meta: SessionMeta = {
         sessionId,
@@ -146,7 +150,7 @@ export function createFilesystemStore(baseDir?: string): KnowledgeStore {
         goalSummary: goalText.slice(0, 200),
         goalKeywords: extractKeywords(goalText),
         ...(kpiId ? { kpiId } : {}),
-        ...(reflexion ? { verdict: reflexion.verdict, reflexion } : {}),
+        ...(burstOutcome ? { verdict: burstOutcome.verdict, burstOutcome } : {}),
         counts: {
           constraints: countNonEmptyLines(constraints),
           skills:      countNonEmptyLines(skills),
@@ -159,10 +163,6 @@ export function createFilesystemStore(baseDir?: string): KnowledgeStore {
       fs.writeFileSync(path.join(wipDir, 'skills.md'),      skills,      'utf8');
       fs.writeFileSync(path.join(wipDir, 'knowledge.md'),   knowledge,   'utf8');
       fs.writeFileSync(path.join(wipDir, 'meta.json'),      JSON.stringify(meta, null, 2), 'utf8');
-      if (reflexion) {
-        fs.writeFileSync(path.join(wipDir, 'reflexion.json'), JSON.stringify(reflexion, null, 2), 'utf8');
-      }
-
       fs.renameSync(wipDir, finalDir);
       fs.writeFileSync(indexFile, JSON.stringify(meta), 'utf8');
     },
@@ -260,12 +260,12 @@ export function createFilesystemStore(baseDir?: string): KnowledgeStore {
 
       const parts: string[] = [];
 
-      const reflexionSessions = sessions.filter((s) => s.meta.reflexion);
-      if (reflexionSessions.length > 0) {
-        parts.push('## 本 KPI 历次反思');
-        parts.push('> 来自同 KPI 过往 burst 的结构化复盘。硬失败方向请勿重试；换向建议优先采纳。');
-        for (const s of reflexionSessions) {
-          const r = s.meta.reflexion!;
+      const outcomeSessions = sessions.filter((s) => s.meta.burstOutcome);
+      if (outcomeSessions.length > 0) {
+        parts.push('## 本 KPI 历次 burst 结果');
+        parts.push('> 来自同 KPI 过往 burst 的结构化结果。硬失败方向请勿重试；换向建议优先采纳。');
+        for (const s of outcomeSessions) {
+          const r = s.meta.burstOutcome!;
           const date = s.meta.ts.slice(0, 10);
           parts.push(`\n### ${s.meta.goalSummary.slice(0, 60)}（${date}，verdict=${r.verdict}）`);
           if (r.hardFailures.length > 0) {

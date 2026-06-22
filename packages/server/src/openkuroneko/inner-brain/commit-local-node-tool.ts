@@ -10,10 +10,12 @@
 
 import type { Tool } from '../tools/index.js';
 import type { LocalNodeStore } from './local-node-store.js';
+import { createNodeSkillStore } from './node-skill-store.js';
 import type {
   LocalNode,
   NodeInputSpec,
   NodeOutputSpec,
+  NodeSkillRef,
 } from './types.js';
 
 export interface CommitLocalNodeTool extends Tool {
@@ -25,6 +27,9 @@ export interface CommitToolOptions {
   /** 打包来源（provenance） */
   sourceNodeIds?: string[];
   fromBurst?: string;
+  /** 拷贝源节点绑定技能（promote 时携带 skills） */
+  sourceRef?: string;
+  workDir?: string;
 }
 
 function asSpecArray(v: unknown, fallbackType: string): NodeInputSpec[] | NodeOutputSpec[] {
@@ -115,6 +120,26 @@ export function createCommitLocalNodeTool(
 
         const saved = store.commit(node);
         committedIds.push(saved.id);
+
+        const sourceRef =
+          (typeof args['sourceRef'] === 'string' ? args['sourceRef'].trim() : '') ||
+          opts.sourceRef ||
+          '';
+        if (sourceRef && opts.workDir) {
+          const skillStore = createNodeSkillStore(opts.workDir);
+          const copied = skillStore.copySkills(sourceRef, saved.id);
+          if (copied.length > 0) {
+            const withSkills = store.read(saved.id);
+            if (withSkills) {
+              const merged: NodeSkillRef[] = [...(withSkills.skills ?? [])];
+              for (const ref of copied) {
+                if (!merged.some(s => s.id === ref.id)) merged.push(ref);
+              }
+              store.commit({ ...withSkills, skills: merged });
+            }
+          }
+        }
+
         return { ok: true, output: `committed LocalNode ${saved.id}@${saved.version}` };
       } catch (e) {
         return { ok: false, output: `commit_local_node 失败：${String(e)}` };

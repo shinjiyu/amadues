@@ -83,6 +83,8 @@ describe('awaiting-inbound-resolver helpers', () => {
 
   it('isAgentNotificationEcho flags completion/block templates', () => {
     expect(isAgentNotificationEcho('✅ 任务完成')).toBe(true);
+    expect(isAgentNotificationEcho('❌ 内脑任务失败（`ib-1`）')).toBe(true);
+    expect(isAgentNotificationEcho('⚠️ 内脑任务部分完成（未完全达成目标）')).toBe(true);
     expect(isAgentNotificationEcho('⚠️ 内脑任务被阻塞，需要您的输入')).toBe(true);
     expect(isAgentNotificationEcho('⏸ 内脑任务等待您的输入')).toBe(true);
     expect(isAgentNotificationEcho('SUB=cookie')).toBe(false);

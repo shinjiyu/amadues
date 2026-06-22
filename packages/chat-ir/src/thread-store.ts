@@ -63,7 +63,7 @@ export function createThreadRecord(input: {
   });
 }
 
-/** roundtrip / 遗留消息：保证 threads[] 有 thread 元数据且 messages[bucket] 存在 */
+/** HTTP / 遗留消息：保证 threads[] 有 thread 元数据且 messages[bucket] 存在（默认 kind=group，HTTP 入站会按 thread_id 修正 dm） */
 export function ensureThreadShell(
   data: LooseThreadStore,
   threadId: string,

@@ -59,7 +59,7 @@
    `sendActivity(threadId, kind: 'typing' | 'idle')`，给外脑一个**跨渠道**出口（Discord 渠道可映射其 typing API）；
    入站侧考虑用一个独立 callback（如 `onActivity`）而非塞进 `onAgentMessage`，保持「传输」职责清晰。
 4. **`apps/web-chat` 前端**：消费 `typing.relay` 渲染输入指示器（带超时或显式 stop）。
-5. **外脑接入**：在 `runOuterRoundtrip` / 心跳派发回复前后调用 `sendActivity('typing')` / `sendActivity('idle')`。
+5. **外脑接入**：在 `OuterBrain.handleInbound` / 心跳派发回复前后调用 `sendActivity('typing')` / `sendActivity('idle')`。
 
 ## 决策点（实现前需定）
 

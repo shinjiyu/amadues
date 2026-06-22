@@ -24,13 +24,13 @@
 | 能力 | 设计意图 | 实现 |
 |------|----------|------|
 | 设目标 / 任务 | 外脑写 goal、触发执行 | `POST /api/inner/:ws/goal`、`InnerBrainEngine.setGoal`（权威 `.brain/goal.md`） |
-| **正式：一轮外脑任务** | thread 记账 + goal + 子进程 burst | `POST /api/outer/roundtrip`：`text` 或 `parts[]`（含图片 data URL → 落盘进 goal，见 §7） |
+| **正式：外脑入站** | thread 记账 + 外脑对话环（含 set_goal 派发内脑） | `POST /api/outer/inbound` 或 IM `OuterBrain.handleInbound` |
 | 执行一段内脑（内省 / Dashboard） | 同进程 tick / 调试 | `POST /api/inner/:ws/pi-tick`、`pi-auto` |
 | 观察状态 | 只读 | `GET /api/inner/:ws/status`、`GET /api/outer/inner-status/:ws` |
 
 ### 2.1 IM 插件 ↔ 外脑（适配协议）
 
-渠道桥（`DiscordChannel` 等）在 chat IR 持久化消息后**不直接走 HTTP**：而是通过注入的 `onAgentMessage` callback 直接调用 OuterBrain.handleInbound，与 `runOuterRoundtrip` 共用同一 agent 进程内的 `threads.json` / `identities.json`。如果**外部系统**想触发一次 roundtrip（例如离线测试或人类直接 POST），仍可走 `POST /api/outer/roundtrip` HTTP 入口，并将 `user_message_persisted: true` 与 `text`/`parts` 二选一。
+渠道桥（`DiscordChannel` 等）在 chat IR 持久化消息后**不直接走 HTTP**：而是通过注入的 `onAgentMessage` callback 直接调用 `OuterBrain.handleInbound`。离线调试可走 **`POST /api/outer/inbound`**（与 IM 相同路径；出站消息在响应 `replies[]` 中返回），并将 `user_message_persisted: true` 与 `text`/`parts` 二选一。
 
 ---
 
@@ -105,23 +105,19 @@ body：`{ "tenant_id": "default", "realm": "workspace:default" }`（均可选）
 
 ### 4.1 启动内脑（已有）
 
-`POST /api/outer/roundtrip`：追加 thread 消息 → `setGoal(text)` → 子进程 `inner-worker` 跑 Pi-mono Auto（burst）→ 返回 `StructuredReply` 与 `lifecycle` 字段。
+**IM / HTTP 统一路径**：`OuterBrain.handleInbound` → 外脑对话环 → 工具 `set_goal` → `inner-brain-registry` 登记 → `inner-worker` burst。
+
+HTTP 离线调试：`POST /api/outer/inbound`（body 含 `text`/`parts`、`thread_id`、`sender_sid`）；响应 `replies[]` 为外脑出站消息。
 
 ### 4.2 burst 结束后：是否自动「晋升 + 关闭」
 
-由 **`AfterBurstPolicy`** 控制（实现：`packages/server/src/outer/inner-lifecycle.ts`）：
+由 **`AfterBurstPolicy`** 控制（实现：`packages/server/src/outer/inner-lifecycle.ts`）。**已移除** M6 `POST /api/outer/roundtrip` 的单请求 `after_burst` 参数；正式路径为：
 
-| 策略值 | 含义 |
-|--------|------|
-| `none`（默认） | burst 结束后不自动晋升、不自动关闭；若磁盘上已出现「目标已完成」，回复文案中会 **提示** 可配置策略。 |
-| `promote_and_shutdown_if_complete` | 若 `suggestGoalCompleteForShutdown(workDir)` 为真，则顺序执行 **manifest → Repository** 与 **brainShutdown**（与 `promote-and-shutdown` 相同）。 |
-
-**配置方式**（二选一或组合）：
-
-- 环境变量：`UTLRA_OUTER_AFTER_BURST=promote_and_shutdown_if_complete`（或 `1` / `true`）。
-- 单次请求：`POST /api/outer/roundtrip` body 中 `after_burst: "promote_and_shutdown_if_complete"`（会覆盖默认；传 `inherit` 则读环境变量）。
-
-响应中的 **`lifecycle`** 含：`afterBurstPolicy`、`goalCompleteSuggested`、`promoteShutdownApplied`、`promoted`（若执行了晋升）。
+| 方式 | 说明 |
+|------|------|
+| `POST /api/outer/workspace/:ws/shutdown` | `promote_manifest: true` 时晋升 + SLEEPING |
+| `POST /api/inner/:ws/promote-and-shutdown` | Dashboard / 内脑命名空间同等行为 |
+| 环境变量 `UTLRA_OUTER_AFTER_BURST` | 若仍有 legacy 直 spawn 测试夹具可读；**生产 IM/HTTP 入站不经 roundtrip** |
 
 ### 4.3 外脑主动关闭内脑（不依赖 burst）
 

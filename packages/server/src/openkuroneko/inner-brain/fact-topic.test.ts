@@ -17,6 +17,20 @@ describe('deriveFactTopic', () => {
     expect(deriveFactTopic('番茄编辑器 selector .serial-input 有效')).toBe('fanqie.ui.editor');
   });
 
+  it('maps fanqie publish status to fanqie.publish.status', () => {
+    expect(deriveFactTopic('chapter_passed_num=5 第5章待发布')).toBe('fanqie.publish.status');
+  });
+
+  it('maps fanqie draft strategy to fanqie.publish.draft', () => {
+    expect(deriveFactTopic('每次导航 newchapter_0 新草稿 item_id')).toBe('fanqie.publish.draft');
+  });
+
+  it('maps fanqie content inject to fanqie.publish.inject', () => {
+    expect(deriveFactTopic('番茄 prosemirror 内容注入 clipboardevent paste')).toBe(
+      'fanqie.publish.inject',
+    );
+  });
+
   it('maps playbook files to playbook basename', () => {
     expect(deriveFactTopic('稳定流程见 workspace/ch4.playbook.json')).toBe('playbook.ch4');
   });

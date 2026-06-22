@@ -35,22 +35,25 @@
 | **writeContentGuard** | ✅ `write-content-guard.test.ts` | — | — | 占位符拒绝 + slim 引用格式 |
 | **baseNodeWriteGuard** | ✅ `base-node-executor.test.ts` | — | — | 同路径 overwrite 拒绝 |
 | **factTopic** | ✅ `fact-topic.test.ts` | — | — | ADL [`FACTS-KNOWLEDGE-GOVERNANCE.md`](./FACTS-KNOWLEDGE-GOVERNANCE.md) §4 |
-| **factGovernor** | ✅ `fact-governor.test.ts` | ⏳ | — | supersede · quota · prompt cap |
+| **factGovernor** | ✅ `fact-governor.test.ts` | ⏳ | — | supersede · quota · prompt cap · conflict sweep |
+| **factConflict** | ✅ `fact-conflict.test.ts` | — | — | ADL §5.3 polarity · stale status |
 | **factDrive9Eviction** | ⏳ | ⏳ | — | P2 drive9 sweep |
-| outerOrchestrator | 🟡 parse | ✅ `outerOrchestrator.component.integration.test.ts` | — | + `outer-roundtrip` / `outer-roundtrip-inner`（注入 spawn） |
-| innerBrainKpiReuse | ✅ `inner-brain-kpi-reuse.test.ts` | ⏳ | — | ADL [`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md) |
-| innerBrainRegistry | ❌ | ✅ `innerBrainRegistry.component.integration.test.ts` | — | |
+| structuredReplyParts | 🟡 parse | ✅ `structuredReplyParts.component.integration.test.ts` | — | `structured-reply-parts.test.ts` |
+| innerBrainKpiReuse | ✅ `inner-brain-kpi-reuse.test.ts` | — | — | 仅 `isSetGoalDispatched` |
+| innerBrainRegistry | 🟡 `inner-brain-registry.test.ts` | ✅ `innerBrainRegistry.component.integration.test.ts` | — | boot markStale；见 [`INNER-BRAIN-STARTUP-RESUME-REMOVED.md`](./INNER-BRAIN-STARTUP-RESUME-REMOVED.md) |
 | innerSpawner | ❌ | ✅ `innerSpawner.component.integration.test.ts` | — | + 可选 `spawn-inner-worker-live`（`UTLRA_TEST_SPAWN_INNER=1`） |
 | kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | |
-| kpiBurstHooks | ✅ `kpi-burst-hooks.test.ts` | ✅ `kpiBurstHooks.component.integration.test.ts` | — | onExit → outcomeEvaluator |
-| kpiBurstOutcomeEvaluator | ✅ `kpi-burst-outcome-evaluator.test.ts` + `burst-process-report` | — | — | ADL [`KPI-BURST-OUTCOME-EVALUATOR.md`](./KPI-BURST-OUTCOME-EVALUATOR.md) |
+| innerBurstExit | ✅ via `kpi-scenario.harness.test.ts` + spawn onExit | — | — | 见 [`KPI-BURST-LIFECYCLE-REMOVED.md`](./KPI-BURST-LIFECYCLE-REMOVED.md) |
 | imIntentClassifier | ✅ `im-intent-classifier.test.ts` | ⏳ inbound IM fixture | — | ADL [`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) §2 |
-| subKpiDecomposer | ✅ `sub-kpi-decomposer.test.ts` | — | — | §3 首拆子 KPI |
-| kpiCadence | ✅ `kpi-cadence.test.ts` | — | — | §3 cadence due |
+| subKpiDecomposer | ❌ 已删除 | — | — | 扁平 KPI；见 KPI-MANAGER-LAYER.md §2.1 |
+| kpiBurstState | ✅ `kpi-burst-state.test.ts` + slot-idle/advancer | — | — | R1/R2 + parallel cap |
+| kpiAwaitingReview | ✅ `kpi-awaiting-review.test.ts` | — | — | R3/R4 AWAITING 审查 |
+| kpiCadence | ❌ 已删除 | — | — | 调度见 KPI-MANAGER-LAYER.md §2.3 |
 | kpiSlotIdle | ✅ `kpi-slot-idle.test.ts` | — | — | §5 ongoing 槽位 |
-| burstReuse | 🟡 via advancer | ⏳ spawn mock | — | §4 canonical 复用 |
-| burstRunHistory | 🟡 via `kpi-burst-hooks.test.ts` | — | — | §6 执行史 |
-| kpiAdvancer | ✅ `kpi-advancer.test.ts` + dispatcher | ✅ `autonomy-heartbeat` | — | §7 主推进 |
+| burstReuse | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md §2.2 |
+| burstRunHistory | 🟡 `burst-run-history.test.ts` | — | — | §6 执行史（advancer 路径写入） |
+| kpiManager | ✅ `kpi-manager.test.ts` + `kpi-spawn-capacity.test.ts` | ⏳ `kpiManager.component.integration.test.ts` | — | R5 reap + R1 advance；读 EnvironmentSnapshot |
+| kpiAdvancer | ✅ `kpi-advancer.test.ts` | ✅ `autonomy-heartbeat` | — | IM/Ops advance；心跳经 kpiManager |
 | adHocBurstAllocator | ✅ `ad-hoc-burst-allocator.test.ts` | — | — | §8 一次性任务 |
 | inboundKpiRouter | ✅ `im-intent-classifier.test.ts` | ✅ `inbound-kpi-router.component.integration.test.ts` + `outer-brain-inbound-kpi-router.integration.test.ts` | — | §2 IM 分流 |
 | outerToolsKpiAdvancement | ✅ `outer-tools-kpi-advancement.test.ts` | — | — | `set_goal(kpi_id)` 封禁 |
@@ -58,29 +61,29 @@
 | kpiFeedback | ✅ `kpi-feedback.test.ts` | — | — | ADL [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) §16 多巴胺回路 |
 | outerHeartbeat | 🟡 death-detect | ✅ `outer-heartbeat.integration.test.ts` + `autonomy-heartbeat.component.integration.test.ts` | — | ADL [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP |
-| completionNotify | 🟡 `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + `completion-notified.json` dedup |
+| completionNotify | 🟡 `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1） |
+| innerBurstExit | 🟡 `inner-burst-exit.test.ts` | — | — | `detectBurstGoalGaps` → partial ERROR |
 | imNotifyDedup | ✅ `im-notify-dedup.test.ts` | — | — | ADL [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md) §2 |
 | awaitingNotify | ✅ `awaiting-notify.test.ts` | — | — | onExit AWAITING + ask_user |
 | pushLoop | ✅ `push-loop.test.ts` | ✅ `pushLoop.component.integration.test.ts` | — | BLOCK **不**推 IM；PROGRESS 可选 |
-| changeWatcher | ✅ `change-watcher.test.ts` + `change-watcher.bootstrap.test.ts` | ✅ `changeWatcher.component.integration.test.ts` | — | spawn 前 markConsumed |
+| changeWatcher | ✅ `change-watcher.test.ts` + `change-watcher.bootstrap.test.ts` | ✅ `changeWatcher.component.integration.test.ts` | — | spawn 前 markConsumed；bootstrap 仅 tick |
 | brainAsyncSnapshot | ✅ `brain-async-snapshot.test.ts` | — | — | |
-| registryLifecycleReconcile | ✅ `registry-lifecycle-reconcile.test.ts` | ✅ `registryLifecycleReconcile.component.integration.test.ts` | — | 含周期 reconcile |
 | awaitingInboundResolver | ✅ `awaiting-inbound-resolver.test.ts` | ✅ `awaitingInboundResolver.component.integration.test.ts` | — | IM→resolve；B2 凭证→credential_ref |
 | memoryBlockStore | ✅ `memory-block-store.test.ts` + `memory-block-tools.test.ts` | ✅ `memoryBlockStore.component.integration.test.ts` | — | B1 工具已接 outerToolExecutor |
-| innerBrainStartupResume | ✅ `inner-brain-startup-resume.test.ts` | ✅ `innerBrainStartupResume.component.integration.test.ts` | — | ADL [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md) |
 | llmGateway | ✅ `raw.test.ts` 等 | ✅ `llmGateway.component.integration.test.ts` | — | |
 | llmUsageTracker | ✅ `llm-usage-tracker.test.ts` | — | — | 内存滚动窗口 |
 | llmUsageJournal | ✅ `llm-usage-journal.test.ts` | ✅ `llmUsageJournal.component.integration.test.ts` | — | ADL [`LLM-USAGE-JOURNAL.md`](./LLM-USAGE-JOURNAL.md) |
 | environmentSensorRegistry | ✅ `environment-sensor-registry.test.ts` | ⏳ `environmentSensorRegistry.component.integration.test.ts` | — | ADL [`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)；P0 已实现，pipeline 经 toResourceSnapshot 适配（行为等价） |
 | environmentJournal | ✅ `environment-journal.test.ts` | ⏳ `environmentJournal.component.integration.test.ts` | — | ring trim + current.json + events 月轮转 + 未消费查询 + markConsumed |
 | environmentChangeDetector | ✅ `environment-change-detector.test.ts` | — | — | hysteresis / warmUp / rate·delta·streak derive |
-| strategyStore | ✅ `strategy-store.test.ts` | — | — | ADL [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)；current.json + journal 月轮转 |
-| strategyTrigger | ✅ `strategy-trigger.test.ts` | — | — | §6 重评估触发器表 |
-| strategyArtifact | ✅ `strategy-artifact.test.ts` | — | — | WHY+HOW 必填 reject + strategy⊆active 交集 |
-| strategyPlanner | ✅ `strategy-planner.test.ts`（FakeLLM 注入） | ⏳ `strategyPlanner.component.integration.test.ts` | ⏳ `strategy-planner.prompt.test.ts` | FakeLLM → typed artifact；reject→fallback |
-| dispatchByStrategy | ✅ `dispatch-by-strategy.test.ts` | ✅ `dispatch-focusorder.test.ts`（dispatcher 接 focusOrder/strategyMode） | — | focusOrder∩active 选 KPI + cooldown + 资源闸门 + strategy_no_focus 跳闲聊 |
-| staleBurstReaper | ✅ `stale-burst-reaper.test.ts` | ⏳ `staleBurstReaper.component.integration.test.ts` | — | 超时选择 + peek 跳过 + kill 注入 + ABORTED 迁移；grace=warn 属 P1 |
-| strategyLiveAdapter | ✅ `live-adapter.test.ts`（纯函数）+ `run-strategy-phase.test.ts`（编排端到端 FakeLLM+fake reaper） | （经 autonomyPipeline，gated） | — | burst 退出计数 / planInputKpis / 真 LLM·kill·action-log 接线 |
+| strategyStore | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
+| strategyTrigger | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
+| strategyArtifact | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
+| strategyPlanner | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
+| dispatchByStrategy | ❌ 已删除 | — | — | kpiManager 取代 |
+| staleBurstReaper | ✅ `kpi/stale-burst-reaper.test.ts` | — | — | R5；自 strategy/ 迁入 |
+| strategyLiveAdapter | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
+| kpiAwaitingReviewLlm | ✅ `kpi-awaiting-review-llm.test.ts` | — | — | P3 LLM JSON 解析 |
 | **frameworkBenchmarkHarness** | ✅ `token-estimate.test.ts` | ✅ `framework-benchmark.component.integration.test.ts` | — | ADL [`FRAMEWORK-BENCHMARK.md`](./FRAMEWORK-BENCHMARK.md) · S1/S2 + `baseline.json` |
 | **nodeDefDrive9Store** | ✅ `node-def-drive9-store.test.ts`（put/get/index/dedupe/search/tombstone） | — | — | ADL [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §5.4（P1，注入 Drive9Fs） |
 | **nodeDefEviction** | ✅ `node-def-eviction.test.ts`（score + cold + quota） | — | — | dedupe + quota + cold tombstone（P2） |
@@ -122,9 +125,13 @@
 | **burstStallAlert** | ✅ `burst-stall-alert.test.ts` | — | — | P0 观测；落盘 + debounce |
 | **localNodeStore** | ✅ `local-node-store.test.ts`（schema/嵌套 id/穿越/index 重建） | — | — | P0；schema 校验 + index |
 | **memoryStore** | ✅ `memory-store.test.ts`（点路径/last_failure/node_results/facts/dag_history 环形/locked_milestones 去重） | — | — | P0；last_failure / node_results / facts / dag_history / locked_milestones |
-| **designerToolRegistry** | ✅ `search-and-instance.test.ts`（装配失败包容 + 幂等） | ✅ `designer.test.ts`（list/read/commit/report verify 闸门/promote/lock_milestone+拦截） | — | P0；list/read/commit/report+verify/promote/lock |
+| **designerToolRegistry** | ✅ `search-and-instance.test.ts`（装配失败包容 + 幂等）· ✅ `search-task-plans.test.ts` | ✅ `designer.test.ts`（list/read/commit/report verify 闸门/promote/lock_milestone+拦截） | — | P0；list/read/commit/report+verify/promote/lock |
+| **planReferenceSearch** | ✅ `plan-reference-search.test.ts` · ✅ `plan-reference-port.test.ts` | ⏳ `planReferenceSearch.component.integration.test.ts` | — | Designer `search_task_plans` |
 | **presetSeeder** | ✅ `preset-seeder.test.ts`（首次 seed/跳过/版本升级/export=false） | — | — | P0；首次 seed + 已存在跳过 |
 | **nodeAbstractor** | ✅ `node-abstractor.test.ts`（sanitize 残留/origin 过滤/dedupe） | — | ⏳ `node-abstractor.prompt.test.ts` | P1；origin 过滤 + dedupeKey |
+| **nodeSkillStore** | ✅ `node-skill-store.test.ts` | — | — | ADL [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) |
+| **nodeSkillLoader** | ✅ `node-skill-loader.test.ts` | — | — | 执行前加载绑定+全局技能 |
+| **dyflowAttributor** | ✅ `attributor.test.ts`（record_fact + record_skill） | ✅ `controller.component.integration.test.ts` | — | RUN→ATTRIBUTE |
 | **nodeAssembler** | ✅ `node-assembler.test.ts`（applyBinding 无残留/幂等/缺 required） | — | ⏳ `node-assembler.prompt.test.ts` | P1；binding 推断 + 失败包容 |
 | brainFs | ✅ `parse-milestones.test.ts` | ✅ `brainFs.component.integration.test.ts` | — | DyFlow 后仅余通用文件读写（tail 等） |
 | archiveStore | ✅ `fs-store.test.ts` | ✅ `archiveStore.component.integration.test.ts` | — | |
@@ -153,4 +160,4 @@ npm run test:unit -w @utlra/server
 ## 下一步
 
 1. **CI nightly**（可选）`UTLRA_TEST_SPAWN_INNER=1` 跑真实内脑子进程
-2. **index** 子进程内再测 `POST /api/outer/roundtrip`（HTTP 契约，当前由模块测覆盖）
+2. **index** 子进程内再测 `POST /api/outer/inbound`（HTTP 契约，当前由 `outer-http-inbound.integration.test.ts` 覆盖）

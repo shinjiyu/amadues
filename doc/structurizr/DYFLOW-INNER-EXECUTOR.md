@@ -514,6 +514,7 @@ LocalNode.body.graph 存在时（compound）:
 | `read_memory` | 按 key 读 memory（含 last_failure） | `…/read-memory.ts` |
 | `read_trace` | 读最近 N 轮 baseNode 执行 trace 摘要 | `…/read-trace.ts` |
 | **`search_and_instance`** | drive9 搜 NodeDef → 批量 Assembler → 只回报成功 LocalNode | `…/search-and-instance.ts` |
+| **`search_task_plans`** | 按 query 搜历史方案 / playbook（**参考 only**，不写 facts） | `…/designer-tools.ts` + [`TASK-PLAN-REFERENCE.md`](./TASK-PLAN-REFERENCE.md) |
 | `commit_local_dag` | Designer 出图终态（写 `local_dag.json`） | `…/commit-local-dag.ts` |
 | `report_done` | Designer 宣告本 burst 完成（→ DONE） | `…/report-done.ts` |
 
@@ -716,3 +717,4 @@ burst 结束 → registry DONE；子进程退出
 | 2026-06-06 | §6.8：**DAG 记忆 `memory.dag_history`**（RUN 后归档 committed DAG + 结果，环形 20）→ Designer patch/redesign 决策；§9b：**`promote_local_node`** Designer 反思期直接提升节点，`preset/node_creator` RUN 节点标 deprecated |
 | 2026-06-06 | §6.7a：**节点级交付物 `NodeInst.deliverable`**（file/json_key/stdout_contains/stdout_absent 机械验票，与 interface.outputs 取 AND）；§9a：**`report_done` 目标级闸门 `verify`**（复用同引擎，防 Designer 假完成）；新增 `deliverable-check.ts`；修复 `normalizeNodeInst` 丢弃 `acceptance` 的 bug。理由：bot2 ib-mq13z7co-9420「凭空断言已发布 5 章」终结 burst |
 | 2026-06-06 | §7b：**移除「Tool 晋升」层（C）**——删 `register_workspace_script_tool` / `ws_*` / `workspace-script-tools.ts`；固化收成两层 facts(A)/LocalNode(B)；稳定脚本改 `record_fact` 记路径。理由：bot2 生产注册 0 次、调用 0 次，零收益却增维护成本。`doc/todo/dyflow-tool-promotion.md` 标 deprecated |
+| 2026-06-08 | **内脑失败处理**：Designer LLM/空转 giveup → `dyflow-state.mode=ERROR`（不再 DONE+onComplete）；`resolveInnerBurstFinalStatus` → registry ERROR + `notifyInnerBrainTaskFailed` 短消息（不 dump seed facts） |

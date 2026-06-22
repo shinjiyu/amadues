@@ -60,6 +60,21 @@ describe('recordFactGoverned', () => {
     expect(old?.id).toBe(first.record?.id);
     expect(active[0]?.supersedes).toBe(old?.id);
   });
+
+  it('supersedes near-duplicate active record with different topic', () => {
+    const first = recordFactGoverned(
+      [],
+      { content: 'fanqienovel 第6章破局之棋已成功发布 chapter_passed_num=6', topic: 'general.aaaa' },
+      NOW,
+    );
+    const second = recordFactGoverned(
+      first.records,
+      { content: 'fanqienovel 第6章破局之棋已成功发布 API确认 chapter_passed_num 从5变6', topic: 'general.bbbb' },
+      NOW,
+    );
+    expect(second.action).toBe('superseded');
+    expect(second.records.filter(r => r.status === 'active')).toHaveLength(1);
+  });
 });
 
 describe('sweepFacts', () => {

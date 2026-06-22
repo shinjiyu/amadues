@@ -6,8 +6,9 @@
 
 import crypto from 'node:crypto';
 
+import { reconcileFactConflicts } from './fact-conflict.js';
 import { deriveFactTopic } from './fact-topic.js';
-import type { FactConfidence, FactRecord, FactSource } from './types.js';
+import type { FactConfidence, FactConflictEntry, FactRecord, FactSource } from './types.js';
 
 export interface FactGovernorWeights {
   cite: number;
@@ -50,8 +51,9 @@ export interface SweepFactsOptions {
 }
 
 export interface SweepFactsResult {
-  superseded: { id: string; reason: 'cold' | 'quota' }[];
+  superseded: { id: string; reason: 'cold' | 'quota' | 'stale_status' }[];
   remainingActive: number;
+  conflicts: FactConflictEntry[];
 }
 
 export interface SelectFactsOptions {
@@ -134,6 +136,52 @@ function normalizeContent(content: string): string {
   return content.replace(/\s+/g, ' ').trim();
 }
 
+function norm(text: string): string {
+  return normalizeContent(text).toLowerCase();
+}
+
+const FACT_STOP = new Set([
+  '的', '了', '在', '是', '和', '或', '与', '等', '及', 'the', 'a', 'an', 'to', 'of', 'for', 'in', 'on',
+]);
+
+function tokenizeFact(text: string): Set<string> {
+  const words = new Set<string>();
+  for (const w of norm(text).split(/[\s,，、；;:：\-_/\\[\]()（）]+/)) {
+    if (w.length > 1 && !FACT_STOP.has(w)) words.add(w);
+  }
+  const cjk = text.replace(/[^\u4e00-\u9fff]/g, '');
+  for (let i = 0; i < cjk.length - 1; i++) {
+    const gram = cjk.slice(i, i + 2);
+    if (!FACT_STOP.has(gram)) words.add(gram);
+  }
+  return words;
+}
+
+export function factContentSimilarity(a: string, b: string): number {
+  const wa = tokenizeFact(a);
+  const wb = tokenizeFact(b);
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let shared = 0;
+  for (const w of wa) {
+    if (wb.has(w)) shared += 1;
+  }
+  return shared / Math.max(wa.size, wb.size);
+}
+
+function findSimilarActiveFact(records: FactRecord[], content: string, threshold = 0.62): FactRecord | null {
+  let best: FactRecord | null = null;
+  let bestScore = 0;
+  for (const r of records) {
+    if (r.status !== 'active') continue;
+    const score = factContentSimilarity(content, r.content);
+    if (score > bestScore) {
+      bestScore = score;
+      best = r;
+    }
+  }
+  return bestScore >= threshold ? best : null;
+}
+
 export function recordFactGoverned(
   records: FactRecord[],
   input: RecordFactInput,
@@ -156,6 +204,8 @@ export function recordFactGoverned(
   }
 
   const sameTopic = records.find(r => r.status === 'active' && r.topic === topic);
+  const similar = sameTopic ? null : findSimilarActiveFact(records, content);
+  const toReplace = sameTopic ?? similar;
   const source: FactSource = {
     burstId: input.source?.burstId,
     nodeInstId: input.source?.nodeInstId,
@@ -173,12 +223,12 @@ export function recordFactGoverned(
     citeCount: 0,
     lastCitedAt: at,
     tags,
-    ...(sameTopic ? { supersedes: sameTopic.id } : {}),
+    ...(toReplace ? { supersedes: toReplace.id } : {}),
   };
 
   const out = [...records];
-  if (sameTopic) {
-    const idx = out.findIndex(r => r.id === sameTopic.id);
+  if (toReplace) {
+    const idx = out.findIndex(r => r.id === toReplace.id);
     if (idx >= 0) out[idx] = { ...out[idx]!, status: 'superseded' };
     out.push(next);
     return { records: out, action: 'superseded', record: next };
@@ -200,8 +250,12 @@ export function sweepFacts(
   const weights = opts.weights ?? DEFAULT_FACT_WEIGHTS;
   const now = opts.now ?? new Date();
 
-  const out = records.map(r => ({ ...r }));
-  const superseded: SweepFactsResult['superseded'] = [];
+  const reconciled = reconcileFactConflicts(records, now);
+  const out = reconciled.records.map(r => ({ ...r }));
+  const superseded: SweepFactsResult['superseded'] = reconciled.staleStatusSuperseded.map(id => ({
+    id,
+    reason: 'stale_status' as const,
+  }));
 
   const markSuperseded = (id: string, reason: 'cold' | 'quota') => {
     const idx = out.findIndex(r => r.id === id);
@@ -235,8 +289,24 @@ export function sweepFacts(
     result: {
       superseded,
       remainingActive: out.filter(r => r.status === 'active').length,
+      conflicts: reconciled.conflicts,
     },
   };
+}
+
+/** 压缩 superseded/retracted 历史，避免 memory.json 膨胀 */
+export function compactFactRecords(
+  records: FactRecord[],
+  opts: { maxArchive?: number } = {},
+): FactRecord[] {
+  const maxArchive = opts.maxArchive ?? 80;
+  const active = records.filter(r => r.status === 'active');
+  const archive = records.filter(r => r.status !== 'active');
+  if (archive.length <= maxArchive) return records;
+  const trimmedArchive = archive
+    .sort((a, b) => Date.parse(b.source.at) - Date.parse(a.source.at))
+    .slice(0, maxArchive);
+  return [...active, ...trimmedArchive];
 }
 
 export function selectFactsForPrompt(
@@ -250,6 +320,8 @@ export function selectFactsForPrompt(
 
   const active = getActiveFactRecords(records);
   const sorted = [...active].sort((a, b) => {
+    const recDiff = (a.needsReconcile ? 1 : 0) - (b.needsReconcile ? 1 : 0);
+    if (recDiff !== 0) return recDiff;
     const confDiff = confScore(b.confidence) - confScore(a.confidence);
     if (confDiff !== 0) return confDiff;
     return scoreFact(b, now, weights) - scoreFact(a, now, weights);
@@ -257,9 +329,15 @@ export function selectFactsForPrompt(
 
   const picked = sorted.slice(0, max);
   const omitted = Math.max(0, sorted.length - picked.length);
-  const lines = picked.map(f => `- ${f.content}`);
+  const conflictCount = active.filter(r => r.needsReconcile).length;
+  const lines = picked.map(f =>
+    f.needsReconcile ? `- ⚠️ [待核实] ${f.content}` : `- ${f.content}`,
+  );
 
   let section = `## 已知事实\n${lines.length ? lines.join('\n') : '（无）'}`;
+  if (conflictCount > 0) {
+    section += `\n\n（${conflictCount} 条事实存在矛盾标记，优先用 record_fact 写入更新结论并 supersede 旧条）`;
+  }
   if (omitted > 0) {
     section += `\n\n（另有 ${omitted} 条事实已省略；可用 read_memory key=fact_records 查看全量）`;
   }

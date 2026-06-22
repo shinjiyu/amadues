@@ -46,13 +46,10 @@ export interface ChangeWatcherOptions {
   registry: InnerBrainRegistry;
   pollMs?: number;
   /**
-   * spawn 一段新的 burst：由调用方注入,确保 onExit 走 KPI hook、
-   * deliverable / KPI onExit 处理等完整链路。
-   * 返回 { ok: true } 即可,失败时 ChangeWatcher 会清理 inFlight 标记。
+   * spawn 一段新的 burst：由调用方注入,确保 onExit 走 registry 更新、
+   * deliverable / IM notify 等完整链路。
    */
   spawnTask: (task: TaskRecord) => { ok: boolean; error?: string };
-  /** 启动 bootstrap 时调用（registryLifecycleReconcile）；P0 见 INNER-BRAIN-AWAITING-LIFECYCLE */
-  reconcileOnBootstrap?: () => void;
 }
 
 // ── ChangeWatcher 主类 ────────────────────────────────────────────────────────
@@ -64,11 +61,10 @@ export class ChangeWatcher {
   constructor(private readonly opts: ChangeWatcherOptions) {}
 
   /**
-   * 启动时一次：reconcile + 扫 AWAITING 的 pendings（timer / resolved）。
+   * 启动时一次：扫 AWAITING 的 pendings（timer / resolved）。
    * @see doc/structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md §5.3
    */
   async bootstrap(): Promise<void> {
-    this.opts.reconcileOnBootstrap?.();
     await this.tick();
   }
 
@@ -137,7 +133,7 @@ export class ChangeWatcher {
     // 5. 消费 resolved pending，避免下一轮 tick 重复唤醒
     markConsumed(brainDir, unconsumed.map((p) => p.id));
 
-    // 6. spawn worker —— 委托给调用方提供的 spawnTask（含完整 KPI onExit hook）
+    // 6. spawn worker —— 委托给调用方提供的 spawnTask
     try {
       const res = this.opts.spawnTask(task);
       if (!res.ok) {

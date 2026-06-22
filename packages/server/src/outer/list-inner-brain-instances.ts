@@ -7,6 +7,7 @@ import path from 'node:path';
 
 import type { InnerBrainEngine } from '../workspace-kit/index.js';
 import { summarizeDyflowForList, isDyflowWorkDir } from '../openkuroneko/inner-brain/dyflow-inspector.js';
+import { resolveOuterBrainPhase } from '../openkuroneko/inner-brain/status-projection.js';
 import { isPidAlive, readWorkerStatus } from '../pi-mono/inner-brain-spawner.js';
 import type { TaskRecord } from './inner-brain-registry.js';
 
@@ -83,6 +84,7 @@ export function enrichInnerBrainInstanceRow(
     }
   }
 
+  const outerPhase = resolveOuterBrainPhase(r.workDir);
   const dyflow = isDyflowWorkDir(r.workDir)
     ? { engine: 'dyflow' as const, ...summarizeDyflowForList(r.workDir) }
     : {
@@ -91,6 +93,8 @@ export function enrichInnerBrainInstanceRow(
         dyflow_dag_nodes: null,
         dyflow_failure: null,
       };
+
+  const displayPhase = outerPhase.engine === 'dyflow' ? outerPhase.phase : phase;
 
   return {
     instance_id: r.instanceId,
@@ -101,9 +105,9 @@ export function enrichInnerBrainInstanceRow(
     pid_alive: pidAlive,
     worker_phase: workerPhase,
     last_tick_at: lastTickAt ? formatAgentIsoLocal(lastTickAt) : null,
-    phase,
+    phase: displayPhase,
     lastAction,
-    tickCount,
+    tickCount: liveTicks ?? tickCount,
     goal: r.goal.slice(0, 200),
     origin_user: r.originUser,
     origin_thread: r.originThread ?? null,

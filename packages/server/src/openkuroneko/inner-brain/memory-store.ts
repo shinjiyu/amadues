@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
+  compactFactRecords,
   migrateLegacyFacts,
   recordFactGoverned,
   sweepFacts,
@@ -21,6 +22,11 @@ import {
   type RecordFactResult,
   type SweepFactsResult,
 } from './fact-governor.js';
+import {
+  recordConstraintGoverned,
+  sweepConstraints,
+  type SweepConstraintsResult,
+} from './constraint-governor.js';
 import type {
   DagHistoryEntry,
   FactRecord,
@@ -55,6 +61,8 @@ export interface MemoryStore {
   recordFact(input: RecordFactInput): RecordFactResult;
   /** ATTRIBUTE 后 quota + cold 淘汰 */
   sweepFacts(): SweepFactsResult;
+  /** ATTRIBUTE 后 constraint topic 去重 + 总量截断 */
+  sweepConstraints(): SweepConstraintsResult;
   appendConstraint(constraint: string): void;
   readonly filePath: string;
 }
@@ -186,8 +194,18 @@ export function createMemoryStore(workDir: string, opts?: CreateMemoryStoreOptio
       const mem = read();
       const records = Array.isArray(mem.fact_records) ? [...mem.fact_records] : [];
       const { records: swept, result } = sweepFacts(records);
-      mem.fact_records = swept;
-      mem.facts = syncLegacyFactsArray(swept);
+      const compacted = compactFactRecords(swept);
+      mem.fact_records = compacted;
+      mem.facts = syncLegacyFactsArray(compacted);
+      mem.fact_conflicts = result.conflicts.length > 0 ? result.conflicts : undefined;
+      write(mem);
+      return result;
+    },
+
+    sweepConstraints(): SweepConstraintsResult {
+      const mem = read();
+      const { constraints, result } = sweepConstraints(mem.constraints);
+      mem.constraints = constraints;
       write(mem);
       return result;
     },
@@ -198,10 +216,9 @@ export function createMemoryStore(workDir: string, opts?: CreateMemoryStoreOptio
 
     appendConstraint(constraint: string): void {
       const mem = read();
-      if (constraint.trim() && !mem.constraints.includes(constraint)) {
-        mem.constraints.push(constraint);
-        write(mem);
-      }
+      const result = recordConstraintGoverned(mem.constraints, constraint);
+      mem.constraints = result.constraints;
+      write(mem);
     },
   };
 }

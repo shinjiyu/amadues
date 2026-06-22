@@ -34,6 +34,9 @@ import { readLocalDag, clearLocalDag } from './local-dag-store.js';
 import { listActivePendings } from '../pendings/index.js';
 import type { NodeDefDrive9Store } from '../../drive9/node-def-drive9-store.js';
 import type { EnvSnapshot } from './node-abstractor.js';
+import type { PlanReferenceDeps } from './designer-tools.js';
+import type { SkillProvider } from '../skills/provider.js';
+import { projectDyflowStatus, readWorkerTickProgress } from './status-projection.js';
 import type { DagHistoryEntry, DyflowState, LocalDag } from './types.js';
 
 /** DESIGN 连续空转上限：超过则判定无法推进，进入 DONE（reason 标记） */
@@ -41,6 +44,7 @@ const MAX_EMPTY_DESIGN_STREAK = 3;
 
 export interface DyflowControllerContext {
   workDir: string;
+  workspaceId: string;
   burstId: string;
   /** 如 `ib-mpxjtjll-d566`；用于空转告警路径与索引 */
   instanceId?: string;
@@ -68,6 +72,10 @@ export interface DyflowControllerDeps {
   nodeSharing?: NodeSharingConfig;
   /** drive9 共享事实：record_fact 后同步（由 run-tick 注入，内脑不 import drive9） */
   sharedFactSink?: (fact: import('./types.js').FactRecord) => void;
+  /** P0：Designer search_task_plans 检索后端 */
+  planReference?: PlanReferenceDeps;
+  /** 全局技能检索（Runner 执行前与节点绑定技能合并加载） */
+  skillProvider?: SkillProvider;
 }
 
 export interface DyflowTickResult {
@@ -82,7 +90,7 @@ export function createDyflowController(
   ctx: DyflowControllerContext,
   deps: DyflowControllerDeps,
 ): DyflowController {
-  const { workDir, burstId, instanceId, burstStartedAt } = ctx;
+  const { workDir, workspaceId, burstId, instanceId, burstStartedAt } = ctx;
   const { llm, toolRegistry, logger, onComplete } = deps;
 
   function burstStartedAtMs(): number | null {
@@ -155,9 +163,23 @@ export function createDyflowController(
       const state = readState();
       logger.info('dyflow-controller', { event: 'tick.start', data: { mode: state.mode, burstId } });
 
+      const workerProg = readWorkerTickProgress(workDir);
+      projectDyflowStatus({
+        workspaceId,
+        workDir,
+        tickCount: workerProg.ticks,
+        hadWork: true,
+        dyflowMode: state.mode,
+        note: 'tick_start',
+      });
+
       switch (state.mode) {
         case 'DESIGN': {
-          const outcome = await runDesigner({ llm, logger, store, memory, workDir, burstId, ...(sharing ? { sharing } : {}) });
+          const outcome = await runDesigner({
+            llm, logger, store, memory, workDir, burstId,
+            ...(sharing ? { sharing } : {}),
+            ...(deps.planReference ? { planReference: deps.planReference } : {}),
+          });
           if (outcome.kind === 'run') {
             writeState({ mode: 'RUN', designStreak: 0 });
             return { hadWork: true };
@@ -168,6 +190,12 @@ export function createDyflowController(
             await onComplete?.(outcome.reason);
             return { hadWork: true };
           }
+          if (outcome.kind === 'failed') {
+            writeState({ mode: 'ERROR', reason: outcome.reason, designStreak: state.designStreak ?? 0 });
+            logger.warn('dyflow-controller', { event: 'design.failed', data: { burstId, reason: outcome.reason } });
+            checkStallAndAlert(`design.failed:${outcome.reason.slice(0, 80)}`);
+            return { hadWork: true };
+          }
           // empty：Designer 没出图也没完成
           const streak = (state.designStreak ?? 0) + 1;
           if (streak >= 2) {
@@ -175,8 +203,7 @@ export function createDyflowController(
           }
           if (streak >= MAX_EMPTY_DESIGN_STREAK) {
             const reason = `Designer 连续 ${streak} 次空转，无法推进：${outcome.reason}`;
-            writeState({ mode: 'DONE', reason, designStreak: streak });
-            await onComplete?.(reason);
+            writeState({ mode: 'ERROR', reason, designStreak: streak });
             logger.warn('dyflow-controller', { event: 'design.giveup', data: { burstId, streak } });
             checkStallAndAlert(`design.giveup:${streak}`);
             return { hadWork: true };
@@ -191,7 +218,15 @@ export function createDyflowController(
             writeState({ mode: 'DESIGN', designStreak: 0 });
             return { hadWork: true };
           }
-          const res = await runLocalDag(dag, { llm, toolRegistry, store, memory, logger, workDir });
+          const res = await runLocalDag(dag, {
+            llm,
+            toolRegistry,
+            store,
+            memory,
+            logger,
+            workDir,
+            ...(deps.skillProvider ? { skillProvider: deps.skillProvider } : {}),
+          });
           clearLocalDag(workDir);
           archiveDagHistory(memory, dag, res);
           writeRunContext(workDir, buildRunContext(dag, res));
@@ -211,8 +246,9 @@ export function createDyflowController(
             return { hadWork: true };
           }
 
-          const attr = await runDyflowAttributor(runCtx, { llm, logger, memory });
+          const attr = await runDyflowAttributor(runCtx, { llm, logger, memory, workDir, localStore: store });
           const factSweep = memory.sweepFacts();
+          const constraintSweep = memory.sweepConstraints();
           logger.info('dyflow-controller', {
             event: 'attribute.finished',
             data: {
@@ -222,6 +258,8 @@ export function createDyflowController(
               runOk: runCtx.ok,
               factSweep: factSweep.superseded.length,
               factsActive: factSweep.remainingActive,
+              constraintsRemoved: constraintSweep.removed,
+              constraintsRemaining: constraintSweep.remaining,
             },
           });
 

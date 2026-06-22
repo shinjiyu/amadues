@@ -635,7 +635,7 @@ class ChatIRSeenTracker {
 | 实现 | 状态 | 位置 |
 |---|---|---|
 | `DiscordChannel`（Discord Gateway 入站 + REST 出站） | ✅ 当前唯一外部实现 | `packages/discord-bridge/src/discord-channel.ts` |
-| `NullChatIRChannel`（postMessage 仅打日志） | ✅ 内置兜底 | `packages/server/src/index.ts`（未配 Discord 时使用，保持 HTTP `/api/outer/roundtrip` 可用） |
+| `NullChatIRChannel`（postMessage 仅打日志） | ✅ 内置兜底 | `packages/server/src/index.ts`（未配 Discord 时使用，HTTP `POST /api/outer/inbound` 可用） |
 | `InMemoryChatIRChannel`（进程内全量内存） | ⛔ 未实现，可选 | 用于 CLI / 单元测试 / 极简部署 |
 | `LarkChatIRChannel` / `SlackChatIRChannel` | ⛔ 未实现 | 各家 IM 直连，参考 `DiscordChannel` 编写 |
 
@@ -690,7 +690,7 @@ class ChatIRSeenTracker {
 - **chat IR + identity schema + `ChatIRChannel` interface + `ChatIRSeenTracker` 在 `@utlra/chat-ir`**：跨包共享的语义单点。
 - **没有中间 IM 服务器**。Discord 入站直接进 agent 进程，落 `threads.json` / `identities.json` / `uploads/`，再 `seenTracker.track(...)` + 触发 `onAgentMessage` callback。
 - **`outer/*` 业务代码（OuterBrain / OuterTools / PushLoop / OuterHeartbeat）**只 import `ChatIRChannel`（发消息）和 `ChatIRSeenTracker`（查反 loop / 新鲜度），不知道 Discord 存在。
-- **入口 `packages/server/src/index.ts`** 是唯一应该 `new DiscordChannel(...)` / `new ChatIRSeenTracker(...)` 的地方——这是"具体实现注入"的边界。未配 Discord 时退化为 `NullChatIRChannel`，HTTP `/api/outer/roundtrip` 仍可用作离线调试入口。
+- **入口 `packages/server/src/index.ts`** 是唯一应该 `new DiscordChannel(...)` / `new ChatIRSeenTracker(...)` 的地方——这是"具体实现注入"的边界。未配 Discord 时退化为 `NullChatIRChannel`，HTTP `POST /api/outer/inbound` 仍可用作离线调试入口。
 - **渠道桥本身就是 `ChatIRChannel` 实现**——承担入站翻译 + 出站翻译 + chat IR 落库 + `seenTracker.track()` 4 个职责。**反 loop / 新鲜度的查询逻辑不在 channel 里**，由共享的 tracker 提供。
 
 ### 10.4 入站消息全链路（Discord）

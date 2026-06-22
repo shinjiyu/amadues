@@ -29,16 +29,14 @@ describe('kpi-slot-idle', () => {
       momentum: 0,
       bursts: ['ib-1'],
       consecutiveIdleBursts: 0,
-      reflexionTrail: [],
       isLeaf: true,
       cadence: { type: 'continuous', minGapMs: 0 },
       burstRunHistory: [],
-      canonicalInstanceId: 'ib-1',
     };
     return { registry, kpi, dataRoot };
   }
 
-  it('ongoing DONE → idle + due', () => {
+  it('ongoing DONE → idle（可续派）', () => {
     const { registry, kpi, dataRoot } = setup();
     const workDir = path.join(dataRoot, 'workspaces', 'task-ib-1');
     fs.mkdirSync(path.join(workDir, '.brain'), { recursive: true });
@@ -54,10 +52,9 @@ describe('kpi-slot-idle', () => {
     });
     const r = evaluateKpiSlotIdle(kpi, registry);
     expect(r.idle).toBe(true);
-    expect(r.cadenceDue).toBe(true);
   });
 
-  it('ongoing AWAITING timer → idle（无 ask_user）', () => {
+  it('ongoing AWAITING timer（无 ask_user）→ idle', () => {
     const { registry, kpi, dataRoot } = setup();
     const workDir = path.join(dataRoot, 'workspaces', 'task-ib-1');
     const brainDir = path.join(workDir, '.brain');
@@ -84,7 +81,6 @@ describe('kpi-slot-idle', () => {
     });
     const r = evaluateKpiSlotIdle(kpi, registry);
     expect(r.idle).toBe(true);
-    expect(r.reason).toBe('awaiting_timer_due');
   });
 
   it('ongoing AWAITING ask_user → 占槽', () => {

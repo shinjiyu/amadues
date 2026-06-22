@@ -9,20 +9,14 @@ import { POST_COMPLETE_REASON } from '../outer/brain-async-snapshot.js';
 export interface SyntheticWorkspaceOpts {
   goal?: string;
   deliverables?: string[];
-  /** memory.json last_failure（DyFlow 路径） */
+  /** memory.json last_failure */
   lastFailure?: {
     summary: string;
     attempted?: string[];
     confidence?: 'high' | 'low';
   };
-  /**
-   * @deprecated 映射为 memory.json last_failure；新测试请用 lastFailure
-   */
-  reflexion?: {
-    verdict: 'success' | 'partial' | 'failed';
-    hardFailures?: string[];
-    nextStrategy?: string;
-  };
+  /** 简写：failed → lastFailure */
+  verdict?: 'success' | 'partial' | 'failed';
   postComplete?: boolean;
   asyncWaiting?: boolean;
   blockedReason?: string;
@@ -32,14 +26,11 @@ function resolveLastFailure(
   opts: SyntheticWorkspaceOpts,
 ): SyntheticWorkspaceOpts['lastFailure'] | null {
   if (opts.lastFailure) return opts.lastFailure;
-  const ref = opts.reflexion;
-  if (!ref || ref.verdict === 'success') return null;
-  const hard = ref.hardFailures ?? (ref.verdict === 'failed' ? ['模拟失败'] : []);
-  if (hard.length === 0 && ref.verdict !== 'failed') return null;
+  if (!opts.verdict || opts.verdict === 'success') return null;
   return {
-    summary: hard[0] ?? '模拟失败',
-    attempted: hard.slice(1),
-    confidence: ref.verdict === 'partial' ? 'low' : 'high',
+    summary: opts.verdict === 'failed' ? '模拟失败' : '模拟部分失败',
+    attempted: [],
+    confidence: opts.verdict === 'partial' ? 'low' : 'high',
   };
 }
 

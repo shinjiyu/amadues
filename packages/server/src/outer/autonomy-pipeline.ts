@@ -1,5 +1,5 @@
 /**
- * 心跳 tick：resourceProbe → hard gates → autonomy dispatch。
+ * 心跳 tick：environment → kpiManager → casual chat dispatch。
  */
 import type { ChatIRChannel } from '@utlra/chat-ir';
 import type { ChatAssetStore } from '@utlra/chat-ir';
@@ -15,13 +15,14 @@ import {
   getSharedEnvironment,
   toResourceSnapshot,
 } from './environment/index.js';
-import { runLiveStrategyPhase } from './strategy/live-adapter.js';
-import { evaluateAutonomyVerdict } from './autonomy-judge.js';
-import { loadAutonomyPolicy } from './autonomy-policy-store.js';
-import { dispatchAutonomyTasks, type AutonomyDispatchDeps } from './autonomy-task-dispatcher.js';
+import { evaluateAutonomyVerdict } from './environment/autonomy-judge.js';
+import { loadAutonomyPolicy } from './environment/autonomy-policy-store.js';
+import { dispatchCasualChat, type CasualChatDispatchDeps } from './casual-chat-dispatcher.js';
 import { isKpiSprintInProgress } from './kpi-dispatch-guard.js';
 import type { AutonomyDispatchResult, ResourceSnapshot } from './autonomy-types.js';
 import { resolveAgentSid, resolveWorkspaceId, type OuterToolContext } from './outer-tools.js';
+import { tickKpiManager } from './kpi/kpi-manager.js';
+import { resolveAwaitingReviewLlmCaller } from './kpi/kpi-awaiting-review-llm.js';
 
 export interface AutonomyPipelineDeps {
   dataRoot: string;
@@ -39,13 +40,18 @@ export interface AutonomyPipelineDeps {
   memoryStore?: OuterMemoryStore;
   getLlmEnv: () => InnerLlmEnv | null;
   getOrchestratorStats?: ResourceProbeDeps['getOrchestratorStats'];
-  scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   loadThreads?: () => LooseThreadStore;
   identityRegistry?: IdentityRegistry;
 }
 
 export interface AutonomyPipelineResult {
   snapshot: ResourceSnapshot;
+  kpiManager: {
+    dispatched: boolean;
+    reason: string;
+    reapedCount: number;
+    detail?: string;
+  };
   dispatch: AutonomyDispatchResult;
   skippedLegacyHeartbeat: boolean;
 }
@@ -53,8 +59,6 @@ export interface AutonomyPipelineResult {
 export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<AutonomyPipelineResult> {
   const agentSid = deps.agentSid ?? resolveAgentSid();
   const workspaceId = deps.workspaceId ?? resolveWorkspaceId();
-  // 环境模型：采集 EnvironmentSnapshot（留存 current.json/events + 派生量），
-  // 再适配回 ResourceSnapshot 喂给现有 judge/dispatch（P0→P1 facade，行为等价）。
   const env = getSharedEnvironment(deps.dataRoot);
   const { snapshot: envSnapshot } = collectEnvironmentSnapshot(
     {
@@ -70,39 +74,6 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
   const policy = loadAutonomyPolicy(deps.dataRoot);
   const verdict = evaluateAutonomyVerdict(snapshot, policy);
 
-  // 战略层：idle 时在 dispatch 前跑 plan + reap，并把 focusOrder 交给 dispatcher
-  // （dispatcher 不再自由选 KPI，改读 strategy.focusOrder）。
-  let strategyFocusOrder: string[] | undefined;
-  let strategyMode = false;
-  if (verdict.level === 'idle') {
-    strategyMode = true;
-    const rawEvents = env.journal.recentUnconsumedEvents(20);
-    try {
-      const phase = await runLiveStrategyPhase({
-        dataRoot: deps.dataRoot,
-        agentId: agentSid,
-        kpiRegistry: deps.kpiRegistry,
-        registry: deps.registry,
-        envEvents: rawEvents.map((e) => ({ sensorId: e.sensorId, field: e.field, note: e.note, kind: e.kind })),
-        snapshot,
-        maxRunningInnerBrains: policy.hardGates.maxRunningInnerBrains,
-        getLlmEnv: deps.getLlmEnv,
-      });
-      strategyFocusOrder = phase.strategy?.focusOrder;
-      if (phase.reevaluated && rawEvents.length > 0) env.journal.markEventsConsumed(rawEvents);
-      const rejectDetail =
-        phase.planRejected && phase.planRejectErrors.length > 0
-          ? ` rejectErrors=${phase.planRejectErrors.join(',')}`
-          : '';
-      console.log(
-        `[utlra][strategy] reeval=${phase.reevaluated} triggers=${phase.triggers.join(',')} ` +
-        `rejected=${phase.planRejected}${rejectDetail} aborted=${phase.abortedIds.length} focus=${(strategyFocusOrder ?? []).join('>')}`,
-      );
-    } catch (e) {
-      console.log(`[utlra][strategy] phase error: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-
   const toolCtx: OuterToolContext = {
     threadId: deps.defaultThreadId.trim(),
     agentSid,
@@ -117,10 +88,44 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
     memoryStore: deps.memoryStore,
     innerBrainRegistry: deps.registry,
     kpiRegistry: deps.kpiRegistry,
-    scheduleNextKpiBurst: deps.scheduleNextKpiBurst,
   };
 
-  const dispatchDeps: AutonomyDispatchDeps = {
+  const kpiResult = await tickKpiManager(
+    {
+      dataRoot: deps.dataRoot,
+      registry: deps.registry,
+      kpiRegistry: deps.kpiRegistry,
+      toolCtx,
+      workspaceId,
+      defaultThreadId: deps.defaultThreadId,
+      awaitingReviewLlm:
+        verdict.level === 'idle' ? resolveAwaitingReviewLlmCaller(deps.getLlmEnv) : undefined,
+    },
+    envSnapshot,
+    verdict,
+  );
+
+  if (kpiResult.awaitingReview.stopped.length > 0) {
+    console.log(
+      `[utlra][kpi-manager] awaiting_review stopped=${kpiResult.awaitingReview.stopped.join(',')}`,
+    );
+  }
+  if (kpiResult.reaped.abortedIds.length > 0) {
+    console.log(
+      `[utlra][kpi-manager] reaped=${kpiResult.reaped.abortedIds.join(',')} ` +
+      `skipped=${kpiResult.reaped.skippedPending.join(',')}`,
+    );
+  }
+  if (kpiResult.dispatched) {
+    console.log(
+      `[utlra][kpi-manager] dispatched kpi=${kpiResult.kpiId ?? '-'} ` +
+      `instance=${kpiResult.instanceId ?? '-'} reason=${kpiResult.reason}`,
+    );
+  } else if (verdict.level === 'idle' && deps.kpiRegistry.list({ status: 'active' }).length > 0) {
+    console.log(`[utlra][kpi-manager] no dispatch: ${kpiResult.reason}`);
+  }
+
+  const dispatchDeps: CasualChatDispatchDeps = {
     dataRoot: deps.dataRoot,
     agentSid,
     workspaceId,
@@ -134,11 +139,9 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
     memoryStore: deps.memoryStore,
     loadThreads: deps.loadThreads,
     identityRegistry: deps.identityRegistry,
-    ...(strategyFocusOrder ? { focusOrder: strategyFocusOrder } : {}),
-    strategyMode,
   };
 
-  const dispatch = await dispatchAutonomyTasks(dispatchDeps, snapshot, verdict);
+  const dispatch = await dispatchCasualChat(dispatchDeps, snapshot, verdict);
 
   if (verdict.level === 'busy') {
     console.log(
@@ -150,7 +153,7 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
       `[utlra][autonomy] dispatched task=${dispatch.taskType} reason=${dispatch.reason} ` +
       `${dispatch.detail ? `detail=${dispatch.detail.slice(0, 80)}` : ''}`,
     );
-  } else {
+  } else if (!kpiResult.dispatched) {
     console.log(`[utlra][autonomy] idle no dispatch: ${dispatch.reason}`);
   }
 
@@ -158,7 +161,13 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
 
   return {
     snapshot,
+    kpiManager: {
+      dispatched: kpiResult.dispatched,
+      reason: kpiResult.reason,
+      reapedCount: kpiResult.reaped.abortedIds.length,
+      detail: kpiResult.detail,
+    },
     dispatch,
-    skippedLegacyHeartbeat: dispatch.dispatched || kpiSprintHold,
+    skippedLegacyHeartbeat: kpiResult.dispatched || dispatch.dispatched || kpiSprintHold,
   };
 }

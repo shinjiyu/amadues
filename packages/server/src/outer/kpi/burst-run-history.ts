@@ -13,7 +13,6 @@ import type {
   KpiRegistry,
 } from '../kpi-registry.js';
 import type { TaskRecord, TaskStatus } from '../inner-brain-registry.js';
-import { refreshKpiNextDueAt } from './kpi-cadence.js';
 
 export function generateRunId(): string {
   return `run-${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`;
@@ -74,7 +73,7 @@ export function formatBurstRunDigest(kpi: KpiRecord, maxRuns = 5): string {
   return lines.join('\n');
 }
 
-/** burst onExit：记 run 史 + 刷新 nextDueAt */
+/** burst onExit：记 run 史 + lastBurstAt */
 export function recordBurstRunOnExit(
   kpiRegistry: KpiRegistry,
   input: {
@@ -103,7 +102,6 @@ export function recordBurstRunOnExit(
   const finishedAt = new Date().toISOString();
   kpiRegistry.update(input.kpiId, {
     lastBurstAt: finishedAt,
-    nextDueAt: refreshKpiNextDueAt({ ...kpi, lastBurstAt: finishedAt }),
   });
 }
 

@@ -64,7 +64,7 @@ RunContext {
 | 项 | 值 |
 |----|-----|
 | 模块 | `openkuroneko/inner-brain/attributor.ts` |
-| 工具 | `record_fact`, `record_constraint`（仅归因阶段） |
+| 工具 | `record_fact`, `record_constraint`, `record_skill`（仅归因阶段；技能见 [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md)） |
 | 轮次上限 | `INNER_ATTRIBUTOR_MAX_ROUNDS`（默认 20） |
 | 输入 | run-context + memory.goal/constraints/facts 摘要 |
 | 输出 | 写入 `memory.json`；无 CONTROL flag（换向仍由 Designer） |
@@ -75,6 +75,7 @@ RunContext {
 2. **事实**：稳定、可复用 → `record_fact`（前缀 `[事实]` 可选）
 3. **红线/避坑**：应永久避免的模式 → `record_constraint`（`[红线]` / `[避坑]` / `[run-failure]` 由模型择一）
 4. 成功节点也要蒸馏（Playwright 可行、脚本路径、API 形状等）
+5. **可复用操作步骤** → `record_skill`（指定 `nodeRef`；见 [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) §4）
 
 LLM 失败时：记 warn，仍执行 `failure-distill`（仅 RUN 失败），进入 DESIGN。
 

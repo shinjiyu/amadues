@@ -12,7 +12,8 @@ import {
   type AgentStackFixture,
 } from '../testing/index.js';
 import { notifyInnerBrainTaskComplete } from '../outer/completion-notify.js';
-import { suggestKpiAction, buildKpiBurstLinks } from '../outer/kpi-progress.js';
+import { buildKpiBurstLinks } from '../outer/kpi-progress.js';
+import { sweepKpiCompletions } from '../outer/kpi-completion-judge.js';
 
 describe('integration: agent assembly smoke', () => {
   let fx: AgentStackFixture;
@@ -24,20 +25,20 @@ describe('integration: agent assembly smoke', () => {
   it('KPI → burst → registry → IM 完成通知（主路径）', async () => {
     fx = createAgentStackFixture();
     const kpiId = fx.createKpi('装配烟雾：文档交付');
-    const { instanceId, workDir, task, outcome } = fx.simulateBurstExit(kpiId, {
+    const { instanceId, workDir, task } = fx.simulateBurstExit(kpiId, {
       goal: '写一页摘要',
       deliverables: ['summary.md'],
       postComplete: true,
       verdict: 'success',
     });
 
-    expect(outcome.autoAchieved).toBe(true);
     expect(fx.innerBrainRegistry.get(instanceId)?.status).toBe('DONE');
 
+    sweepKpiCompletions(fx.kpiRegistry, fx.innerBrainRegistry);
+    expect(fx.kpiRegistry.get(kpiId)?.status).toBe('achieved');
+
     const k = fx.kpiRegistry.get(kpiId)!;
-    expect(suggestKpiAction(k, buildKpiBurstLinks(k, fx.innerBrainRegistry)).action).toBe(
-      'achieved',
-    );
+    expect(buildKpiBurstLinks(k, fx.innerBrainRegistry).length).toBeGreaterThan(0);
 
     const assetStore = new ChatAssetStore(path.join(fx.dataRoot, 'uploads'));
     await expect(

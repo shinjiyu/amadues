@@ -19,9 +19,9 @@ describe('outer-tool-audit', () => {
     if (root) fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it('redactToolArgs hides keychain value', () => {
+  it('redactToolArgs 保留 keychain value（审计需可见写入内容）', () => {
     const r = redactToolArgs('keychain_put', { key: 'x', kind: 'cookie', value: 'secret=abc' });
-    expect(r.value).toBe('[REDACTED len=10]');
+    expect(r.value).toBe('secret=abc');
     expect(r.key).toBe('x');
   });
 

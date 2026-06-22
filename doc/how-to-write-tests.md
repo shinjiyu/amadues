@@ -176,7 +176,7 @@ describe('KPI 自动 achieve', () => {
 
 - 每个 `it` 自己 `mkdtemp`（用 fixture），互不共享磁盘
 - `try { ... } finally { fx.cleanup() }`——不留临时文件
-- **默认不要起真子进程**；要测内脑跑一轮，用 `createControllerHarness` + FakeLLM，或 `runOuterRoundtrip` 的 `spawnInnerBurst` 注入
+- **默认不要起真子进程**；要测内脑跑一轮，用 `createControllerHarness` + FakeLLM，或 `createOuterBrainFixture` + `dispatchOuterHttpInbound`
 - 仅当显式开启 `UTLRA_TEST_SPAWN_INNER=1` 且已配 LLM key 时，才跑 `spawn-inner-worker-live.integration.test.ts`（见 §11）
 
 ### 7.1 F 装配（外脑全链）
@@ -185,8 +185,8 @@ describe('KPI 自动 achieve', () => {
 |------|----------|
 | IM 入站 → 出站 | `createOuterBrainFixture()` 或 `FakeIm.wireInbound` + `emitInbound` |
 | 外脑对话环 + 工具 | `runOuterConversationLoop({ callLlm: ... })` |
-| HTTP roundtrip 不跑内脑 | `runOuterRoundtrip({ runInner: false })` |
-| roundtrip 跑内脑但不 spawn | `runOuterRoundtrip({ runInner: true, spawnInnerBurst: mock })` |
+| HTTP 外脑入站（无 LLM） | `dispatchOuterHttpInbound(deps, threadStore, params)` |
+| 外脑 + set_goal（mock spawn） | `createOuterBrainFixture` + outer-tools 注入 / kpi advancer 测 |
 | `index` 不 listen | 动态 `import('../index.js')` 前设 `UTLRA_SKIP_AGENT_BOOTSTRAP=1` |
 | `index` 完整 listen | `spawn-index-process.ts` 子进程 + `/api/health` + `SIGTERM`（`index-listen-smoke`） |
 | 真实内脑子进程 | `UTLRA_TEST_SPAWN_INNER=1`（§11），单独本地跑 |

@@ -17,7 +17,7 @@ export interface KpiCompletionSweepResult {
 
 /**
  * 扫描 active KPI：满足完成条件且无在途 burst → 自动 markAchieved。
- * 规则与 kpiBurstHooks onExit autoAchieved / suggestKpiAction 一致。
+ * 规则与 suggestKpiAction=achieved 一致；onExit 不再 autoAchieve。
  */
 export function sweepKpiCompletions(
   kpiRegistry: KpiRegistry,

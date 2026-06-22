@@ -1,22 +1,17 @@
 /**
- * KPI 推进主循环 — ADL KPI-ADVANCEMENT.md §7
+ * KPI 推进 — ADL KPI-MANAGER-LAYER.md（扁平 KPI · 多 burst · 每次新 workspace）
  */
 import type { KpiRegistry, KpiRecord } from '../kpi-registry.js';
 import type { InnerBrainRegistry } from '../inner-brain-registry.js';
 import { executeOuterTool, type OuterToolContext } from '../outer-tools.js';
-import { isSetGoalDispatched, buildKpiContinuationGoal } from '../inner-brain-kpi-reuse.js';
-import { stopInnerBrainInstance } from '../stop-inner-brain.js';
-import { decomposeParentKpiIfNeeded } from './sub-kpi-decomposer.js';
-import { evaluateKpiSlotIdle } from './kpi-slot-idle.js';
-import { isCadenceDue, refreshKpiNextDueAt } from './kpi-cadence.js';
-import { needsPreemptForAdvance } from './burst-reuse.js';
+import { isSetGoalDispatched } from '../inner-brain-kpi-reuse.js';
 import {
-  buildBurstRunRecord,
   formatBurstRunDigest,
-  mapRegistryStatusToRunExit,
-  readCharterFromWorkDir,
-  recordBurstRunOnExit,
 } from './burst-run-history.js';
+import { evaluateKpiAdvanceEligibility } from './kpi-burst-state.js';
+import type { AutonomyPolicy } from '../autonomy-types.js';
+import type { EnvironmentSnapshot } from '../environment/environment-types.js';
+import { evaluateKpiSpawnCapacity } from '../environment/kpi-spawn-capacity.js';
 
 export { recordBurstRunOnExit } from './burst-run-history.js';
 
@@ -26,9 +21,13 @@ export interface KpiAdvancerDeps {
   toolCtx: OuterToolContext;
   workspaceId: string;
   defaultThreadId: string;
-  focusOrder?: string[];
-  strategyMode?: boolean;
-  stuckThreshold?: number;
+  /** 心跳路径：直接读 EnvironmentSnapshot facets（优先于 hasSystemCapacity） */
+  environment?: EnvironmentSnapshot;
+  spawnPolicy?: AutonomyPolicy;
+  /** IM/Ops 等无环境快照时的 fallback */
+  hasSystemCapacity?: boolean;
+  allowParallel?: boolean;
+  maxParallelPerKpi?: number;
 }
 
 export interface KpiAdvanceResult {
@@ -44,42 +43,8 @@ export interface KpiAdvancerTickResult {
   results: KpiAdvanceResult[];
 }
 
-function orderLeafKpis(
-  kpiRegistry: KpiRegistry,
-  focusOrder?: string[],
-  strategyMode?: boolean,
-): KpiRecord[] {
-  const leaves = kpiRegistry.listLeafKpis({ status: 'active' });
-  if (!focusOrder?.length) {
-    return leaves.sort((a, b) => b.momentum - a.momentum);
-  }
-  const ordered: KpiRecord[] = [];
-  const seen = new Set<string>();
-  for (const id of focusOrder) {
-    const k = leaves.find((x) => x.kpiId === id);
-    if (k) {
-      ordered.push(k);
-      seen.add(id);
-    }
-    const parent = kpiRegistry.get(id);
-    if (parent?.children?.length) {
-      for (const cid of parent.children) {
-        const child = leaves.find((x) => x.kpiId === cid);
-        if (child && !seen.has(cid)) {
-          ordered.push(child);
-          seen.add(cid);
-        }
-      }
-    }
-  }
-  // 战略模式：focusOrder 与 active 无交集 → 不推进任何 KPI
-  if (strategyMode && ordered.length === 0) {
-    return [];
-  }
-  for (const k of leaves) {
-    if (!seen.has(k.kpiId)) ordered.push(k);
-  }
-  return ordered;
+function orderActiveKpis(kpiRegistry: KpiRegistry): KpiRecord[] {
+  return kpiRegistry.list({ status: 'active' }).sort((a, b) => b.momentum - a.momentum);
 }
 
 export function buildKpiSprintGoal(kpi: KpiRecord, _kpiRegistry?: KpiRegistry): string {
@@ -93,58 +58,32 @@ export function buildKpiSprintGoal(kpi: KpiRecord, _kpiRegistry?: KpiRegistry): 
     `${historyBlock}\n` +
     `\n## 执行约束\n` +
     `- 本轮 EXECUTE 只完成**一小步**，完成后 REVIEW/REPLAN 并结束（外脑将按节拍再派）\n` +
-    `- 沿用本 workspace 已有产出，增量更新\n` +
+    `- 同 KPI 其它 burst workspace 可通过 peer 只读访问；本 workspace 独立产出\n` +
     `- **不要**调用 wait_timer 长睡；短 retry/限速等待除外\n`
   );
 }
 
-function preemptAwaitingBurst(
-  deps: KpiAdvancerDeps,
-  kpi: KpiRecord,
-): void {
-  const toPreempt = needsPreemptForAdvance(kpi, deps.innerBrainRegistry);
-  if (!toPreempt) return;
-
-  const charter = readCharterFromWorkDir(toPreempt.workDir) || kpi.charter || kpi.description;
-  stopInnerBrainInstance(toPreempt, deps.innerBrainRegistry, 'kpi_advancer:preempt_timer_awaiting');
-
-  const updated = deps.innerBrainRegistry.get(toPreempt.instanceId);
-  const exitStatus = mapRegistryStatusToRunExit(updated?.status ?? 'STOPPED', true);
-  deps.kpiRegistry.appendBurstRun(
-    kpi.kpiId,
-    buildBurstRunRecord({
-      kpiId: kpi.kpiId,
-      instanceId: toPreempt.instanceId,
-      charter,
-      task: { ...toPreempt, status: updated?.status ?? 'STOPPED' },
-      exitStatus,
-    }),
-  );
-  deps.innerBrainRegistry.update(toPreempt.instanceId, {
-    status: 'DONE',
-    finishedAt: new Date().toISOString(),
-    pid: undefined,
-  });
+function resolveSystemCapacity(deps: KpiAdvancerDeps): boolean {
+  if (deps.environment && deps.spawnPolicy) {
+    return evaluateKpiSpawnCapacity(deps.environment, deps.spawnPolicy).hasInnerSlot;
+  }
+  return deps.hasSystemCapacity ?? true;
 }
 
-async function dispatchLeafSprint(
+async function dispatchKpiSprint(
   deps: KpiAdvancerDeps,
   kpi: KpiRecord,
 ): Promise<KpiAdvanceResult> {
-  preemptAwaitingBurst(deps, kpi);
-
-  const slot = evaluateKpiSlotIdle(kpi, deps.innerBrainRegistry);
-  if (!slot.idle) {
-    return { ok: false, kpiId: kpi.kpiId, reason: slot.reason };
+  const elig = evaluateKpiAdvanceEligibility(kpi, deps.innerBrainRegistry, {
+    allowParallel: deps.allowParallel ?? true,
+    hasSystemCapacity: resolveSystemCapacity(deps),
+    maxParallelPerKpi: deps.maxParallelPerKpi,
+  });
+  if (!elig.eligible) {
+    return { ok: false, kpiId: kpi.kpiId, reason: elig.reason };
   }
-  if (!isCadenceDue(kpi)) {
-    return { ok: false, kpiId: kpi.kpiId, reason: 'cadence_not_due' };
-  }
 
-  const goal =
-    kpi.burstRunHistory.length > 0 || kpi.bursts.length > 0
-      ? buildKpiSprintGoal(kpi, deps.kpiRegistry)
-      : buildKpiContinuationGoal(kpi);
+  const goal = buildKpiSprintGoal(kpi, deps.kpiRegistry);
 
   const toolOut = await executeOuterTool(
     'set_goal',
@@ -163,14 +102,10 @@ async function dispatchLeafSprint(
 
   const m = toolOut.output.match(/instance_id=([^\s,，]+)/);
   const instanceId = m?.[1];
-  if (instanceId) {
-    deps.kpiRegistry.setCanonicalInstance(kpi.kpiId, instanceId);
-  }
 
   const now = new Date().toISOString();
   deps.kpiRegistry.update(kpi.kpiId, {
     lastBurstAt: now,
-    nextDueAt: refreshKpiNextDueAt({ ...kpi, lastBurstAt: now }),
     charter: kpi.charter ?? goal.slice(0, 500),
   });
 
@@ -178,12 +113,12 @@ async function dispatchLeafSprint(
     ok: true,
     kpiId: kpi.kpiId,
     instanceId,
-    reason: 'kpi_sprint_dispatched',
+    reason: elig.mode === 'parallel' ? 'kpi_parallel_sprint' : 'kpi_sprint_dispatched',
     detail: toolOut.output.slice(0, 200),
   };
 }
 
-/** 推进单个 KPI（父节点会先首拆） */
+/** 推进单个 active KPI（每次新 burst workspace） */
 export async function advanceKpi(
   deps: KpiAdvancerDeps,
   kpiId: string,
@@ -192,29 +127,16 @@ export async function advanceKpi(
   if (!kpi || kpi.status !== 'active') {
     return { ok: false, reason: 'kpi_not_active' };
   }
-
-  if (!kpi.isLeaf) {
-    const childIds = decomposeParentKpiIfNeeded(deps.kpiRegistry, kpiId);
-    for (const cid of childIds) {
-      const child = deps.kpiRegistry.get(cid);
-      if (child && isCadenceDue(child) && evaluateKpiSlotIdle(child, deps.innerBrainRegistry).idle) {
-        const r = await dispatchLeafSprint(deps, child);
-        if (r.ok) return r;
-      }
-    }
-    return { ok: false, reason: 'parent_decomposed_no_dispatch', detail: childIds.join(',') };
-  }
-
-  return dispatchLeafSprint(deps, kpi);
+  return dispatchKpiSprint(deps, kpi);
 }
 
-/** 心跳遍历 leaf KPI，派第一发 due 且 idle 的 sprint */
+/** 心跳遍历 active KPI，派第一发 eligible sprint */
 export async function tickKpiAdvancer(deps: KpiAdvancerDeps): Promise<KpiAdvancerTickResult> {
   const results: KpiAdvanceResult[] = [];
-  for (const leaf of orderLeafKpis(deps.kpiRegistry, deps.focusOrder, deps.strategyMode)) {
-    const r = await advanceKpi(deps, leaf.kpiId);
+  for (const kpi of orderActiveKpis(deps.kpiRegistry)) {
+    const r = await advanceKpi(deps, kpi.kpiId);
     results.push(r);
-    if (r.ok && r.reason === 'kpi_sprint_dispatched') {
+    if (r.ok && (r.reason === 'kpi_sprint_dispatched' || r.reason === 'kpi_parallel_sprint')) {
       return { advanced: true, results };
     }
   }

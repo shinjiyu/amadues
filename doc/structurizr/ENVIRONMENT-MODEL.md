@@ -23,8 +23,10 @@
 | `resourceProbe`（P0） | **被 `environmentSensorRegistry` 替代**；P0→P1 过渡期 facade，不双源真相 |
 | `llmUsageTracker` / `llmUsageJournal` | **被 `llmUsageSensor` 包装**（sensor 只读，不重复造数据） |
 | `innerBrainRegistry` / `threadOrchestrator` / `participation-state` | sensor 的**只读输入**（不写） |
-| `autonomyJudge` | 由 `ResourceSnapshot` → 改读 `EnvironmentSnapshot.facets`；hardGates 可基于派生指标 |
-| `strategyPlanner` | 主消费者：读 `currentSnapshot` + `recentEvents` + `hourlyTrend` |
+| `autonomyJudge` | 由 `ResourceSnapshot` → 改读 `EnvironmentSnapshot.facets`；hardGates 可基于派生指标。**实现路径**：`outer/environment/autonomy-judge.ts`（2026-06-07 自 outer/ 迁入） |
+| `autonomyPolicyStore` | 同上，路径 `outer/environment/autonomy-policy-store.ts` |
+| `strategyPlanner` | **已删除**（2026-06-07）；KPI 编排见 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) |
+| `kpiManager` / `kpiAdvancer` | 读 `EnvironmentSnapshot.facets` + `evaluateKpiSpawnCapacity` 决定 spawn（非 ResourceSnapshot 适配） |
 
 **勿混**：sensor **不替代** `kpiRegistry`、`participationPolicy`、`memoryBlockStore` 等业务状态机；它们仍是真相源，sensor 只暴露**派生量**（如 `kpiVelocitySensor` 从 registry 算出"近 N burst 平均时长"）。
 

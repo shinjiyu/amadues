@@ -25,7 +25,7 @@ describe('createDyflowController (integration)', () => {
   afterEach(() => { if (root) fs.rmSync(root, { recursive: true, force: true }); });
 
   it('seeds presets and seeds goal from goal.md on creation', () => {
-    createDyflowController({ workDir: root, burstId: 'b1' }, {
+    createDyflowController({ workDir: root, workspaceId: 'ws-test', burstId: 'b1' }, {
       llm: createFakeLLM([]), toolRegistry: createToolRegistry([]), logger: silentLogger(),
     });
     expect(fs.existsSync(path.join(root, '.brain', 'local_nodes', 'preset', 'base.json'))).toBe(true);
@@ -66,7 +66,7 @@ describe('createDyflowController (integration)', () => {
     ], { consumeOnMatch: true });
 
     const controller = createDyflowController(
-      { workDir: root, burstId: 'b1' },
+      { workDir: root, workspaceId: 'ws-test', burstId: 'b1' },
       { llm, toolRegistry: createToolRegistry([]), logger: silentLogger(), onComplete: r => { completes.push(r); } },
     );
 
@@ -124,7 +124,7 @@ describe('createDyflowController (integration)', () => {
       },
     ], { consumeOnMatch: true });
     const controller = createDyflowController(
-      { workDir: root, burstId: 'b1' },
+      { workDir: root, workspaceId: 'ws-test', burstId: 'b1' },
       { llm, toolRegistry: createToolRegistry([]), logger: silentLogger() },
     );
     await controller.tick();
@@ -139,13 +139,13 @@ describe('createDyflowController (integration)', () => {
   it('gives up after repeated empty DESIGN ticks', async () => {
     const llm = createFakeLLM([{ match: () => true, reply: { content: 'no action' } }]);
     const controller = createDyflowController(
-      { workDir: root, burstId: 'b1' },
+      { workDir: root, workspaceId: 'ws-test', burstId: 'b1' },
       { llm, toolRegistry: createToolRegistry([]), logger: silentLogger() },
     );
     await controller.tick();
     await controller.tick();
     await controller.tick();
-    expect(readMode(root)).toBe('DONE');
+    expect(readMode(root)).toBe('ERROR');
     expect(readState(root).reason).toContain('空转');
   });
 });

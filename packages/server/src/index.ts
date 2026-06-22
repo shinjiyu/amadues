@@ -46,12 +46,12 @@ import {
   type ChatIROutboundBody,
   type MessagePart,
 } from '@utlra/chat-ir';
-import { runOuterRoundtrip } from './outer/orchestrator.js';
 import {
   runPromoteThenShutdown,
   suggestGoalCompleteForShutdown,
 } from './outer/inner-lifecycle.js';
-import { OuterBrain } from './outer/outer-brain.js';
+import { OuterBrain, type OuterBrainDeps } from './outer/outer-brain.js';
+import { dispatchOuterHttpInbound } from './outer/outer-http-inbound.js';
 import { createMemoryStore, type OuterMemoryStore } from './outer/outer-memory.js';
 import { createMemoryBlockStore } from './outer/memory-block-store.js';
 import { initSkillMemoryStore, type SkillMemoryStore } from './mem9/skill-memory-store.js';
@@ -65,21 +65,17 @@ import {
   parseInnerBrainListPagination,
 } from './outer/list-inner-brain-instances.js';
 import { KpiRegistry } from './outer/kpi-registry.js';
-import { processBurstExitForKpi } from './outer/kpi-burst-hooks.js';
-import {
-  findCanonicalBurstForKpi,
-  buildKpiContinuationGoal,
-  patchCanonicalForContinuation,
-} from './outer/inner-brain-kpi-reuse.js';
 import { collectPeerWorkspaceIds, prepareKpiPeerHandoff } from './outer/workspace-inbox.js';
+import { countDeliverables, resolveInnerBurstFinalStatus } from './outer/inner-burst-exit.js';
 import { readWorkerStatus, isPidAlive, spawnInnerBrainWorker } from './pi-mono/inner-brain-spawner.js';
 import { isInnerBrainStoppable, stopInnerBrainInstance } from './outer/stop-inner-brain.js';
 import { createChangeWatcher, type ChangeWatcher } from './pi-mono/change-watcher.js';
-import { registryLifecycleReconcile, startRegistryLifecycleReconcileInterval } from './outer/registry-lifecycle-reconcile.js';
 import { isBrainAwaitingAsync } from './outer/brain-async-snapshot.js';
 import { notifyInnerBrainAwaitingHuman } from './outer/awaiting-notify.js';
 import {
   notifyInnerBrainTaskComplete,
+  notifyInnerBrainTaskFailed,
+  notifyInnerBrainTaskPartial,
   shouldNotifyUserOnBurstExit,
   type CompletionNotifyDeps,
 } from './outer/completion-notify.js';
@@ -103,7 +99,6 @@ import {
   evaluateInnerBrainRestart,
   restartEligibilityErrorMessage,
 } from './outer/inner-brain-restart-policy.js';
-import { findLiveBurstForKpi } from './outer/kpi-dispatch-guard.js';
 import { dispatchKpiBurst } from './outer/kpi-api-dispatch.js';
 import {
   buildWorkspaceArtifactsPayload,
@@ -151,7 +146,7 @@ const assetStore = new ChatAssetStore(UPLOADS_DIR);
 
 /**
  * 无 Chat IR channel 时的 fallback 实现：postMessage 仅打日志。
- * HTTP `/api/outer/roundtrip` 仍可正常工作（不依赖 channel 出站）。
+ * HTTP `/api/outer/inbound` 经 `dispatchOuterHttpInbound` 捕获出站，不依赖本 channel。
  *
  * 反 loop / 新鲜度查询通过共享的 `ChatIRSeenTracker` 实例完成，不在本类。
  */
@@ -179,6 +174,9 @@ const kpiRegistry = new KpiRegistry(DATA_ROOT);
 /** 在 channel 就绪后注入，供 spawnAndAttachWorker onExit 发完成通知 */
 let completionNotifyDeps: CompletionNotifyDeps | null = null;
 
+/** serve 回调内赋值；HTTP `/api/outer/inbound` 离线调试用 */
+let httpOuterBrainDeps: OuterBrainDeps | null = null;
+
 function getEngine(workspaceId: string): InnerBrainEngine {
   let e = engines.get(workspaceId);
   if (!e) {
@@ -193,13 +191,11 @@ function getEngine(workspaceId: string): InnerBrainEngine {
  *
  * 抽出来供：
  *   - HTTP `POST /api/inner-brains/:id/restart`（用户手动 restart）
- *   - 启动时自动 resume（detection: status=RUNNING 但进程已死）
+ *   - ChangeWatcher / set_goal onExit 路径 spawn
  *
  * 行为：
  *   1. 清掉残留 stop-signal
- *   2. registry.update 把状态设为 RUNNING（清掉 finishedAt / pid / errorMessage / lastTickAt）
- *      - 如果 `incrementResumeCount=true`，同时把 resumeCount + 1（用于自动 resume 防永动机；
- *        手动 restart 不增加）
+ *   2. registry.update 把状态设为 RUNNING（清 finishedAt / pid / errorMessage / lastTickAt）
  *   3. spawnInnerBrainWorker，挂 onExit 回调把状态写回 registry + sync 引擎
  *   4. 返回 { ok, pid? | error? }
  */
@@ -214,7 +210,6 @@ function detectAwaitingFromBrain(workDir: string): boolean {
 
 function spawnAndAttachWorker(
   record: TaskRecord,
-  opts: { incrementResumeCount?: boolean } = {},
 ): { ok: true; pid: number } | { ok: false; error: string } {
   try { fs.unlinkSync(path.join(record.workDir, '.stop-signal')); } catch { /* */ }
 
@@ -229,9 +224,6 @@ function spawnAndAttachWorker(
     errorMessage: undefined,
     lastTickAt:   undefined,
   };
-  if (opts.incrementResumeCount) {
-    patch.resumeCount = (record.resumeCount ?? 0) + 1;
-  }
   innerBrainRegistry.update(id, patch);
 
   try {
@@ -258,36 +250,59 @@ function spawnAndAttachWorker(
         const workerStatus = readWorkerStatus(record.workDir);
         const ticks = workerStatus?.ticks ?? 0;
         const stoppedBy = workerStatus?.stoppedBy ?? (signal ? 'stop_signal' : 'idle');
-        const isError = exitCode !== 0 && signal == null;
         const isAwaiting = detectAwaitingFromBrain(record.workDir);
+        const deliverableCount = countDeliverables(record.workDir);
+        const { finalStatus, errorMessage, partialWithDeliverables } = resolveInnerBurstFinalStatus({
+          workDir: record.workDir,
+          exitCode,
+          signal,
+          stoppedBy,
+          workerError: workerStatus?.error ?? null,
+          isAwaiting,
+        });
 
-        const kpiOutcome = processBurstExitForKpi(
-          {
-            instanceId: id,
-            kpiId: record.kpiId,
-            workDir: record.workDir,
-            stoppedBy,
-            exitedWithError: isError,
-            isAwaiting,
-          },
-          { kpiRegistry, innerBrainRegistry, scheduleNextKpiBurst },
-        );
-
-        if (isError) {
+        if (finalStatus === 'ERROR') {
           innerBrainRegistry.update(id, {
-            status:           'ERROR',
-            finishedAt:       new Date().toISOString(),
+            status: 'ERROR',
+            finishedAt: new Date().toISOString(),
             ticks,
-            deliverableCount: kpiOutcome.deliverableCount,
-            errorMessage:     workerStatus?.error ?? `子进程退出码 ${String(exitCode)}`,
+            deliverableCount,
+            errorMessage: errorMessage ?? '内脑异常结束',
+            pid: undefined,
           });
+          eng.syncAfterPiMonoAuto({
+            ticks,
+            lastHadWork: stoppedBy !== 'idle',
+            stoppedBy: stoppedBy as 'idle' | 'max_ticks' | 'stop_signal',
+          });
+          const notifyUser = shouldNotifyUserOnBurstExit(record);
+          if (partialWithDeliverables && notifyUser) {
+            globalMemoryStore?.ingestInnerOutput(record.workDir, record.workspaceId);
+          }
+          if (record.originThread && completionNotifyDeps && notifyUser && errorMessage) {
+            if (partialWithDeliverables) {
+              void notifyInnerBrainTaskPartial(completionNotifyDeps, {
+                instanceId: id,
+                workspaceId: record.workspaceId,
+                workDir: record.workDir,
+                originThread: record.originThread,
+                gapSummary: errorMessage,
+              }).catch((e: unknown) =>
+                console.error('[utlra][inner-brain] partial notify failed:', e),
+              );
+            } else {
+              void notifyInnerBrainTaskFailed(
+                completionNotifyDeps,
+                { instanceId: id, originThread: record.originThread, reason: errorMessage },
+              ).catch((e: unknown) =>
+                console.error('[utlra][inner-brain] failure notify failed:', e),
+              );
+            }
+          }
+          console.error(`[utlra][inner-brain] burst error (${id}): ${errorMessage ?? 'unknown'}`);
           return;
         }
 
-        const finalStatus: TaskStatus =
-          (signal != null || stoppedBy === 'stop_signal') ? 'STOPPED'
-          : isAwaiting ? 'AWAITING'
-          : 'DONE';
         eng.syncAfterPiMonoAuto({
           ticks,
           lastHadWork: stoppedBy !== 'idle',
@@ -297,7 +312,7 @@ function spawnAndAttachWorker(
           status:           finalStatus,
           finishedAt:       finalStatus === 'AWAITING' ? undefined : new Date().toISOString(),
           ticks,
-          deliverableCount: kpiOutcome.deliverableCount,
+          deliverableCount,
           pid:              undefined,
         });
 
@@ -327,9 +342,7 @@ function spawnAndAttachWorker(
 
         console.log(
           `[utlra][inner-brain] burst done (${id}): finalStatus=${finalStatus} ticks=${ticks}` +
-          ` deliverables=${kpiOutcome.deliverableCount} kpi=${record.kpiId ?? '-'}` +
-          ` ok=${kpiOutcome.outcomeEvaluation?.successConfirmed ?? '-'}` +
-          (kpiOutcome.nextKpiBurstId ? ` → 自动续跑 burst ${kpiOutcome.nextKpiBurstId}` : ''),
+          ` deliverables=${deliverableCount} kpi=${record.kpiId ?? '-'}`,
         );
       },
     });
@@ -347,107 +360,22 @@ function spawnAndAttachWorker(
 }
 
 /**
- * 自动续跑真任务：复用 canonical instance，注入 KPI + burst 执行史。
+ * 外脑进程启动：遗留 RUNNING 行标 STOPPED（子进程随 agent 一起消失，不自动 respawn）。
+ * 续跑：AWAITING → changeWatcher；KPI → kpiAdvancer；人工 → POST /api/inner-brains/:id/restart
  */
-function scheduleNextKpiBurst(kpiId: string, excludeInstanceId?: string): string | null {
-  const kpi = kpiRegistry.get(kpiId);
-  if (!kpi || kpi.status !== 'active') return null;
-
-  if (findLiveBurstForKpi(innerBrainRegistry, kpiId, excludeInstanceId)) {
-    console.warn(`[utlra][kpi] auto next skipped: burst in flight for ${kpiId}`);
-    return null;
-  }
-
-  const canonical = findCanonicalBurstForKpi(innerBrainRegistry, kpiRegistry, kpiId);
-  if (!canonical) {
-    console.warn(`[utlra][kpi] auto next skipped: no canonical inner brain for ${kpiId}`);
-    return null;
-  }
-
-  const goal = buildKpiContinuationGoal(kpi);
-  const originThread = resolveKpiBurstOriginThread(kpi.bursts, innerBrainRegistry);
-  patchCanonicalForContinuation(innerBrainRegistry, canonical.instanceId, canonical.workDir, {
-    goal,
-    originThread,
-  });
-  // 勿在此 resetIdle：无产出 auto next 须累加 consecutiveIdleBursts 直至 outcome 换向
-
-  const record: TaskRecord = {
-    ...canonical,
-    goal,
-    originThread,
-    status: 'RUNNING',
-  };
-
-  const res = spawnAndAttachWorker(record);
-  if (!res.ok) {
-    innerBrainRegistry.update(canonical.instanceId, {
-      status: 'ERROR',
-      finishedAt: new Date().toISOString(),
-      errorMessage: `自动续跑 spawn 失败: ${res.error}`,
-    });
-    return null;
-  }
-  console.log(`[utlra][kpi] auto continue on ${canonical.instanceId} for ${kpiId}`);
-  return canonical.instanceId;
-}
-
-/**
- * 进程启动时自动 resume 上次被中断的内脑任务。
- *
- * 触发条件：
- *   - registry 里有 status='RUNNING' 的任务（实际上 server 已重启，该子进程已死）
- *   - 任务的 resumeCount < UTLRA_INNER_MAX_AUTO_RESUME（默认 3）
- *   - UTLRA_INNER_AUTO_RESUME != '0'（默认开启）
- *
- * 不满足 resume 条件的任务仍会被 mark 为 STOPPED（保留中断状态记录）。
- */
-function autoResumeStaleTasks(): void {
-  const enabled = (process.env['UTLRA_INNER_AUTO_RESUME'] ?? '1') !== '0';
-  const maxResumes = Math.max(0, Number(process.env['UTLRA_INNER_MAX_AUTO_RESUME'] ?? 3));
-
+function markStaleInnerBrainsOnBoot(): void {
   const stale = innerBrainRegistry.markStaleRunningAsStopped();
   if (stale.length === 0) {
-    console.log(
-      `[utlra][inner-brain] auto-resume check: no stale RUNNING tasks ` +
-      `(auto_resume=${enabled ? 'on' : 'off'} max_resume=${maxResumes})`,
-    );
+    console.log('[utlra][inner-brain] boot: no stale RUNNING tasks');
     return;
   }
-
   console.log(
-    `[utlra][inner-brain] 检测到 ${stale.length} 个被中断的内脑任务` +
-    `（auto_resume=${enabled ? 'on' : 'off'} max_resume=${maxResumes}）`,
+    `[utlra][inner-brain] boot: marked ${stale.length} interrupted RUNNING → STOPPED` +
+      ` (${stale.map((r) => r.instanceId).join(', ')})`,
   );
-
-  if (!enabled) {
-    for (const r of stale) {
-      console.log(`[utlra][inner-brain]   - ${r.instanceId} (auto_resume 关闭) → 仅标记 STOPPED`);
-    }
-    return;
-  }
-
-  for (const r of stale) {
-    const count = r.resumeCount ?? 0;
-    if (count >= maxResumes) {
-      const note = `已达自动 resume 上限 ${maxResumes}（防永动机），用户可手动 /restart`;
-      innerBrainRegistry.update(r.instanceId, { errorMessage: `(server 重启，任务中断；${note})` });
-      console.log(`[utlra][inner-brain]   - ${r.instanceId} 跳过：${note}`);
-      continue;
-    }
-    const res = spawnAndAttachWorker(r, { incrementResumeCount: true });
-    if (res.ok) {
-      console.log(
-        `[utlra][inner-brain]   - ${r.instanceId} auto-resumed (#${count + 1})  pid=${res.pid}`,
-      );
-    } else {
-      console.error(`[utlra][inner-brain]   - ${r.instanceId} auto-resume 失败: ${res.error}`);
-    }
-  }
 }
 
-// 进程重启时，检测被中断的内脑任务并自动 resume（受 UTLRA_INNER_AUTO_RESUME 控制）
-autoResumeStaleTasks();
+markStaleInnerBrainsOnBoot();
 
 const threadsPath = () => path.join(CHAT_DIR, 'threads.json');
 
@@ -1144,49 +1072,26 @@ app.get('/api/outer/inner-status/:ws', (c) => {
 });
 
 /**
- * M6 外脑 roundtrip：追加 thread 消息 → 设 Goal → 子进程 Pi-mono Auto → 拼 StructuredReply。
- * burst 结束后可按 **正式规则** 自动晋升并关闭内脑，见 `doc/inner-outer-protocol.md`。
+ * HTTP 外脑入站（与 IM 相同路径：OuterBrain.handleInbound）。
+ * 出站经 CaptureImChannel 捕获并随响应返回；内脑任务由外脑工具 set_goal 派发（经 registry）。
  *
  * body: {
- *   text?, parts?, thread_id?, workspace_id?, sender_sid（必填：渠道解析后的发送者 sid）, max_ticks?,
- *   after_burst?, tenant_id?, realm?,
- *   history_limit? (0=关闭), history_max_chars?,
- *   enrich_goal_vision? (true/false，默认读 UTLRA_GOAL_VISION_ENRICH),
- *   outer_llm_reply? (true/false，默认读 UTLRA_OUTER_REPLY_LLM),
- *   thread_kind?: 'dm' | 'group'（默认 dm；群聊需配合 is_mention / 参与决策），
- *   is_mention?: boolean（群聊是否 @ 本 agent；省略时 dm=true、group=false）,
- *   mentions_others?: boolean（是否 @ 他人）,
- *   skip_participation_check?: boolean,
- *   run_inner?: boolean（是否跑内脑 burst；默认读 UTLRA_OUTER_RUN_INNER，未设则为 true）
- *   user_message_persisted?: boolean（IM 已写入本条时可 true，与 text/parts 二选一）
+ *   text?, parts?, thread_id?, sender_sid（必填）,
+ *   user_message_persisted?: boolean（IM 已写入时可 true，与 text/parts 二选一）,
+ *   participant_sids?: string[]
  * }
- * `text` 与 `parts`（`message.v1` 的 MessagePart[]）至少其一；若同时提供，将 **text 作为首段 text part** 再接 `parts`。
- * `user_message_persisted: true` 时可不传 text/parts（以线程最后一条为准）。
- * 图片可用 `attachment` + `data:image/...;base64,...` URI，会落盘到 workspace `.run/outer-task-media/` 并写入 goal.md。
- * **线程历史**：将本 thread 已落库消息（不含本轮）经 `serializeMessageForLlm` 拼入 goal 前缀，见 `UTLRA_OUTER_THREAD_HISTORY_*`。
- * 环境变量 `UTLRA_OUTER_AFTER_BURST=promote_and_shutdown_if_complete` 与 `after_burst: 'inherit'` 等价。
  */
-app.post('/api/outer/roundtrip', async (c) => {
+app.post('/api/outer/inbound', async (c) => {
+  if (!httpOuterBrainDeps) {
+    return c.json({ error: 'agent not ready (bootstrap still running)' }, 503);
+  }
   const body = (await c.req.json()) as {
     text?: string;
     parts?: unknown[];
     thread_id?: string;
-    workspace_id?: string;
     sender_sid?: string;
-    max_ticks?: number;
-    after_burst?: 'inherit' | 'none' | 'promote_and_shutdown_if_complete';
-    tenant_id?: string;
-    realm?: string;
-    history_limit?: number;
-    history_max_chars?: number;
-    enrich_goal_vision?: boolean;
-    outer_llm_reply?: boolean;
-    thread_kind?: 'dm' | 'group';
-    is_mention?: boolean;
-    mentions_others?: boolean;
-    skip_participation_check?: boolean;
-    run_inner?: boolean;
     user_message_persisted?: boolean;
+    participant_sids?: string[];
   };
   const userPersisted = body.user_message_persisted === true;
   const hasText = !!body.text?.trim();
@@ -1202,7 +1107,6 @@ app.post('/api/outer/roundtrip', async (c) => {
   }
 
   const threadId = body.thread_id ?? 'thread:outer';
-  const workspaceId = body.workspace_id ?? 'default';
   const senderSid = body.sender_sid?.trim();
   if (!senderSid) {
     return c.json(
@@ -1214,44 +1118,34 @@ app.post('/api/outer/roundtrip', async (c) => {
     );
   }
   try {
-    const result = await runOuterRoundtrip(
-      {
-        dataRoot: DATA_ROOT,
-        registry,
-        getEngine,
-        loadThreads,
-        saveThreads,
-        workspaceStore: store,
-        repoStore,
-        assetStore,
-      },
+    const result = await dispatchOuterHttpInbound(
+      httpOuterBrainDeps,
+      { loadThreads, saveThreads },
       {
         threadId,
-        userText: userPersisted ? undefined : messageParts ? undefined : body.text!.trim(),
-        messageParts: userPersisted ? undefined : messageParts,
-        workspaceId,
         senderSid,
-        maxTicks: body.max_ticks,
-        afterBurst: body.after_burst,
-        tenantId: body.tenant_id,
-        realm: body.realm,
-        historyLimit: body.history_limit,
-        historyMaxChars: body.history_max_chars,
-        enrichGoalVision:
-          body.enrich_goal_vision === undefined ? 'inherit' : body.enrich_goal_vision,
-        outerLlmReply: body.outer_llm_reply === undefined ? 'inherit' : body.outer_llm_reply,
-        threadKind: body.thread_kind,
-        isMentionAgent: body.is_mention,
-        mentionsOthers: body.mentions_others,
-        skipParticipationCheck: body.skip_participation_check,
-        runInner: body.run_inner === undefined ? 'inherit' : body.run_inner,
+        text: userPersisted ? undefined : messageParts ? undefined : body.text!.trim(),
+        messageParts: userPersisted ? undefined : messageParts,
         userMessagePersisted: userPersisted,
+        participantSids: body.participant_sids,
       },
     );
     return c.json({ ok: true, ...result });
   } catch (e) {
     return c.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
   }
+});
+
+/** @deprecated 已移除 M6 roundtrip；请改用 POST /api/outer/inbound */
+app.post('/api/outer/roundtrip', async (c) => {
+  return c.json(
+    {
+      error: 'removed',
+      hint: 'POST /api/outer/roundtrip 已删除；请改用 POST /api/outer/inbound（与 IM 相同的 OuterBrain 路径）',
+      replacement: '/api/outer/inbound',
+    },
+    410,
+  );
 });
 
 /**
@@ -1352,8 +1246,7 @@ app.post('/api/inner-brains/:id/restart', async (c) => {
     return c.json({ error: restartEligibilityErrorMessage(id, eligibility) }, 409);
   }
 
-  // 手动 restart 不算 auto-resume，不增加 resumeCount
-  const res = spawnAndAttachWorker(record, { incrementResumeCount: false });
+  const res = spawnAndAttachWorker(record);
   if (!res.ok) return c.json({ error: `重启失败: ${res.error}` }, 500);
 
   console.log(`[utlra] inner brain restarted (manual): ${id} pid=${res.pid}`);
@@ -1433,14 +1326,14 @@ app.post('/api/kpis/:id/resume', (c) => {
   return c.json({ ok: true, kpi: kpiRegistry.get(k.kpiId) });
 });
 
-/** @deprecated reflexion burst 已退役；用 dispatch / advance_kpi + outcomeEvaluator */
+/** @deprecated 用 dispatch / advance_kpi + outcomeEvaluator */
 app.post('/api/kpis/:id/reflect', (c) => {
   const k = kpiRegistry.get(c.req.param('id'));
   if (!k) return c.json({ error: 'KPI 不存在' }, 404);
   return c.json(
     {
-      error: 'reflexion_burst 已退役；请 POST /api/kpis/:id/dispatch 或外脑 advance_kpi',
-      hint: '失败换向由 kpiBurstOutcomeEvaluator.suggestedRetryCharter 自动续跑',
+      error: 'reflect API 已退役；请 POST /api/kpis/:id/dispatch 或外脑 advance_kpi',
+      hint: '请 POST /api/kpis/:id/dispatch 或外脑 advance_kpi（kpiAdvancer）',
     },
     410,
   );
@@ -1464,7 +1357,6 @@ app.post('/api/kpis/:id/dispatch', async (c) => {
       workspaceStore: store,
       repoStore,
       memoryStore: globalMemoryStore,
-      scheduleNextKpiBurst,
       defaultThreadId:
         process.env['UTLRA_OUTER_HEARTBEAT_THREAD_ID']?.trim() || 'thread:ops',
     },
@@ -1559,7 +1451,6 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     changeWatcher: ChangeWatcher;
     heartbeat: OuterHeartbeat;
     channel: ChatIRChannel;
-    stopRegistryReconcile?: () => void;
   };
 
   let agentRuntime: AgentRuntime | null = null;
@@ -1592,7 +1483,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   //
   //   UTLRA_CHAT_CHANNEL=discord  → DiscordChannel；DISCORD_BOT_TOKEN 必须配齐
   //   UTLRA_CHAT_CHANNEL=webchat  → WebChatChannel；WEBCHAT_API_BASE 必须配齐
-  //   UTLRA_CHAT_CHANNEL=none     → NullChatIRChannel（默认值；仅 HTTP /api/outer/roundtrip 可用）
+  //   UTLRA_CHAT_CHANNEL=none     → NullChatIRChannel（默认值；HTTP /api/outer/inbound 可用）
   //
   // 设计原因：让 .env 可以**同时保留**所有 adapter 的配置，切换只需改一个开关，不必注释/解注释一大堆。
   // 因此本入口装配处不再做"两套配置同时存在 → 互斥报错"的处理；未选中的 adapter 即使配置齐全也会被忽略。
@@ -1654,7 +1545,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     channel = new NullChatIRChannel();
     channelLabel = 'null';
     console.log(
-      '[utlra] UTLRA_CHAT_CHANNEL=none（默认）；channel=NullChatIRChannel，HTTP /api/outer/roundtrip 仍可用。如需 Discord/WebChat 请设置 UTLRA_CHAT_CHANNEL=discord 或 webchat',
+      '[utlra] UTLRA_CHAT_CHANNEL=none（默认）；channel=NullChatIRChannel，HTTP /api/outer/inbound 仍可用。如需 Discord/WebChat 请设置 UTLRA_CHAT_CHANNEL=discord 或 webchat',
     );
   }
 
@@ -1708,13 +1599,32 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     repoRoot: REPO_ROOT,
     innerBrainRegistry,
     kpiRegistry,
-    scheduleNextKpiBurst,
     memoryStore,
     memoryBlockStore,
     skillStore,
     skillDrive9Store,
     knowledgeDrive9Store,
   });
+
+  httpOuterBrainDeps = {
+    imClient: channel,
+    seenTracker,
+    assetStore,
+    registry,
+    getEngine,
+    workspaceStore: store,
+    repoStore,
+    loadThreads,
+    dataRoot: DATA_ROOT,
+    repoRoot: REPO_ROOT,
+    innerBrainRegistry,
+    kpiRegistry,
+    memoryStore,
+    memoryBlockStore,
+    skillStore,
+    skillDrive9Store,
+    knowledgeDrive9Store,
+  };
 
   // Push Loop：轮询内脑输出，主动推送 BLOCK/COMPLETE/PROGRESS 事件
   const pushLoop = new PushLoop({
@@ -1726,20 +1636,9 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
 
   // ChangeWatcher：数据驱动的 agent 引擎——
   // 监听 AWAITING 任务的 pendings.json,触发 timer / deadline / IM 信号 → spawn 新 burst
-  registryLifecycleReconcile(innerBrainRegistry);
-  const reconcileIntervalMs = Number(process.env['UTLRA_REGISTRY_RECONCILE_INTERVAL_MS'] ?? 60_000);
-  const stopRegistryReconcile = startRegistryLifecycleReconcileInterval(innerBrainRegistry, {
-    intervalMs: reconcileIntervalMs,
-  });
-  if (reconcileIntervalMs > 0) {
-    console.log(`[utlra][registry-reconcile] periodic every ${reconcileIntervalMs}ms`);
-  }
   const changeWatcher = createChangeWatcher({
     registry: innerBrainRegistry,
-    spawnTask: (task) => spawnAndAttachWorker(task, { incrementResumeCount: false }),
-    reconcileOnBootstrap: () => {
-      registryLifecycleReconcile(innerBrainRegistry);
-    },
+    spawnTask: (task) => spawnAndAttachWorker(task),
   });
   changeWatcher.start();
 
@@ -1757,7 +1656,6 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     outerBrain,
     innerBrainRegistry,
     kpiRegistry,
-    scheduleNextKpiBurst,
     getOrchestratorStats: () => outerBrain.getOrchestratorStats(),
     config: loadHeartbeatConfigFromEnv(),
     loadThreads,
@@ -1767,7 +1665,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
 
   channel.start();
 
-  agentRuntime = { pushLoop, changeWatcher, heartbeat, channel, stopRegistryReconcile };
+  agentRuntime = { pushLoop, changeWatcher, heartbeat, channel };
 
   console.log(
     `[utlra] === Agent 就绪 ===  port=${info.port}  sid=${agentSid}  channel=${channelLabel}  workspace=${process.env['UTLRA_OUTER_WORKSPACE_ID'] ?? 'default'}`,
@@ -1780,7 +1678,6 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     appendAgentExitLog('graceful_shutdown', { signal });
     console.log(`[utlra] ${signal} → graceful shutdown`);
     try {
-      agentRuntime?.stopRegistryReconcile?.();
       agentRuntime?.pushLoop.stop();
       agentRuntime?.changeWatcher.stop();
       agentRuntime?.heartbeat.stop();

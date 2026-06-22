@@ -2,9 +2,8 @@
  * KPI 进展推断 — 纯函数，供 burst onExit、view_kpi、场景 harness 共用。
  */
 import type { KpiRecord, KpiKind } from './kpi-registry.js';
-import type { InnerBrainRegistry, TaskRecord, TaskStatus } from './inner-brain-registry.js';
+import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import { buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
-import { LIVE_KPI_BURST_STATUSES } from './kpi-dispatch-guard.js';
 
 export type KpiSuggestedAction =
   | 'achieved'       // 应 markAchieved（或已自动达成）
@@ -42,8 +41,8 @@ export function shouldAutoAchieveKpi(input: {
   return input.successConfirmed;
 }
 
-function isLiveRegistryStatus(status: string): boolean {
-  return LIVE_KPI_BURST_STATUSES.has(status as TaskStatus);
+function isActiveBurstStatus(status: string): boolean {
+  return status === 'RUNNING' || status === 'BLOCKED' || status === 'AWAITING';
 }
 
 export function buildKpiBurstLinks(
@@ -109,9 +108,9 @@ export function suggestKpiAction(
   }
 
   const latest = links[links.length - 1];
-  const liveLinks = links.filter((l) => isLiveRegistryStatus(l.registryStatus));
-  const anyAwaiting = liveLinks.some((l) => l.isAsyncWaiting && !l.isPostComplete);
-  const anyBlocked = liveLinks.some(
+  const activeLinks = links.filter((l) => isActiveBurstStatus(l.registryStatus));
+  const anyAwaiting = activeLinks.some((l) => l.isAsyncWaiting && !l.isPostComplete);
+  const anyBlocked = activeLinks.some(
     (l) => l.registryStatus === 'BLOCKED' || l.registryStatus === 'AWAITING',
   );
   const latestDone = latest?.registryStatus === 'DONE' && latest.isPostComplete;
@@ -128,7 +127,7 @@ export function suggestKpiAction(
     }
   }
 
-  const anyAwaitingHuman = liveLinks.some(
+  const anyAwaitingHuman = activeLinks.some(
     (l) => l.isAsyncWaiting && l.hasAskUserPending && !l.isPostComplete,
   );
   if (anyAwaitingHuman) {

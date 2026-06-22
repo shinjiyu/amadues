@@ -1,6 +1,8 @@
 # 内脑单实例复用（同一目标禁止多开）
 
-> **English:** One **canonical inner brain** per KPI / long-running goal. Each EXECUTE cycle advances incrementally on the **same** `instanceId` + `workDir`; the plan is revised between cycles—not multiple parallel inner brains collaborating on one target.
+> **⚠️ canonical 单实例复用已废弃**（2026-06-07）：见 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) §2.2 — 每 KPI **多 burst**、每次 advance **新 workspace**、sibling **peer 互读**。本文保留历史语义。
+
+> **English (historical):** One **canonical inner brain** per KPI / long-running goal.
 
 与 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)、[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)、[`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) 互补。  
 **粒度（2026-06-07）**：canonical 绑定 **leaf sub-KPI**（非父 KPI）；多轮 sprint 复用同一 instance，执行史见 `burstRunHistory`。
@@ -28,7 +30,7 @@ outcome 换向续跑（`scheduleNextKpiBurst`）也落在 **同一 canonical ins
 | **R2** | 带 `kpi_id` 且已有 LIVE（RUNNING/AWAITING/BLOCKED）→ **拒绝**并行派发 |
 | **R3** | `scheduleNextKpiBurst`（outcome 换向续跑）→ 仅 `spawnAndAttachWorker(canonical)`，不 `generateInstanceId()` |
 | **R4** | 同 KPI sibling workspace 默认 peer 互读；spawn 写 `.inbox/` 目录（名字+摘要，无正文） |
-| **R5** | Canonical = `kpi.canonicalInstanceId` 或 `kpi.bursts[0]`（`isReflexionBurst` 字段已废弃） |
+| **R5** | Canonical = `kpi.canonicalInstanceId` 或 `kpi.bursts[0]` |
 
 ---
 

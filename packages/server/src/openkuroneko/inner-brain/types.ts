@@ -72,6 +72,19 @@ export interface NodeInterface {
 
 // ── body：executor（baseNode）或 graph（compound） ──────────────────────────
 
+/** 节点绑定技能索引（正文存 local_nodes/skills/；见 INNER-NODE-SKILLS.md） */
+export interface NodeSkillRef {
+  id: string;
+  category: string;
+  title: string;
+  tags?: string[];
+}
+
+/** NodeDef 共享技能（含正文，Assembler 写入本地技能目录） */
+export interface NodeDefSkill extends NodeSkillRef {
+  content: string;
+}
+
 export interface BodyExecutor {
   kind: 'executor';
   /** 可含 ${{ memory.x }} / ${{ params.y }} 占位 */
@@ -125,6 +138,8 @@ export interface LocalNode {
   displayName: string;
   description: string;
   tags: string[];
+  /** 节点绑定技能索引（Attributor / promote / Assembler 写入） */
+  skills?: NodeSkillRef[];
   interface: NodeInterface;
   body: NodeBody;
   metadata: LocalNodeMetadata;
@@ -270,6 +285,14 @@ export interface FactRecord {
   needsReconcile?: boolean;
 }
 
+/** 启发式检测到的 fact 矛盾对（ADL §5.3） */
+export interface FactConflictEntry {
+  domain: string;
+  factIds: [string, string];
+  reason: string;
+  detectedAt: string;
+}
+
 export interface InnerMemory {
   /** 战略目标（外脑/seed 写） */
   goal?: string;
@@ -279,6 +302,8 @@ export interface InnerMemory {
   facts: string[];
   /** 结构化事实（治理主存储；facts[] 为 prompt 兼容投影） */
   fact_records?: FactRecord[];
+  /** 启发式检测到的矛盾 fact 对（ATTRIBUTE sweep 写入） */
+  fact_conflicts?: FactConflictEntry[];
   /** runner 写入的最近一次 terminal failure */
   last_failure?: FailureSummary | null;
   /** @deprecated 旧 node_creator pack 失败；node_creator 已移除（2026-06-06），仅为读旧 memory 保留 */
@@ -340,6 +365,8 @@ export interface NodeDef {
   description: string;
   tags: string[];
   placeholders: NodeDefPlaceholder[];
+  /** 共享技能包（Abstractor 从 LocalNode 技能目录导出） */
+  skills?: NodeDefSkill[];
   interface: NodeInterface;
   /** 与 LocalNode body 同结构，但字符串字段含 ${{ NAME }} */
   body: NodeBody;

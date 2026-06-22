@@ -1,11 +1,5 @@
 /**
- * KnowledgeStore (FilesystemStore) 单元测试 — 聚焦 KPI / verdict / reflexion 新增逻辑
- *
- * 守住的契约：
- *   - 同 kpiId 的 session 在 retrieve 时永远比无关 session 优先（即使关键词不匹配）
- *   - 同 kpiId 内 verdict='failed' 排在 'partial' 前，'partial' 排在 'success' 前
- *   - reflexion 写入 meta.json 同时落 reflexion.json
- *   - buildContext 把 reflexion 单独放在最上方"本 KPI 历次反思"区块
+ * KnowledgeStore (FilesystemStore) 单元测试 — KPI / verdict / burstOutcome
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -28,7 +22,6 @@ afterEach(() => {
   }
 });
 
-/** 用 BrainFS 在一个临时 workspace 里写好 goal / constraints / skills / knowledge，再触发 archive */
 async function archiveSession(opts: {
   agentId: string;
   goalText: string;
@@ -54,7 +47,7 @@ async function archiveSession(opts: {
     goalText: opts.goalText,
     ...(opts.kpiId ? { kpiId: opts.kpiId } : {}),
     ...(opts.verdict ? {
-      reflexion: {
+      burstOutcome: {
         verdict: opts.verdict,
         hardFailures: opts.hardFailures ?? [],
         softFailures: [],
@@ -65,8 +58,8 @@ async function archiveSession(opts: {
   return workDir;
 }
 
-describe('FilesystemStore.archive 写入 KPI/reflexion 字段', () => {
-  it('archive 时把 kpiId + reflexion 写进 SessionMeta，并单独落 reflexion.json', async () => {
+describe('FilesystemStore.archive burstOutcome', () => {
+  it('archive 时把 kpiId + burstOutcome 写进 SessionMeta（仅 meta.json）', async () => {
     await archiveSession({
       agentId: 'a1',
       goalText: '查到 X 的手机号',
@@ -81,19 +74,16 @@ describe('FilesystemStore.archive 写入 KPI/reflexion 字段', () => {
     const meta = JSON.parse(fs.readFileSync(path.join(kbDir, 'index', indexFiles[0]!), 'utf8'));
     expect(meta.kpiId).toBe('kpi-001');
     expect(meta.verdict).toBe('failed');
-    expect(meta.reflexion?.hardFailures).toEqual(['公开 API 拒绝']);
+    expect(meta.burstOutcome?.hardFailures).toEqual(['公开 API 拒绝']);
 
-    // session dir 里有 reflexion.json
     const sessionDir = path.join(kbDir, 'sessions', meta.sessionId);
-    expect(fs.existsSync(path.join(sessionDir, 'reflexion.json'))).toBe(true);
-    const refRaw = JSON.parse(fs.readFileSync(path.join(sessionDir, 'reflexion.json'), 'utf8'));
-    expect(refRaw.verdict).toBe('failed');
+    const metaOnDisk = JSON.parse(fs.readFileSync(path.join(sessionDir, 'meta.json'), 'utf8'));
+    expect(metaOnDisk.burstOutcome.verdict).toBe('failed');
   });
 });
 
 describe('FilesystemStore.retrieve KPI 优先 + verdict 排序', () => {
   it('传 kpiId 时，同 KPI 的 session 即使关键词完全不匹配也进入结果', async () => {
-    // 一个跟 goal 完全不相关的 KPI session
     await archiveSession({
       agentId: 'a1',
       goalText: '与狗有关的训练任务',
@@ -101,7 +91,6 @@ describe('FilesystemStore.retrieve KPI 优先 + verdict 排序', () => {
       kpiId: 'kpi-X',
       verdict: 'failed',
     });
-    // 一个跟 goal 高度相关但属于另一个 KPI 的 session
     await archiveSession({
       agentId: 'a2',
       goalText: '抓取股票数据并生成报告',
@@ -113,7 +102,6 @@ describe('FilesystemStore.retrieve KPI 优先 + verdict 排序', () => {
     const store = createFilesystemStore(kbDir);
     const sessions = await store.retrieve('抓取股票数据并生成报告', { kpiId: 'kpi-X' });
     expect(sessions.length).toBeGreaterThan(0);
-    // 同 KPI 的优先（即使关键词不匹配）
     expect(sessions[0]?.meta.kpiId).toBe('kpi-X');
   });
 
@@ -151,8 +139,8 @@ describe('FilesystemStore.retrieve KPI 优先 + verdict 排序', () => {
   });
 });
 
-describe('FilesystemStore.buildContext 反思优先展示', () => {
-  it('反思 session 会单独放在 "本 KPI 历次反思" 区块且在历史经验之前', async () => {
+describe('FilesystemStore.buildContext outcome 优先展示', () => {
+  it('outcome session 会单独放在 burst 结果区块且在历史经验之前', async () => {
     await archiveSession({
       agentId: 'a1', goalText: 'goal',
       triggerReason: '失败', kpiId: 'kpi-A',
@@ -162,10 +150,9 @@ describe('FilesystemStore.buildContext 反思优先展示', () => {
     const store = createFilesystemStore(kbDir);
     const sessions = await store.retrieve('goal', { kpiId: 'kpi-A' });
     const ctx = store.buildContext(sessions);
-    expect(ctx).toContain('本 KPI 历次反思');
+    expect(ctx).toContain('本 KPI 历次 burst 结果');
     expect(ctx).toContain('X 死路');
     expect(ctx).toContain('换方向 X');
-    // 反思区块在普通"历史经验"区块之前
-    expect(ctx.indexOf('本 KPI 历次反思')).toBeLessThan(ctx.indexOf('历史经验'));
+    expect(ctx.indexOf('本 KPI 历次 burst 结果')).toBeLessThan(ctx.indexOf('历史经验'));
   });
 });

@@ -44,6 +44,10 @@ import {
 } from './kpi-completion-judge.js';
 import { formatRecentThreadMessagesForLlm } from './thread-history.js';
 import type { IdentityRegistry, LooseThreadStore } from '@utlra/chat-ir';
+import {
+  resolveOuterBrainPhase,
+  readWorkerTickProgress,
+} from '../openkuroneko/inner-brain/status-projection.js';
 
 // ── 配置（统一经 loadHeartbeatConfigFromEnv() 解析，唯一的 env 读取点） ──────
 
@@ -261,12 +265,25 @@ function buildLiveBurstSummary(registry: InnerBrainRegistry | undefined): string
     } catch {
       asyncPart = ' async=未知';
     }
+    const outerPhase = resolveOuterBrainPhase(t.workDir);
+    const liveProg = t.status === 'RUNNING' ? readWorkerTickProgress(t.workDir) : null;
+    const liveTicks = liveProg?.ticks ?? t.ticks ?? 0;
+    const phasePart =
+      outerPhase.engine === 'dyflow' && outerPhase.dyflow_mode
+        ? ` dyflow=${outerPhase.dyflow_mode}`
+        : outerPhase.phase !== 'unknown'
+          ? ` phase=${outerPhase.phase}`
+          : '';
+    const livenessPart =
+      liveProg?.lastTickAt ? ` last_tick=${formatAgentIsoLocal(liveProg.lastTickAt)}` : '';
     return (
       `- ${t.instanceId} [${t.status}]` +
       (t.kpiId ? ` kpi=${t.kpiId}` : '') +
       ` started=${formatAgentIsoLocal(t.startedAt)}` +
       ` deliverables=${t.deliverableCount ?? 0}` +
-      ` ticks=${t.ticks ?? 0}` +
+      ` ticks=${liveTicks}` +
+      phasePart +
+      livenessPart +
       asyncPart +
       `\n  goal: ${t.goal.replace(/\s+/g, ' ').slice(0, 80)}`
     );
@@ -300,8 +317,7 @@ ${goalSection}
 ## 宏观战略（WHY + HOW，不可被质控替代）
 - **先 WHY**：对照长期目标与 KPI，这些方向**还值不值得推**？burst outcome / lesson 是否推翻原有假设？若不值得 → 暂停或换 KPI，不要硬派 set_goal。
 - **再 HOW**：在 WHY 成立前提下，下一 burst **什么角度**、优先级如何；避免无记忆的「每 tick 随机挑一条 KPI」。
-- P1 起读 \`strategy/current.json\`（theory / whyNow / focusOrder）；未落地前由本心跳承担同等 WHY+HOW 思考，**不能**只做 liveness/deliverable 战术判断。
-- 跨 KPI 取舍、AWAITING 战略 cull 属战略层（见 STRATEGY-PLANNING-LAYER）；下文质控只管**在途 burst 做得怎样**。
+- KPI 续派 / 僵尸清理属 **kpiManager**（见 KPI-MANAGER-LAYER.md）；下文质控只管**在途 burst 做得怎样**。
 
 ## 质控职责（战术层，与战略并列）
 - **KPI 完成判定**：每 tick 先核对 active KPI 是否应 achieved（list_kpis / view_kpi 看建议动作）。程序化 sweep 可能已自动结案；若 digest 建议 achieved 但仍 active → achieve_kpi（附 evidence）。**不要**对已 achieved KPI 再 set_goal。
@@ -342,15 +358,14 @@ ${imSection}
 4. **不要为了「确认要不要继续」而向用户提问**。任务在正常推进时，用户无需被打扰。
 
 ## 行动原则（KPI 优先，而非到处参与）
-1. **KPI 全力冲刺**：同 KPI 已有 RUNNING/AWAITING/BLOCKED 在途 burst 时 → **禁止** set_goal 再派并行 burst，让当前 burst 跑完；本轮保持沉默即可。
-2. **KPI 续派**：仅当该 KPI **无**在途 burst（上一 burst 已结束）且槽位未满时，才 set_goal 推进下一角度。
-3. **避免重复**：派新任务前对照「在途任务」的 goal，新任务必须是**不同的子方向/角度**。
-4. **post_to_im 仅用于**：**你自己的**任务完成汇报、**你自己的**硬阻塞（缺凭据/需授权）、**与你 KPI 直接相关**的关键信息。
+1. **KPI 自动推进**：长期 KPI 的 sprint 由 **kpiManager** 心跳自动派发；**禁止** set_goal 传 kpi_id（须用 advance_kpi 或等自动续派）。
+2. **一次性杂活**：仅 ad-hoc 任务可 set_goal（**勿传 kpi_id**）；新任务须是**不同子方向**，避免与在途 burst 重复 goal。
+3. **post_to_im 仅用于**：**你自己的**任务完成汇报、**你自己的**硬阻塞（缺凭据/需授权）、**与你 KPI 直接相关**的关键信息。
    **禁止**：替他人传 cookie/文件、催别人进度、对无关群聊接话、问「要不要继续」。
    发消息前必须阅读「当前 IM 对话」：仅在与**你**相关时接话，否则不发。
-5. **克制**：内脑已在等定时（is_async_waiting）或已完成（is_post_complete）时 **不要** set_goal 同一任务。
-6. **每次最多**：发 1 条 IM 消息，创建 1 个内脑任务。
-7. **关联绩效目标**：推进绩效目标时把 goal_id 填入 performance_goal_id。
+4. **克制**：内脑已在等定时（is_async_waiting）或已完成（is_post_complete）时 **不要** set_goal 同一任务。
+5. **每次最多**：发 1 条 IM 消息，创建 1 个内脑任务。
+6. **关联绩效目标**：推进绩效目标时把 goal_id 填入 performance_goal_id。
 
 ${OUTER_ASYNC_ORCHESTRATION_GUIDE}`;
 }
@@ -593,7 +608,6 @@ export interface HeartbeatDeps {
   innerBrainRegistry?: InnerBrainRegistry;
   /** KPI 注册表（autonomy kpi_inner_goal 必需） */
   kpiRegistry?: KpiRegistry;
-  scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   getOrchestratorStats?: ResourceProbeDeps['getOrchestratorStats'];
   /**
    * 外脑实例引用（可选，传入时启用 Environment 侧死亡检测）。
@@ -795,7 +809,6 @@ export class OuterHeartbeat {
           memoryStore: this.deps.memoryStore,
           getLlmEnv: this.deps.getLlmEnv,
           getOrchestratorStats: this.deps.getOrchestratorStats,
-          scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
           loadThreads: this.deps.loadThreads,
           identityRegistry: this.deps.identityRegistry,
         });
@@ -831,7 +844,6 @@ export class OuterHeartbeat {
         memoryStore: this.deps.memoryStore,
         innerBrainRegistry: this.deps.innerBrainRegistry,
         kpiRegistry: this.deps.kpiRegistry,
-        scheduleNextKpiBurst: this.deps.scheduleNextKpiBurst,
       };
 
       this.deps.workspaceStore.ensureWorkspace(workspaceId);

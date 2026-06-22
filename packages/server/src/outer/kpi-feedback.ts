@@ -8,13 +8,13 @@
  *   - idle / failed → 负反馈，momentum 降，让位给更有产出的 KPI
  *
  * 这是战略层 LLM 叙事调度（focusOrder / recentLessons）落地前的 **P0-interim 量化回路**，
- * 构建在现有 autonomyTaskDispatcher + kpiBurstHooks 上，不引入新调度器。
+ * 构建在现有 casualChatDispatcher + kpiAdvancer 上，不引入新调度器。
  *
  * 守门：deterministic（无 random / LLM），便于单测断言；clamp 由 KpiRegistry.adjustMomentum 负责。
  */
 import type { KpiRecord } from './kpi-registry.js';
 
-/** burst 退出时可观测的反馈信号（与 kpiBurstHooks.BurstExitOutcome 同源） */
+/** burst 退出时可观测的反馈信号（registry + deliverableCount） */
 export interface BurstFeedbackSignal {
   /** outcome 等价 verdict；无产出且失败为 failed */
   verdict: 'success' | 'partial' | 'failed' | null;

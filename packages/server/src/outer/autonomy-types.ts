@@ -31,6 +31,8 @@ export interface ResourceSnapshot {
 export interface AutonomyHardGates {
   maxRunningInnerBrains: number;
   maxAwaitingInnerBrains: number;
+  /** 同 KPI 最多并行 RUNNING/BLOCKED burst（R2 上限） */
+  maxParallelBurstsPerKpi: number;
   maxLlmInFlight: number;
   maxTokensPerHour: number | null;
   minMsSinceLastAutonomousAction: number;

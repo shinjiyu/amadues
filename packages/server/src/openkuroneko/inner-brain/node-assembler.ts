@@ -14,6 +14,7 @@ import type { Logger } from '../logger/index.js';
 import type { NodeDefDrive9Store } from '../../drive9/node-def-drive9-store.js';
 import type { LocalNodeStore } from './local-node-store.js';
 import type { EnvSnapshot } from './node-abstractor.js';
+import { createNodeSkillStore } from './node-skill-store.js';
 import type { LocalNode, NodeDef } from './types.js';
 
 const RESIDUAL = /\$\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/;
@@ -154,6 +155,17 @@ export async function assembleNodeDef(
   } catch (e) {
     await defStore.bumpAssembleFail(def.id, def.version);
     return { ok: false, reason: `commit imported LocalNode 失败：${String(e)}` };
+  }
+
+  if (def.skills?.length) {
+    const skillStore = createNodeSkillStore(workDir);
+    const refs = skillStore.importSkills(localId, def.skills);
+    if (refs.length > 0) {
+      const persisted = localStore.read(localId);
+      if (persisted) {
+        localStore.commit({ ...persisted, skills: refs });
+      }
+    }
   }
 
   await defStore.bumpImport(def.id, def.version);

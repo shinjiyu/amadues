@@ -1,7 +1,5 @@
 /**
  * Agent 栈测试夹具：dataRoot + KpiRegistry + InnerBrainRegistry + FakeIm。
- *
- * 覆盖「外脑编排层」可测部分，不启动真实 LLM / 内脑子进程。
  */
 import path from 'node:path';
 
@@ -9,11 +7,7 @@ import type { InnerBrainEngine } from '../workspace-kit/index.js';
 
 import { KpiRegistry } from '../outer/kpi-registry.js';
 import { InnerBrainRegistry, type TaskRecord } from '../outer/inner-brain-registry.js';
-import {
-  processBurstExitForKpi,
-  type BurstExitDeps,
-  type BurstExitInput,
-} from '../outer/kpi-burst-hooks.js';
+import { countDeliverables } from '../outer/inner-burst-exit.js';
 import { createTestDataRoot, type TestDataRoot } from './temp-data-root.js';
 import { FakeImChannel } from './fake-im-channel.js';
 import { writeSyntheticWorkspace, type SyntheticWorkspaceOpts } from './workspace-factory.js';
@@ -22,22 +16,18 @@ export interface AgentStackFixture extends TestDataRoot {
   kpiRegistry: KpiRegistry;
   innerBrainRegistry: InnerBrainRegistry;
   im: FakeImChannel;
-  nextBurstsScheduled: string[];
-  /** 注册 KPI 并返回 kpiId */
   createKpi(description: string): string;
-  /** 模拟一次 burst 结束（写 workspace + 跑 KPI hook） */
   simulateBurstExit(
     kpiId: string,
     opts: SyntheticWorkspaceOpts & {
-      /** 简写：failed → memory.json last_failure */
       verdict?: 'success' | 'partial' | 'failed';
-      stoppedBy?: BurstExitInput['stoppedBy'];
+      stoppedBy?: 'idle' | 'max_ticks' | 'stop_signal';
       exitedWithError?: boolean;
     },
   ): {
     instanceId: string;
     workDir: string;
-    outcome: ReturnType<typeof processBurstExitForKpi>;
+    deliverableCount: number;
     task: TaskRecord;
   };
 }
@@ -47,24 +37,12 @@ export function createAgentStackFixture(): AgentStackFixture {
   const kpiRegistry = new KpiRegistry(root.dataRoot);
   const innerBrainRegistry = new InnerBrainRegistry(root.dataRoot);
   const im = new FakeImChannel();
-  const nextBurstsScheduled: string[] = [];
 
-  const burstDeps: BurstExitDeps = {
-    kpiRegistry,
-    innerBrainRegistry,
-    scheduleNextKpiBurst: (kid) => {
-      nextBurstsScheduled.push(kid);
-      return `ib-next-${nextBurstsScheduled.length}`;
-    },
-    stuckThreshold: 3,
-  };
-
-  const fixture: AgentStackFixture = {
+  return {
     ...root,
     kpiRegistry,
     innerBrainRegistry,
     im,
-    nextBurstsScheduled,
     createKpi(description) {
       return kpiRegistry.create({ description, createdBy: 'test:harness' }).kpiId;
     },
@@ -72,11 +50,7 @@ export function createAgentStackFixture(): AgentStackFixture {
       const instanceId = innerBrainRegistry.generateInstanceId();
       const workspaceId = `task-${instanceId}`;
       const workDir = path.join(root.workspacesDir, workspaceId);
-      const wsOpts: SyntheticWorkspaceOpts = {
-        ...opts,
-        reflexion: opts.reflexion ?? (opts.verdict ? { verdict: opts.verdict } : undefined),
-      };
-      writeSyntheticWorkspace(workDir, wsOpts);
+      writeSyntheticWorkspace(workDir, opts);
 
       const deliverables = opts.deliverables ?? [];
       const asyncWaiting = opts.asyncWaiting ?? false;
@@ -96,31 +70,16 @@ export function createAgentStackFixture(): AgentStackFixture {
       innerBrainRegistry.register(task);
       kpiRegistry.attachBurst(kpiId, instanceId);
 
-      const outcome = processBurstExitForKpi(
-        {
-          instanceId,
-          kpiId,
-          workDir,
-          stoppedBy: opts.stoppedBy ?? 'idle',
-          exitedWithError: opts.exitedWithError ?? false,
-          isAwaiting: asyncWaiting,
-        },
-        burstDeps,
-      );
-
-      innerBrainRegistry.update(instanceId, {
-        status: asyncWaiting ? 'AWAITING' : 'DONE',
-        deliverableCount: outcome.deliverableCount,
-      });
-
-      return { instanceId, workDir, outcome, task };
+      return {
+        instanceId,
+        workDir,
+        deliverableCount: countDeliverables(workDir),
+        task,
+      };
     },
   };
-
-  return fixture;
 }
 
-/** 测试用最小 InnerBrainEngine 替身（setDeliverables + readStatus） */
 export function createNoopEngine(): InnerBrainEngine {
   return {
     setDeliverables: () => {},

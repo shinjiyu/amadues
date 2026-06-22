@@ -114,4 +114,25 @@ describe('assembleNodeDef', () => {
     const res = await assembleNodeDef(def, root, { llm, logger: silentLogger(), defStore, localStore }, { bindingHints: { PS_ACCOUNT: 'hinted' } });
     expect(res.ok).toBe(true);
   });
+
+  it('imports NodeDef.skills into local skill store', async () => {
+    const defStore = createNodeDefDrive9Store(fs2);
+    const def = {
+      ...makeDef(),
+      skills: [{
+        id: 'login-a1',
+        category: 'browser',
+        title: 'Login flow',
+        tags: ['login'],
+        content: 'browser_open /login',
+      }],
+    };
+    await defStore.put(def);
+    const localStore = createLocalNodeStore(root);
+    const llm = createFakeLLM([{ match: () => true, reply: { content: JSON.stringify({ binding: { WORK_DIR: '/w', PS_ACCOUNT: 'a' } }) } }]);
+    const res = await assembleNodeDef(def, root, { llm, logger: silentLogger(), defStore, localStore });
+    expect(res.ok).toBe(true);
+    const local = localStore.read(res.localId!)!;
+    expect(local.skills?.some(s => s.id === 'login-a1')).toBe(true);
+  });
 });

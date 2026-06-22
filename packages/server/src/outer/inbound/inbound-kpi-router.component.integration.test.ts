@@ -76,7 +76,7 @@ describe('component: inboundKpiRouter', () => {
     expect(kpiRegistryCount(deps.kpiRegistry)).toBe(0);
   });
 
-  it('长期 KPI 描述 → 建父 KPI + advance（mock spawn）', async () => {
+  it('长期 KPI 描述 → 建扁平 KPI + advance（mock spawn）', async () => {
     const deps = buildDeps();
     vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
       replied: false,
@@ -90,12 +90,11 @@ describe('component: inboundKpiRouter', () => {
     expect(r.intent.kind).toBe('kpi_create');
     expect(r.replyText).toMatch(/已登记 KPI/);
 
-    const parents = deps.kpiRegistry.list({ status: 'active' }).filter((k) => !k.isLeaf);
-    expect(parents.length).toBe(1);
-    expect(parents[0]?.kind).toBe('ongoing');
-
-    const children = parents[0]?.children ?? [];
-    expect(children.length).toBeGreaterThanOrEqual(1);
+    const active = deps.kpiRegistry.list({ status: 'active' });
+    expect(active.length).toBe(1);
+    expect(active[0]?.kind).toBe('ongoing');
+    expect(active[0]?.isLeaf).toBe(true);
+    expect(active[0]?.children ?? []).toEqual([]);
 
     const outerTool = vi.mocked(outerTools.executeOuterTool);
     expect(outerTool).toHaveBeenCalledWith(
@@ -122,6 +121,17 @@ describe('component: inboundKpiRouter', () => {
       expect.not.stringContaining('kpi_id'),
       expect.objectContaining({ inboundHumanSid: 'human:alice' }),
     );
+    expect(kpiRegistryCount(deps.kpiRegistry)).toBe(0);
+  });
+
+  it('汇报当前 KPI → handled=false，不建 KPI', async () => {
+    const deps = buildDeps();
+    const r = await routeInboundKpiOrAdHoc(
+      deps,
+      '@Gin @Kuroneko 汇报你们当前的KPI',
+    );
+    expect(r.handled).toBe(false);
+    expect(r.intent.kind).toBe('chat_only');
     expect(kpiRegistryCount(deps.kpiRegistry)).toBe(0);
   });
 });

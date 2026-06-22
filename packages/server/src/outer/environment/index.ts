@@ -4,7 +4,7 @@
  * 对外暴露：
  *   - collectEnvironmentSnapshot：一次 tick 采集（含 journal 留存 + 派生 + 事件）
  *   - toResourceSnapshot：把 EnvironmentSnapshot 适配回旧 ResourceSnapshot，
- *     让现有 autonomyJudge / autonomyTaskDispatcher 零行为差地继续工作。
+ *     让现有 autonomyJudge / casualChatDispatcher 零行为差地继续工作。
  */
 import type { InnerBrainRegistry } from '../inner-brain-registry.js';
 import { getGroupParticipationState } from '../participation-state.js';
@@ -27,6 +27,15 @@ export * from './environment-types.js';
 export { EnvironmentSensorRegistry } from './sensor-registry.js';
 export { EnvironmentJournal, aggregateHour } from './journal.js';
 export { BUILTIN_SENSORS } from './environment-sensors.js';
+export { evaluateAutonomyVerdict, evaluateHardGates } from './autonomy-judge.js';
+export {
+  defaultAutonomyPolicy,
+  loadAutonomyPolicy,
+  saveAutonomyPolicy,
+  patchAutonomyPolicy,
+  markAutonomousAction,
+} from './autonomy-policy-store.js';
+export { evaluateKpiSpawnCapacity, type KpiSpawnCapacity } from './kpi-spawn-capacity.js';
 
 /** 按 dataRoot 缓存的共享环境实例（registry + journal 跨 tick 复用 ring buffer） */
 const sharedByRoot = new Map<string, { registry: EnvironmentSensorRegistry; journal: EnvironmentJournal }>();

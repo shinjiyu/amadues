@@ -55,7 +55,6 @@ export async function routeInboundKpiOrAdHoc(
       createdBy: deps.originUser,
       notes: intent.notes,
       kind: ongoing ? 'ongoing' : 'delivery',
-      asParent: ongoing,
     });
 
     const advancerDeps: KpiAdvancerDeps = {

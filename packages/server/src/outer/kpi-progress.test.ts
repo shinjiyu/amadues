@@ -21,7 +21,8 @@ function makeKpi(overrides: Partial<KpiRecord> = {}): KpiRecord {
     momentum: 0,
     bursts: [],
     consecutiveIdleBursts: 0,
-    reflexionTrail: [],
+    isLeaf: true,
+    cadence: { type: 'once' },
     burstRunHistory: [],
     ...overrides,
   };

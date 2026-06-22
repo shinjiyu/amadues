@@ -371,4 +371,5 @@ drive9 `/nodes/shared/` 在 [`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUN
 
 | 日期 | 说明 |
 |------|------|
+| 2026-06-08 | 节点绑定技能：Attributor record_skill、Runner 执行前加载、promote/Assembler 携带；见 [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) |
 | 2026-06-02 | 初版：LocalNode/NodeInst/NodeDef 三概念；Abstractor LLM placeholder + auto-export；Assembler LLM binding；search_and_instance 批量装配；dedupe + quota + cold tombstone；preset seeding |

@@ -7,7 +7,9 @@ import { createFakeLLM } from '../../testing/fake-llm.js';
 import type { Logger } from '../logger/index.js';
 import { runDyflowAttributor } from './attributor.js';
 import { createMemoryStore } from './memory-store.js';
+import { createLocalNodeStore } from './local-node-store.js';
 import type { RunContext } from './run-context-store.js';
+import type { LocalNode } from './types.js';
 
 function silentLogger(): Logger {
   const noop = () => {};
@@ -61,9 +63,80 @@ describe('runDyflowAttributor', () => {
       },
     ], { consumeOnMatch: true });
 
-    const res = await runDyflowAttributor(ctx, { llm, logger: silentLogger(), memory });
+    const res = await runDyflowAttributor(ctx, {
+      llm,
+      logger: silentLogger(),
+      memory,
+      workDir: root,
+      localStore: createLocalNodeStore(root),
+    });
     expect(res.ok).toBe(true);
     expect(res.toolCalls).toBe(1);
     expect(memory.read().facts.some(f => f.includes('Playwright'))).toBe(true);
+  });
+
+  it('records skills via record_skill tool', async () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'attr-'));
+    const localStore = createLocalNodeStore(root);
+    const node: LocalNode = {
+      id: 'preset/base',
+      version: '1.0.0',
+      displayName: 'base',
+      description: 'base',
+      tags: [],
+      interface: { inputs: [], outputs: [{ key: 'result', type: 'string' }] },
+      body: { kind: 'executor', promptTemplate: 'x', tools: ['*'] },
+      metadata: { origin: 'preset', createdAt: '', updatedAt: '' },
+    };
+    localStore.commit(node);
+    const memory = createMemoryStore(root);
+
+    const ctx: RunContext = {
+      burstId: 'b1',
+      designedAt: '2026-01-01T00:00:00.000Z',
+      finishedAt: '2026-01-01T00:01:00.000Z',
+      ok: true,
+      nodes: [{
+        nodeInstId: 'n1',
+        ref: 'preset/base',
+        ok: true,
+        entries: [{ toolName: 'browser_open', args: {}, result: { ok: true, output: 'ok' } }],
+      }],
+      results: [],
+    };
+
+    const llm = createFakeLLM([
+      {
+        match: ({ systemPrompt }) => systemPrompt.includes('Mandatory Attributor'),
+        reply: {
+          content: '',
+          toolCalls: [{
+            id: 's1',
+            name: 'record_skill',
+            args: {
+              nodeRef: 'preset/base',
+              category: 'browser',
+              title: 'Open login page',
+              content: 'browser_open https://example.com/login',
+            },
+          }],
+        },
+      },
+      {
+        match: ({ systemPrompt }) => systemPrompt.includes('Mandatory Attributor'),
+        reply: { content: '归因完成' },
+      },
+    ], { consumeOnMatch: true });
+
+    const res = await runDyflowAttributor(ctx, {
+      llm,
+      logger: silentLogger(),
+      memory,
+      workDir: root,
+      localStore,
+    });
+    expect(res.ok).toBe(true);
+    const updated = localStore.read('preset/base');
+    expect(updated?.skills?.length).toBe(1);
   });
 });

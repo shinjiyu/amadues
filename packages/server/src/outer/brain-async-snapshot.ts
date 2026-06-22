@@ -1,5 +1,9 @@
 /**
  * 内脑异步状态快照 — 供外脑 read_inner_status / list_inner_brains / onExit 判定使用。
+ *
+ * DyFlow 引擎读 `.brain/dyflow-state.json`（DESIGN/RUN/ATTRIBUTE/AWAITING/…）；
+ * legacy pi-mono 读 `.brain/controller-state.json`（DECOMPOSE/AWAITING/…）。
+ * ADL: doc/structurizr/KPI-MANAGER-LAYER.md §6
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,6 +12,8 @@ import {
   listActivePendings,
   type PendingItem,
 } from '../openkuroneko/pendings/index.js';
+import { isDyflowWorkDir } from '../openkuroneko/inner-brain/dyflow-inspector.js';
+import type { DyflowMode } from '../openkuroneko/inner-brain/types.js';
 import { formatAgentIsoLocal } from '../agent-time.js';
 
 /** 与 controller.handleAllCompleted 一致 */
@@ -47,6 +53,24 @@ function brainDirFor(workDir: string): string {
   return path.join(workDir, '.brain');
 }
 
+function readDyflowStateSlice(workDir: string): ControllerStateSlice | null {
+  const statePath = path.join(brainDirFor(workDir), 'dyflow-state.json');
+  if (!fs.existsSync(statePath)) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(statePath, 'utf8')) as Record<string, unknown>;
+    const mode = typeof raw['mode'] === 'string' ? raw['mode'] : null;
+    const reason = typeof raw['reason'] === 'string' ? raw['reason'] : null;
+    return {
+      mode,
+      awaiting_reason: mode === 'AWAITING' ? reason : null,
+      blocked_reason: mode === 'ERROR' ? reason : null,
+      cycle_count: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function readControllerStateSlice(workDir: string): ControllerStateSlice {
   const empty: ControllerStateSlice = {
     mode: null,
@@ -54,6 +78,11 @@ export function readControllerStateSlice(workDir: string): ControllerStateSlice 
     blocked_reason: null,
     cycle_count: null,
   };
+
+  if (isDyflowWorkDir(workDir)) {
+    return readDyflowStateSlice(workDir) ?? empty;
+  }
+
   const statePath = path.join(brainDirFor(workDir), 'controller-state.json');
   if (!fs.existsSync(statePath)) return empty;
   try {
@@ -67,6 +96,13 @@ export function readControllerStateSlice(workDir: string): ControllerStateSlice 
   } catch {
     return empty;
   }
+}
+
+/** DyFlow burst 是否在等异步（timer / ask_user / FSM AWAITING） */
+function isDyflowAsyncWaiting(mode: DyflowMode | null, hasNonCompletePending: boolean): boolean {
+  if (mode === 'AWAITING') return true;
+  if (mode === 'DONE' || mode === 'ERROR' || mode === 'STOPPED') return false;
+  return hasNonCompletePending;
 }
 
 function summarizePending(p: PendingItem): PendingSummary {
@@ -113,10 +149,13 @@ export function buildBrainAsyncSnapshot(workDir: string): BrainAsyncSnapshot {
     (p) => p.kind === 'ask_user' && p.status === 'pending',
   );
 
+  const hasNonCompletePending = active_pendings.some((p) => p.source !== 'all-complete');
+  const dyflowMode = isDyflowWorkDir(workDir) ? (controller.mode as DyflowMode | null) : null;
   const is_async_waiting =
     !is_post_complete &&
-    (controller.mode === 'AWAITING' ||
-      active_pendings.some((p) => p.source !== 'all-complete'));
+    (dyflowMode != null
+      ? isDyflowAsyncWaiting(dyflowMode, hasNonCompletePending)
+      : controller.mode === 'AWAITING' || hasNonCompletePending);
 
   return {
     controller,
@@ -158,6 +197,7 @@ export const OUTER_ASYNC_ORCHESTRATION_GUIDE = `
 - **一次性杂活**：ad-hoc set_goal（无 kpi_id），做完即结束。
 - burst 结束后看 **read_inner_status** / **list_inner_brains**：
   - \`has_ask_user_pending=true\`：等人类，勿抢派。
-  - ongoing KPI：DONE 或仅 timer 的 AWAITING → 槽位空闲，心跳将再派。
+  - ongoing KPI：DONE 或仅 timer 的 AWAITING → 由 KPI 管理器决定是否再派（见 KPI-MANAGER-LAYER.md）。
+  - DyFlow：\`controller.mode\` 来自 dyflow-state（DESIGN/RUN/ATTRIBUTE/AWAITING），无 legacy planning/DECOMPOSE。
   - \`wait_timer\` 仅用于单次 sprint 内短等待（限速/retry），**不要**长睡到下一汇报点。
 `.trim();

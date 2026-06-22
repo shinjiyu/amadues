@@ -10,6 +10,8 @@
  */
 
 import type { ExecutionEntry } from '../brain/index.js';
+import type { SkillProvider } from '../skills/provider.js';
+import { loadNodeSkills } from './node-skill-loader.js';
 import type { Logger } from '../logger/index.js';
 import type { LLMAdapter } from '../adapter/index.js';
 import type { ToolRegistry } from '../tools/index.js';
@@ -36,6 +38,8 @@ export interface RunnerDeps {
   memory: MemoryStore;
   logger: Logger;
   workDir: string;
+  /** 可选：全局技能检索（与节点绑定技能合并加载） */
+  skillProvider?: SkillProvider;
 }
 
 export interface NodeExecutionRecord {
@@ -164,11 +168,24 @@ async function dispatchNode(
   deps: RunnerDeps,
   burstId?: string,
 ): Promise<DispatchOutcome> {
-  const { llm, toolRegistry, store, memory, logger, workDir } = deps;
+  const { llm, toolRegistry, store, memory, logger, workDir, skillProvider } = deps;
   const memSnapshot = memory.read();
 
   if (node.body.kind === 'graph') {
     return runGraph(inst, node, deps, burstId);
+  }
+
+  const loaded = await loadNodeSkills({
+    node,
+    inst,
+    workDir,
+    ...(skillProvider ? { skillProvider } : {}),
+  });
+  if (loaded.refs.length > 0) {
+    logger.info('runner', {
+      event: 'skills.loaded',
+      data: { nodeInstId: inst.id, ref: node.id, count: loaded.refs.length },
+    });
   }
 
   // baseNode 注入：核心工具 + memory 工具（固化事实）+ keychain 工具
@@ -179,7 +196,14 @@ async function dispatchNode(
     ...createKeychainTools(),
   ]);
   const out = await runBaseNode(
-    { node, inst, memory: memSnapshot, workDir, ...(burstId ? { burstId } : {}) },
+    {
+      node,
+      inst,
+      memory: memSnapshot,
+      workDir,
+      ...(burstId ? { burstId } : {}),
+      ...(loaded.section ? { skillsSection: loaded.section } : {}),
+    },
     { llm, toolRegistry: augmented, logger },
   );
   return {

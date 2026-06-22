@@ -63,6 +63,39 @@ describe('brain-async-snapshot', () => {
     expect(isBrainAwaitingAsync(workDir)).toBe(false);
   });
 
+  it('dyflow AWAITING without controller-state → is_async_waiting', () => {
+    const workDir = mkWorkDir();
+    const brainDir = path.join(workDir, '.brain');
+    fs.writeFileSync(
+      path.join(brainDir, 'dyflow-state.json'),
+      JSON.stringify({ mode: 'AWAITING', burstId: 'b1', reason: 'timer pending', updatedAt: new Date().toISOString() }),
+      'utf8',
+    );
+    addPending(brainDir, {
+      kind: 'timer',
+      spec: { execute_at: '2026-05-17T12:00:00.000Z' },
+      source: 'tool:wait_timer(test)',
+    });
+    const snap = buildBrainAsyncSnapshot(workDir);
+    expect(snap.controller.mode).toBe('AWAITING');
+    expect(snap.is_async_waiting).toBe(true);
+    expect(isBrainAwaitingAsync(workDir)).toBe(true);
+  });
+
+  it('dyflow DESIGN (no legacy planning) → not async waiting without pendings', () => {
+    const workDir = mkWorkDir();
+    const brainDir = path.join(workDir, '.brain');
+    fs.writeFileSync(
+      path.join(brainDir, 'dyflow-state.json'),
+      JSON.stringify({ mode: 'DESIGN', burstId: 'b1', designStreak: 0, updatedAt: new Date().toISOString() }),
+      'utf8',
+    );
+    const snap = buildBrainAsyncSnapshot(workDir);
+    expect(snap.controller.mode).toBe('DESIGN');
+    expect(snap.is_async_waiting).toBe(false);
+    expect(isBrainAwaitingAsync(workDir)).toBe(false);
+  });
+
   it('formatBrainAsyncSnapshotForLlm converts ISO times for LLM output', () => {
     const workDir = mkWorkDir();
     const brainDir = path.join(workDir, '.brain');

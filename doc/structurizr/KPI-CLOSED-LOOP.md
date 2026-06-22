@@ -34,7 +34,7 @@
 |------|------|
 | `data/kpi-registry.json` | KPI 元数据、`bursts[]`、`burstRunHistory[]`、`consecutiveIdleBursts`、`momentum` |
 | `<workDir>/.brain/memory.json` | DyFlow 工作集（`fact_records`）；跨 burst 共享见 [`DRIVE9-KNOWLEDGE-SHARED.md`](./DRIVE9-KNOWLEDGE-SHARED.md) |
-| ~~`reflexionTrail` / `reflexion.json`~~ | **只读兼容**；不再 append / 不再生产 |
+| ~~`reflexionTrail` / `reflexion.json`~~ | **已删除**（加载时 strip） |
 
 ## 环境变量
 

@@ -37,31 +37,55 @@ describe('kpi-advancer', () => {
       },
       workspaceId: 'default',
       defaultThreadId: 'thread-1',
+      hasSystemCapacity: true,
+      allowParallel: true,
+      maxParallelPerKpi: 2,
     };
   }
 
-  it('strategyMode + focusOrder 无交集 → 不推进', async () => {
+  it('有 RUNNING burst 且系统有槽 → 并行 dispatch', async () => {
     const deps = baseDeps();
-    deps.kpiRegistry.create({
-      description: '持续采集并每日汇报',
+    const kpi = deps.kpiRegistry.create({
+      description: '持续任务',
       createdBy: 'u',
       kind: 'ongoing',
-      asParent: true,
     });
-    const tick = await tickKpiAdvancer({ ...deps, focusOrder: ['ghost'], strategyMode: true });
-    expect(tick.advanced).toBe(false);
-  });
+    deps.kpiRegistry.attachBurst(kpi.kpiId, 'ib-run');
+    deps.kpiRegistry.update(kpi.kpiId, {
+      lastBurstAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+      cadence: { type: 'continuous', minGapMs: 0 },
+    });
+    deps.innerBrainRegistry.register({
+      instanceId: 'ib-run',
+      workspaceId: 'task-ib-run',
+      workDir: path.join(tmp, 'workspaces', 'task-ib-run'),
+      goal: 'g',
+      originUser: 'u',
+      status: 'RUNNING',
+      startedAt: new Date().toISOString(),
+      kpiId: kpi.kpiId,
+    });
 
-  it('delivery leaf due → dispatch sprint', async () => {
-    const deps = baseDeps();
-    const kpi = deps.kpiRegistry.create({ description: '写 hello', createdBy: 'u' });
     vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
       replied: false,
-      output: '已在既有内脑实例上续跑 instance_id=ib-leaf-1',
+      output: '已创建新内脑实例并启动任务。instance_id=ib-parallel-1',
     });
 
     const tick = await tickKpiAdvancer(deps);
     expect(tick.advanced).toBe(true);
-    expect(deps.kpiRegistry.get(kpi.kpiId)?.canonicalInstanceId).toBe('ib-leaf-1');
+    expect(tick.results[0]?.reason).toBe('kpi_parallel_sprint');
+  });
+
+  it('delivery KPI 首 burst → dispatch sprint', async () => {
+    const deps = baseDeps();
+    const kpi = deps.kpiRegistry.create({ description: '写 hello', createdBy: 'u' });
+    vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
+      replied: false,
+      output: '已创建新内脑实例并启动任务。instance_id=ib-leaf-1',
+    });
+
+    const tick = await tickKpiAdvancer(deps);
+    expect(tick.advanced).toBe(true);
+    expect(tick.results[0]?.instanceId).toBe('ib-leaf-1');
   });
 });

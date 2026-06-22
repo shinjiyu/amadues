@@ -24,7 +24,7 @@ describe('integration: completion notify', () => {
       goal: '评估贡献者',
       deliverables: ['evaluation.md'],
       postComplete: true,
-      reflexion: { verdict: 'success' },
+      verdict: 'success',
     });
 
     const assetStore = new ChatAssetStore(path.join(fx.dataRoot, 'uploads'));

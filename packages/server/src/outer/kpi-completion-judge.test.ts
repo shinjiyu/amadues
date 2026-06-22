@@ -16,12 +16,9 @@ describe('kpiCompletionJudge', () => {
       deliverables: ['report.md'],
       postComplete: true,
     });
-    // onExit 可能已 autoAchieved；再 sweep 应无 active
-    const k = fx.kpiRegistry.get(fx.kpiId)!;
-    if (k.status === 'active') {
-      const r = sweepKpiCompletions(fx.kpiRegistry, fx.innerBrainRegistry);
-      expect(r.marked).toContain(fx.kpiId);
-    }
+    // onExit 不再 autoAchieve；sweep 负责结案
+    const r = sweepKpiCompletions(fx.kpiRegistry, fx.innerBrainRegistry);
+    expect(r.marked).toContain(fx.kpiId);
     expect(fx.kpiRegistry.get(fx.kpiId)?.status).toBe('achieved');
   });
 
@@ -59,7 +56,7 @@ describe('kpiCompletionJudge', () => {
       deliverables: ['report.md'],
       postComplete: true,
     });
-    // onExit 不应 auto-achieve
+    // onExit 不 auto-achieve ongoing
     expect(fx.kpiRegistry.get(fx.kpiId)?.status).toBe('active');
     // sweep 也跳过 ongoing
     const r = sweepKpiCompletions(fx.kpiRegistry, fx.innerBrainRegistry);

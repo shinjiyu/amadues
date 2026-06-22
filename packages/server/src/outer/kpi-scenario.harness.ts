@@ -1,10 +1,5 @@
 /**
- * KPI 场景 harness — 在临时目录模拟 burst 退出，不启动真实内脑进程。
- *
- * 用法（vitest）：
- *   const fx = createKpiScenarioFixture();
- *   fx.simulateBurstExit({ verdict: 'success', deliverables: ['report.md'], postComplete: true });
- *   expect(fx.kpiRegistry.get(fx.kpiId)?.status).toBe('achieved');
+ * KPI 场景 harness — 在临时目录模拟 burst 工作区与 registry 行，不跑 hook / 不 spawn。
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,33 +7,25 @@ import path from 'node:path';
 
 import { KpiRegistry, type KpiKind } from './kpi-registry.js';
 import { InnerBrainRegistry } from './inner-brain-registry.js';
-import {
-  processBurstExitForKpi,
-  type BurstExitDeps,
-} from './kpi-burst-hooks.js';
 import { POST_COMPLETE_REASON } from './brain-async-snapshot.js';
+import { countDeliverables } from './inner-burst-exit.js';
 
 export interface KpiScenarioFixture {
   dataRoot: string;
   kpiRegistry: KpiRegistry;
   innerBrainRegistry: InnerBrainRegistry;
   kpiId: string;
-  /** 模拟一次 burst 结束并跑 KPI hook */
   simulateBurstExit(opts: SimulateBurstExitOpts): {
     instanceId: string;
-    outcome: ReturnType<typeof processBurstExitForKpi>;
+    deliverableCount: number;
   };
-  /** scheduleNextKpiBurst 被调用的次数（AUTO_NEXT_BURST 测试用） */
-  nextBurstsScheduled: string[];
   cleanup: () => void;
 }
 
 export interface SimulateBurstExitOpts {
   verdict?: 'success' | 'partial' | 'failed';
   deliverables?: string[];
-  /** 模拟 milestones 全部完成 */
   postComplete?: boolean;
-  /** 模拟仍在等 timer/用户 */
   asyncWaiting?: boolean;
   exitedWithError?: boolean;
   stoppedBy?: 'idle' | 'max_ticks' | 'stop_signal';
@@ -52,17 +39,6 @@ export function createKpiScenarioFixture(
   const kpiRegistry = new KpiRegistry(dataRoot);
   const innerBrainRegistry = new InnerBrainRegistry(dataRoot);
   const kpi = kpiRegistry.create({ description, createdBy: 'test:harness', kind });
-
-  const nextBurstsScheduled: string[] = [];
-  const deps: BurstExitDeps = {
-    kpiRegistry,
-    innerBrainRegistry,
-    scheduleNextKpiBurst: (kid) => {
-      nextBurstsScheduled.push(kid);
-      return `ib-next-${nextBurstsScheduled.length}`;
-    },
-    stuckThreshold: 3,
-  };
 
   return {
     dataRoot,
@@ -132,35 +108,23 @@ export function createKpiScenarioFixture(
         );
       }
 
+      const asyncWaiting = opts.asyncWaiting ?? false;
       innerBrainRegistry.register({
         instanceId,
         workspaceId,
         workDir,
         goal: description,
         originUser: 'test:user',
-        status: opts.asyncWaiting ? 'AWAITING' : 'DONE',
+        status: asyncWaiting ? 'AWAITING' : 'DONE',
         startedAt: new Date().toISOString(),
-        finishedAt: opts.asyncWaiting ? undefined : new Date().toISOString(),
+        finishedAt: asyncWaiting ? undefined : new Date().toISOString(),
         kpiId: kpi.kpiId,
         deliverableCount: deliverables.length,
       });
       kpiRegistry.attachBurst(kpi.kpiId, instanceId);
 
-      const outcome = processBurstExitForKpi(
-        {
-          instanceId,
-          kpiId: kpi.kpiId,
-          workDir,
-          stoppedBy: opts.stoppedBy ?? 'idle',
-          exitedWithError: opts.exitedWithError ?? false,
-          isAwaiting: opts.asyncWaiting ?? false,
-        },
-        deps,
-      );
-
-      return { instanceId, outcome };
+      return { instanceId, deliverableCount: countDeliverables(workDir) };
     },
-    nextBurstsScheduled,
     cleanup() {
       fs.rmSync(dataRoot, { recursive: true, force: true });
     },

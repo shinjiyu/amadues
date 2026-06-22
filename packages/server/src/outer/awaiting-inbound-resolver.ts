@@ -48,6 +48,8 @@ function agentMirrorSids(): Set<string> {
 export function isAgentNotificationEcho(text: string): boolean {
   const t = text.trim();
   if (/^✅/.test(t)) return true;
+  if (/^❌\s*内脑任务失败/.test(t)) return true;
+  if (/^⚠️\s*内脑任务部分完成/.test(t)) return true;
   if (/^⚠️\s*内脑任务被阻塞/.test(t)) return true;
   if (/^⏸\s*内脑任务等待您的输入/.test(t)) return true;
   return false;

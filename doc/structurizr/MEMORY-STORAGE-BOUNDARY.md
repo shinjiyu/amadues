@@ -14,6 +14,7 @@
 | **节点 drive9（DyFlow，P1）** | HTTPS | `/nodes/shared/` | 内脑 `nodeAbstractor`（Creator commit auto-export）+ 外脑 `nodeDefEviction`（tombstone, P2） | Designer tool `search_and_instance` → `nodeAssembler` → `imported/*` LocalNode |
 | **节点 LocalNode（DyFlow，P0）** | **本地** | `<workDir>/.brain/local_nodes/{preset,creator,imported}/*.json` | `presetSeeder` / `nodeCreatorExecutor` / `nodeAssembler` | `localNodeStore` → `designer` / `runner` |
 | **DyFlow 全局 memory（P0）** | **本地** | `<workDir>/.brain/memory.json` | `runner`（node_results / last_failure）+ 外脑 set_goal seed（goal/constraints/facts） | `memoryStore` → `designer` / `baseNodeExecutor`；facts 治理 ⏳ [`FACTS-KNOWLEDGE-GOVERNANCE.md`](./FACTS-KNOWLEDGE-GOVERNANCE.md) |
+| **方案参考（P0）** | **本地** | `memory.json` → `plan_references[]` | Designer `search_task_plans` | Designer 编排读；**不进** facts / drive9；见 [`TASK-PLAN-REFERENCE.md`](./TASK-PLAN-REFERENCE.md) |
 | **Memory Block** | **本地** | `DATA_ROOT/vault/blocks/`（索引 + entries） | 外脑 `memory_block_*` | 外脑 CRUD；**不**上 drive9/mem9 |
 | **Belief 修订索引** | 本地 JSON | `DATA_ROOT/belief/{agentSid}.json` | `memory-belief-reconcile`（用户取消/完成） | `read_memory` 折叠提示 |
 
@@ -66,6 +67,7 @@
 | drive9 技能检索（Executor，legacy） | `openkuroneko/skills/drive9-provider.ts` |
 | **DyFlow LocalNode 库（P0）** | `openkuroneko/inner-brain/local-node-store.ts` |
 | **DyFlow 全局 memory（P0）** | `openkuroneko/inner-brain/memory-store.ts` |
+| **方案参考检索** | `inner-brain/plan-reference-port.ts` · `outer/plan-reference-search.ts` · Designer `search_task_plans` |
 | **DyFlow preset seed（P0）** | `openkuroneko/inner-brain/preset-seeder.ts` |
 | **DyFlow Abstractor（P1）** | `openkuroneko/inner-brain/node-abstractor.ts` |
 | **DyFlow Assembler（P1）** | `openkuroneko/inner-brain/node-assembler.ts` |

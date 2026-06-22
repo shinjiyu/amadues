@@ -27,7 +27,7 @@
 |--------|------|
 | `outer_conversation` | `outer/outer-conversation-loop.ts` |
 | `outer_heartbeat` | `outer/outer-heartbeat.ts` |
-| `autonomy` | `outer/autonomy-task-dispatcher.ts` |
+| `autonomy` | `outer/casual-chat-dispatcher.ts` |
 | `performance_goal` | `performance-goals/engine.ts` |
 | `inner_llm_step` | `llm/raw.ts`（经 provider） |
 | `inner_pi_mono` | `openkuroneko/adapter/openai.ts`（流式；`stream_options.include_usage` + 无 usage 时仍记 call） |

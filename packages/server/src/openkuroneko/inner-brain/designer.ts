@@ -5,7 +5,7 @@
  * ADL：doc/structurizr/DYFLOW-INNER-EXECUTOR.md §3 §6.3 §9
  *
  * 失败决策表（high-confidence last_failure 时）写进 system prompt：
- *   1. 换 ref / search_and_instance（P1）
+ *   1. 换 ref / search_and_instance（P1）/ search_task_plans（方案参考）
  *   2. 同 ref + 新 instruction（换战术，不是裸重试）
  *   3. promote_local_node 固化/改造 LocalNode 定义（反思期，非 RUN 格）
  *   4. report_done / 等待
@@ -14,10 +14,17 @@
 
 import type { LLMAdapter, Message } from '../adapter/index.js';
 import type { Logger } from '../logger/index.js';
+import { isTransientLlmTransportError } from '../../llm/llm-transport-error.js';
 import { createDesignerTools } from './designer-tools.js';
 import type { NodeSharingDeps } from './designer-tools.js';
 import type { LocalNodeStore } from './local-node-store.js';
 import { selectFactsForPrompt } from './fact-governor.js';
+import { selectConstraintsForPrompt } from './constraint-governor.js';
+import {
+  PLAN_REFERENCES_MEMORY_KEY,
+  summarizePlanReferences,
+  type PlanReferenceRecord,
+} from './plan-reference-port.js';
 import type { MemoryStore } from './memory-store.js';
 import type { DagHistoryEntry, LocalDag, LockedMilestone } from './types.js';
 import {
@@ -37,6 +44,7 @@ export const DESIGNER_SYSTEM = `你是 DyFlow 内脑的 Designer（编排者）�
 - report_done：目标已完成时调用（交付型目标须附 verify 机械证据，否则被拒）
 - promote_local_node：【反思】把已跑通、会复用的战术直接固化成 local/ 节点（不结束本轮，可继续编排复用）
 - lock_milestone：【反思】把已真正达成的子目标锁定为里程碑（附 verify 机械证据）；之后给节点打 milestone=<id> 再 commit 会被拒，防重复编排
+- search_task_plans：【编排前】按你自拟 query 检索历史方案 / playbook（**参考 only**；禁止把命中写入 facts，验证后须 record_fact）
 
 ## 编排原则
 - 把目标拆成若干**小而可验收**的子目标，每个子目标对应一个 NodeInst：{ id, ref, instruction, deliverable }
@@ -57,6 +65,10 @@ export const DESIGNER_SYSTEM = `你是 DyFlow 内脑的 Designer（编排者）�
 - 若已有多个 node_results 为 ok 且战术可复述，**本轮优先**调 promote_local_node 固化成 local/ 节点（直接提升，不必排 RUN 格），减少重复长 instruction
 - 连续 last_failure（救火）时可暂缓提升，先换 ref 或新 instruction
 - **必读 constraints**：带 [run-failure] 前缀的是上轮 RUN 后 FailureDistill 强制红线，不得无视
+
+## 方案参考（search_task_plans）
+- 目标陌生、last_failure 换向、或不确定战术前，可先 search_task_plans（query 由你根据局面写）
+- 返回内容**未验证**，仅供编排；不得当作事实写入 record_fact
 
 ## 反思与固化（每轮 DESIGN 先反思，再编排）
 - RUN 结束后框架已跑 **Mandatory Attributor** 写入 memory.facts/constraints；优先读这些，勿重复蒸馏
@@ -97,11 +109,14 @@ export interface DesignerDeps {
   burstId: string;
   /** P1：节点共享（drive9），提供后 Designer 多 search_and_instance 工具 */
   sharing?: NodeSharingDeps;
+  /** P0：方案参考检索 */
+  planReference?: import('./designer-tools.js').PlanReferenceDeps;
 }
 
 export type DesignerOutcome =
   | { kind: 'run'; dag: LocalDag }
   | { kind: 'done'; reason: string }
+  | { kind: 'failed'; reason: string }
   | { kind: 'empty'; reason: string };
 
 function buildUserMessage(memory: MemoryStore, store: LocalNodeStore): string {
@@ -112,12 +127,13 @@ function buildUserMessage(memory: MemoryStore, store: LocalNodeStore): string {
     : '## 上一次失败\n（无）';
   return [
     `## 全局目标\n${mem.goal ?? '（未指定）'}`,
-    `## 约束\n${mem.constraints.length ? mem.constraints.map(c => `- ${c}`).join('\n') : '（无）'}`,
+    selectConstraintsForPrompt(mem.constraints).section,
     selectFactsForPrompt(mem.fact_records ?? []).section,
     lastFailure,
     `## 已完成节点结果摘要\n${summarizeResults(mem.node_results)}`,
     `## 最近 DAG 历史（patch vs redesign 依据）\n${summarizeDagHistory(mem.dag_history)}`,
     `## 已锁定里程碑（禁止重排；命中即被 commit 拒收）\n${summarizeLockedMilestones(mem.locked_milestones)}`,
+    `## 方案参考（未验证，非 facts）\n${summarizePlanReferences(mem[PLAN_REFERENCES_MEMORY_KEY] as PlanReferenceRecord[] | undefined)}`,
     `## 可用 LocalNode（${nodes.length}）\n${nodes.map(n => `- ${n.id} | ${n.kind} | ${n.description}`).join('\n') || '（仅 preset）'}`,
     `请规划本轮 local_dag（commit_local_dag），或在目标已达成时 report_done。`,
   ].join('\n\n---\n\n');
@@ -162,6 +178,7 @@ export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> 
   const { registry, session } = createDesignerTools({
     store, memory, workDir, burstId,
     ...(deps.sharing ? { sharing: deps.sharing } : {}),
+    ...(deps.planReference ? { planReference: deps.planReference } : {}),
   });
 
   const userMessage = buildUserMessage(memory, store);
@@ -186,8 +203,13 @@ export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> 
     try {
       result = await llm.chat(systemPrompt, messages, registry.schema());
     } catch (e) {
-      logger.error('designer', { event: 'llm.error', data: { error: String(e) } });
-      return { kind: 'empty', reason: `Designer LLM 调用失败：${String(e)}` };
+      const errMsg = String(e);
+      logger.error('designer', { event: 'llm.error', data: { error: errMsg } });
+      const reason = `Designer LLM 调用失败：${errMsg}`;
+      if (isTransientLlmTransportError(errMsg)) {
+        return { kind: 'empty', reason };
+      }
+      return { kind: 'failed', reason };
     }
 
     if (!result.toolCalls || result.toolCalls.length === 0) {

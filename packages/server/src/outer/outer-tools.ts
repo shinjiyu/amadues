@@ -1,9 +1,9 @@
-﻿/**
+/**
  * 外脑工具定义（对齐 openKuroneko outer-brain/tools/）。
  * 外脑 LLM 可调用这些工具来回复用户、派发内脑任务、查询/管理内脑状态。
  *
  * 多内脑支持（参考 openKuroneko InnerBrainPool）：
- *   - set_goal：KPI 模式复用 canonical instance；一次性任务每次新建 workspace
+ *   - set_goal：每次新建 workspace（同 KPI 可多 burst 并行）
  *   - list_inner_brains：列出所有任务实例
  *   - stop_inner_brain：停止指定实例（写入停止信号文件）
  *   - send_directive：向指定实例发送指令
@@ -24,14 +24,16 @@ import { spawnInnerBrainWorker, readWorkerStatus } from '../pi-mono/inner-brain-
 import { isInnerBrainStoppable, stopInnerBrainInstance } from './stop-inner-brain.js';
 import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
-import { findLiveBurstForKpi } from './kpi-dispatch-guard.js';
-import { findCanonicalBurstForKpi } from './inner-brain-kpi-reuse.js';
 import { checkRunningInnerBrainCapacity } from './inner-brain-capacity.js';
 import { resolveTaskOriginThread } from './default-im-thread.js';
 import { formatKpiDigest, suggestKpiAction, buildKpiBurstLinks } from './kpi-progress.js';
 import { ingestDeliverables } from './deliverables-ingest.js';
 import { collectPeerWorkspaceIds, prepareKpiPeerHandoff } from './workspace-inbox.js';
-import { processBurstExitForKpi } from './kpi-burst-hooks.js';
+import { countDeliverables, resolveInnerBurstFinalStatus } from './inner-burst-exit.js';
+import {
+  resolveOuterBrainPhase,
+  readWorkerTickProgress,
+} from '../openkuroneko/inner-brain/status-projection.js';
 import { formatBurstRunDigest } from './kpi/burst-run-history.js';
 import { advanceKpi } from './kpi/kpi-advancer.js';
 import {
@@ -44,7 +46,7 @@ import {
   isBrainAwaitingAsync,
 } from './brain-async-snapshot.js';
 import { notifyInnerBrainAwaitingHuman } from './awaiting-notify.js';
-import { notifyInnerBrainTaskComplete, shouldNotifyUserOnBurstExit } from './completion-notify.js';
+import { notifyInnerBrainTaskComplete, notifyInnerBrainTaskFailed, notifyInnerBrainTaskPartial, shouldNotifyUserOnBurstExit } from './completion-notify.js';
 import { expandAttachAssetIds, type AttachmentPart } from './attach-expand.js';
 import {
   mergeWorkDirSkillsToAgentPool,
@@ -216,8 +218,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'advance_kpi',
       description:
-        '推进 KPI 一发内脑 sprint（绑定 kpi_id、复用 canonical workspace）。' +
-        '长期/周期任务由心跳按节拍自动续派；需要立即推进或 set_kpi 后首派时调用。',
+        '推进 KPI 一发内脑 sprint（绑定 kpi_id、**新 workspace**）。' +
+        '长期/周期任务由 kpiManager 心跳按节拍自动续派；需要立即推进或 set_kpi 后首派时调用。',
       parameters: {
         type: 'object',
         properties: {
@@ -667,12 +669,6 @@ export interface OuterToolContext {
   actionLogStore?: IActionLogStore;
   /** KPI 注册表，用于 set_kpi / list_kpis / view_kpi / abandon_kpi / achieve_kpi 工具 */
   kpiRegistry?: KpiRegistry;
-  /**
-   * 派发"反思 burst"的函数；progress detector 在 idle streak 阈值触发时调用。
-   * 由 index.ts 通过 ctx 注入（避免 outer-tools ↔ index 循环依赖）。
-   */
-  /** outcome 评估失败后自动续跑（UTLRA_KPI_AUTO_NEXT_BURST=1） */
-  scheduleNextKpiBurst?: (kpiId: string, excludeInstanceId?: string) => string | null;
   loadThreads?: () => LooseThreadStore;
   /**
    * 发消息前的跨进程新鲜度检查。
@@ -843,36 +839,13 @@ async function execSetGoal(
     }
     const resolvedKpiId = kpi ? kpi.kpiId : undefined;
 
-    // 同 KPI 在途 → 禁止并行（含 IM 直派）
-    if (resolvedKpiId) {
-      const live = findLiveBurstForKpi(registry, resolvedKpiId, undefined, ctx.kpiRegistry);
-      if (live) {
-        return {
-          replied: false,
-          output:
-            `（同 KPI 在途内脑 \`${live.instanceId}\`（${live.status}），` +
-            `禁止为同一目标并行开多个内脑；请 read_inner_status / send_directive）`,
-        };
-      }
-    }
+    const instanceId = registry.generateInstanceId();
+    const wsId = `task-${instanceId}`;
+    ctx.workspaceStore.ensureWorkspace(wsId);
+    const workDir = path.join(ctx.dataRoot, 'workspaces', wsId);
 
-    const canonical =
-      resolvedKpiId && ctx.kpiRegistry
-        ? findCanonicalBurstForKpi(registry, ctx.kpiRegistry, resolvedKpiId)
-        : undefined;
-    const reusingCanonical = Boolean(canonical);
-
-    const instanceId = reusingCanonical ? canonical!.instanceId : registry.generateInstanceId();
-    const wsId = reusingCanonical ? canonical!.workspaceId : `task-${instanceId}`;
-    if (!reusingCanonical) {
-      ctx.workspaceStore.ensureWorkspace(wsId);
-    }
-    const workDir = reusingCanonical
-      ? canonical!.workDir
-      : path.join(ctx.dataRoot, 'workspaces', wsId);
-
-    // 运行槽位：仅 RUNNING 计数；续跑不占新槽。IM 直派不限槽位。
-    if (!ctx.inboundHumanSid && !reusingCanonical) {
+    // 运行槽位：仅 RUNNING 计数。IM 直派不限槽位。
+    if (!ctx.inboundHumanSid) {
       const cap = checkRunningInnerBrainCapacity(registry, ctx.dataRoot);
       if (!cap.ok) {
         return {
@@ -925,31 +898,17 @@ async function execSetGoal(
       instanceId,
       workspaceId: wsId,
       workDir,
-      goal: dispatchGoal,
+      goal,
       originUser,
       originThread,
       status: 'RUNNING',
-      startedAt: reusingCanonical ? (canonical!.startedAt ?? new Date().toISOString()) : new Date().toISOString(),
+      startedAt: new Date().toISOString(),
       ...(resolvedKpiId ? { kpiId: resolvedKpiId } : {}),
     };
 
-    if (reusingCanonical) {
-      registry.update(instanceId, {
-        goal: dispatchGoal,
-        originUser,
-        originThread,
-        status: 'RUNNING',
-        finishedAt: undefined,
-        pid: undefined,
-        errorMessage: undefined,
-        lastTickAt: undefined,
-      });
-      fs.writeFileSync(path.join(workDir, '.brain', 'goal.md'), dispatchGoal, 'utf8');
-    } else {
-      registry.register(taskRecord);
-      if (resolvedKpiId && ctx.kpiRegistry) {
-        ctx.kpiRegistry.attachBurst(resolvedKpiId, instanceId);
-      }
+    registry.register(taskRecord);
+    if (resolvedKpiId && ctx.kpiRegistry) {
+      ctx.kpiRegistry.attachBurst(resolvedKpiId, instanceId);
     }
 
     // ── 以独立子进程启动内脑，实现进程级隔离 ────────────────────────────────
@@ -964,47 +923,81 @@ async function execSetGoal(
         peerWorkspaceIds,
         workspacesRoot,
         onExit: (exitCode, signal) => {
-          // 子进程退出时，从 worker 状态文件读取结果并更新注册表
           const workerStatus = readWorkerStatus(workDir);
           const ticks = workerStatus?.ticks ?? 0;
           const stoppedBy = workerStatus?.stoppedBy ?? (signal ? 'stop_signal' : 'idle');
-          const isError = exitCode !== 0 && signal == null;
           const isAwaiting = isBrainAwaitingAsync(workDir);
+          const deliverableCount = countDeliverables(workDir);
+          const { finalStatus, errorMessage, partialWithDeliverables } = resolveInnerBurstFinalStatus({
+            workDir,
+            exitCode,
+            signal,
+            stoppedBy,
+            workerError: workerStatus?.error ?? null,
+            isAwaiting,
+          });
 
-          const kpiOutcome = (resolvedKpiId && ctx.kpiRegistry)
-            ? processBurstExitForKpi(
-                {
-                  instanceId,
-                  kpiId: resolvedKpiId,
-                  workDir,
-                  stoppedBy,
-                  exitedWithError: isError,
-                  isAwaiting,
-                },
-                {
-                  kpiRegistry: ctx.kpiRegistry,
-                  innerBrainRegistry: registry,
-                  scheduleNextKpiBurst: ctx.scheduleNextKpiBurst,
-                },
-              )
-            : null;
-
-          if (isError) {
+          if (finalStatus === 'ERROR') {
             registry.update(instanceId, {
               status: 'ERROR',
               finishedAt: new Date().toISOString(),
               ticks,
-              ...(kpiOutcome ? { deliverableCount: kpiOutcome.deliverableCount } : {}),
-              errorMessage: workerStatus?.error ?? `子进程退出码 ${String(exitCode)}`,
+              deliverableCount,
+              errorMessage: errorMessage ?? '内脑异常结束',
+              pid: undefined,
             });
-            console.error(`[utlra][outer-tools] inner burst error (${instanceId}): exitCode=${String(exitCode)}`);
+            eng.syncAfterPiMonoAuto({
+              ticks,
+              lastHadWork: stoppedBy !== 'idle',
+              stoppedBy: stoppedBy as 'idle' | 'max_ticks' | 'stop_signal',
+            });
+            const record = registry.get(instanceId);
+            const notifyUser = record ? shouldNotifyUserOnBurstExit(record) : true;
+            if (partialWithDeliverables) {
+              mergeWorkDirSkillsToAgentPool(ctx.dataRoot, workDir);
+              if (ctx.skillDrive9Store) {
+                mergeWorkDirSkillsToDrive9(ctx.skillDrive9Store, workDir, ctx.agentSid);
+              } else if (ctx.skillStore) {
+                mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
+              }
+              if (notifyUser) {
+                ctx.memoryStore?.ingestInnerOutput(workDir, wsId);
+              }
+            }
+            if (record?.originThread && notifyUser && errorMessage) {
+              if (partialWithDeliverables) {
+                void notifyInnerBrainTaskPartial(
+                  {
+                    imClient: ctx.imClient,
+                    agentSid: ctx.agentSid,
+                    assetStore: ctx.assetStore,
+                    getEngine: ctx.getEngine,
+                  },
+                  {
+                    instanceId,
+                    workspaceId: wsId,
+                    workDir,
+                    originThread: record.originThread,
+                    gapSummary: errorMessage,
+                  },
+                ).catch((e: unknown) =>
+                  console.error('[utlra][outer-tools] partial notify failed:', e),
+                );
+              } else {
+                void notifyInnerBrainTaskFailed(
+                  { imClient: ctx.imClient, agentSid: ctx.agentSid },
+                  { instanceId, originThread: record.originThread, reason: errorMessage },
+                ).catch((e: unknown) =>
+                  console.error('[utlra][outer-tools] failure notify failed:', e),
+                );
+              }
+            }
+            console.error(
+              `[utlra][outer-tools] inner burst error (${instanceId}): ${errorMessage ?? 'unknown'}`,
+            );
             return;
           }
 
-          const finalStatus =
-            (signal != null || stoppedBy === 'stop_signal') ? 'STOPPED'
-            : isAwaiting ? 'AWAITING'
-            : 'DONE';
           const status = eng.syncAfterPiMonoAuto({
             ticks,
             lastHadWork: stoppedBy !== 'idle',
@@ -1015,7 +1008,7 @@ async function execSetGoal(
             // AWAITING 表示 burst 暂停而非结束,不写 finishedAt,等真正完成时再标
             finishedAt: finalStatus === 'AWAITING' ? undefined : new Date().toISOString(),
             ticks,
-            ...(kpiOutcome ? { deliverableCount: kpiOutcome.deliverableCount } : {}),
+            deliverableCount,
             pid: undefined,
           });
           // 知识合并（无论 DONE/STOPPED 都执行）
@@ -1083,9 +1076,9 @@ async function execSetGoal(
 
     return {
       replied: false,
-      output: reusingCanonical
-        ? `已在既有内脑实例上续跑。instance_id=${instanceId}，workspace=${wsId}（同一 KPI 目标，禁止多开）。`
-        : `已创建新内脑实例并启动任务。instance_id=${instanceId}，workspace=${wsId}。可用 list_inner_brains 查看状态，send_directive 发送补充指令。`,
+      output:
+        `已创建新内脑实例并启动任务。instance_id=${instanceId}，workspace=${wsId}。` +
+        `可用 list_inner_brains 查看状态，send_directive 发送补充指令。`,
     };
   }
 
@@ -1197,19 +1190,66 @@ async function execStartSelfUpdate(
         const workerStatus = readWorkerStatus(workDir);
         const ticks = workerStatus?.ticks ?? 0;
         const stoppedBy = workerStatus?.stoppedBy ?? (signal ? 'stop_signal' : 'idle');
-        const isError = exitCode !== 0 && signal == null;
+        const { finalStatus, errorMessage, partialWithDeliverables } = resolveInnerBurstFinalStatus({
+          workDir,
+          exitCode,
+          signal,
+          stoppedBy,
+          workerError: workerStatus?.error ?? null,
+        });
 
-        if (isError) {
+        if (finalStatus === 'ERROR') {
           registry.update(instanceId, {
             status: 'ERROR',
             finishedAt: new Date().toISOString(),
             ticks,
-            errorMessage: workerStatus?.error ?? `子进程退出码 ${String(exitCode)}`,
+            errorMessage: errorMessage ?? '内脑异常结束',
           });
+          eng.syncAfterPiMonoAuto({
+            ticks,
+            lastHadWork: stoppedBy !== 'idle',
+            stoppedBy: stoppedBy as 'idle' | 'max_ticks' | 'stop_signal',
+          });
+          const record = registry.get(instanceId);
+          const notifyUser = record ? shouldNotifyUserOnBurstExit(record) : true;
+          if (partialWithDeliverables) {
+            mergeWorkDirSkillsToAgentPool(ctx.dataRoot, workDir);
+            if (ctx.skillDrive9Store) {
+              mergeWorkDirSkillsToDrive9(ctx.skillDrive9Store, workDir, ctx.agentSid);
+            } else if (ctx.skillStore) {
+              mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
+            }
+          }
+          if (record?.originThread && notifyUser && errorMessage) {
+            if (partialWithDeliverables) {
+              void notifyInnerBrainTaskPartial(
+                {
+                  imClient: ctx.imClient,
+                  agentSid: ctx.agentSid,
+                  assetStore: ctx.assetStore,
+                  getEngine: ctx.getEngine,
+                },
+                {
+                  instanceId,
+                  workspaceId: wsId,
+                  workDir,
+                  originThread: record.originThread,
+                  gapSummary: errorMessage,
+                },
+              ).catch(() => {});
+            } else {
+              void notifyInnerBrainTaskFailed(
+                { imClient: ctx.imClient, agentSid: ctx.agentSid },
+                { instanceId, originThread: record.originThread, reason: errorMessage },
+              ).catch(() => {});
+            }
+          }
+          console.error(
+            `[utlra][outer-tools] self-update error (${instanceId}): ${errorMessage ?? 'unknown'}`,
+          );
           return;
         }
 
-        const finalStatus = (signal != null || stoppedBy === 'stop_signal') ? 'STOPPED' : 'DONE';
         const status = eng.syncAfterPiMonoAuto({
           ticks,
           lastHadWork: stoppedBy !== 'idle',
@@ -1291,7 +1331,6 @@ async function execSetKpi(
     description,
     createdBy,
     kind,
-    asParent: kind === 'ongoing',
     ...(args.notes?.trim() ? { notes: args.notes.trim() } : {}),
   });
   const kindNote =
@@ -1307,7 +1346,6 @@ async function execSetKpi(
         toolCtx: { ...ctx, allowKpiSetGoal: true },
         workspaceId: ctx.workspaceId,
         defaultThreadId: ctx.threadId,
-        scheduleNextKpiBurst: ctx.scheduleNextKpiBurst,
       },
       kpi.kpiId,
     );
@@ -1344,7 +1382,6 @@ async function execAdvanceKpi(
       toolCtx: { ...ctx, allowKpiSetGoal: true },
       workspaceId: ctx.workspaceId,
       defaultThreadId: ctx.threadId,
-      scheduleNextKpiBurst: ctx.scheduleNextKpiBurst,
     },
     kpiId,
   );
@@ -1464,6 +1501,9 @@ function execListInnerBrains(
     }
 
     const asyncSnap = formatBrainAsyncSnapshotForLlm(buildBrainAsyncSnapshot(r.workDir));
+    const outerPhase = resolveOuterBrainPhase(r.workDir);
+    const liveProg = r.status === 'RUNNING' ? readWorkerTickProgress(r.workDir) : null;
+    const liveTicks = liveProg?.ticks ?? r.ticks ?? null;
 
     return {
       instance_id:   r.instanceId,
@@ -1474,10 +1514,14 @@ function execListInnerBrains(
       goal:          r.goal.slice(0, 100) + (r.goal.length > 100 ? '…' : ''),
       started_at:    formatAgentIsoLocal(r.startedAt),
       finished_at:   r.finishedAt ? formatAgentIsoLocal(r.finishedAt) : null,
-      ticks:         r.ticks ?? null,
+      ticks:         liveTicks,
       error:         r.errorMessage ?? null,
-      phase:         runtimeStatus?.['phase'] ?? null,
+      phase:         outerPhase.phase,
+      inner_phase:   runtimeStatus?.['phase'] ?? null,
+      engine:        outerPhase.engine,
+      dyflow_mode:   outerPhase.dyflow_mode,
       last_action:   runtimeStatus?.['lastAction'] ?? null,
+      last_tick_at:  liveProg?.lastTickAt ? formatAgentIsoLocal(liveProg.lastTickAt) : null,
       milestones:    milestoneLines,
       async: {
         controller_mode: asyncSnap.controller.mode,

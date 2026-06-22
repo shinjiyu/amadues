@@ -1,8 +1,7 @@
 /**
- * ChangeWatcher bootstrap：启动时 reconcile + 全表 timer 补单。
+ * ChangeWatcher bootstrap：启动时全表 timer 补单。
  *
  * @see doc/structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md §5.3
- * @see doc/todo/inner-brain-awaiting-lifecycle.md P0
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -27,9 +26,6 @@ class FakeRegistry {
   update(id: string, patch: Partial<TaskRecord>) {
     const t = this.tasks.get(id);
     if (t) Object.assign(t, patch);
-  }
-  awaiting(): TaskRecord[] {
-    return this.list().filter((t) => t.status === 'AWAITING' || t.status === 'BLOCKED');
   }
 }
 
@@ -59,17 +55,16 @@ describe('ChangeWatcher.bootstrap', () => {
     reg = new FakeRegistry();
   });
 
-  it('invokes registryLifecycleReconcile once on bootstrap', async () => {
-    const reconcile = vi.fn(() => []);
+  it('runs tick once on bootstrap (no registry reconcile)', async () => {
+    const spawn = vi.fn(() => ({ ok: true }));
     const w = new ChangeWatcher({
       registry: reg as unknown as import('../outer/inner-brain-registry.js').InnerBrainRegistry,
-      spawnTask: () => ({ ok: true }),
-      reconcileOnBootstrap: reconcile,
+      spawnTask: spawn,
     });
 
     await w.bootstrap();
 
-    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it('resolves overdue timers across all AWAITING tasks during bootstrap', async () => {
@@ -85,7 +80,6 @@ describe('ChangeWatcher.bootstrap', () => {
     const w = new ChangeWatcher({
       registry: reg as unknown as import('../outer/inner-brain-registry.js').InnerBrainRegistry,
       spawnTask: spawn,
-      reconcileOnBootstrap: () => [],
     });
 
     await w.bootstrap();
