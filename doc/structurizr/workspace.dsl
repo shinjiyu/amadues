@@ -319,6 +319,21 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.awaitingInboundResolver -> kuroneko.agentServer.innerBrainRegistry "match AWAITING by originThread" "in-process" {
             tags "import"
         }
+        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.inboundKpiRouter "Step 3.4 软闸门分流（chat/followup 不 return）" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.imIntentClassifier "classifyImInboundIntent(text, ctx)" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.kpiAdvancer "kpi_create/kpi_update → advanceKpi" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.kpiRegistry "active KPI 上下文 + 去重 + create/update" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.innerBrainRegistry "在跑 burst 上下文 → task_followup send_directive" "in-process" {
+            tags "import"
+        }
         kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.outerConversationLoop "runOuterConversationLoop" "in-process" {
             tags "import"
         }
@@ -608,6 +623,12 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.kpiManager -> kuroneko.agentServer.kpiAdvancer "EnvironmentSnapshot + policy → advanceKpi" "in-process" {
             tags "import"
         }
+        kuroneko.agentServer.kpiManager -> kuroneko.agentServer.kpiFailureCircuit "R7 每 tick 续派前 trip（pause + IM 通知）" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.kpiFailureCircuit -> kuroneko.agentServer.kpiRegistry "pause(kpiId, reason)" "in-process" {
+            tags "import"
+        }
         kuroneko.agentServer.kpiManager -> kuroneko.agentServer.outerToolExecutor "set_goal(kpi_id)" "in-process" {
             tags "import"
         }
@@ -652,7 +673,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "07-L3-Outer-Inbound-IM" {
             title "L3 Outer — IM 入站（Facade 路径）"
-            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.memoryBlockStore kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.outerToolExecutor
+            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.inboundKpiRouter kuroneko.agentServer.imIntentClassifier kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.memoryBlockStore kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiRegistry kuroneko.agentServer.outerToolExecutor
             autolayout tb
         }
 
@@ -688,7 +709,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "10b-L3-Outer-KPI" {
             title "L3 外脑 — KPI 调度与 onExit"
-            include kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiManager kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiSpawnCapacity kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.kpiCompletionJudge kuroneko.agentServer.innerBrainKpiReuse kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.workspaceInbox kuroneko.agentServer.innerSpawner kuroneko.agentServer.innerBurstExit
+            include kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiManager kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiFailureCircuit kuroneko.agentServer.kpiSpawnCapacity kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.kpiCompletionJudge kuroneko.agentServer.innerBrainKpiReuse kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.workspaceInbox kuroneko.agentServer.innerSpawner kuroneko.agentServer.innerBurstExit
             autolayout tb
         }
 
@@ -706,7 +727,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "13-L3-Outer-KPI-Manager" {
             title "L3 外脑 — KPI 管理器（reap + advance + dispatch）"
-            include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.environmentSensorRegistry kuroneko.agentServer.environmentModelFacade kuroneko.agentServer.kpiSpawnCapacity kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.kpiManager kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.casualChatDispatcher kuroneko.agentServer.kpiRegistry kuroneko.agentServer.environmentJournal kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.outerToolExecutor kuroneko.innerWorker.archiveStore
+            include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.environmentSensorRegistry kuroneko.agentServer.environmentModelFacade kuroneko.agentServer.kpiSpawnCapacity kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.kpiManager kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiFailureCircuit kuroneko.agentServer.casualChatDispatcher kuroneko.agentServer.kpiRegistry kuroneko.agentServer.environmentJournal kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.outerToolExecutor kuroneko.innerWorker.archiveStore
             autolayout tb
         }
 

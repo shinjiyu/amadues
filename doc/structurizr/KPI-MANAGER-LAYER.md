@@ -87,6 +87,21 @@ flowchart TB
 | **R4** | `ask_user` 超时无响应 | stop 或 ABORTED → 换方案 burst（不无限等人类） |
 | **R5** | 僵尸 burst（长期 AWAITING/RUNNING 无进展） | 合并原 `staleBurstReaper`：`ABORTED` + archive + action-log |
 | **R6** | 环境 busy（hardGates，读 `EnvironmentSnapshot.facets`） | 不 spawn；可继续 R3/R5 清理 |
+| **R7** | 同 KPI 连续 burst 终态为 `ERROR`/失败 ≥ `maxConsecutiveFailures`（默认 3，可 policy 配） | **熔断**：KPI → `paused` + IM 通知人类原因；**停止心跳续派**，恢复需人工/Ops `advance_kpi` |
+
+**R7 失败熔断（消除 503 风暴 / 模糊目标无限续派）— ✅ 2026-06-23 实现：**
+
+- 计数源：`countConsecutiveBurstFailures(kpi, registry)` —— 该 KPI 的 burst 按 `startedAt` 倒序，末尾连续 `ERROR`/`ABORTED` 计数；`RUNNING`/`BLOCKED` 跳过不计不打断；遇 `DONE`/`AWAITING`/`STOPPED` 即清零。（用 innerBrainRegistry burst 状态，不依赖可能为空的 `burstRunHistory`。）
+- 触发（`tripFailureCircuitBreakers`，心跳每 tick 续派前执行）：写 `kpi.status='paused'` + `kpi.pauseReason`，IM 通知（「⚠️ KPI「…」连续 N 次失败，已自动暂停。最近错误：…。回复『继续 <kpiId>』可重试」）+ `action-log`（reason=`kpi_failure_circuit`）。
+- 双重保险：`evaluateKpiAdvanceEligibility({ maxConsecutiveFailures })` 在无在跑 burst 时返回 `kpi_failure_circuit`；paused KPI 又因 `status!=='active'` 返回 `not_active`。恢复由人工/Ops `resume`（清空 `pauseReason`）。
+- 阈值：`DEFAULT_MAX_CONSECUTIVE_FAILURES = 3`，可经 `KpiManagerDeps.maxConsecutiveFailures` 覆盖。
+- 与 R3/R5 区别：R3/R5 处理**单 burst**异常态（AWAITING/僵尸）；R7 处理**KPI 级**重复失败。
+- 落点：`outer/kpi/kpi-failure-circuit.ts`；测试 `kpi-failure-circuit.test.ts` + `kpi-burst-state.test.ts`（eligibility gate）。
+
+**delivery / 一次性语义（与 [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) P4 对齐）：**
+
+- **IM 路径不再铸 `delivery` KPI**；聊天触发的一次性任务走 `adHocBurstAllocator`（跑完归档，天然只跑一次，不进 KPI 续派）。
+- 若历史/Ops 仍存在 `kind:'delivery'` KPI：首个 burst 终态（DONE）即由 `kpiCompletionJudge` 判 `achieved`，**不 R1 续派**；失败则受 R7 熔断约束，不无限重试。
 
 **R3 合理性（deterministic P0，LLM P1）：**
 
@@ -123,6 +138,14 @@ flowchart TB
 - 唯一 spawn API：`executeOuterTool('set_goal', { goal, kpi_id?, allowKpiSetGoal: true })`（KPI 路径由 kpiManager 调用）。
 - IM ad-hoc：无 `kpi_id` 的一次性 burst。
 - AWAITING 唤醒：`changeWatcher` → `spawnAndAttachWorker`（同 instance，非 R1 新 sprint）。
+
+### 5.1 charter 写入纪律（✅ 2026-06-23 修复嵌套膨胀）
+
+- `buildKpiSprintGoal(kpi)` 渲染模板：`# KPI sprint … ## 本轮章程\n{charter || description} …`。
+- **`dispatchKpiSprint` 派发后只更新 `lastBurstAt`，禁止把渲染后的 `goal` 写回 `kpi.charter`**。  
+  旧 bug（`kpi-advancer.ts` `charter: kpi.charter ?? goal.slice(0,500)`）会让下轮 `buildKpiSprintGoal` 把整段模板再包一层 → `goal.md` 多重嵌套（`## 本轮章程\n# KPI sprint…## 本轮章程…`）。
+- `charter` 只允许由「干净的下轮章程」写入：Ops `advance_kpi(charter)`、`kpi-api-dispatch`、`outcomeEvaluator.suggestedRetryCharter`。
+- 回归测试：`kpi-advancer.test.ts`「多轮 dispatch 不把渲染 goal 写回 charter」。
 
 ---
 

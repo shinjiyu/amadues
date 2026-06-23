@@ -93,4 +93,44 @@ describe('kpi-burst-state', () => {
     expect(r.eligible).toBe(true);
     expect(r.mode).toBe('parallel');
   });
+
+  it('R7：连续失败 ≥ maxConsecutiveFailures → kpi_failure_circuit', () => {
+    const { kpi, registry } = mkKpi(['ib-a', 'ib-b', 'ib-c']);
+    const t0 = Date.now();
+    ['ib-a', 'ib-b', 'ib-c'].forEach((id, i) => {
+      registry.register({
+        instanceId: id,
+        workspaceId: `task-${id}`,
+        workDir: path.join(tmp, id),
+        goal: 'g',
+        originUser: 'u',
+        status: 'ERROR',
+        startedAt: new Date(t0 + i * 1000).toISOString(),
+        kpiId: 'kpi-1',
+      });
+    });
+    const r = evaluateKpiAdvanceEligibility(kpi, registry, { maxConsecutiveFailures: 3 });
+    expect(r.eligible).toBe(false);
+    expect(r.reason).toBe('kpi_failure_circuit');
+  });
+
+  it('R7：未给阈值 → 不启用熔断 gate（连败仍可续派）', () => {
+    const { kpi, registry } = mkKpi(['ib-a', 'ib-b', 'ib-c']);
+    const t0 = Date.now();
+    ['ib-a', 'ib-b', 'ib-c'].forEach((id, i) => {
+      registry.register({
+        instanceId: id,
+        workspaceId: `task-${id}`,
+        workDir: path.join(tmp, id),
+        goal: 'g',
+        originUser: 'u',
+        status: 'ERROR',
+        startedAt: new Date(t0 + i * 1000).toISOString(),
+        kpiId: 'kpi-1',
+      });
+    });
+    const r = evaluateKpiAdvanceEligibility(kpi, registry, {});
+    expect(r.eligible).toBe(true);
+    expect(r.mode).toBe('continue');
+  });
 });

@@ -60,9 +60,10 @@
 | **autonomyJudge** | **闲忙判定（hard gates）** | `outer/environment/autonomy-judge.ts` | snapshot+policy → idle/busy |
 | **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
 | **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 由 kpiManager 派）** | `outer/casual-chat-dispatcher.ts` | verdict(idle) + personality → post_to_im |
-| **imIntentClassifier** | **入站意图（⏳ KPI vs ad-hoc vs chat）** | `outer/inbound/im-intent-classifier.ts` | IM 文本 → intent |
+| **imIntentClassifier** | **入站意图（默认 chat / followup / ad-hoc / kpi_update / kpi_create-ongoing）** | `outer/inbound/im-intent-classifier.ts` | IM 文本 + 上下文 → intent；见 IM-INBOUND-INTENT-ROUTING.md |
 | **subKpiDecomposer** | **【已删除】扁平 KPI** | — | 见 KPI-MANAGER-LAYER.md §2.1 |
-| **kpiBurstState** | **多 burst 资格 + 并行上限** | `outer/kpi/kpi-burst-state.ts` | R1/R2；`maxParallelBurstsPerKpi` |
+| **kpiBurstState** | **多 burst 资格 + 并行上限 + R7 连败计数** | `outer/kpi/kpi-burst-state.ts` | R1/R2；`maxParallelBurstsPerKpi`；`countConsecutiveBurstFailures` |
+| **kpiFailureCircuit** | **R7 失败熔断（连续失败 → pause + IM 通知）** | `outer/kpi/kpi-failure-circuit.ts` | `selectTrippedKpis` / `tripFailureCircuitBreakers` |
 | **kpiAwaitingReview** | **AWAITING 审查 R3/R4** | `outer/kpi/kpi-awaiting-review.ts` | 不合理 AWAITING / ask_user 超时 → stop |
 | **kpiCadence** | **【已删除】** 调度改心跳即时派；定时 → AWAITING/wait_timer | — | 见 KPI-MANAGER-LAYER.md §2.3 |
 | **kpiSlotIdle** | **ongoing 槽位判定（⏳ DONE/AWAITING=空闲）** | `outer/kpi/kpi-slot-idle.ts` | leaf KPI + registry + snapshot → idle? |
@@ -71,7 +72,7 @@
 | **kpiManager** | **KPI 编排（✅ reap 僵尸 + 心跳 advance；取代 strategyPlanner 心跳路径）** | `outer/kpi/kpi-manager.ts` | env idle → reap + set_goal |
 | **kpiAdvancer** | **KPI sprint 执行（IM/Ops/advance_kpi；心跳由 kpiManager 调）** | `outer/kpi/kpi-advancer.ts` | advanceKpi → set_goal |
 | **adHocBurstAllocator** | **一次性任务 burst（✅ 无 kpi_id）** | `outer/ad-hoc-burst-allocator.ts` | ad_hoc goal → new instance |
-| **inboundKpiRouter** | **IM 入站 KPI/ad-hoc 分流（✅）** | `outer/inbound/inbound-kpi-router.ts` | classify → advance / ad-hoc |
+| **inboundKpiRouter** | **IM 入站软闸门分流（chat/followup 不 return）** | `outer/inbound/inbound-kpi-router.ts` | ctx + classify → shortCircuit vs hint；见 IM-INBOUND-INTENT-ROUTING.md |
 | **strategyPlanner** | **【已删除】** | — | 见 KPI-MANAGER-LAYER.md |
 | **strategyStore** | **【已删除】** | — | 见 KPI-MANAGER-LAYER.md |
 | **staleBurstReaper** | **僵尸清理（kpiManager R5）** | `outer/kpi/stale-burst-reaper.ts` | selectStaleAwaiting + reap → ABORTED |

@@ -44,9 +44,10 @@
 | innerSpawner | ❌ | ✅ `innerSpawner.component.integration.test.ts` | — | + 可选 `spawn-inner-worker-live`（`UTLRA_TEST_SPAWN_INNER=1`） |
 | kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | |
 | innerBurstExit | ✅ via `kpi-scenario.harness.test.ts` + spawn onExit | — | — | 见 [`KPI-BURST-LIFECYCLE-REMOVED.md`](./KPI-BURST-LIFECYCLE-REMOVED.md) |
-| imIntentClassifier | ✅ `im-intent-classifier.test.ts` | ⏳ inbound IM fixture | — | ADL [`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) §2 |
+| imIntentClassifier | ✅ `im-intent-classifier.test.ts`（默认 chat / followup / 收窄正则 / 去重降级 / ongoing-only）+ `kpi-description-similarity.test.ts` | ⏳ inbound IM fixture | — | ADL [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §3/§6/§9 |
 | subKpiDecomposer | ❌ 已删除 | — | — | 扁平 KPI；见 KPI-MANAGER-LAYER.md §2.1 |
-| kpiBurstState | ✅ `kpi-burst-state.test.ts` + slot-idle/advancer | — | — | R1/R2 + parallel cap |
+| kpiBurstState | ✅ `kpi-burst-state.test.ts` + slot-idle/advancer | — | — | R1/R2 + parallel cap + R7 熔断 gate |
+| kpiFailureCircuit | ✅ `kpi-failure-circuit.test.ts` | — | — | R7：连续失败 → pause + IM + action-log（[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) §3.1 R7） |
 | kpiAwaitingReview | ✅ `kpi-awaiting-review.test.ts` | — | — | R3/R4 AWAITING 审查 |
 | kpiCadence | ❌ 已删除 | — | — | 调度见 KPI-MANAGER-LAYER.md §2.3 |
 | kpiSlotIdle | ✅ `kpi-slot-idle.test.ts` | — | — | §5 ongoing 槽位 |
@@ -55,7 +56,7 @@
 | kpiManager | ✅ `kpi-manager.test.ts` + `kpi-spawn-capacity.test.ts` | ⏳ `kpiManager.component.integration.test.ts` | — | R5 reap + R1 advance；读 EnvironmentSnapshot |
 | kpiAdvancer | ✅ `kpi-advancer.test.ts` | ✅ `autonomy-heartbeat` | — | IM/Ops advance；心跳经 kpiManager |
 | adHocBurstAllocator | ✅ `ad-hoc-burst-allocator.test.ts` | — | — | §8 一次性任务 |
-| inboundKpiRouter | ✅ `im-intent-classifier.test.ts` | ✅ `inbound-kpi-router.component.integration.test.ts` + `outer-brain-inbound-kpi-router.integration.test.ts` | — | §2 IM 分流 |
+| inboundKpiRouter | ✅ `im-intent-classifier.test.ts` | ✅ `inbound-kpi-router.component.integration.test.ts`（软闸门 + followup + 去重降级）+ `outer-brain-inbound-kpi-router.integration.test.ts`（⏳ confirm 往返 P3） | — | [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4/§5 |
 | outerToolsKpiAdvancement | ✅ `outer-tools-kpi-advancement.test.ts` | — | — | `set_goal(kpi_id)` 封禁 |
 | kpiCompletionJudge | ✅ `kpi-completion-judge.test.ts` | — | — | ADL [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) §3b ongoing 不结案 |
 | kpiFeedback | ✅ `kpi-feedback.test.ts` | — | — | ADL [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) §16 多巴胺回路 |

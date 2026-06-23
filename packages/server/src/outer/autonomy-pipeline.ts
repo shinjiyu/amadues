@@ -116,6 +116,12 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
       `skipped=${kpiResult.reaped.skippedPending.join(',')}`,
     );
   }
+  if (kpiResult.failureCircuit.tripped.length > 0) {
+    console.log(
+      `[utlra][kpi-manager] failure_circuit paused=` +
+      kpiResult.failureCircuit.tripped.map((t) => `${t.kpiId}(${t.failures})`).join(','),
+    );
+  }
   if (kpiResult.dispatched) {
     console.log(
       `[utlra][kpi-manager] dispatched kpi=${kpiResult.kpiId ?? '-'} ` +

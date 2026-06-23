@@ -134,6 +134,53 @@ describe('component: inboundKpiRouter', () => {
     expect(r.intent.kind).toBe('chat_only');
     expect(kpiRegistryCount(deps.kpiRegistry)).toBe(0);
   });
+
+  it('裸「启动项目」追问 → handled=false，不建 KPI（软闸门）', async () => {
+    const deps = buildDeps();
+    const r = await routeInboundKpiOrAdHoc(deps, '再试一下启动刚下载的项目');
+    expect(r.handled).toBe(false);
+    expect(r.intent.kind).toBe('chat_only');
+    expect(kpiRegistryCount(deps.kpiRegistry)).toBe(0);
+  });
+
+  it('追问 + 有在跑 burst → task_followup，handled=false，不建 KPI', async () => {
+    const deps = buildDeps();
+    deps.innerBrainRegistry.register({
+      instanceId: 'ib-live-1',
+      workspaceId: 'task-ib-live-1',
+      workDir: path.join(deps.dataRoot, 'workspaces', 'task-ib-live-1'),
+      goal: '下载并启动项目',
+      originUser: 'human:alice',
+      originThread: 'thread-im',
+      status: 'RUNNING',
+      startedAt: new Date().toISOString(),
+    });
+
+    const r = await routeInboundKpiOrAdHoc(deps, '那个项目怎么样了？');
+    expect(r.handled).toBe(false);
+    expect(r.intent.kind).toBe('task_followup');
+    if (r.intent.kind === 'task_followup') expect(r.intent.ref.id).toBe('ib-live-1');
+    expect(kpiRegistryCount(deps.kpiRegistry)).toBe(0);
+  });
+
+  it('显式 KPI 但已有近似 active KPI → kpi_update，不重复建', async () => {
+    const deps = buildDeps();
+    vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
+      replied: false,
+      output: '已创建新内脑实例并启动任务 instance_id=ib-upd-1',
+    });
+    const existing = deps.kpiRegistry.create({
+      description: '台湾情报常态收集，每天中午晚上汇报简报',
+      createdBy: 'human:alice',
+      kind: 'ongoing',
+    });
+
+    const r = await routeInboundKpiOrAdHoc(deps, '继续做台湾情报常态收集，每天汇报简报');
+    expect(r.handled).toBe(true);
+    expect(r.intent.kind).toBe('kpi_update');
+    if (r.intent.kind === 'kpi_update') expect(r.intent.kpiId).toBe(existing.kpiId);
+    expect(kpiRegistryCount(deps.kpiRegistry)).toBe(1);
+  });
 });
 
 function kpiRegistryCount(reg: KpiRegistry): number {

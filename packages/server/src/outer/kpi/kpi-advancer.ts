@@ -28,6 +28,8 @@ export interface KpiAdvancerDeps {
   hasSystemCapacity?: boolean;
   allowParallel?: boolean;
   maxParallelPerKpi?: number;
+  /** R7：连续失败熔断阈值（防御性 gate；管理器另有 trip 扫描 pause） */
+  maxConsecutiveFailures?: number;
 }
 
 export interface KpiAdvanceResult {
@@ -78,6 +80,7 @@ async function dispatchKpiSprint(
     allowParallel: deps.allowParallel ?? true,
     hasSystemCapacity: resolveSystemCapacity(deps),
     maxParallelPerKpi: deps.maxParallelPerKpi,
+    maxConsecutiveFailures: deps.maxConsecutiveFailures,
   });
   if (!elig.eligible) {
     return { ok: false, kpiId: kpi.kpiId, reason: elig.reason };
@@ -103,10 +106,12 @@ async function dispatchKpiSprint(
   const m = toolOut.output.match(/instance_id=([^\s,，]+)/);
   const instanceId = m?.[1];
 
+  // 仅记录派发时间；**不**把渲染后的 sprint goal 写回 charter，
+  // 否则下轮 buildKpiSprintGoal 会把它再包一层模板 → goal.md 嵌套膨胀。
+  // charter 只由 Ops advance_kpi / api-dispatch / outcomeEvaluator 写入「干净的下轮章程」。
   const now = new Date().toISOString();
   deps.kpiRegistry.update(kpi.kpiId, {
     lastBurstAt: now,
-    charter: kpi.charter ?? goal.slice(0, 500),
   });
 
   return {

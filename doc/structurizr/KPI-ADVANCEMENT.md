@@ -24,6 +24,8 @@
 
 ## 2. 入站分流（IM / HTTP）
 
+> **⚠️ 已由 [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) 取代**（2026-06-23）：本节描述的「硬闸门短路 + 纯正则 + 默认偏 KPI + 一次性铸 delivery KPI」语义存在结构性缺陷（误判不可恢复、闲聊追问被铸 KPI 后无限续派）。新设计：**软闸门 + 默认 chat_only + task_followup 跟进识别 + 一次性即 ad-hoc + 长期 KPI 需确认**。以下保留历史细节供对照。
+
 ```mermaid
 flowchart LR
   IN[用户消息 / HTTP 指令]

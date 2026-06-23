@@ -35,6 +35,38 @@ export function hasBlockingAskUserForKpi(kpi: KpiRecord, registry: InnerBrainReg
   return false;
 }
 
+/** 失败终态（R7 熔断计数）：ERROR / ABORTED 视为失败 */
+const FAILURE_STATUSES: ReadonlySet<TaskStatus> = new Set(['ERROR', 'ABORTED']);
+/** 成功/非失败终态（打断连败计数）：DONE / AWAITING / STOPPED */
+const NON_FAILURE_TERMINAL: ReadonlySet<TaskStatus> = new Set(['DONE', 'AWAITING', 'STOPPED']);
+
+/**
+ * 统计 KPI 末尾**连续失败**的 burst 数（R7 熔断）。
+ * - 按 startedAt 倒序遍历该 KPI 的 burst；
+ * - RUNNING/BLOCKED（在跑）跳过不计、不打断；
+ * - ERROR/ABORTED → 计数；遇到 DONE/AWAITING/STOPPED（有进展/等待）即停止计数。
+ */
+export function countConsecutiveBurstFailures(
+  kpi: KpiRecord,
+  registry: InnerBrainRegistry,
+): { failures: number; lastError?: string } {
+  const bursts = listBurstsForKpi(kpi, registry).sort((a, b) =>
+    (b.startedAt ?? '').localeCompare(a.startedAt ?? ''),
+  );
+  let failures = 0;
+  let lastError: string | undefined;
+  for (const rec of bursts) {
+    if (rec.status === 'RUNNING' || rec.status === 'BLOCKED') continue;
+    if (FAILURE_STATUSES.has(rec.status)) {
+      failures++;
+      if (!lastError) lastError = rec.errorMessage ?? rec.abortReason;
+      continue;
+    }
+    if (NON_FAILURE_TERMINAL.has(rec.status)) break;
+  }
+  return { failures, lastError };
+}
+
 export type KpiAdvanceMode = 'first' | 'continue' | 'parallel';
 
 export interface KpiAdvanceEligibility {
@@ -56,6 +88,8 @@ export function evaluateKpiAdvanceEligibility(
     allowParallel?: boolean;
     hasSystemCapacity?: boolean;
     maxParallelPerKpi?: number;
+    /** R7：连续失败 ≥ 此值 → 不再续派（0/未给 = 不启用此 gate） */
+    maxConsecutiveFailures?: number;
   } = {},
 ): KpiAdvanceEligibility {
   const allowParallel = opts.allowParallel ?? true;
@@ -68,6 +102,14 @@ export function evaluateKpiAdvanceEligibility(
 
   const bursts = listBurstsForKpi(kpi, registry);
   const running = runningBurstCount(kpi, registry);
+
+  // R7：连续失败熔断（仅当无在跑 burst 时计入；在跑时不阻断已派的）
+  if (opts.maxConsecutiveFailures && opts.maxConsecutiveFailures > 0 && running === 0) {
+    const { failures } = countConsecutiveBurstFailures(kpi, registry);
+    if (failures >= opts.maxConsecutiveFailures) {
+      return { eligible: false, reason: 'kpi_failure_circuit' };
+    }
+  }
 
   if (hasBlockingAskUserForKpi(kpi, registry)) {
     return { eligible: false, reason: 'awaiting_human' };

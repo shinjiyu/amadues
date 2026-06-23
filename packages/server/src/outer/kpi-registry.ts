@@ -87,6 +87,8 @@ export interface KpiRecord {
   finalizedAt?: string;
   /** 完成原因 / 放弃原因 */
   finalizedReason?: string;
+  /** 暂停原因（R7 失败熔断写入；resume 清空）— KPI-MANAGER-LAYER.md §3.1 R7 */
+  pauseReason?: string;
   /** 已关联的 inner-brain instanceId 列表，按追加顺序 */
   bursts: string[];
   /** 最近一次 burst 结束时间 */
@@ -153,9 +155,9 @@ export class KpiRegistry {
 
   private static readonly _RECORD_KEYS: (keyof KpiRecord)[] = [
     'kpiId', 'description', 'createdBy', 'createdAt', 'status', 'kind', 'momentum',
-    'finalizedAt', 'finalizedReason', 'bursts', 'lastBurstAt', 'consecutiveIdleBursts',
-    'notes', 'parentKpiId', 'children', 'isLeaf', 'cadence', 'charter', 'nextDueAt',
-    'canonicalInstanceId', 'burstRunHistory',
+    'finalizedAt', 'finalizedReason', 'pauseReason', 'bursts', 'lastBurstAt',
+    'consecutiveIdleBursts', 'notes', 'parentKpiId', 'children', 'isLeaf', 'cadence',
+    'charter', 'nextDueAt', 'canonicalInstanceId', 'burstRunHistory',
   ];
 
   /** 补默认字段；剥离盘里多出来的未知键 */
@@ -367,14 +369,15 @@ export class KpiRegistry {
     this._save();
   }
 
-  /** 暂停 / 恢复 */
-  pause(kpiId: string): void {
-    this.update(kpiId, { status: 'paused' });
+  /** 暂停 / 恢复；pause 可选记录原因（R7 失败熔断） */
+  pause(kpiId: string, reason?: string): void {
+    this.update(kpiId, { status: 'paused', pauseReason: reason?.trim() || undefined });
   }
   resume(kpiId: string): void {
     const k = this.kpis.get(kpiId);
     if (!k || k.status !== 'paused') return;
     k.status = 'active';
+    k.pauseReason = undefined;
     this._save();
   }
 }

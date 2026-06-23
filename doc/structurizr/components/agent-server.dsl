@@ -200,6 +200,31 @@
                     }
                 }
 
+                imIntentClassifier = component "IM Intent Classifier" "【入站意图】上下文感知分类：默认 chat_only / task_followup / ad_hoc / kpi_update / kpi_create(ongoing,confirm)；正则兜底 + (P6) LLM" "TypeScript" {
+                    tags "Outer-Module" "Inbound"
+                    properties {
+                        "path" "packages/server/src/outer/inbound/im-intent-classifier.ts"
+                        "horizon.intention" "模糊默认 chat；显式长期才 KPI；跟进既有任务不新建（见 IM-INBOUND-INTENT-ROUTING.md）"
+                        "horizon.in" "IM 文本 + 轻量上下文（active KPI / 在跑 burst / 最近 thread）"
+                        "horizon.out" "ImInboundIntent（chat_only|task_followup|ad_hoc_task|kpi_update|kpi_create）"
+                        "horizon.test.unit" "im-intent-classifier.test.ts"
+                        "horizon.note" "收窄 KPI 正则（去裸 启动/设定/新增）；kpi_update 真正产出；见 IM-INBOUND-INTENT-ROUTING.md §3/§6"
+                    }
+                }
+
+                inboundKpiRouter = component "Inbound KPI Router" "【软闸门分流】组装只读上下文 → 分类 → shortCircuit(显式 ad-hoc/kpi) vs hint(chat/followup 不 return)" "TypeScript" {
+                    tags "Outer-Module" "Inbound"
+                    properties {
+                        "path" "packages/server/src/outer/inbound/inbound-kpi-router.ts"
+                        "horizon.intention" "前置建议而非硬短路；chat/followup 仍进对话环（消除误判不可恢复）"
+                        "horizon.in" "InboundKpiRouterDeps + 正文 + kpiRegistry/innerBrainRegistry 只读"
+                        "horizon.out" "{ shortCircuit, replyText?, hint? }；followup 副作用 send_directive"
+                        "horizon.deps" "imIntentClassifier; kpiAdvancer; adHocBurstAllocator; kpiRegistry; innerBrainRegistry"
+                        "horizon.test.integration" "inbound-kpi-router.component.integration.test.ts"
+                        "horizon.note" "挂载于 outerBrainFacade Step 3.4；见 IM-INBOUND-INTENT-ROUTING.md §4/§5"
+                    }
+                }
+
                 awaitingInboundResolver = component "Awaiting Inbound Resolver" "【IM 必达】人消息 → 同 thread 的 ask_user pending → resolved；拒 agent-mirror/通知 echo" "TypeScript" {
                     tags "Outer-Module" "Inbound" "Inner-Lifecycle"
                     properties {
@@ -314,6 +339,19 @@
                         "horizon.test.unit" "kpi-advancer.test.ts"
                         "horizon.test.integration" "autonomy-heartbeat.component.integration.test.ts"
                         "horizon.note" "见 KPI-ADVANCEMENT.md §7"
+                    }
+                }
+
+                kpiFailureCircuit = component "KPI Failure Circuit" "【R7 失败熔断】同 KPI 连续 burst 失败 ≥ 阈值 → pause + IM 通知 + action-log；停止续派" "TypeScript" {
+                    tags "Outer-Module" "KPI" "Heartbeat"
+                    properties {
+                        "path" "packages/server/src/outer/kpi/kpi-failure-circuit.ts"
+                        "horizon.intention" "消除 503 风暴 / 模糊目标无限续派（见 KPI-MANAGER-LAYER.md §3.1 R7）"
+                        "horizon.in" "kpiRegistry(active) + innerBrainRegistry burst 状态 + 阈值"
+                        "horizon.out" "tripped[]；pause(kpiId, reason) + imClient 通知 + appendAutonomyActionLog"
+                        "horizon.deps" "kpi-burst-state.countConsecutiveBurstFailures; autonomy-action-log"
+                        "horizon.test.unit" "kpi-failure-circuit.test.ts"
+                        "horizon.note" "kpiManager.tick 每 tick 续派前调用；DEFAULT_MAX_CONSECUTIVE_FAILURES=3"
                     }
                 }
 
