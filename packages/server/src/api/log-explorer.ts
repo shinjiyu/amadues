@@ -8,6 +8,7 @@ import { MessageRecordSchema, serializeMessageForLlm, type IdentityRegistry } fr
 import type { InnerBrainRegistry, TaskRecord } from '../outer/inner-brain-registry.js';
 import { resolveAgentSid } from '../outer/outer-tools.js';
 import { resolveAgentTimezone } from '../agent-time.js';
+import { safeAgentSid } from '../data-root.js';
 
 export type LogLane = 'chat' | 'outer' | 'inner' | 'autonomy' | 'trace' | 'directive';
 
@@ -35,10 +36,6 @@ export interface LogSessionSummary {
   label: string;
 }
 
-function safeAgentDir(agentSid: string): string {
-  return agentSid.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 128) || 'default';
-}
-
 function parseJsonlFile(fp: string, limit: number): Record<string, unknown>[] {
   if (!fs.existsSync(fp)) return [];
   const lines = fs.readFileSync(fp, 'utf8').trim().split('\n').filter(Boolean);
@@ -59,7 +56,7 @@ function readOuterToolAudit(
   agentSid: string,
   opts: { threadId?: string; days?: number; limit?: number },
 ): Record<string, unknown>[] {
-  const dir = path.join(dataRoot, 'outer', 'tool-logs', safeAgentDir(agentSid));
+  const dir = path.join(dataRoot, 'outer', 'tool-logs', safeAgentSid(agentSid));
   if (!fs.existsSync(dir)) return [];
   const days = opts.days ?? 7;
   const limit = opts.limit ?? 2000;

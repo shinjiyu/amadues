@@ -76,4 +76,17 @@ describe('reconcileBeliefFromUserMessage', () => {
     expect(revisions).toHaveLength(1);
     expect(revisions[0]!.validity).toBe(VALIDITY_CANCELLED);
   });
+
+  it('persists with a colon-containing agent sid (Windows-safe path)', () => {
+    // Regression: `idp:agent:kuroneko` as a raw filename throws ENOENT on Windows
+    // (NTFS treats `:` as an Alternate Data Stream separator).
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'belief-'));
+    const store = new BeliefRevisionStore(root, 'idp:agent:kuroneko');
+    expect(() =>
+      reconcileBeliefFromUserMessage('WAF 调研不要做了', 'human:alice', store, '- [ ] WAF 调研'),
+    ).not.toThrow();
+    const files = fs.readdirSync(path.join(root, 'belief'));
+    expect(files).toContain('idp_agent_kuroneko.json');
+    expect(store.read().revisions).toHaveLength(1);
+  });
 });

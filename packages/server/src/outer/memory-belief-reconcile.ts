@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { safeAgentSid } from '../data-root.js';
 import type { Memory } from '../mem9/mem9-client.js';
 
 export type BeliefStatus = 'cancelled' | 'completed';
@@ -121,7 +122,7 @@ export class BeliefRevisionStore {
   private readonly filePath: string;
 
   constructor(dataRoot: string, agentSid: string) {
-    this.filePath = path.join(dataRoot, 'belief', `${agentSid}.json`);
+    this.filePath = path.join(dataRoot, 'belief', `${safeAgentSid(agentSid)}.json`);
   }
 
   read(): BeliefStoreSnapshot {

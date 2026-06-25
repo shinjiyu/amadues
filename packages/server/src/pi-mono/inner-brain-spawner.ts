@@ -84,12 +84,30 @@ export function isPidAlive(pid: number): boolean {
   }
 }
 
+/**
+ * 解析子进程 cwd：必须是一个**存在且可写**的本地目录。
+ *
+ * Windows Sandbox 下，父进程的 cwd 常落在只读映射盘（如 `C:\kuroneko-runtime`，
+ * 经 HCS 重定向器暴露）。libuv 用该路径作 `CreateProcessW` 的 lpCurrentDirectory
+ * 时会失败并抛 `spawn UNKNOWN`(-4094)。这里强制把 cwd 指向可写的 workDir，
+ * 既消除该故障，也让子进程相对路径行为更可预期。
+ */
+function resolveChildCwd(workDir: string): string {
+  try {
+    fs.mkdirSync(workDir, { recursive: true });
+    return workDir;
+  } catch {
+    return process.cwd();
+  }
+}
+
 /** 启动内脑 worker 子进程 */
 export function spawnInnerBrainWorker(params: SpawnInnerBrainParams): SpawnedWorker {
   const child = spawn(
     process.execPath,
     resolveWorkerLaunch(),
     {
+      cwd: resolveChildCwd(params.workDir),
       env: {
         ...process.env,
         INNER_INSTANCE_ID:  params.instanceId,
@@ -104,6 +122,7 @@ export function spawnInnerBrainWorker(params: SpawnInnerBrainParams): SpawnedWor
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
+      windowsHide: true,
     },
   );
 

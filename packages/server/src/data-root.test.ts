@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { resolveDataRoot, resolveStoredWorkDir } from './data-root.js';
+import { resolveDataRoot, resolveStoredWorkDir, safeAgentSid } from './data-root.js';
 
 describe('resolveDataRoot', () => {
   const repo = '/repo';
@@ -33,5 +33,28 @@ describe('resolveStoredWorkDir', () => {
   it('leaves native absolute paths unchanged', () => {
     const native = path.join(localRoot, 'workspaces', 'task-ib-abc');
     expect(resolveStoredWorkDir(native, localRoot)).toBe(native);
+  });
+});
+
+describe('safeAgentSid', () => {
+  it('replaces Windows-illegal colons so SID is usable as a filename', () => {
+    // `:` is reserved on Windows (NTFS ADS separator) → would throw ENOENT.
+    expect(safeAgentSid('idp:agent:kuroneko')).toBe('idp_agent_kuroneko');
+  });
+
+  it('strips other reserved path chars', () => {
+    expect(safeAgentSid('a/b\\c<d>e|f?g*h')).toBe('a_b_c_d_e_f_g_h');
+  });
+
+  it('keeps already-safe sids intact', () => {
+    expect(safeAgentSid('idp_agent_kuroneko')).toBe('idp_agent_kuroneko');
+  });
+
+  it('falls back to "default" for empty input', () => {
+    expect(safeAgentSid('')).toBe('default');
+  });
+
+  it('caps length at 128 chars', () => {
+    expect(safeAgentSid('a'.repeat(300)).length).toBe(128);
   });
 });

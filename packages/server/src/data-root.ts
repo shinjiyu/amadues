@@ -7,6 +7,16 @@ export function resolveDataRoot(repoRoot: string, serverDir: string, envRoot?: s
 }
 
 /**
+ * Make an agent SID (e.g. `idp:agent:kuroneko`) safe to use as a file/dir name.
+ * Colons and other reserved chars are illegal on Windows (NTFS treats `:` as an
+ * Alternate Data Stream separator), so SID-derived paths must be sanitized to
+ * stay cross-platform (Linux/Docker + Windows Sandbox).
+ */
+export function safeAgentSid(agentSid: string): string {
+  return agentSid.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 128) || 'default';
+}
+
+/**
  * Remap registry workDir written under Docker `/data` to the current DATA_ROOT.
  * Lets the same `data-yuanbao` tree run locally without junction hacks.
  */

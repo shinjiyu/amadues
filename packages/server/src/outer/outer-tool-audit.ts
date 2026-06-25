@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { safeAgentSid } from '../data-root.js';
 import type { IActionLogStore } from '../heartbeat/types.js';
 import { toolNameToOperationType, writeActionEvent } from '../heartbeat/agent-behavior-log.js';
 
@@ -24,12 +25,8 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function safeAgentDir(agentSid: string): string {
-  return agentSid.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 128) || 'default';
-}
-
 function logsDir(dataRoot: string, agentSid: string): string {
-  return path.join(dataRoot, 'outer', 'tool-logs', safeAgentDir(agentSid));
+  return path.join(dataRoot, 'outer', 'tool-logs', safeAgentSid(agentSid));
 }
 
 function appendJsonl(dataRoot: string, agentSid: string, entry: OuterToolAuditEntry): void {
