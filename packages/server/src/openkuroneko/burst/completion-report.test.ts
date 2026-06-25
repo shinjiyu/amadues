@@ -173,6 +173,75 @@ describe('buildCompletionReport', () => {
       expect(pickImSummary(body)).toContain('完成了评估');
     });
 
+    // ── D9 §4.2 G2：标题净化 ──
+
+    it('pickImSummary 优先取正文内容标题，跳过模板小节名', () => {
+      const body = '## 结果\n# D:\\svn 工程分析报告\n\n> 生成时间：2026-06-01\n正文…';
+      const s = pickImSummary(body);
+      expect(s).toContain('D:\\svn 工程分析报告');
+      expect(s).not.toContain('结果');
+      expect(s).not.toContain('生成时间');
+    });
+
+    it('pickImSummary 跳过引用块/表格/代码/截断噪声行', () => {
+      expect(pickImSummary('## 结果\n> **生成时间**：2026-06-01\n这是真正的一句结论。')).toContain(
+        '这是真正的一句结论',
+      );
+      expect(pickImSummary('## 结果\n| 端点 | URL | 状态码 |\n实际结论在这里出现。')).toContain(
+        '实际结论在这里出现',
+      );
+      expect(
+        pickImSummary('## 结果\n…（省略前文 3139 字符，仅展示最近内容）\nwrite_file 工具的 path 参数…'),
+      ).not.toContain('省略前文');
+    });
+
+    // ── D9 §4.2 G1：记忆堆拦截 ──
+
+    it('completeMessage 是记忆尾巴（含省略前文标记）时不当作结果', () => {
+      const memoryTail =
+        '…（省略前文 3139 字符，仅展示最近内容）\n' +
+        'write_file 工具的 path 参数若只写文件名，文件会被写入 workDir 根目录\n' +
+        '跨任务数据复用路径：之前任务的分析报告存在于 /data/workspaces/task-ib-…';
+      const text = buildCompletionReport(
+        {
+          goal: '介绍一下自己',
+          milestones: '',
+          knowledge: null,
+          completeMessage: memoryTail,
+          lastExecLog: null,
+          completionAssessment: null,
+          deliverables: [],
+        },
+        im,
+      );
+      expect(text).not.toContain('省略前文');
+      expect(text).not.toContain('write_file 工具的 path');
+      expect(text).not.toContain('跨任务数据复用路径');
+      expect(text).toContain('内脑已完成');
+    });
+
+    it('末轮 executor 输出是记忆尾巴时同样拦截', () => {
+      const text = buildCompletionReport(
+        {
+          goal: 'g',
+          milestones: '',
+          knowledge: null,
+          lastExecLog: [
+            {
+              toolName: 'x',
+              args: {},
+              result: { ok: true, output: '…（省略前文 800 字符，仅展示最近内容）\nseed fact dump' },
+            },
+          ],
+          completionAssessment: null,
+          deliverables: [],
+        },
+        im,
+      );
+      expect(text).not.toContain('seed fact dump');
+      expect(text).toContain('内脑已完成');
+    });
+
     it('uses completeMessage instead of seed facts when no deliverable excerpt', () => {
       const seedFacts =
         '飞书 App cli_aabbb23d4a389beb 凭证有效\n' +

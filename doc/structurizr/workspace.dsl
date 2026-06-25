@@ -319,19 +319,13 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.awaitingInboundResolver -> kuroneko.agentServer.innerBrainRegistry "match AWAITING by originThread" "in-process" {
             tags "import"
         }
-        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.inboundKpiRouter "Step 3.4 软闸门分流（chat/followup 不 return）" "in-process" {
+        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.inboundKpiRouter "Step 3.4 只读上下文装配（不派发，注入 inboundHint）" "in-process" {
             tags "import"
         }
-        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.imIntentClassifier "classifyImInboundIntent(text, ctx)" "in-process" {
+        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.kpiRegistry "active KPI 只读上下文（去重提示）" "in-process" {
             tags "import"
         }
-        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.kpiAdvancer "kpi_create/kpi_update → advanceKpi" "in-process" {
-            tags "import"
-        }
-        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.kpiRegistry "active KPI 上下文 + 去重 + create/update" "in-process" {
-            tags "import"
-        }
-        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.innerBrainRegistry "在跑 burst 上下文 → task_followup send_directive" "in-process" {
+        kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.innerBrainRegistry "在跑 burst 只读上下文（供 LLM send_directive）" "in-process" {
             tags "import"
         }
         kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.outerConversationLoop "runOuterConversationLoop" "in-process" {

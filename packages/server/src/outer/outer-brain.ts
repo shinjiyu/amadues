@@ -39,7 +39,7 @@ import {
 } from './inbound-policy.js';
 import { retrieveComprehensiveKnowledge } from './knowledge-retrieval.js';
 import { runOuterConversationLoop } from './outer-conversation-loop.js';
-import { routeInboundKpiOrAdHoc } from './inbound/inbound-kpi-router.js';
+import { assembleInboundContext, renderInboundHint } from './inbound/inbound-kpi-router.js';
 import { resolveAgentSid, resolveWorkspaceId } from './outer-tools.js';
 import { MessageRecordSchema } from '@utlra/chat-ir';
 import { ThreadOrchestrator, makeFreshCheck } from './thread-orchestrator.js';
@@ -538,28 +538,18 @@ export class OuterBrain {
       inboundHumanSid: isHumanSender(senderSid) ? senderSid : undefined,
     };
 
-    // ── Step 3.4: IM KPI / ad-hoc 分流（在 LLM 对话环之前，不依赖 API key）──
+    // ── Step 3.4: IM 入站上下文（只读；方案一：前置层不派发，派发交对话环 LLM 工具）──
+    // ADL IM-INBOUND-INTENT-ROUTING.md §4：装配本人 active KPI + 在跑 burst → inboundHint 注入对话环。
+    // 不再短路 / 不再 dispatchAdHocBurst·kpiRegistry.create·advanceKpi（副作用全部移交 set_goal/set_kpi/advance_kpi/send_directive 工具）。
+    let inboundHint = '';
     if (isHumanSender(senderSid) && this.deps.kpiRegistry) {
-      const routed = await routeInboundKpiOrAdHoc(
-        {
-          dataRoot,
-          kpiRegistry: this.deps.kpiRegistry,
-          toolCtx: toolCtxBase,
-          workspaceId,
-          defaultThreadId: threadId,
-          originUser: senderSid,
-        },
-        content,
-      );
-      if (routed.handled && routed.replyText) {
-        await imClient.postMessage(threadId, {
-          sender_sid: agentSid,
-          text: routed.replyText,
-          parse_mentions: true,
-        });
-        console.log(`[utlra][outer-brain] inbound-kpi-router: intent=${routed.intent.kind}`);
-        return;
-      }
+      const inboundCtx = assembleInboundContext({
+        kpiRegistry: this.deps.kpiRegistry,
+        innerBrainRegistry: toolCtxBase.innerBrainRegistry,
+        defaultThreadId: threadId,
+        originUser: senderSid,
+      });
+      inboundHint = renderInboundHint(inboundCtx);
     }
 
     // ── Step 3.5: agent 链话题自然结束检查 ──────────────────────────────────
@@ -614,9 +604,13 @@ export class OuterBrain {
     // 记忆注入：将 daily-log 和 tasks 状态附加到知识上下文前面
     const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', hasAny: false };
     const memBlock = memStore ? memStore.formatMemoryForLlm(memory) : '';
-    const fullContext = memBlock
+    const baseContext = memBlock
       ? memBlock + (knowledgeContext ? '\n\n---\n\n' + knowledgeContext : '')
       : knowledgeContext;
+    // 方案一：入站只读上下文（active KPI / 在跑 burst）注入对话环，供 LLM 自行决定是否用工具派发
+    const fullContext = inboundHint
+      ? inboundHint + (baseContext ? '\n\n---\n\n' + baseContext : '')
+      : baseContext;
 
     const result = await withTypingActivity(imClient, threadId, () => runOuterConversationLoop({
       env: llmEnv,

@@ -56,7 +56,7 @@
 | kpiManager | ✅ `kpi-manager.test.ts` + `kpi-spawn-capacity.test.ts` | ⏳ `kpiManager.component.integration.test.ts` | — | R5 reap + R1 advance；读 EnvironmentSnapshot |
 | kpiAdvancer | ✅ `kpi-advancer.test.ts` | ✅ `autonomy-heartbeat` | — | IM/Ops advance；心跳经 kpiManager |
 | adHocBurstAllocator | ✅ `ad-hoc-burst-allocator.test.ts` | — | — | §8 一次性任务 |
-| inboundKpiRouter | ✅ `im-intent-classifier.test.ts` | ✅ `inbound-kpi-router.component.integration.test.ts`（软闸门 + followup + 去重降级）+ `outer-brain-inbound-kpi-router.integration.test.ts`（⏳ confirm 往返 P3） | — | [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4/§5 |
+| inboundContextAssembler | — | ✅ `inbound-kpi-router.component.integration.test.ts`（只读上下文 + hint + 零副作用）+ `outer-brain-inbound-kpi-router.integration.test.ts`（前置不派发→流入对话环） | — | [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4（方案一） |
 | outerToolsKpiAdvancement | ✅ `outer-tools-kpi-advancement.test.ts` | — | — | `set_goal(kpi_id)` 封禁 |
 | kpiCompletionJudge | ✅ `kpi-completion-judge.test.ts` | — | — | ADL [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) §3b ongoing 不结案 |
 | kpiFeedback | ✅ `kpi-feedback.test.ts` | — | — | ADL [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) §16 多巴胺回路 |

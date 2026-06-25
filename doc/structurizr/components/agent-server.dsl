@@ -212,16 +212,16 @@
                     }
                 }
 
-                inboundKpiRouter = component "Inbound KPI Router" "【软闸门分流】组装只读上下文 → 分类 → shortCircuit(显式 ad-hoc/kpi) vs hint(chat/followup 不 return)" "TypeScript" {
+                inboundKpiRouter = component "Inbound Context Assembler" "【方案一·只读】装配本人 active KPI + 在跑 burst → renderInboundHint 注入对话环；前置层不派发（派发交对话环 LLM 工具）" "TypeScript" {
                     tags "Outer-Module" "Inbound"
                     properties {
                         "path" "packages/server/src/outer/inbound/inbound-kpi-router.ts"
-                        "horizon.intention" "前置建议而非硬短路；chat/followup 仍进对话环（消除误判不可恢复）"
-                        "horizon.in" "InboundKpiRouterDeps + 正文 + kpiRegistry/innerBrainRegistry 只读"
-                        "horizon.out" "{ shortCircuit, replyText?, hint? }；followup 副作用 send_directive"
-                        "horizon.deps" "imIntentClassifier; kpiAdvancer; adHocBurstAllocator; kpiRegistry; innerBrainRegistry"
-                        "horizon.test.integration" "inbound-kpi-router.component.integration.test.ts"
-                        "horizon.note" "挂载于 outerBrainFacade Step 3.4；见 IM-INBOUND-INTENT-ROUTING.md §4/§5"
+                        "horizon.intention" "前置层零副作用，只提供上下文；create/dispatch/followup 全由对话环 LLM 用工具决定（消除误判不可恢复）"
+                        "horizon.in" "kpiRegistry / innerBrainRegistry（只读）+ originUser + threadId"
+                        "horizon.out" "{ activeKpis, liveBursts } → inboundHint 字符串（注入 fullContext）"
+                        "horizon.deps" "kpiRegistry; innerBrainRegistry（均只读）"
+                        "horizon.test.integration" "inbound-kpi-router.component.integration.test.ts; outer-brain-inbound-kpi-router.integration.test.ts"
+                        "horizon.note" "挂载于 outerBrainFacade Step 3.4（不 return）；派发入口为 set_goal/set_kpi/advance_kpi/send_directive 工具；见 IM-INBOUND-INTENT-ROUTING.md §4"
                     }
                 }
 

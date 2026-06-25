@@ -1,6 +1,8 @@
 # IM 入站意图分流（ADL 权威）
 
-> **English:** Inbound IM classification is an **advisory pre-pass**, not a hard gate. The **safe default is `chat_only`** — ambiguous messages flow to the LLM conversation loop, which owns the nuanced create/dispatch decision via tools. Only **high-confidence explicit** signals short-circuit. The pre-pass is **context-aware**: it reads active KPIs / in-flight bursts / recent thread to detect **follow-ups to existing work** and never mints a duplicate KPI. **Chat-triggered one-offs become ad-hoc tasks, not delivery KPIs.** Creating an **ongoing KPI** from chat requires **human confirmation**.
+> **English (方案一, 2026-06-24 — authoritative):** The inbound pre-pass **no longer dispatches anything**. It is reduced to a **read-only context assembler**: it gathers active KPIs + in-flight bursts for this origin and injects them as an **advisory block** into the conversation loop. The **conversation-loop LLM is the sole decider** of create/dispatch/follow-up, using its existing tools (`set_goal` one-shot · `set_kpi` create · `advance_kpi` · `send_directive`). It already runs with full context, so it reads "介绍一下自己" and just answers; it only calls a tool when genuinely needed. No extra LLM call, no regex hard-gate, no irrecoverable misclassification. Safety guards (KPI spawn capacity, R7 failure circuit, dispatch guard, KPI reuse/dedup) stay at the **tool-execution layer**, independent of who triggers them.
+
+> **历史语义（已被方案一取代）：** 软闸门 + 高置信显式意图短路派发。保留 §0–§7 作为演进记录与回归用例来源；**派发契约以 §4 方案一为准**。
 
 > 取代：[`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) §2「入站分流」（硬闸门 + 纯正则 + 默认偏 KPI 的旧语义）。  
 > 与 `workspace.dsl` 视图 **`07-L3-Outer-Inbound-IM`** 同步。  
@@ -41,6 +43,7 @@
 | **P4 一次性即 ad-hoc** | 聊天触发的短任务一律 `ad_hoc_task`（跑完归档，不续派）。**IM 不铸 `delivery` KPI**；KPI 专留长期/周期。 |
 | **P5 长期需确认** | 从聊天建 `ongoing` KPI 必须**人类确认**（除非消息已显式「立成长期/持续/每天」）。 |
 | **P6 LLM 主裁 + 正则兜底** | 高置信走确定性正则；低/中置信交 LLM（对话环工具或结构化分类），正则仅作兜底信号。 |
+| **P7 派发下沉对话环（方案一，2026-06-24）** | **前置层不派发任何任务/KPI**，只做只读上下文装配并注入对话环。`set_goal`/`set_kpi`/`advance_kpi`/`send_directive` 全部由**对话环 LLM** 调用。P2 软闸门里 `ad_hoc_task`/`kpi_update`/`kpi_create(confirmed)` 的「短路派发」被取消（见 §4）。 |
 
 ---
 
@@ -90,36 +93,54 @@ flowchart TD
 |------|------|------|------|
 | `chat_only` | 默认 / KPI 只读查询 / 模糊 | 进对话环；LLM 可用工具自行 `create_kpi`/`set_goal`/`advance_kpi` | 前置层不得替 LLM 决定建 KPI |
 | `task_followup` | 指向 active KPI / 在跑 burst / 最近 thread 的追问 | `send_directive`（有在跑 burst）或 `kpi_update`（有对应 KPI）或 `chat_only` 报状态 | **新建任何 KPI / burst** |
-| `ad_hoc_task` | 高置信一次性杂活 | `adHocBurstAllocator.create`（无 kpi_id，跑完归档） | 铸 delivery KPI |
+| `ad_hoc_task` | 高置信一次性杂活：**祈使请求**（`帮我/帮忙/麻烦你/替我 + 动作`）或明确产物指代（`这张图/这个文件/这份文档/顺便`） | `adHocBurstAllocator.create`（无 kpi_id，跑完归档） | 铸 delivery KPI；**裸口语助词触发** |
 | `kpi_update` | 指向既有 KPI 的补充/修订 | `kpiRegistry.update(kpiId)` + 一次 `advanceKpi` | 新建重复 KPI |
 | `kpi_create` | **显式**长期/周期 **且** 已确认 | `kpiRegistry.create({ kind:'ongoing' })` + 一次 `advanceKpi` | 未确认即建；铸 delivery |
 
 **未确认的长期意图**：不建 KPI，回一句确认问句，等用户下一条明确同意 → 再走 `kpi_create(confirmed)`。确认状态可由「上一条是确认问句 + 本条肯定回复」判定，或 LLM 在对话环内调 `create_kpi` 工具完成（P6）。
 
+> **`ad_hoc_task` 信号精度（2026-06-23 修）：** `ad_hoc_task` 会**短路对话环**直接派发内脑实例，属强动作，**只能靠高置信祈使信号触发**。曾把裸口语助词 **`一下`** 列入信号 → 「介绍**一下**自己」「说**一下**看法」被误判成派任务（D8）。**禁止**用 `一下/帮忙看看` 等口语高频词单独触发；ad-hoc 须满足「`帮我/帮忙/麻烦你/替我` + 动作动词」或明确产物指代。模糊一概落 `chat_only`，由对话环 LLM 自行决定是否用工具。
+
 ---
 
-## 4. 软闸门：调用契约（替代硬 `return`）
+## 4. 方案一：派发下沉对话环（调用契约，权威）
 
-`outerBrainFacade` 在对话环之前调 `inboundKpiRouter`，但语义改为：
+**决策（2026-06-24）：** 取消前置层一切「短路派发」。`outerBrainFacade` Step 3.4 不再调用会产生副作用的分流；改为只读上下文装配 + 注入对话环。**派发由对话环 LLM 用工具完成。**
 
 ```text
-routed = routeInboundKpiOrAdHoc(deps, content)
-if routed.shortCircuit:        # 仅 high-confidence 显式 ad-hoc / kpi_update / kpi_create(confirmed)
-    post(routed.replyText); return
-else:
-    # task_followup 已执行 send_directive 等副作用，但 **不 return**
-    # 把 routed.hint（候选意图 + 既有任务引用）作为提示注入对话环
-    continue to conversation loop with routed.hint
+# Step 3.4（方案一后）：只读、零副作用、绝不 return
+ctx = assembleInboundContext(deps, originUser, threadId)
+    activeKpis = kpiRegistry.listActive(createdBy=originUser)   # 去重提示
+    liveBursts = innerRegistry.live(originThread|originUser)    # 追问/指令目标
+inboundHint = renderAdvisoryBlock(ctx)        # 注入 fullContext 给对话环
+
+# Step 5：对话环 LLM 看到 inboundHint + 全历史，自行决定：
+#   - 「介绍一下自己」「怎么样了?」「是这样么?」 → 直接回答，不调工具
+#   - 真要派一次性杂活            → set_goal(...)
+#   - 真要建长期 KPI             → set_kpi(kind='ongoing') [+ advance_kpi]
+#   - 补充/修订既有 KPI          → advance_kpi(kpiId) / 在描述里说明
+#   - 追问在跑 burst             → send_directive(instanceId, ...)
 ```
 
-关键差异：
+关键差异（对旧软闸门）：
 
-- **`chat_only` / 低置信** → 不 `return`，进对话环（消除 D1）。
-- **`task_followup`** → **不新建任何 KPI/burst**，进对话环让 LLM 回应（既有 burst 的 ask_user 由 `awaitingInboundResolver` 处理）。  
-  *（P1 实现）* `handled=false` 软交接；自动 `send_directive` 转发到在跑 burst 为后续增强（P2/P3）。
-- **仅** `ad_hoc_task` / `kpi_update` / `kpi_create(confirmed)` 这类**高置信显式**意图才 `shortCircuit + return`（`handled=true`）。
+- **前置层不再 `dispatchAdHocBurst` / `kpiRegistry.create` / `advanceKpi`**——这些副作用全部移交对话环工具。
+- **不再有 `handled=true` 短路**：所有人类消息都进对话环（除既有的 KPI 只读查询仍可由 LLM 用 `list_kpis` 答）。
+- **`task_followup` 转 `send_directive`** 也由 LLM 决定（它在 `inboundHint` 里看到「有在跑 burst ib-x」）。
+- **去重**不靠前置分类器：`inboundHint` 列出 active KPIs，LLM 倾向 `advance_kpi`/在原 KPI 上补充而非新建；`set_kpi`/`set_goal` 工具层另有 KPI 复用/spawn 容量/R7 兜底（§7）。
+- **无 LLM key 时**：不派发（Step 4 已有降级回复）。派发本就需要语言理解，前置正则派发的「不依赖 key」并非真实收益。
 
-> **实现状态（2026-06-23 P1/P2 已落地）：** 收窄正则 + 默认 chat + `task_followup`（软交接）+ 上下文去重降级 `kpi_update` + IM 只产 `ongoing` KPI。`handled` 字段即「是否短路」，故 outer-brain Step 3.4 无需改动。确认闸（`confirmed` 往返）为 P3；P1 对高置信显式意图 `confirmed=true` 直接处理。
+**`inboundHint` 建议格式（注入 fullContext 顶部）：**
+
+```text
+【入站上下文（只读，供你决策；不强制动作）】
+- 本人 active KPI：{kpiId} {desc 摘要} …（无则「无」）
+- 在跑/等待 burst：{instanceId} {goal 摘要} status={RUNNING|AWAITING} …（无则「无」）
+- 提示：模糊/寒暄/自我介绍直接回答；确需长期跟进才 set_kpi；一次性杂活用 set_goal；
+        追问在跑任务用 send_directive；切忌为闲聊新建 KPI 或重复已存在的 KPI。
+```
+
+> **分类器去向：** `imIntentClassifier` 退出派发关键路径，**不再决定动作**。可选保留为 `inboundHint` 的弱提示来源（`isKpiQueryIntent` 等），由 `UTLRA_INBOUND_CLASSIFIER_HINT=0` 关闭。回归用例（§9）转为「对话环 LLM 在该上下文下应如何动作」的期望，前置层只断言**零副作用 + 注入了正确上下文**。
 
 ---
 
@@ -168,11 +189,12 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 
 ## 8. ADL 组件
 
-| 模块 ID | 路径 | 职责 |
+| 模块 ID | 路径 | 职责（方案一后） |
 |---------|------|------|
-| `imIntentClassifier` | `outer/inbound/im-intent-classifier.ts` | 上下文感知意图分类（chat/followup/ad-hoc/kpi_update/kpi_create）；正则兜底 + (P6) LLM |
-| `inboundKpiRouter` | `outer/inbound/inbound-kpi-router.ts` | 组装只读上下文 → 分类 → 软闸门路由（shortCircuit vs hint） |
-| `adHocBurstAllocator` | `outer/ad-hoc-burst-allocator.ts` | 一次性 burst（无 kpi_id） |
+| `inboundContextAssembler` | `outer/inbound/inbound-kpi-router.ts` `assembleInboundContext` + `renderInboundHint` | **只读**装配 active KPIs + live bursts → 生成 `inboundHint`；**零副作用** |
+| `imIntentClassifier` | `outer/inbound/im-intent-classifier.ts` | 退出派发关键路径；可选作 `inboundHint` 弱提示（`isKpiQueryIntent` 等），不决定动作 |
+| 对话环工具 | `outer/outer-tools.ts` `OUTER_TOOL_DEFS` | `set_goal`/`set_kpi`/`advance_kpi`/`send_directive` — **唯一派发入口** |
+| `adHocBurstAllocator` | `outer/ad-hoc-burst-allocator.ts` | 一次性 burst（无 kpi_id），由 `set_goal` 工具调用 |
 
 ---
 
@@ -180,8 +202,8 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 
 | 模块 | 单测 | 组件测 |
 |------|------|--------|
-| `imIntentClassifier` | ⏳ 默认 chat / 跟进识别 / 收窄正则 / 去重降级 | ⏳ inbound fixture |
-| `inboundKpiRouter` | ⏳ 软闸门（chat 不 return；followup 派指令仍进环） | ⏳（已有 `inbound-kpi-router.component.integration.test.ts`，需扩 followup/confirm 用例） |
+| `imIntentClassifier` | ✅ `im-intent-classifier.test.ts`（默认 chat / 跟进 / 收窄正则 / 去重降级 / D8）—退出关键路径后仅作模块/弱提示 | — |
+| `inboundContextAssembler` | — | ✅ `inbound-kpi-router.component.integration.test.ts`（只读上下文 + hint + **零副作用**）+ `outer-brain-inbound-kpi-router.integration.test.ts`（前置不派发 → 流入对话环，无 key 降级） |
 
 **关键回归用例**（复现样本）：
 
@@ -190,6 +212,7 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 3. 「建立台湾情报常态收集，每天中午晚上汇报」→ `kpi_create(ongoing, confirmed=false)` → 回确认问句；用户「好，立吧」→ `kpi_create(confirmed=true)`。
 4. 「帮我查一下今天天气」→ `ad_hoc_task`。
 5. 同 origin 已有近似 active KPI，再发类似长期请求 → `kpi_update`（不重复建）。
+6. **（D8 回归）**「你们分别介绍一下自己」「分别自我介绍」「说一下你的看法」→ `chat_only`，**不得**派 `ad_hoc_task`（裸 `一下` 不再是 ad-hoc 信号）。
 
 ---
 
@@ -201,6 +224,7 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | **P1** | `imIntentClassifier` 收窄正则 + 默认 chat + `task_followup`；`inboundKpiRouter` 软闸门（chat/followup 不 return） |
 | **P2** | 上下文感知（active KPI / 在跑 burst / thread）+ 去重降级 `kpi_update` |
 | **P3** | 长期 KPI 确认闸（确认问句 ↔ 肯定回复）；(可选) LLM 结构化分类 |
+| **P4（方案一，2026-06-24）** | 取消前置短路派发：`inboundKpiRouter` → 只读 `assembleInboundContext` + `renderInboundHint`；`set_goal`/`set_kpi`/`advance_kpi`/`send_directive` 由对话环 LLM 调用；分类器退出关键路径 |
 
 ---
 
@@ -209,3 +233,5 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | 日期 | 说明 |
 |------|------|
 | 2026-06-23 | 初版：软闸门 + 默认聊天 + task_followup + 一次性即 ad-hoc + 长期需确认 + 正则收窄；取代 KPI-ADVANCEMENT §2 |
+| 2026-06-23 | 修 D8：`ADHOC_SIGNAL_RE` 剔除裸 `一下`（误把「介绍一下自己」派成 ad-hoc 任务）；ad-hoc 须高置信祈使（`帮我/帮忙/麻烦你/替我`+动作）或产物指代 |
+| 2026-06-24 | **方案一（P4）**：取消前置层短路派发，派发决策下沉对话环 LLM 工具；`inboundKpiRouter` 降为只读上下文装配 + `inboundHint`；分类器退出关键路径（§4 为权威契约，§0–§3 留作演进/回归来源） |

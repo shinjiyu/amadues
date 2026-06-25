@@ -72,4 +72,25 @@ describe('im-intent-classifier', () => {
       expect(r.confirmed).toBe(true);
     }
   });
+
+  // ── D8 回归：裸「一下」不得触发 ad_hoc_task ──
+
+  it('自我介绍（含「一下」）→ chat_only，不派 ad-hoc 任务', () => {
+    expect(classifyImInboundIntent('你们分别介绍一下自己，特别讲讲自己不同于其它agent').kind).toBe(
+      'chat_only',
+    );
+    expect(classifyImInboundIntent('分别自我介绍，尤其是你们的特别之处').kind).toBe('chat_only');
+  });
+
+  it('口语「一下/说一下/看一下」→ chat_only（裸助词不再是 ad-hoc 信号）', () => {
+    expect(classifyImInboundIntent('说一下你的看法').kind).toBe('chat_only');
+    expect(classifyImInboundIntent('聊一下最近的进展吧').kind).toBe('chat_only');
+    expect(classifyImInboundIntent('介绍一下你自己').kind).toBe('chat_only');
+  });
+
+  it('真正的祈使杂活仍 → ad_hoc_task', () => {
+    expect(classifyImInboundIntent('帮我查今天天气').kind).toBe('ad_hoc_task');
+    expect(classifyImInboundIntent('帮忙翻译这段话').kind).toBe('ad_hoc_task');
+    expect(classifyImInboundIntent('麻烦你分析这个文件的作用').kind).toBe('ad_hoc_task');
+  });
 });

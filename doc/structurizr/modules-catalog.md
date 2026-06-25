@@ -72,7 +72,7 @@
 | **kpiManager** | **KPI 编排（✅ reap 僵尸 + 心跳 advance；取代 strategyPlanner 心跳路径）** | `outer/kpi/kpi-manager.ts` | env idle → reap + set_goal |
 | **kpiAdvancer** | **KPI sprint 执行（IM/Ops/advance_kpi；心跳由 kpiManager 调）** | `outer/kpi/kpi-advancer.ts` | advanceKpi → set_goal |
 | **adHocBurstAllocator** | **一次性任务 burst（✅ 无 kpi_id）** | `outer/ad-hoc-burst-allocator.ts` | ad_hoc goal → new instance |
-| **inboundKpiRouter** | **IM 入站软闸门分流（chat/followup 不 return）** | `outer/inbound/inbound-kpi-router.ts` | ctx + classify → shortCircuit vs hint；见 IM-INBOUND-INTENT-ROUTING.md |
+| **inboundContextAssembler** | **IM 入站只读上下文装配（方案一：前置不派发）** | `outer/inbound/inbound-kpi-router.ts` | assembleInboundContext + renderInboundHint → inboundHint 注入对话环；派发交 set_goal/set_kpi/advance_kpi/send_directive 工具；见 IM-INBOUND-INTENT-ROUTING.md §4 |
 | **strategyPlanner** | **【已删除】** | — | 见 KPI-MANAGER-LAYER.md |
 | **strategyStore** | **【已删除】** | — | 见 KPI-MANAGER-LAYER.md |
 | **staleBurstReaper** | **僵尸清理（kpiManager R5）** | `outer/kpi/stale-burst-reaper.ts` | selectStaleAwaiting + reap → ABORTED |

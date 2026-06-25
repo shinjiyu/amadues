@@ -202,12 +202,22 @@ function buildVerboseCompletionReport(input: CompletionReportInput): string {
   return sections.join('\n');
 }
 
+/**
+ * 记忆尾巴标记（`BrainFS.tail` 截断提示）。命中即视为「seed facts 记忆堆」，
+ * 不得当 IM `## 结果`（ADL INNER-BRAIN-IM-NOTIFY-BOUNDARY §4.2 G1）。
+ */
+function isMemoryDump(s: string): boolean {
+  return /省略前文\s*\d+\s*字符|仅展示最近内容/.test(s);
+}
+
 /** 用户 IM：只保留结论 + 产出列表 + 硬失败；不 dump memory seed facts */
 function buildImCompletionReport(input: CompletionReportInput): string {
   const sections: string[] = [];
   const excerpt = (input.resultExcerpt ?? '').trim();
-  const completeMessage = (input.completeMessage ?? '').trim();
-  const lastContent = pickLastAssistantContent(input.lastExecLog);
+  const completeMessageRaw = (input.completeMessage ?? '').trim();
+  const completeMessage = completeMessageRaw && !isMemoryDump(completeMessageRaw) ? completeMessageRaw : '';
+  const lastRaw = pickLastAssistantContent(input.lastExecLog);
+  const lastContent = lastRaw && !isMemoryDump(lastRaw) ? lastRaw : null;
 
   if (excerpt) {
     sections.push('## 结果');
@@ -266,15 +276,45 @@ function stripExcerptPreamble(excerpt: string, maxLen: number): string {
   return body.slice(0, maxLen) + '\n\n…（全文见附件）';
 }
 
-/** IM 通知首行摘要（列表预览用） */
+/** IM 完成报告的模板小节名（非内容标题，摘要时跳过） */
+const IM_TEMPLATE_HEADINGS = new Set(['结果', '产出文件', '需注意', '核心结论', '关键事实']);
+
+/** 摘要噪声行：引用块 / 表格 / 代码 / 列表 / 截断标记 / 表格分隔线（ADL §4.2 G2） */
+function isSummaryNoiseLine(l: string): boolean {
+  if (!l) return true;
+  if (/^[>|`*=—–]/.test(l)) return true;
+  if (l.startsWith('- ') || l.startsWith('…') || l.startsWith('（摘自') || l.startsWith('（省略')) {
+    return true;
+  }
+  if (/^[-|:\s]+$/.test(l)) return true; // markdown 表格分隔线
+  if (isMemoryDump(l)) return true;
+  return false;
+}
+
+function clipImSummary(s: string): string {
+  const normalized = s.replace(/\s+/g, ' ').trim();
+  const one = normalized.slice(0, 120);
+  return one.length < normalized.length ? `${one}…` : one;
+}
+
+/** IM 通知首行摘要（列表预览用）：优先正文内容标题，否则首句干净散文 */
 export function pickImSummary(reportBody: string): string {
-  const lines = reportBody
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith('#') && !l.startsWith('- ') && !l.startsWith('…'));
-  const first = lines.find((l) => l.length > 8) ?? '内脑任务已完成';
-  const one = first.replace(/\s+/g, ' ').slice(0, 120);
-  return one.length < first.length ? `${one}…` : one;
+  const lines = reportBody.split('\n').map((l) => l.trim());
+
+  // 1) 正文里第一个「内容标题」（跳过模板小节名与过短标题）
+  for (const l of lines) {
+    const m = l.match(/^#{1,6}\s+(.+)$/);
+    if (m) {
+      const title = m[1]!.trim();
+      if (!IM_TEMPLATE_HEADINGS.has(title) && title.length >= 4 && !isSummaryNoiseLine(title)) {
+        return clipImSummary(title);
+      }
+    }
+  }
+
+  // 2) 退而求其次：第一行干净的散文句
+  const prose = lines.find((l) => !l.startsWith('#') && !isSummaryNoiseLine(l) && l.length > 8);
+  return prose ? clipImSummary(prose) : '内脑任务已完成';
 }
 
 function pickLastAssistantContent(

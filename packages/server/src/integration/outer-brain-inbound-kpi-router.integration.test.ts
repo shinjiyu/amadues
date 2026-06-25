@@ -1,10 +1,10 @@
 /**
- * F 装配：OuterBrain.handleInbound → inboundKpiRouter 在对话环前截获 KPI / ad-hoc。
+ * F 装配：OuterBrain.handleInbound 入站（方案一）。
+ * 前置层不再派发/短路；人类消息流入对话环（本测无 LLM key → Step 4 降级回复，证明未被短路）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createOuterBrainFixture, type OuterBrainFixture } from '../testing/outer-brain-fixture.js';
-import * as outerTools from '../outer/outer-tools.js';
 
 const LLM_ENV_KEYS = [
   'ZHIPU_API_KEY',
@@ -13,7 +13,7 @@ const LLM_ENV_KEYS = [
   'UTLRA_INNER_LLM_PROVIDER',
 ] as const;
 
-describe('integration: outer brain inbound KPI router', () => {
+describe('integration: outer brain inbound (方案一：前置不派发)', () => {
   let fx: OuterBrainFixture;
   const envSnapshot: Partial<Record<(typeof LLM_ENV_KEYS)[number], string>> = {};
 
@@ -41,39 +41,25 @@ describe('integration: outer brain inbound KPI router', () => {
     delete process.env['UTLRA_AGENT_IM_SID'];
   });
 
-  it('KPI 类人类消息 → 路由器回复，不进入 LLM 对话环', async () => {
-    vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
-      replied: false,
-      output: '已创建新内脑实例并启动任务 instance_id=ib-ob-kpi-1',
-    });
-
+  it('KPI 类人类消息 → 前置层不建 KPI、不回模板，流入对话环（无 key 降级）', async () => {
     const threadId = `thread:kpi-router-${Date.now()}`;
     await fx.brain.handleInbound({
       threadId,
       senderSid: 'human:alice',
       message: {
         message_id: `msg:${Date.now()}`,
-        parts: [{
-          type: 'text',
-          text: '建立台湾情报常态收集，每天中午和晚上汇报简报',
-        }],
+        parts: [{ type: 'text', text: '建立台湾情报常态收集，每天中午和晚上汇报简报' }],
       },
     });
 
-    const kpiReplies = fx.im.messagesMatching(/已登记 KPI/, threadId);
-    expect(kpiReplies.length).toBe(1);
-    expect(kpiReplies[0]!.body.text).toMatch(/已登记 KPI/);
-
-    const llmFallback = fx.im.messagesMatching(/外脑未配置 LLM/, threadId);
-    expect(llmFallback.length).toBe(0);
+    // 方案一：前置层零副作用——不建 KPI、不回「已登记 KPI」模板
+    expect(fx.kpiRegistry.list().length).toBe(0);
+    expect(fx.im.messagesMatching(/已登记 KPI/, threadId).length).toBe(0);
+    // 消息流入对话环（无 LLM key → Step 4 降级回复），证明未被短路
+    expect(fx.im.messagesMatching(/外脑未配置 LLM/, threadId).length).toBe(1);
   });
 
-  it('一次性杂活 → 路由器派发，不进入 LLM 对话环', async () => {
-    vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
-      replied: false,
-      output: '已创建新内脑实例并启动任务 instance_id=ib-ob-adhoc-1',
-    });
-
+  it('一次性杂活类消息 → 前置层不派发、不回模板，流入对话环（无 key 降级）', async () => {
     const threadId = `thread:adhoc-router-${Date.now()}`;
     await fx.brain.handleInbound({
       threadId,
@@ -84,7 +70,8 @@ describe('integration: outer brain inbound KPI router', () => {
       },
     });
 
-    const adHocReplies = fx.im.messagesMatching(/已派发一次性任务/, threadId);
-    expect(adHocReplies.length).toBe(1);
+    expect(fx.im.messagesMatching(/已派发一次性任务/, threadId).length).toBe(0);
+    expect(fx.innerBrainRegistry.list().length).toBe(0);
+    expect(fx.im.messagesMatching(/外脑未配置 LLM/, threadId).length).toBe(1);
   });
 });
