@@ -108,6 +108,17 @@
 | **handleFeishuInbound** | ✅ `inbound.test.ts`（union_id 稳定键、scope=app_id、去重、@bot、reply、降级） | — | ADL §5.1 |
 | **FeishuChannel** | ✅ `feishu-channel.test.ts`（事件源、出站路由、Typing reaction 生命周期） | — | Typing 模拟见 channel-bridge-guide §5.4 |
 | **createFeishuConnector** | ✅ `connector.test.ts`（探测、失败回滚、fan-in 入站约定） | — | 注册于 `index.ts` connectors map |
+| **scanRegisterFeishuApp** | ✅ `scan-register.test.ts`（URL 回调、凭证返回、SDK 缺失显式报错） | ✅ `channel-scan-tools.test.ts`（server：异步流+admin 闸） | P4a，ADL §6.6 |
+
+## 微信桥（`wechatBridge` · `packages/wechat-bridge`）
+
+| 模块 | 单测 | 组件测 | 备注 |
+|---|---|---|---|
+| **IlinkApiClient** | ✅ `ilink-api-client.test.ts`（登录轮询、getupdates、sendmessage 回传 context_token、-14 过期） | — | fake fetch，不出网 |
+| **handleWechatInbound** | ✅ `inbound.test.ts`（message_type 过滤、去重、resolve scope=bot_id、context_token 缓存） | — | ADL §6.6 |
+| **WechatChannel** | ✅ `wechat-channel.test.ts`（长轮询源注入、出站路由、typing ticket） | — | |
+| **createWechatConnector** | ✅ `connector.test.ts`（探测 prime、凭证 JSON 解析、失败回滚） | — | 注册于 `index.ts` connectors map（kind=wechat） |
+| **thread-mapper** | ✅ `thread-mapper.test.ts` | — | `wechat:<bot_id>:dm:<user_id>` |
 | **thread-mapper** | ✅ `thread-mapper.test.ts` | — | `feishu:<app_id>:chat:<chat_id>` |
 
 ## 元宝 PSTune（`data-yuanbao` workspace · ADL [`BATTLE-TUNE-LOOP.md`](./BATTLE-TUNE-LOOP.md)）

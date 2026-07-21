@@ -110,8 +110,9 @@ function retrieveCrossThread(
   query: string,
   loadThreads: () => LooseThreadStore,
   registry: IdentityRegistry,
-): string {
-  if (!query.trim()) return '';
+): { text: string; count: number } {
+  const none = { text: '', count: 0 };
+  if (!query.trim()) return none;
   try {
     const data = loadThreads();
     const keywords = query
@@ -119,7 +120,7 @@ function retrieveCrossThread(
       .split(/[\s，。,、？?！!\n]+/)
       .filter((w) => w.length >= 2)
       .slice(0, 8);
-    if (!keywords.length) return '';
+    if (!keywords.length) return none;
 
     const tz = resolveAgentTimezone();
     const hits: string[] = [];
@@ -151,10 +152,10 @@ function retrieveCrossThread(
       if (hits.length >= MAX_CROSS_THREAD_MSGS) break;
     }
 
-    if (!hits.length) return '';
-    return ['### 跨线程相关历史', ...hits].join('\n');
+    if (!hits.length) return none;
+    return { text: ['### 跨线程相关历史', ...hits].join('\n'), count: hits.length };
   } catch {
-    return '';
+    return none;
   }
 }
 
@@ -230,13 +231,13 @@ export function retrieveComprehensiveKnowledge(opts: {
     ? retrievePersonSection(opts.senderSid, threadId, loadThreads, registry, opts.bindingIndex)
     : { text: '', count: 0 };
 
-  const sections = [repoSection, threadSection, personSection.text, crossSection].filter(Boolean);
+  const sections = [repoSection, threadSection, personSection.text, crossSection.text].filter(Boolean);
 
   const repoCount   = repoSection ? 1 : 0;
   const threadCount = threadSection
     ? Math.min(MAX_CURRENT_THREAD_MSGS, (loadThreads().messages[threadId] ?? []).length)
     : 0;
-  const crossCount = crossSection ? crossSection.split('\n').length - 1 : 0;
+  const crossCount = crossSection.count;
 
   if (!sections.length) {
     return { context: '', sources: { repo: 0, currentThread: 0, crossThread: 0, person: 0 } };

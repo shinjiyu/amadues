@@ -1,0 +1,27 @@
+{
+  "name": "@utlra/wechat-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "微信 iLink ClawBot 渠道桥（ChatIRChannel 实现）：扫码登录 bot_token，getupdates 长轮询收消息，出站回传 context_token，Typing 走 sendtyping。",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@utlra/chat-ir": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.0"
+  }
+}

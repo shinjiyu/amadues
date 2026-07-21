@@ -194,7 +194,8 @@ DESIGN → RUN → AWAITING → DONE
 | **workspaceKit** | `packages/server/src/workspace-kit` — **外脑专用**（P3a 内联，原 `@utlra/core`）。内脑经 **file** 共享 `workDir`，不 import |
 | webchatProtocolLib | `packages/webchat-protocol` |
 | webchatBridge | `packages/webchat-bridge` — 出站 `asset:` → chat-server `/uploads` |
-| **feishuBridge** | `packages/feishu-bridge` — 多连接（thread_id 编入 app_id）；入站 resolve（union_id + scope=app_id）；Typing=reaction；长连接 SDK 可选依赖 |
+| **feishuBridge** | `packages/feishu-bridge` — 多连接（thread_id 编入 app_id）；入站 resolve（union_id + scope=app_id）；Typing=reaction；长连接 SDK 可选依赖；P4a `scan-register`（registerApp device flow） |
+| **wechatBridge** | `packages/wechat-bridge` — 微信 iLink ClawBot（扫码登录 bot_token / getupdates 长轮询 / context_token 出站锚点 / sendtyping）；一号一连接，基本仅私聊；见 IDENTITY-CROSS-CHANNEL §6.6 |
 
 ---
 
@@ -218,3 +219,4 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-06-02 | DyFlow 内脑重构 ADL：[`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) + [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md)；新内脑模块 designer/runner/baseNodeExecutor/nodeCreatorExecutor/localNodeStore/memoryStore/designerToolRegistry/presetSeeder/nodeAbstractor/nodeAssembler；新外脑模块 nodeDefDrive9Store/nodeDefEviction；视图 `09b-L3-Inner-DyFlow` + `14-L2-DyFlow-Node-Lifecycle`；旧三件套（decomposer/executor/attributor/blockResolver）标 Deprecated-DyFlow；`INNER-EXECUTE-INCREMENTAL.md` 已 superseded |
 | 2026-07-16 | 跨渠道身份认同 ADL：[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md)；模块 `identityLinkService` / `channelConnectionRegistry`；库侧 `identityBindingIndex`；L2 `feishu` + `feishuBridge`（⏳）；视图 `03b` / `07c` |
 | 2026-07-17 | P2b：`feishuBridge`（`packages/feishu-bridge`）落地并注册 connector（kind=feishu）；飞书路径 ⏳ 全部转 ✅ |
+| 2026-07-21 | P4a+P4b：飞书扫码建应用（`scan-register` + `feishu_channel_scan_add`）；微信 iLink 桥 `wechatBridge`（kind=wechat connector + `wechat_channel_add`）；L2 新增 `wechat` 外部系统与 `03c` 视图 |

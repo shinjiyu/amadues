@@ -22,6 +22,7 @@
     "@utlra/chat-ir": "*",
     "@utlra/discord-bridge": "*",
     "@utlra/feishu-bridge": "*",
+    "@utlra/wechat-bridge": "*",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^16.4.5",
     "hono": "^4.6.0",

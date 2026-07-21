@@ -77,7 +77,8 @@ function canonicalizeAdminEntry(
   return index.resolve(key) ?? entry;
 }
 
-function requireAdmin(ctx: OuterToolContext): string | null {
+/** admin 闸（P2）：channel-scan-tools（P4a/P4b）复用同一判定。 */
+export function requireChannelAdmin(ctx: OuterToolContext): string | null {
   const actor = ctx.inboundHumanSid;
   if (!actor) return '（仅人类 IM 入站对话可管理通道连接）';
   const admins = ctx.channelAdminSids;
@@ -95,7 +96,7 @@ export async function execFeishuChannelAdd(
 ): Promise<ToolCallResult> {
   const registry = ctx.channelConnectionRegistry;
   if (!registry) return { replied: false, output: '（通道连接注册表未启用）' };
-  const denied = requireAdmin(ctx);
+  const denied = requireChannelAdmin(ctx);
   if (denied) return { replied: false, output: denied };
 
   const appId = args.app_id?.trim() ?? '';
@@ -133,7 +134,7 @@ export async function execFeishuChannelRemove(
 ): Promise<ToolCallResult> {
   const registry = ctx.channelConnectionRegistry;
   if (!registry) return { replied: false, output: '（通道连接注册表未启用）' };
-  const denied = requireAdmin(ctx);
+  const denied = requireChannelAdmin(ctx);
   if (denied) return { replied: false, output: denied };
 
   const id = args.connection_id?.trim() ?? '';

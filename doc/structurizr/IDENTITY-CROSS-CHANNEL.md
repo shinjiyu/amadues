@@ -2,7 +2,7 @@
 
 > **English:** Cross-channel identity is a **`channel_key → internal_sid` map**. The sole everyday source of truth for “same person on two channels” is a **bilateral confirmation handshake** (system state machine—not LLM judgment). Feishu is **N connections per agent**, with **runtime hot-add** via chat + keychain. Complements [`doc/chat-ir-identity-design.md`](../chat-ir-identity-design.md) §11（本文 supersede 其「仅有 bindings 占位、无 merge」的运行时缺口描述）。
 
-**状态**：设计已定稿（2026-07-16）· **实现**：P0 ✅ 映射+双边确认；P0b ✅ 入站 resolve（webchat/discord + OuterBrain canonicalize）；P1 ✅ 外脑工具 + 入站确认口令；P2 ✅ Fan-in + 连接表 + 热插工具；P2b ✅ `feishuBridge`（`@utlra/feishu-bridge`，connector 已注册 `index.ts`）；P3 ✅ 按人跨会话记忆召回（§6.5）（见 §9）
+**状态**：设计已定稿（2026-07-16）· **实现**：P0 ✅ 映射+双边确认；P0b ✅ 入站 resolve（webchat/discord + OuterBrain canonicalize）；P1 ✅ 外脑工具 + 入站确认口令；P2 ✅ Fan-in + 连接表 + 热插工具；P2b ✅ `feishuBridge`（`@utlra/feishu-bridge`，connector 已注册 `index.ts`）；P3 ✅ 按人跨会话记忆召回（§6.5）；P4a ✅ 飞书扫码建应用；P4b ✅ `wechatBridge`（微信 iLink）（见 §9）
 
 ---
 
@@ -209,6 +209,30 @@ idp:agent:assistant
 
 边界：只读 Chat IR 消息，不新增存储；**不**做 LLM 画像/摘要（那是 mem9 的事）；别名集只来自 bindingIndex，不允许模糊匹配 display_name。
 
+### 6.6 通道接入扩展：飞书扫码建应用（P4a）+ 微信 iLink 桥（P4b）
+
+两条新接入路径，**均不改动既有「手填 app_id/secret」的自建应用流程**（`feishu_channel_add` 原样保留）。
+
+**P4a 飞书扫码**（`@larksuiteoapi/node-sdk` `registerApp`，OAuth 2.0 Device Flow RFC 8628）：
+
+| 模块 | 位置 | 职责 |
+|------|------|------|
+| `scanRegisterFeishuApp` | `feishu-bridge/src/scan-register.ts` | 包装 `registerApp`（动态 import，可注入假实现）：回调吐验证 URL（用户飞书内打开/扫码）→ 轮询 → 返回 `client_id/client_secret`；`addons` 预填 bot 权限与 `im.message.receive_v1` 事件 |
+| 工具 `feishu_channel_scan_add` | `server/outer/channel-scan-tools.ts` | admin 闸同 P2；**异步**流：立即回「已启动」，URL 就绪即经 imClient 发到当前 thread；扫码完成后自动 keychain.put(secret) → `registry.add(kind=feishu)` → thread 通知成败；每 thread 同时只允许一个进行中扫码 |
+
+**P4b 微信 iLink（ClawBot）桥**（`packages/wechat-bridge`，协议 `ilinkai.weixin.qq.com`）：
+
+| 模块 | 职责 |
+|------|------|
+| `IlinkApiClient` | 登录（get_bot_qrcode / get_qrcode_status）+ 业务 POST（getupdates 长轮询 / sendmessage / getconfig / sendtyping）；Header：`AuthorizationType: ilink_bot_token` + Bearer + 每请求随机 `X-WECHAT-UIN`；`ret/errcode=-14` = session 过期（显式抛 `sessionExpired`） |
+| `thread-mapper` | `wechat:<bot_id>:dm:<user_id>`（群字段协议存在但基本仅私聊；`group:` 前缀预留） |
+| `handleWechatInbound` | 只收 `message_type=1`（用户消息）；去重 message_id；`channel_key={wechat, from_user_id, scope=bot_id}` 经 resolve；**缓存 context_token**（thread → 最近一条入站的会话锚点，出站必须回传） |
+| `WechatChannel` | 长轮询源可注入（生产 = getupdates 循环，游标 `get_updates_buf` 经 cursorStore 持久化，-14 停机标 down）；出站 sendmessage 回传 context_token；Typing = getconfig 拿 `typing_ticket` + sendtyping（ticket 按 thread 缓存） |
+| `createWechatConnector` | secret = 扫码所得 JSON `{token, baseUrl, accountId, userId}`（keychain 持有）；connect 探测 = 一次 getupdates（结果 prime 进事件源不丢消息）；botNativeId = `ilink_bot_id` |
+| 工具 `wechat_channel_add` | admin 闸同 P2；异步流：取二维码 URL 发 thread → 轮询扫码状态（wait/scaned/confirmed/expired）→ confirmed 后 keychain.put(凭证 JSON) → `registry.add(kind=wechat)` → 通知 |
+
+已知限制（协议侧）：iLink 一个微信号同时只允许一条 ClawBot 连接；bot 基本收不到普通群消息（适合私聊助手）；token 过期需重新扫码（bootLoad 失败标 down + last_error 提示重扫）。
+
 ---
 
 ## 7. 存储边界
@@ -245,6 +269,8 @@ idp:agent:assistant
 | **P2** | `FanInChatIRChannel`（chat-ir；入站合流 + thread→connection 出站路由，主渠道为 default）；`ChannelConnectionRegistry`（connections.json + keychain secret_ref + 探测失败回滚 + bootLoad 重连）；工具 `feishu_channel_add/list/remove`（admin 闸 `UTLRA_CHANNEL_ADMIN_SIDS`：条目经 **bindingIndex 折叠比对**——同人从任意已确认渠道入站均放行，白名单限"谁能操作"、不限"接哪些飞书"；`*` = 显式放开） | ✅ `fan-in-channel.test.ts`；✅ `channel-connection-registry.test.ts`；✅ `channel-connection-tools.test.ts` |
 | **P2b** | `feishuBridge`（`packages/feishu-bridge`）：每 connection 一个 `FeishuChannel`（事件源可注入，生产 = 飞书长连接 SDK **可选依赖**，未装时热插显式报错回滚）；入站 `channel_key = {feishu, union_id∥open_id, scope=app_id}` 经 resolve；出站 REST text + `<at>`；Typing = 对最后一条人类消息打 `Typing` reaction，idle/回复后撤；`createFeishuConnector` 已注册 `index.ts` connectors map（kind=feishu） | ✅ `api-client.test.ts`、`inbound.test.ts`、`feishu-channel.test.ts`、`connector.test.ts`、`thread-mapper.test.ts`（27 项） |
 | **P3** | 按人跨会话记忆召回（§6.5）：`personMessageRecall`（chat-ir，别名集 + 跨 thread 最近消息）；`knowledgeRetrieval` 注入「关于此人」块（`sources.person`） | ✅ `person-message-recall.test.ts`；✅ `knowledgeRetrieval.component.integration.test.ts`（person 块用例） |
+| **P4a** | 飞书扫码建应用（§6.6）：`scanRegisterFeishuApp` + 工具 `feishu_channel_scan_add`（异步：URL 发 thread → 完成自动 keychain+add+通知）；手填流程不动 | ✅ `scan-register.test.ts`；✅ `channel-scan-tools.test.ts` |
+| **P4b** | `wechatBridge`（`packages/wechat-bridge`，微信 iLink ClawBot）：`IlinkApiClient` / `handleWechatInbound`（context_token 锚点）/ `WechatChannel`（长轮询源可注入 + sendtyping）/ `createWechatConnector`（kind=wechat 注册 connectors map）；工具 `wechat_channel_add`（扫码登录异步流） | ✅ `ilink-api-client.test.ts`、`inbound.test.ts`、`wechat-channel.test.ts`、`connector.test.ts`、`thread-mapper.test.ts` |
 
 COMPONENT-TEST-MAP 行状态：⏳ 直至实现转 ✅。
 
@@ -258,6 +284,7 @@ COMPONENT-TEST-MAP 行状态：⏳ 直至实现转 ✅。
 | 2026-07-21 | request 冲突判定修正（§3.2）：对端自绑 provisional ≠ 冲突——按 sid 键集合折叠判「孤立自身份」放行、confirm 时 linkMerge；仅「已与他人合并的真身份」拒绝。修复实测中 requestLink 永远走不通的问题 |
 | 2026-07-21 | `channelKeyFromProvisionalSid` 收窄为 webchat/discord/slack/telegram：飞书/微信/钉钉 native id 按 app 分域，从 SID 反推丢 scope 会写脏键（实测 data-shiro 出现过 `feishu:on_xxx` 无 scope 键）；此类渠道只由桥用显式 scoped key resolve |
 | 2026-07-21 | P3 按人跨会话记忆召回（§6.5）：`personMessageRecall`（chat-ir runtime）+ `knowledgeRetrieval`「关于此人」注入——群/私/跨渠道对同一 sid 的发言进入同一记忆源；身份别名集折叠历史 provisional sid |
+| 2026-07-21 | P4a+P4b（§6.6）：飞书扫码建应用（registerApp device flow，`feishu_channel_scan_add` 异步工具）；微信 iLink ClawBot 桥 `@utlra/wechat-bridge`（扫码登录 / getupdates 长轮询 / context_token 锚点 / sendtyping），`wechat_channel_add`。既有手填 `feishu_channel_add` 流程不变 |
 | 2026-07-17 | P2b 落地：`@utlra/feishu-bridge`（api-client / inbound / FeishuChannel / connector），connector 注册进 `connectors` map；thread_id 编入 app_id（`feishu:<app_id>:chat:<chat_id>`）保证多连接路由与出站归属 |
 | 2026-07-17 | 通道 admin 闸修正：静态字符串比对 → bindingIndex 折叠比对（linkMerge 后 canonical sid / 新渠道同人不再被锁在门外）；新增 `*` 显式放开 |
 | 2026-07-16 | P0 落地：`IdentityBindingIndex` + `IdentityLinkService`（可注入、可单测）；入站接线 / 工具仍 ⏳ |

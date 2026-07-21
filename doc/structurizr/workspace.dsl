@@ -14,7 +14,14 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         feishu = softwareSystem "飞书 / Lark" "外部 IM：企业自建应用机器人；一 agent 可 N 条连接（非单例）" {
             tags "External" "IM-Interface"
             properties {
-                "horizon.note" "见 IDENTITY-CROSS-CHANNEL.md §5；热插凭证走 keychain"
+                "horizon.note" "见 IDENTITY-CROSS-CHANNEL.md §5；热插凭证走 keychain；P4a 扫码建应用（registerApp device flow）与手填 app_id/secret 并存"
+            }
+        }
+
+        wechat = softwareSystem "微信 iLink（ClawBot）" "外部 IM：个人微信号 Bot API（ilinkai.weixin.qq.com）；扫码登录、长轮询、基本仅私聊" {
+            tags "External" "IM-Interface"
+            properties {
+                "horizon.note" "见 IDENTITY-CROSS-CHANNEL.md §6.6 P4b；bot_token 走 keychain；一号一连接"
             }
         }
 
@@ -140,10 +147,22 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
                     "horizon.in" "长连接事件; postMessage; channelConnectionRegistry 连接集"
                     "horizon.out" "ChatIRInboundEvent（sender 经 resolve）; REST send; reaction Typing"
                     "horizon.deps" "chat-ir; channelConnectionRegistry; identityBindingIndex"
-                    "horizon.test.unit" "api-client.test.ts; inbound.test.ts; feishu-channel.test.ts; connector.test.ts; thread-mapper.test.ts"
-                    "horizon.status" "✅ P2b（长连接事件源 = @larksuiteoapi/node-sdk 可选依赖，未装时热插显式报错）"
+                    "horizon.test.unit" "api-client.test.ts; inbound.test.ts; feishu-channel.test.ts; connector.test.ts; thread-mapper.test.ts; scan-register.test.ts"
+                    "horizon.status" "✅ P2b（长连接事件源 = @larksuiteoapi/node-sdk 可选依赖，未装时热插显式报错）；✅ P4a scan-register（registerApp device flow 包装，可注入）"
                     "horizon.adl" "doc/structurizr/IDENTITY-CROSS-CHANNEL.md §5"
-                    "horizon.status" "⏳ P2；P0 先身份认同"
+                }
+            }
+
+            wechatBridge = container "WeChat Bridge" "微信 iLink ↔ ChatIR；扫码登录 bot_token；长轮询收消息；context_token 会话锚点" "Node.js @utlra/wechat-bridge" {
+                properties {
+                    "path" "packages/wechat-bridge"
+                    "horizon.intention" "个人微信 ClawBot 适配；一号一连接；Typing=sendtyping"
+                    "horizon.in" "getupdates 长轮询; postMessage; channelConnectionRegistry 连接集"
+                    "horizon.out" "ChatIRInboundEvent（sender 经 resolve）; sendmessage（回传 context_token）"
+                    "horizon.deps" "chat-ir; channelConnectionRegistry; identityBindingIndex"
+                    "horizon.test.unit" "ilink-api-client.test.ts; inbound.test.ts; wechat-channel.test.ts; connector.test.ts; thread-mapper.test.ts"
+                    "horizon.status" "✅ P4b（凭证=扫码登录 bot_token JSON，keychain 持有；-14 过期显式 down 待重扫）"
+                    "horizon.adl" "doc/structurizr/IDENTITY-CROSS-CHANNEL.md §6.6"
                 }
             }
 
@@ -288,6 +307,23 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "import"
         }
         kuroneko.feishuBridge -> feishu "messages + reactions" "HTTPS" {
+            tags "http"
+        }
+
+        // ── L2 微信 iLink 路径（✅ P4b；见 IDENTITY-CROSS-CHANNEL §6.6）────────
+        wechat -> kuroneko.wechatBridge "getupdates 长轮询 msgs" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.wechatBridge -> kuroneko.chatIrLib "resolve(channel_key) + seenTracker" "npm import" {
+            tags "import"
+        }
+        kuroneko.wechatBridge -> kuroneko.agentServer "ChatIRInboundEvent（canonical sid）" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer -> kuroneko.wechatBridge "postMessage / sendActivity(sendtyping)" "in-process" {
+            tags "import"
+        }
+        kuroneko.wechatBridge -> wechat "sendmessage（context_token）" "HTTPS" {
             tags "http"
         }
 
@@ -440,6 +476,9 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "import"
         }
         kuroneko.agentServer.channelConnectionRegistry -> kuroneko.feishuBridge "createFeishuConnector.connect / destroy" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.channelConnectionRegistry -> kuroneko.wechatBridge "createWechatConnector.connect / destroy" "in-process" {
             tags "import"
         }
         kuroneko.agentServer.outerBrainFacade -> kuroneko.chatIrLib "入站 sender 经 identityBindingIndex.resolve" "npm import" {
@@ -725,13 +764,19 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             autolayout lr
         }
 
+        container kuroneko "03c-L2-WeChat-path" {
+            title "L2 微信 iLink 路径（扫码登录 + 长轮询）"
+            include user wechat kuroneko.wechatBridge kuroneko.chatIrLib kuroneko.agentServer
+            autolayout lr
+        }
+
         container kuroneko "04-L2-WebChat-path" {
             include user kuroneko.webChat kuroneko.chatServer kuroneko.webchatProtocolLib kuroneko.webchatBridge kuroneko.chatIrLib kuroneko.agentServer kuroneko.workspaceKit kuroneko.innerWorker
             autolayout tb
         }
 
         container kuroneko "05-L2-Libraries" {
-            include kuroneko.chatIrLib kuroneko.workspaceKit kuroneko.webchatProtocolLib kuroneko.agentServer kuroneko.discordBridge kuroneko.webchatBridge kuroneko.feishuBridge kuroneko.chatServer kuroneko.webChat
+            include kuroneko.chatIrLib kuroneko.workspaceKit kuroneko.webchatProtocolLib kuroneko.agentServer kuroneko.discordBridge kuroneko.webchatBridge kuroneko.feishuBridge kuroneko.wechatBridge kuroneko.chatServer kuroneko.webChat
             autolayout lr
         }
 

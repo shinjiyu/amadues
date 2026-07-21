@@ -10,3 +10,4 @@ export * from './inbound.js';
 export * from './feishu-channel.js';
 export * from './connector.js';
 export * from './lark-ws-event-source.js';
+export * from './scan-register.js';

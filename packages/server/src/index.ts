@@ -113,6 +113,7 @@ import { promoteWorkspaceManifestToRepository } from './repository/promote-from-
 import { DiscordChannel, loadDiscordBridgeConfig } from '@utlra/discord-bridge';
 import { WebChatChannel, loadWebChatBridgeConfig } from '@utlra/webchat-bridge';
 import { createFeishuConnector } from '@utlra/feishu-bridge';
+import { createWechatConnector } from '@utlra/wechat-bridge';
 import { PerformanceGoalEngine } from './performance-goals/engine.js';
 import { renderPerformanceDashboard } from './performance-goals/dashboard.js';
 import { registerHealthRoute } from './api/health-route.js';
@@ -1580,10 +1581,21 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
       ? { domain: process.env['FEISHU_DOMAIN'].trim() }
       : {}),
   });
+  // kind=wechat：微信 iLink ClawBot 桥（凭证 = 扫码登录 JSON；游标持久化到 DATA_ROOT/channels/wechat）
+  const wechatConnector = createWechatConnector({
+    agentSid,
+    registry,
+    bindingIndex,
+    seenTracker,
+    loadThreads,
+    saveThreads,
+    makeInboundHandler: (connectionId) => fanInChannel.makeInboundHandler(connectionId),
+    cursorDir: path.join(DATA_ROOT, 'channels', 'wechat'),
+  });
   const channelConnectionRegistry = new ChannelConnectionRegistry({
     persistPath: path.join(DATA_ROOT, 'channels', 'connections.json'),
     fanIn: fanInChannel,
-    connectors: { feishu: feishuConnector },
+    connectors: { feishu: feishuConnector, wechat: wechatConnector },
     getSecret: async (ref) => {
       try {
         const entry = await memoryBlockStore.get('keychain', ref, { includeValue: true });

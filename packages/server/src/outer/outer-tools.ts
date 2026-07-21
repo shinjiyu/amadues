@@ -69,6 +69,11 @@ import {
   CHANNEL_CONNECTION_TOOL_DEFS,
   dispatchChannelConnectionTool,
 } from './channel-connection-tools.js';
+import {
+  CHANNEL_SCAN_TOOL_DEFS,
+  dispatchChannelScanTool,
+  type ChannelScanDeps,
+} from './channel-scan-tools.js';
 import type { MemoryBlockStore } from './memory-block-store.js';
 import type { IdentityLinkService } from './identity-link-service.js';
 import type { ChannelConnectionRegistry } from './channel-connection-registry.js';
@@ -655,6 +660,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
   ...MEMORY_BLOCK_TOOL_DEFS,
   ...IDENTITY_LINK_TOOL_DEFS,
   ...CHANNEL_CONNECTION_TOOL_DEFS,
+  ...CHANNEL_SCAN_TOOL_DEFS,
 ];
 
 // ── 工具执行上下文 ──────────────────────────────────────────────────────────
@@ -703,6 +709,8 @@ export interface OuterToolContext {
   channelConnectionRegistry?: ChannelConnectionRegistry;
   /** 通道热插管理白名单（UTLRA_CHANNEL_ADMIN_SIDS） */
   channelAdminSids?: ReadonlySet<string>;
+  /** 扫码接入实现注入（P4a 飞书 / P4b 微信；缺省 = 桥包动态 import）ADL §6.6 */
+  channelScan?: ChannelScanDeps;
   /**
    * 当前对话由 IM 人类入站触发（webchat/discord 等）。
    * 此上下文内 set_goal **不受** maxRunningInnerBrains 槽位限制（用户直派优先）。
@@ -2398,6 +2406,8 @@ export async function executeOuterTool(
       if (il) return il;
       const cc = await dispatchChannelConnectionTool(name, args, ctx);
       if (cc) return cc;
+      const cs = await dispatchChannelScanTool(name, args, ctx);
+      if (cs) return cs;
       return { replied: false, output: `未知工具：${name}` };
     }
   }
