@@ -1591,6 +1591,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     saveThreads,
     makeInboundHandler: (connectionId) => fanInChannel.makeInboundHandler(connectionId),
     cursorDir: path.join(DATA_ROOT, 'channels', 'wechat'),
+    assetStore,
   });
   const channelConnectionRegistry = new ChannelConnectionRegistry({
     persistPath: path.join(DATA_ROOT, 'channels', 'connections.json'),

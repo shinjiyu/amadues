@@ -9,15 +9,38 @@
  */
 import crypto from 'node:crypto';
 import { DEFAULT_ILINK_BASE_URL, ILINK_CHANNEL_VERSION } from './config.js';
+import {
+  DEFAULT_CDN_BASE_URL,
+  aesKeyHexToB64,
+  cipherSizeOf,
+  decodeIlinkAesKey,
+  decryptAesEcb,
+  encryptAesEcb,
+  randomAesKeyHex,
+} from './media-crypto.js';
+
+/** 图片/语音/文件/视频共用的 CDN 引用 */
+export interface CdnMedia {
+  encrypt_query_param?: string;
+  aes_key?: string;
+  encrypt_type?: number;
+}
 
 /** iLink 消息 item（type: 1=text 2=image 3=voice 4=file 5=video） */
 export interface WeixinMessageItem {
   type?: number;
   text_item?: { text?: string };
-  image_item?: Record<string, unknown>;
-  voice_item?: Record<string, unknown>;
-  file_item?: Record<string, unknown>;
-  video_item?: Record<string, unknown>;
+  image_item?: {
+    media?: CdnMedia;
+    thumb_media?: CdnMedia;
+    /** 32 位 hex；入站图片可能直接给，优先于 media.aes_key */
+    aeskey?: string;
+    url?: string;
+    mid_size?: number;
+  };
+  voice_item?: { media?: CdnMedia; encode_type?: number; text?: string; playtime?: number };
+  file_item?: { media?: CdnMedia; file_name?: string; md5?: string; len?: number | string };
+  video_item?: { media?: CdnMedia; thumb_media?: CdnMedia; video_size?: number };
 }
 
 export interface WeixinMessage {
@@ -219,22 +242,153 @@ export class IlinkApiClient {
     return { clientId };
   }
 
-  /** getconfig 换 typing_ticket（可按用户缓存约 24h） */
+  /** getconfig 换 typing_ticket（可按用户缓存约 24h）；协议字段是 ilink_user_id（对端用户） */
   async getTypingTicket(toUserId: string, contextToken?: string): Promise<string | null> {
     const data = await this.post('ilink/bot/getconfig', {
-      to_user_id: toUserId,
+      ilink_user_id: toUserId,
       ...(contextToken ? { context_token: contextToken } : {}),
     });
     const t = data['typing_ticket'];
     return typeof t === 'string' && t ? t : null;
   }
 
-  /** status=1 显示「正在输入」，0 取消 */
+  /** status=1 显示「正在输入」，2 取消 */
   async sendTyping(toUserId: string, typingTicket: string, on: boolean): Promise<void> {
     await this.post('ilink/bot/sendtyping', {
-      to_user_id: toUserId,
+      ilink_user_id: toUserId,
       typing_ticket: typingTicket,
-      status: on ? 1 : 0,
+      status: on ? 1 : 2,
     });
+  }
+
+  // ── 媒体（CDN AES-128-ECB）────────────────────────────────────────────
+
+  private cdnBaseUrl(): string {
+    return DEFAULT_CDN_BASE_URL;
+  }
+
+  /**
+   * 下载并解密一个媒体 item（image/voice/file/video）。
+   * 返回 null = item 没有可下载的 CDN 引用。
+   */
+  async downloadMedia(item: WeixinMessageItem): Promise<Buffer | null> {
+    const media =
+      item.image_item?.media ?? item.voice_item?.media ?? item.file_item?.media ?? item.video_item?.media;
+    const param = media?.encrypt_query_param;
+    if (!param) return null;
+
+    const url = `${this.cdnBaseUrl()}/download?encrypted_query_param=${encodeURIComponent(param)}`;
+    const res = await this.fetchImpl(url);
+    if (!res.ok) throw new IlinkApiError(`cdn download HTTP ${res.status}`, res.status, false);
+    const cipher = Buffer.from(await res.arrayBuffer());
+
+    const key = decodeIlinkAesKey(media?.aes_key, item.image_item?.aeskey);
+    if (!key) return cipher; // 无 key：按明文返回（协议允许）
+    try {
+      return decryptAesEcb(cipher, key);
+    } catch (e) {
+      throw new Error(`媒体解密失败（key 编码不兼容？）：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /**
+   * 上传媒体：getuploadurl → AES 加密 → CDN upload。
+   * 返回可塞进 sendmessage item 的 CDN 引用与密文大小。
+   */
+  async uploadMedia(input: {
+    buffer: Buffer;
+    /** 1=IMAGE 2=VIDEO 3=FILE 4=VOICE */
+    mediaType: 1 | 2 | 3 | 4;
+    toUserId: string;
+  }): Promise<{ media: CdnMedia; cipherSize: number }> {
+    const aeskeyHex = randomAesKeyHex();
+    const key = Buffer.from(aeskeyHex, 'hex');
+    const cipher = encryptAesEcb(input.buffer, key);
+    const filekey = crypto.randomBytes(16).toString('hex');
+
+    const up = await this.post('ilink/bot/getuploadurl', {
+      filekey,
+      media_type: input.mediaType,
+      to_user_id: input.toUserId,
+      rawsize: input.buffer.length,
+      rawfilemd5: crypto.createHash('md5').update(input.buffer).digest('hex'),
+      filesize: cipherSizeOf(input.buffer.length),
+      no_need_thumb: true,
+      aeskey: aeskeyHex,
+    });
+    const uploadParam = typeof up['upload_param'] === 'string' ? up['upload_param'] : '';
+    if (!uploadParam) throw new Error('getuploadurl 未返回 upload_param');
+
+    const url = `${this.cdnBaseUrl()}/upload?encrypted_query_param=${encodeURIComponent(uploadParam)}&filekey=${encodeURIComponent(filekey)}`;
+    const res = await this.fetchImpl(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: new Uint8Array(cipher),
+    });
+    if (!res.ok) throw new IlinkApiError(`cdn upload HTTP ${res.status}`, res.status, false);
+    const encryptedParam = res.headers.get('x-encrypted-param');
+    if (!encryptedParam) throw new Error('CDN upload 未返回 x-encrypted-param');
+
+    return {
+      media: {
+        encrypt_query_param: encryptedParam,
+        aes_key: aesKeyHexToB64(aeskeyHex),
+        encrypt_type: 1,
+      },
+      cipherSize: cipher.length,
+    };
+  }
+
+  /** 发图片（先 uploadMedia mediaType=1） */
+  async sendImageMessage(input: {
+    toUserId: string;
+    media: CdnMedia;
+    cipherSize: number;
+    contextToken: string;
+    clientId?: string;
+  }): Promise<{ clientId: string }> {
+    return this.sendItemMessage(input.toUserId, input.contextToken, {
+      type: 2,
+      image_item: { media: input.media, mid_size: input.cipherSize },
+    }, input.clientId);
+  }
+
+  /** 发文件（先 uploadMedia mediaType=3） */
+  async sendFileMessage(input: {
+    toUserId: string;
+    media: CdnMedia;
+    fileName: string;
+    rawSize: number;
+    contextToken: string;
+    clientId?: string;
+  }): Promise<{ clientId: string }> {
+    return this.sendItemMessage(input.toUserId, input.contextToken, {
+      type: 4,
+      file_item: { media: input.media, file_name: input.fileName, len: input.rawSize },
+    }, input.clientId);
+  }
+
+  private async sendItemMessage(
+    toUserId: string,
+    contextToken: string,
+    item: WeixinMessageItem,
+    clientIdIn?: string,
+  ): Promise<{ clientId: string }> {
+    if (!contextToken) {
+      throw new Error('sendmessage 需要 context_token（该会话还没有入站消息锚点）');
+    }
+    const clientId = clientIdIn ?? `utlra-wechat:${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    await this.post('ilink/bot/sendmessage', {
+      msg: {
+        from_user_id: '',
+        to_user_id: toUserId,
+        client_id: clientId,
+        message_type: 2,
+        message_state: 2,
+        context_token: contextToken,
+        item_list: [item],
+      },
+    });
+    return { clientId };
   }
 }

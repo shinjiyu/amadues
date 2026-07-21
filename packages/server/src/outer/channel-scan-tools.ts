@@ -11,6 +11,7 @@
  */
 import type { OuterToolContext, ToolCallResult, ToolDef } from './outer-tools.js';
 import { requireChannelAdmin } from './channel-connection-tools.js';
+import { generateQrPng } from './qr-tools.js';
 
 export const CHANNEL_SCAN_TOOL_DEFS: ToolDef[] = [
   {
@@ -98,6 +99,31 @@ function postToThread(ctx: OuterToolContext, text: string): void {
     .catch((e) => console.error('[channel-scan] notify failed', e));
 }
 
+/**
+ * 发 URL 时同时附二维码 PNG（webchat 内联显示，手机可直接扫）。
+ * 生成失败降级为纯文本 URL，不阻塞扫码流。
+ */
+async function postUrlWithQr(ctx: OuterToolContext, text: string, url: string): Promise<void> {
+  try {
+    const png = await generateQrPng(url);
+    const meta = ctx.assetStore.save(png, 'image/png', 'qrcode.png');
+    await ctx.imClient.postMessage(ctx.threadId, {
+      sender_sid: ctx.agentSid,
+      text,
+      parts: [
+        { type: 'text', text },
+        {
+          type: 'attachment',
+          asset_ref: { kind: 'image', uri: `asset:${meta.id}`, mime: 'image/png', name: 'qrcode.png' },
+        },
+      ],
+    });
+  } catch (e) {
+    console.warn('[channel-scan] qr attach failed, fallback to plain url', String(e));
+    postToThread(ctx, text);
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -127,10 +153,11 @@ export async function execFeishuChannelScanAdd(
     try {
       const { appId, appSecret } = await impl({
         onUrlReady: (info) =>
-          postToThread(
+          void postUrlWithQr(
             ctx,
-            `请在飞书中打开以下链接（或转成二维码扫码）授权${existingAppId ? '更新应用配置' : '创建应用'}，` +
+            `请用飞书扫码（或打开链接）授权${existingAppId ? '更新应用配置' : '创建应用'}，` +
               `${info.expireIn} 秒内有效：\n${info.url}`,
+            info.url,
           ),
         ...(existingAppId ? { appId: existingAppId } : {}),
       });
@@ -186,10 +213,11 @@ export async function execWechatChannelAdd(ctx: OuterToolContext): Promise<ToolC
     try {
       const login = ctx.channelScan?.wechatLogin ?? (await defaultWechatLogin());
       const qr = await login.fetchQrcode();
-      postToThread(
+      await postUrlWithQr(
         ctx,
-        `请用**手机微信**扫码登录 Bot（打开链接后展示二维码）：\n${qr.qrcodeUrl}\n` +
+        `请用**手机微信**扫码登录 Bot：\n${qr.qrcodeUrl}\n` +
           `注意：扫码的微信号将成为 bot 身份（一号一连接，基本仅私聊）。`,
+        qr.qrcodeUrl,
       );
       const deadline = Date.now() + timeoutMs;
       let notifiedScaned = false;

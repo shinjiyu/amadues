@@ -22,9 +22,18 @@ import {
   type MessageRecord,
   type ThreadRecord,
 } from '@utlra/chat-ir';
-import type { WeixinMessage } from './ilink-api-client.js';
+import type { WeixinMessage, WeixinMessageItem } from './ilink-api-client.js';
 import { upsertWechatIdentity, wechatChannelKey } from './identity-mapper.js';
+import { sniffImageMime } from './media-crypto.js';
 import { wechatDmToIr, wechatGroupToIr, wechatMessageIdToIr } from './thread-mapper.js';
+
+/** 媒体落地依赖（缺省 = 降级占位文本） */
+export interface WechatMediaSink {
+  /** 通常 = IlinkApiClient.downloadMedia */
+  download: (item: WeixinMessageItem) => Promise<Buffer | null>;
+  /** 通常 = ChatAssetStore.save */
+  saveAsset: (buffer: Buffer, mime: string, name: string) => { id: string };
+}
 
 export interface WechatInboundDeps {
   botId: string;
@@ -38,6 +47,8 @@ export interface WechatInboundDeps {
   seenMessageIds: Set<string>;
   /** thread → 最近入站 context_token（出站回传锚点；channel 持有） */
   contextTokens: Map<string, string>;
+  /** 入站媒体镜像（下载 + 落 asset store）；缺省降级占位文本 */
+  mediaSink?: WechatMediaSink | null;
   onMessagePersisted: (ev: {
     threadId: string;
     senderSid: string;
@@ -55,7 +66,31 @@ const MEDIA_LABEL: Record<number, string> = {
   5: '视频',
 };
 
-function extractParts(msg: WeixinMessage): MessagePart[] {
+/** item.type → 落地时的 kind/mime/文件名（图片 mime 下载后按签名嗅探） */
+function mediaAssetHints(item: WeixinMessageItem): {
+  kind: 'image' | 'audio' | 'file' | 'video';
+  mime: string;
+  name: string;
+} {
+  switch (item.type) {
+    case 2:
+      return { kind: 'image', mime: 'image/jpeg', name: 'wechat-image.jpg' };
+    case 3:
+      // encode_type=6 = SILK；先按原始格式落盘，转码后续再说
+      return { kind: 'audio', mime: 'audio/silk', name: 'wechat-voice.silk' };
+    case 5:
+      return { kind: 'video', mime: 'video/mp4', name: 'wechat-video.mp4' };
+    default: {
+      const name = item.file_item?.file_name || 'wechat-file.bin';
+      return { kind: 'file', mime: 'application/octet-stream', name };
+    }
+  }
+}
+
+async function extractParts(
+  msg: WeixinMessage,
+  mediaSink: WechatMediaSink | null | undefined,
+): Promise<MessagePart[]> {
   const parts: MessagePart[] = [];
   for (const item of msg.item_list ?? []) {
     if (item.type === 1 && typeof item.text_item?.text === 'string') {
@@ -63,7 +98,34 @@ function extractParts(msg: WeixinMessage): MessagePart[] {
       continue;
     }
     const label = MEDIA_LABEL[item.type ?? 0];
-    if (label) parts.push({ type: 'text', text: `[微信${label}消息，暂未镜像内容]` });
+    if (!label) continue;
+
+    // 语音 STT 文本（服务端有时直接给）
+    if (item.type === 3 && item.voice_item?.text) {
+      parts.push({ type: 'text', text: `[微信语音] ${item.voice_item.text}` });
+    }
+
+    if (mediaSink) {
+      try {
+        const buf = await mediaSink.download(item);
+        if (buf) {
+          const hints = mediaAssetHints(item);
+          const mime = hints.kind === 'image' ? sniffImageMime(buf) : hints.mime;
+          const saved = mediaSink.saveAsset(buf, mime, hints.name);
+          parts.push({
+            type: 'attachment',
+            asset_ref: { kind: hints.kind, uri: `asset:${saved.id}`, mime, name: hints.name },
+          });
+          continue;
+        }
+      } catch (e) {
+        console.warn(`[wechat-bridge] media mirror failed (type=${item.type})`, String(e));
+      }
+    }
+    parts.push({
+      type: 'text',
+      text: mediaSink ? `[微信${label}消息，内容镜像失败]` : `[微信${label}消息，暂未镜像内容]`,
+    });
   }
   return parts;
 }
@@ -124,7 +186,7 @@ export async function handleWechatInbound(
     }
   }
 
-  const parts = extractParts(msg);
+  const parts = await extractParts(msg, deps.mediaSink);
   if (parts.length === 0) return false;
 
   const sentAt = msg.create_time_ms

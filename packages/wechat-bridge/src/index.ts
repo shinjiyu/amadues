@@ -3,6 +3,7 @@
  * @see doc/structurizr/IDENTITY-CROSS-CHANNEL.md §6.6 · doc/channel-bridge-guide.md
  */
 export * from './config.js';
+export * from './media-crypto.js';
 export * from './thread-mapper.js';
 export * from './identity-mapper.js';
 export * from './ilink-api-client.js';

@@ -6,6 +6,7 @@ import {
   pollQrcodeStatus,
   randomWechatUin,
 } from './ilink-api-client.js';
+import { cipherSizeOf, decodeIlinkAesKey, encryptAesEcb } from './media-crypto.js';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -137,17 +138,107 @@ describe('IlinkApiClient 业务请求', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('typing：getconfig 换 ticket → sendtyping status=1/0', async () => {
+  it('typing：getconfig（ilink_user_id）换 ticket → sendtyping status=1/2', async () => {
     const { impl, calls } = fakeFetch((url) =>
       url.includes('getconfig') ? jsonResponse({ typing_ticket: 'tk1' }) : jsonResponse({}),
     );
     const api = new IlinkApiClient({ botToken: 'tok' }, { fetchImpl: impl });
     const ticket = await api.getTypingTicket('u@im.wechat', 'ctx1');
     expect(ticket).toBe('tk1');
+    const cfgBody = JSON.parse(String(calls[0]!.init!.body)) as Record<string, unknown>;
+    expect(cfgBody['ilink_user_id']).toBe('u@im.wechat');
+    expect(cfgBody['context_token']).toBe('ctx1');
+
     await api.sendTyping('u@im.wechat', ticket!, true);
-    const body = JSON.parse(String(calls[1]!.init!.body)) as Record<string, unknown>;
-    expect(body['typing_ticket']).toBe('tk1');
-    expect(body['status']).toBe(1);
+    const onBody = JSON.parse(String(calls[1]!.init!.body)) as Record<string, unknown>;
+    expect(onBody['ilink_user_id']).toBe('u@im.wechat');
+    expect(onBody['typing_ticket']).toBe('tk1');
+    expect(onBody['status']).toBe(1);
+
+    await api.sendTyping('u@im.wechat', ticket!, false);
+    const offBody = JSON.parse(String(calls[2]!.init!.body)) as Record<string, unknown>;
+    expect(offBody['status']).toBe(2);
+  });
+
+  it('downloadMedia：CDN download + AES 解密（media.aes_key 格式 B）', async () => {
+    const keyHex = '00112233445566778899aabbccddeeff';
+    const key = Buffer.from(keyHex, 'hex');
+    const plain = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]); // jpeg 签名
+    const cipher = encryptAesEcb(plain, key);
+    const { impl, calls } = fakeFetch(() => new Response(new Uint8Array(cipher), { status: 200 }));
+    const api = new IlinkApiClient({ botToken: 'tok' }, { fetchImpl: impl });
+
+    const got = await api.downloadMedia({
+      type: 2,
+      image_item: {
+        media: {
+          encrypt_query_param: 'QPARAM=',
+          aes_key: Buffer.from(keyHex, 'utf8').toString('base64'),
+        },
+      },
+    });
+    expect(got).toEqual(plain);
+    expect(calls[0]!.url).toContain('novac2c.cdn.weixin.qq.com/c2c/download?encrypted_query_param=QPARAM%3D');
+  });
+
+  it('downloadMedia：无 CDN 引用 → null', async () => {
+    const { impl, calls } = fakeFetch(() => jsonResponse({}));
+    const api = new IlinkApiClient({ botToken: 'tok' }, { fetchImpl: impl });
+    expect(await api.downloadMedia({ type: 1, text_item: { text: 'x' } })).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it('uploadMedia：getuploadurl → CDN upload（x-encrypted-param）→ sendImageMessage', async () => {
+    const { impl, calls } = fakeFetch((url) => {
+      if (url.includes('getuploadurl')) return jsonResponse({ upload_param: 'UP=' });
+      if (url.includes('/upload')) {
+        return new Response('', { status: 200, headers: { 'x-encrypted-param': 'DOWN=' } });
+      }
+      return jsonResponse({});
+    });
+    const api = new IlinkApiClient({ botToken: 'tok' }, { fetchImpl: impl });
+    const buf = Buffer.from('fake image bytes');
+    const up = await api.uploadMedia({ buffer: buf, mediaType: 1, toUserId: 'u@im.wechat' });
+
+    const reqBody = JSON.parse(String(calls[0]!.init!.body)) as Record<string, unknown>;
+    expect(reqBody['media_type']).toBe(1);
+    expect(reqBody['rawsize']).toBe(buf.length);
+    expect(reqBody['filesize']).toBe(cipherSizeOf(buf.length));
+    expect(reqBody['no_need_thumb']).toBe(true);
+    expect(String(reqBody['aeskey'])).toMatch(/^[0-9a-f]{32}$/);
+
+    expect(calls[1]!.url).toContain('/upload?encrypted_query_param=UP%3D&filekey=');
+    expect(up.media.encrypt_query_param).toBe('DOWN=');
+    // aes_key = base64(hex string)，可被兼容解码还原
+    expect(decodeIlinkAesKey(up.media.aes_key)).toEqual(Buffer.from(String(reqBody['aeskey']), 'hex'));
+
+    await api.sendImageMessage({
+      toUserId: 'u@im.wechat',
+      media: up.media,
+      cipherSize: up.cipherSize,
+      contextToken: 'ctx1',
+    });
+    const sendBody = JSON.parse(String(calls[2]!.init!.body)) as { msg: Record<string, unknown> };
+    expect(sendBody.msg['item_list']).toEqual([
+      { type: 2, image_item: { media: up.media, mid_size: up.cipherSize } },
+    ]);
+    expect(sendBody.msg['context_token']).toBe('ctx1');
+  });
+
+  it('sendFileMessage：item_list 带 file_name/len', async () => {
+    const { impl, calls } = fakeFetch(() => jsonResponse({}));
+    const api = new IlinkApiClient({ botToken: 'tok' }, { fetchImpl: impl });
+    await api.sendFileMessage({
+      toUserId: 'u@im.wechat',
+      media: { encrypt_query_param: 'D=', aes_key: 'k' },
+      fileName: '报告.pdf',
+      rawSize: 123,
+      contextToken: 'ctx1',
+    });
+    const body = JSON.parse(String(calls[0]!.init!.body)) as { msg: Record<string, unknown> };
+    expect(body.msg['item_list']).toEqual([
+      { type: 4, file_item: { media: { encrypt_query_param: 'D=', aes_key: 'k' }, file_name: '报告.pdf', len: 123 } },
+    ]);
   });
 
   it('自定义 baseUrl（扫码返回的 baseurl 优先）', async () => {

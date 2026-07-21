@@ -26,6 +26,7 @@ import {
   WechatChannel,
   createLongPollUpdateSource,
   memoryCursorStore,
+  type WechatAssetStore,
   type WechatCursorStore,
   type WechatUpdateSource,
 } from './wechat-channel.js';
@@ -47,6 +48,8 @@ export interface WechatConnectorDeps {
   tenant?: string;
   /** 游标持久化目录（缺省 = 仅内存，重启后重新从最新开始） */
   cursorDir?: string;
+  /** 媒体镜像/发送用资产仓库（生产 = ChatAssetStore）；缺省降级文本 */
+  assetStore?: WechatAssetStore | null;
   /** 事件源工厂（单测注入）；缺省 = getupdates 长轮询 */
   updateSourceFactory?: (
     api: IlinkApiClient,
@@ -122,6 +125,7 @@ export function createWechatConnector(deps: WechatConnectorDeps): {
         onAgentMessage: deps.makeInboundHandler(record.connection_id),
         updateSource,
         apiClient: api,
+        ...(deps.assetStore ? { assetStore: deps.assetStore } : {}),
       });
       return { channel, botNativeId: config.botId };
     },

@@ -99,6 +99,7 @@
 | **identityBindingIndex** | ✅ `identity-binding-index.test.ts` + `resolve-inbound-sender.test.ts` | ✅ `inbound-sender-canonicalize.component.test.ts`（server） | P0b 桥+Facade 接线 |
 | **FanInChatIRChannel** | ✅ `fan-in-channel.test.ts`（合流/路由/热插/default 回退） | — | ADL [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §5.2 装配 |
 | **personMessageRecall** | ✅ `person-message-recall.test.ts`（别名集折叠、跨 thread 召回、排除当前、上限） | ✅ `knowledgeRetrieval.component.integration.test.ts`（person 块） | ADL [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §6.5 P3 |
+| **qrTools** | ✅ `qr-tools.test.ts`（PNG 签名、asset 落盘 + attachment 发送、空/超长拒绝） | ✅ `channel-scan-tools.test.ts`（扫码 URL 消息自动附二维码） | `outer/qr-tools.ts`；`qr_generate` |
 
 ## 飞书桥（`feishuBridge` · `packages/feishu-bridge`）
 
@@ -114,9 +115,10 @@
 
 | 模块 | 单测 | 组件测 | 备注 |
 |---|---|---|---|
-| **IlinkApiClient** | ✅ `ilink-api-client.test.ts`（登录轮询、getupdates、sendmessage 回传 context_token、-14 过期） | — | fake fetch，不出网 |
-| **handleWechatInbound** | ✅ `inbound.test.ts`（message_type 过滤、去重、resolve scope=bot_id、context_token 缓存） | — | ADL §6.6 |
-| **WechatChannel** | ✅ `wechat-channel.test.ts`（长轮询源注入、出站路由、typing ticket） | — | |
+| **IlinkApiClient** | ✅ `ilink-api-client.test.ts`（登录轮询、getupdates、sendmessage 回传 context_token、-14 过期、typing ilink_user_id/status=2、downloadMedia/uploadMedia/发图发文件） | — | fake fetch，不出网 |
+| **media-crypto** | ✅ `media-crypto.test.ts`（AES key 三种编码兼容、ECB 往返、密文大小公式、图片 mime 嗅探） | — | ADL §6.6 P4b-media |
+| **handleWechatInbound** | ✅ `inbound.test.ts`（message_type 过滤、去重、resolve scope=bot_id、context_token 缓存、mediaSink 镜像成功/失败降级） | — | ADL §6.6 |
+| **WechatChannel** | ✅ `wechat-channel.test.ts`（长轮询源注入、出站路由、typing ticket、出站附件上传发图/发文件+失败降级、入站图片镜像） | — | |
 | **createWechatConnector** | ✅ `connector.test.ts`（探测 prime、凭证 JSON 解析、失败回滚） | — | 注册于 `index.ts` connectors map（kind=wechat） |
 | **thread-mapper** | ✅ `thread-mapper.test.ts` | — | `wechat:<bot_id>:dm:<user_id>` |
 | **thread-mapper** | ✅ `thread-mapper.test.ts` | — | `feishu:<app_id>:chat:<chat_id>` |

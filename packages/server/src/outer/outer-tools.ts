@@ -74,6 +74,7 @@ import {
   dispatchChannelScanTool,
   type ChannelScanDeps,
 } from './channel-scan-tools.js';
+import { QR_TOOL_DEFS, dispatchQrTool } from './qr-tools.js';
 import type { MemoryBlockStore } from './memory-block-store.js';
 import type { IdentityLinkService } from './identity-link-service.js';
 import type { ChannelConnectionRegistry } from './channel-connection-registry.js';
@@ -661,6 +662,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
   ...IDENTITY_LINK_TOOL_DEFS,
   ...CHANNEL_CONNECTION_TOOL_DEFS,
   ...CHANNEL_SCAN_TOOL_DEFS,
+  ...QR_TOOL_DEFS,
 ];
 
 // ── 工具执行上下文 ──────────────────────────────────────────────────────────
@@ -2408,6 +2410,8 @@ export async function executeOuterTool(
       if (cc) return cc;
       const cs = await dispatchChannelScanTool(name, args, ctx);
       if (cs) return cs;
+      const qr = await dispatchQrTool(name, args, ctx);
+      if (qr) return qr;
       return { replied: false, output: `未知工具：${name}` };
     }
   }

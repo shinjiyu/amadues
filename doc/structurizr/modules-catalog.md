@@ -64,6 +64,7 @@
 | **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 由 kpiManager 派）** | `outer/casual-chat-dispatcher.ts` | verdict(idle) + personality → post_to_im |
 | **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **channelConnectionRegistry** | **IM 多连接 + 飞书热插** | `outer/channel-connection-registry.ts` | connections.json + keychain；N 条 feishu（connector 已注册） |
+| **qrTools** | **URL/文本 → 二维码 PNG 发当前 thread** | `outer/qr-tools.ts` | `qr_generate` 工具；`generateQrPng` 供扫码流（P4a/P4b）附图复用 |
 | **imIntentClassifier** | **入站意图（默认 chat / followup / ad-hoc / kpi_update / kpi_create-ongoing）** | `outer/inbound/im-intent-classifier.ts` | IM 文本 + 上下文 → intent；见 IM-INBOUND-INTENT-ROUTING.md |
 | **subKpiDecomposer** | **【已删除】扁平 KPI** | — | 见 KPI-MANAGER-LAYER.md §2.1 |
 | **kpiBurstState** | **多 burst 资格 + 并行上限 + R7 连败计数** | `outer/kpi/kpi-burst-state.ts` | R1/R2；`maxParallelBurstsPerKpi`；`countConsecutiveBurstFailures` |
@@ -195,7 +196,7 @@ DESIGN → RUN → AWAITING → DONE
 | webchatProtocolLib | `packages/webchat-protocol` |
 | webchatBridge | `packages/webchat-bridge` — 出站 `asset:` → chat-server `/uploads` |
 | **feishuBridge** | `packages/feishu-bridge` — 多连接（thread_id 编入 app_id）；入站 resolve（union_id + scope=app_id）；Typing=reaction；长连接 SDK 可选依赖；P4a `scan-register`（registerApp device flow） |
-| **wechatBridge** | `packages/wechat-bridge` — 微信 iLink ClawBot（扫码登录 bot_token / getupdates 长轮询 / context_token 出站锚点 / sendtyping）；一号一连接，基本仅私聊；见 IDENTITY-CROSS-CHANNEL §6.6 |
+| **wechatBridge** | `packages/wechat-bridge` — 微信 iLink ClawBot（扫码登录 bot_token / getupdates 长轮询 / context_token 出站锚点 / sendtyping）；媒体收发经 CDN AES-128-ECB（入站镜像落 asset store，出站附件真发图/文件）；一号一连接，基本仅私聊；见 IDENTITY-CROSS-CHANNEL §6.6 |
 
 ---
 
@@ -220,3 +221,5 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-07-16 | 跨渠道身份认同 ADL：[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md)；模块 `identityLinkService` / `channelConnectionRegistry`；库侧 `identityBindingIndex`；L2 `feishu` + `feishuBridge`（⏳）；视图 `03b` / `07c` |
 | 2026-07-17 | P2b：`feishuBridge`（`packages/feishu-bridge`）落地并注册 connector（kind=feishu）；飞书路径 ⏳ 全部转 ✅ |
 | 2026-07-21 | P4a+P4b：飞书扫码建应用（`scan-register` + `feishu_channel_scan_add`）；微信 iLink 桥 `wechatBridge`（kind=wechat connector + `wechat_channel_add`）；L2 新增 `wechat` 外部系统与 `03c` 视图 |
+| 2026-07-21 | `qrTools`（`outer/qr-tools.ts`）：`qr_generate` 工具 + 扫码流（P4a/P4b）URL 消息自动附二维码 PNG（asset attachment，webchat 内联显示） |
+| 2026-07-21 | P4b-media：`wechatBridge` 媒体收发（CDN AES-128-ECB；入站镜像 → asset store；出站附件真发图/文件，失败降级防链接化文本）；typing 修复（`ilink_user_id` + status=2） |

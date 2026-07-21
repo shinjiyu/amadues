@@ -218,7 +218,7 @@ idp:agent:assistant
 | 模块 | 位置 | 职责 |
 |------|------|------|
 | `scanRegisterFeishuApp` | `feishu-bridge/src/scan-register.ts` | 包装 `registerApp`（动态 import，可注入假实现）：回调吐验证 URL（用户飞书内打开/扫码）→ 轮询 → 返回 `client_id/client_secret`；`addons` 预填 bot 权限与 `im.message.receive_v1` 事件 |
-| 工具 `feishu_channel_scan_add` | `server/outer/channel-scan-tools.ts` | admin 闸同 P2；**异步**流：立即回「已启动」，URL 就绪即经 imClient 发到当前 thread；扫码完成后自动 keychain.put(secret) → `registry.add(kind=feishu)` → thread 通知成败；每 thread 同时只允许一个进行中扫码 |
+| 工具 `feishu_channel_scan_add` | `server/outer/channel-scan-tools.ts` | admin 闸同 P2；**异步**流：立即回「已启动」，URL 就绪即经 imClient 发到当前 thread（同时附二维码 PNG，`qrTools.generateQrPng` → asset attachment）；扫码完成后自动 keychain.put(secret) → `registry.add(kind=feishu)` → thread 通知成败；每 thread 同时只允许一个进行中扫码 |
 
 **P4b 微信 iLink（ClawBot）桥**（`packages/wechat-bridge`，协议 `ilinkai.weixin.qq.com`）：
 
@@ -229,7 +229,7 @@ idp:agent:assistant
 | `handleWechatInbound` | 只收 `message_type=1`（用户消息）；去重 message_id；`channel_key={wechat, from_user_id, scope=bot_id}` 经 resolve；**缓存 context_token**（thread → 最近一条入站的会话锚点，出站必须回传） |
 | `WechatChannel` | 长轮询源可注入（生产 = getupdates 循环，游标 `get_updates_buf` 经 cursorStore 持久化，-14 停机标 down）；出站 sendmessage 回传 context_token；Typing = getconfig 拿 `typing_ticket` + sendtyping（ticket 按 thread 缓存） |
 | `createWechatConnector` | secret = 扫码所得 JSON `{token, baseUrl, accountId, userId}`（keychain 持有）；connect 探测 = 一次 getupdates（结果 prime 进事件源不丢消息）；botNativeId = `ilink_bot_id` |
-| 工具 `wechat_channel_add` | admin 闸同 P2；异步流：取二维码 URL 发 thread → 轮询扫码状态（wait/scaned/confirmed/expired）→ confirmed 后 keychain.put(凭证 JSON) → `registry.add(kind=wechat)` → 通知 |
+| 工具 `wechat_channel_add` | admin 闸同 P2；异步流：取二维码 URL 发 thread（同时附二维码 PNG）→ 轮询扫码状态（wait/scaned/confirmed/expired）→ confirmed 后 keychain.put(凭证 JSON) → `registry.add(kind=wechat)` → 通知 |
 
 已知限制（协议侧）：iLink 一个微信号同时只允许一条 ClawBot 连接；bot 基本收不到普通群消息（适合私聊助手）；token 过期需重新扫码（bootLoad 失败标 down + last_error 提示重扫）。
 
@@ -285,6 +285,8 @@ COMPONENT-TEST-MAP 行状态：⏳ 直至实现转 ✅。
 | 2026-07-21 | `channelKeyFromProvisionalSid` 收窄为 webchat/discord/slack/telegram：飞书/微信/钉钉 native id 按 app 分域，从 SID 反推丢 scope 会写脏键（实测 data-shiro 出现过 `feishu:on_xxx` 无 scope 键）；此类渠道只由桥用显式 scoped key resolve |
 | 2026-07-21 | P3 按人跨会话记忆召回（§6.5）：`personMessageRecall`（chat-ir runtime）+ `knowledgeRetrieval`「关于此人」注入——群/私/跨渠道对同一 sid 的发言进入同一记忆源；身份别名集折叠历史 provisional sid |
 | 2026-07-21 | P4a+P4b（§6.6）：飞书扫码建应用（registerApp device flow，`feishu_channel_scan_add` 异步工具）；微信 iLink ClawBot 桥 `@utlra/wechat-bridge`（扫码登录 / getupdates 长轮询 / context_token 锚点 / sendtyping），`wechat_channel_add`。既有手填 `feishu_channel_add` 流程不变 |
+| 2026-07-21 | `qrTools`（`outer/qr-tools.ts`）：新工具 `qr_generate`（URL/文本 → 二维码 PNG asset 发当前 thread）；P4a/P4b 扫码流的 URL 消息自动附二维码图片（生成失败降级纯文本，不阻塞流程） |
+| 2026-07-21 | P4b-media：微信桥媒体收发（`media-crypto.ts` CDN AES-128-ECB + 三种 key 编码兼容；`downloadMedia`/`uploadMedia`/`sendImageMessage`/`sendFileMessage`）。入站图/语音/文件/视频镜像落 `ChatAssetStore` → attachment part；出站附件走 getuploadurl+CDN 真发（失败降级防链接化文本，`defangFilename` 零宽空格防 `.md` 等被微信 URL 化）。typing 修复：`getconfig`/`sendtyping` 用 `ilink_user_id`，取消态 status=2 |
 | 2026-07-17 | P2b 落地：`@utlra/feishu-bridge`（api-client / inbound / FeishuChannel / connector），connector 注册进 `connectors` map；thread_id 编入 app_id（`feishu:<app_id>:chat:<chat_id>`）保证多连接路由与出站归属 |
 | 2026-07-17 | 通道 admin 闸修正：静态字符串比对 → bindingIndex 折叠比对（linkMerge 后 canonical sid / 新渠道同人不再被锁在门外）；新增 `*` 显式放开 |
 | 2026-07-16 | P0 落地：`IdentityBindingIndex` + `IdentityLinkService`（可注入、可单测）；入站接线 / 工具仍 ⏳ |

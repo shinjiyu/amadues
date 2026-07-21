@@ -3,8 +3,12 @@
  * path: packages/server/src/outer/channel-scan-tools.ts
  * @see doc/structurizr/IDENTITY-CROSS-CHANNEL.md §6.6
  */
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 import {
+  ChatAssetStore,
   FanInChatIRChannel,
   type ChatIRChannel,
   type ChatIROutboundBody,
@@ -22,6 +26,9 @@ class FakeChannel implements ChatIRChannel {
 function flush(ms = 20): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
+
+const qrTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scan-tools-qr-'));
+afterAll(() => fs.rmSync(qrTmpDir, { recursive: true, force: true }));
 
 function harness(opts?: {
   actor?: string;
@@ -51,14 +58,17 @@ function harness(opts?: {
     agentSid: 'idp:agent:assistant',
   });
   const posted: string[] = [];
+  const postedBodies: ChatIROutboundBody[] = [];
   const ctx = {
     threadId: opts?.threadId ?? `t:scan-${Math.random().toString(36).slice(2)}`,
     agentSid: 'idp:agent:assistant',
+    assetStore: new ChatAssetStore(qrTmpDir),
     imClient: {
       start() {},
       destroy() {},
       async postMessage(_tid: string, body: ChatIROutboundBody) {
         posted.push(body.text ?? '');
+        postedBodies.push(body);
       },
     },
     memoryBlockStore: {
@@ -73,7 +83,15 @@ function harness(opts?: {
     bindingIndex: null,
     channelScan: opts?.scan,
   } as unknown as OuterToolContext;
-  return { ctx, registry, posted, secrets };
+  return { ctx, registry, posted, postedBodies, secrets };
+}
+
+function hasQrAttachment(bodies: ChatIROutboundBody[], urlFragment: string): boolean {
+  return bodies.some((b) => {
+    if (!(b.text ?? '').includes(urlFragment)) return false;
+    const parts = (b.parts ?? []) as Array<{ type: string; asset_ref?: { mime?: string } }>;
+    return parts.some((p) => p.type === 'attachment' && p.asset_ref?.mime === 'image/png');
+  });
 }
 
 describe('channel-scan-tools', () => {
@@ -95,9 +113,11 @@ describe('channel-scan-tools', () => {
     });
     const res = await dispatchChannelScanTool('feishu_channel_scan_add', {}, h.ctx);
     expect(res!.output).toContain('已启动');
-    await flush();
+    // URL 消息经异步二维码生成后才发出，全量跑测时留足余量
+    await flush(400);
 
     expect(h.posted.some((t) => t.includes('user_code=X'))).toBe(true);
+    expect(hasQrAttachment(h.postedBodies, 'user_code=X')).toBe(true);
     expect(h.posted.some((t) => t.includes('已创建并接入'))).toBe(true);
     expect(h.secrets.get('feishu_app_secret_cli_scan1')).toBe('sec1');
     const rec = h.registry.list()[0]!;
@@ -147,6 +167,7 @@ describe('channel-scan-tools', () => {
     await flush(50);
 
     expect(h.posted.some((t) => t.includes('weixin.qq.com/x/abc'))).toBe(true);
+    expect(hasQrAttachment(h.postedBodies, 'weixin.qq.com/x/abc')).toBe(true);
     expect(h.posted.some((t) => t.includes('已扫码'))).toBe(true);
     expect(h.posted.some((t) => t.includes('已接入'))).toBe(true);
 

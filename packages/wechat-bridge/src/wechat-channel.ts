@@ -26,6 +26,12 @@ import { IlinkApiClient, IlinkApiError, type WeixinMessage } from './ilink-api-c
 import { handleWechatInbound } from './inbound.js';
 import { irThreadToWechat, wechatMessageIdToIr } from './thread-mapper.js';
 
+/** 资产仓库最小接口（生产 = chat-ir ChatAssetStore） */
+export interface WechatAssetStore {
+  save(buffer: Buffer, mime: string, name: string): { id: string };
+  get(id: string): { meta: { mime: string; name: string }; buffer: Buffer } | null;
+}
+
 /** 消息来源抽象：生产 = 长轮询循环；单测注入 fake。 */
 export interface WechatUpdateSource {
   start(onMessages: (msgs: WeixinMessage[]) => Promise<void>): void;
@@ -121,6 +127,8 @@ export interface WechatChannelOptions {
   seenTracker: ChatIRSeenTracker;
   onAgentMessage: (ev: ChatIRInboundEvent) => Promise<void>;
   updateSource: WechatUpdateSource;
+  /** 媒体镜像/发送用资产仓库；缺省 = 入站降级占位、出站降级文本 */
+  assetStore?: WechatAssetStore | null;
   /** 复用 connector 探测时建的 client；缺省自建 */
   apiClient?: IlinkApiClient;
   fetchImpl?: typeof fetch;
@@ -178,23 +186,85 @@ export class WechatChannel implements ChatIRChannel {
 
     const parts = this.resolveParts(body);
     if (parts.length === 0) return;
-    const text = renderWechatText(parts);
     const contextToken = this.contextTokens.get(threadId);
     if (!contextToken) {
       console.warn(`[wechat-channel:${this.opts.config.botId}] postMessage: no context_token for ${threadId}（等待用户先发言）`);
       return;
     }
+
+    const attachments = parts.filter((p) => p.type === 'attachment');
+    const textual = parts.filter((p) => p.type !== 'attachment');
+    // 无资产仓库时附件降级为防链接化文本，跟文本一起发
+    const text = renderWechatText(this.opts.assetStore ? textual : parts);
+
     try {
-      const sent = await this.api.sendTextMessage({
-        toUserId: route.peerId,
-        text,
-        contextToken,
-      });
-      this.persistOutboundMessage(threadId, sent.clientId, body.sender_sid, parts);
+      let lastClientId = '';
+      if (text.trim()) {
+        const sent = await this.api.sendTextMessage({ toUserId: route.peerId, text, contextToken });
+        lastClientId = sent.clientId;
+      }
+      if (this.opts.assetStore) {
+        for (const p of attachments) {
+          if (p.type !== 'attachment') continue;
+          lastClientId =
+            (await this.sendAttachment(route.peerId, contextToken, p)) || lastClientId;
+        }
+      }
+      if (!lastClientId) return;
+      this.persistOutboundMessage(threadId, lastClientId, body.sender_sid, parts);
       this.setTyping(threadId, false);
-      console.log(`[wechat-channel:${this.opts.config.botId}] → wechat ${route.peerId} msg ${sent.clientId}`);
+      console.log(`[wechat-channel:${this.opts.config.botId}] → wechat ${route.peerId} msg ${lastClientId}`);
     } catch (e) {
       console.error(`[wechat-channel:${this.opts.config.botId}] postMessage failed`, e);
+    }
+  }
+
+  /** 附件出站：asset → CDN 上传 → 发图/发文件；失败降级为防链接化文本。返回 clientId 或 ''。 */
+  private async sendAttachment(
+    peerId: string,
+    contextToken: string,
+    part: Extract<MessagePart, { type: 'attachment' }>,
+  ): Promise<string> {
+    const ref = part.asset_ref;
+    const name = ref.name ?? 'file';
+    try {
+      const assetId = ref.uri.startsWith('asset:') ? ref.uri.slice('asset:'.length) : ref.uri;
+      const got = this.opts.assetStore!.get(assetId);
+      if (!got) throw new Error(`asset ${assetId} not found`);
+
+      const isImage = (ref.mime ?? got.meta.mime ?? '').startsWith('image/');
+      const uploaded = await this.api.uploadMedia({
+        buffer: got.buffer,
+        mediaType: isImage ? 1 : 3,
+        toUserId: peerId,
+      });
+      const sent = isImage
+        ? await this.api.sendImageMessage({
+            toUserId: peerId,
+            media: uploaded.media,
+            cipherSize: uploaded.cipherSize,
+            contextToken,
+          })
+        : await this.api.sendFileMessage({
+            toUserId: peerId,
+            media: uploaded.media,
+            fileName: name,
+            rawSize: got.buffer.length,
+            contextToken,
+          });
+      return sent.clientId;
+    } catch (e) {
+      console.warn(`[wechat-channel:${this.opts.config.botId}] attachment send failed (${name})`, String(e));
+      try {
+        await this.api.sendTextMessage({
+          toUserId: peerId,
+          text: `（附件 ${defangFilename(name)} 发送失败，可在 webchat 查看）`,
+          contextToken,
+        });
+      } catch {
+        /* 降级通知也失败就算了 */
+      }
+      return '';
     }
   }
 
@@ -241,6 +311,12 @@ export class WechatChannel implements ChatIRChannel {
         saveThreads: this.opts.saveThreads,
         seenMessageIds: this.seenMessageIds,
         contextTokens: this.contextTokens,
+        mediaSink: this.opts.assetStore
+          ? {
+              download: (item) => this.api.downloadMedia(item),
+              saveAsset: (buf, mime, name) => this.opts.assetStore!.save(buf, mime, name),
+            }
+          : null,
         onMessagePersisted: async (persisted) => {
           this.opts.seenTracker.track(persisted.threadId, {
             message_id: persisted.message.message_id,
@@ -304,8 +380,16 @@ export function renderWechatText(parts: MessagePart[]): string {
     else if (p.type === 'mention') chunks.push(p.label ? `@${p.label}` : '');
     else if (p.type === 'attachment') {
       const name = p.asset_ref.name ?? p.asset_ref.uri;
-      chunks.push(`[附件 ${name}]`);
+      chunks.push(`[附件 ${defangFilename(name)}，微信端暂无法接收，可在 webchat 查看]`);
     }
   }
   return chunks.join('');
+}
+
+/**
+ * 防微信把文件名误识别为 URL（`.md` 等真实 TLD 会被链接化）：
+ * 在每个 `.` 后插入零宽空格，肉眼不可见但打断域名匹配。
+ */
+export function defangFilename(name: string): string {
+  return name.replace(/\./g, '.\u200B');
 }
