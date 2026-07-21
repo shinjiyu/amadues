@@ -12,6 +12,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   ChannelKeyConflictError,
+  normalizeChannelKey,
   serializeChannelKey,
   type ChannelKey,
   type IdentityBindingIndex,
@@ -123,11 +124,15 @@ export class IdentityLinkService {
     }
 
     const boundCounterpart = this.deps.index.resolve(counterpartKey);
-    if (boundCounterpart && boundCounterpart !== targetSid) {
-      return { ok: false, reason: 'counterpart_key_already_bound' };
-    }
     if (boundCounterpart === targetSid) {
       return { ok: false, reason: 'already_linked' };
+    }
+    // 对端发过言就会被自动 provision 绑到自己的 sid——这是常态而非冲突。
+    // 只要对端 sid 上挂的 key 全是「同一渠道账号」（scope 变体也算），
+    // 就视为孤立自身份，放行；confirm 后 commitBindings 会 linkMerge 并入 target。
+    // 反之（sid 已含其它账号的 key = 已与他人合并的真身份）才拒绝。
+    if (boundCounterpart && !this.isLoneSelfIdentity(boundCounterpart, counterpartKey)) {
+      return { ok: false, reason: 'counterpart_key_already_bound' };
     }
 
     const created = this.now();
@@ -235,6 +240,15 @@ export class IdentityLinkService {
       throw e;
     }
     return { ok: true, targetSid };
+  }
+
+  /** sid 上所有 key 均为同一渠道账号（scope 变体视为同账号）→ 孤立自身份 */
+  private isLoneSelfIdentity(sid: string, counterpartKey: ChannelKey): boolean {
+    const ck = normalizeChannelKey(counterpartKey);
+    return this.deps.index.listKeys(sid).every((k) => {
+      const n = normalizeChannelKey(k);
+      return n.channel === ck.channel && n.native_user_id === ck.native_user_id;
+    });
   }
 
   private commitBindings(pending: IdentityLinkPending): void {

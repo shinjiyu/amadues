@@ -86,7 +86,7 @@ channel_key  →  internal_sid
 | `expires_at` | 超时作废 |
 | `created_by_sid` | 发起人；审计 |
 
-**冲突**：`counterpart_channel_key` 已指向另一 sid → **拒绝 pending** 或要求先 `unbind`（P0：拒绝并说明）。
+**冲突**（2026-07-21 修正）：对端发过言就会被自动 provision 自绑——这是常态而非冲突。判定按对端 sid 的**键集合**折叠：sid 上所有 key 都属同一渠道账号（scope 变体视为同账号）= **孤立自身份 → 放行**，confirm 后 `commitBindings` 走 `linkMerge` 并入 target；sid 已含其它账号的 key（= 已与他人合并的真身份）→ **拒绝 pending**（`counterpart_key_already_bound`），需从已确立身份一侧发起或走 admin。防冒名的防线在 **confirm 侧**（操作者 native id 必须 == counterpart），不在 request 侧。
 
 **投递**：经 `ChatIRChannel` / 多连接路由把确认送到**对端 native 用户**；确认回调校验「操作者 native id == counterpart」。群内代点无效。
 
@@ -238,6 +238,8 @@ COMPONENT-TEST-MAP 行状态：⏳ 直至实现转 ✅。
 | 日期 | 说明 |
 |------|------|
 | 2026-07-16 | 初稿：映射表 + 双边确认事实源 + Agent 不裁决；多飞书非单例与运行时热插；P0–P2 |
+| 2026-07-21 | request 冲突判定修正（§3.2）：对端自绑 provisional ≠ 冲突——按 sid 键集合折叠判「孤立自身份」放行、confirm 时 linkMerge；仅「已与他人合并的真身份」拒绝。修复实测中 requestLink 永远走不通的问题 |
+| 2026-07-21 | `channelKeyFromProvisionalSid` 收窄为 webchat/discord/slack/telegram：飞书/微信/钉钉 native id 按 app 分域，从 SID 反推丢 scope 会写脏键（实测 data-shiro 出现过 `feishu:on_xxx` 无 scope 键）；此类渠道只由桥用显式 scoped key resolve |
 | 2026-07-17 | P2b 落地：`@utlra/feishu-bridge`（api-client / inbound / FeishuChannel / connector），connector 注册进 `connectors` map；thread_id 编入 app_id（`feishu:<app_id>:chat:<chat_id>`）保证多连接路由与出站归属 |
 | 2026-07-17 | 通道 admin 闸修正：静态字符串比对 → bindingIndex 折叠比对（linkMerge 后 canonical sid / 新渠道同人不再被锁在门外）；新增 `*` 显式放开 |
 | 2026-07-16 | P0 落地：`IdentityBindingIndex` + `IdentityLinkService`（可注入、可单测）；入站接线 / 工具仍 ⏳ |

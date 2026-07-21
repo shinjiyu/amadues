@@ -80,7 +80,9 @@ describe('identity-link-tools', () => {
   it('identity_link_request surfaces already-bound-to-other failure', async () => {
     const h = harness({ inboundHumanSid: 'idp:user:alice' });
     h.index.bind({ channel: 'webchat', native_user_id: 'alice' }, 'idp:user:alice');
+    // 对端已是与他人合并的真身份（含其它账号 key）——孤立自绑是放行的，见组件测
     h.index.bind({ channel: 'feishu', native_user_id: 'ou_x', scope: 'cli_1' }, 'idp:user:other');
+    h.index.bind({ channel: 'discord', native_user_id: 'd_other' }, 'idp:user:other');
 
     const res = await dispatchIdentityLinkTool(
       'identity_link_request',

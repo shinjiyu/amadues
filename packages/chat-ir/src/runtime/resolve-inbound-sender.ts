@@ -30,11 +30,14 @@ export function resolveInboundSenderSid(
 
 /**
  * 从过渡期渠道前缀 SID 反推 channel_key（无 scope）。
- * 飞书多 app 应以桥传入的显式 ChannelKey 为准；本函数仅作 Facade / HTTP 兜底。
+ * 仅限 native id 全局稳定的渠道（webchat/discord/slack/telegram）。
+ * 飞书/微信/钉钉的用户 id 按 app 分域，从 SID 反推会丢 scope 并写入脏键
+ * （曾在 data-shiro 产生过 `feishu:on_xxx` 无 scope 键）——这类渠道必须由桥
+ * 用显式 scoped ChannelKey resolve，本函数直接返回 null 让 Facade 兜底跳过。
  */
 export function channelKeyFromProvisionalSid(sid: string): ChannelKey | null {
   const raw = sid.trim();
-  const m = /^(webchat|discord|feishu|slack|telegram|dingtalk|wechat):user:(.+)$/i.exec(raw);
+  const m = /^(webchat|discord|slack|telegram):user:(.+)$/i.exec(raw);
   if (!m) return null;
   return { channel: m[1]!.toLowerCase(), native_user_id: m[2]! };
 }

@@ -66,20 +66,25 @@ describe('component: identityLinkService', () => {
     expect(index.resolve(feishuKey)).toBe('idp:user:alice');
   });
 
-  it('rejects request when counterpart key already bound to another sid', async () => {
+  it('对端是 resolveOrProvision 铸造的孤立 idp sid（仅本 key）→ 同样放行并合并', async () => {
     const { index, service } = harness();
     const webKey = { channel: 'webchat', native_user_id: 'a' };
     const feishuKey = { channel: 'feishu', native_user_id: 'ou_b', scope: 'cli_1' };
     index.bind(webKey, 'idp:user:a');
-    index.bind(feishuKey, 'idp:user:other');
+    const lone = index.resolveOrProvision(feishuKey); // idp:user:<uuid>，只挂这一条 key
 
     const req = await service.requestLink({
       initiatorSid: 'idp:user:a',
       initiatorKey: webKey,
       counterpartKey: feishuKey,
     });
-    expect(req.ok).toBe(false);
-    if (!req.ok) expect(req.reason).toBe('counterpart_key_already_bound');
+    expect(req.ok).toBe(true);
+    if (!req.ok) return;
+
+    const ok = await service.confirm(req.pending.pending_id, feishuKey);
+    expect(ok.ok).toBe(true);
+    expect(index.resolve(feishuKey)).toBe('idp:user:a');
+    expect(index.listKeys(lone)).toHaveLength(0);
   });
 
   it('rejectPending leaves mapping unchanged', async () => {
@@ -127,24 +132,49 @@ describe('component: identityLinkService', () => {
     expect(index.resolve(feishuKey)).toBeNull();
   });
 
-  it('adminForce required when counterpart already provisioned; non-admin denied', async () => {
+  it('对端仅自绑（发过言被 provision）→ request 放行，confirm 时 linkMerge 合并', async () => {
+    // 回归：任何发过言的账号都会被自动绑到自己的 provisional sid，
+    // 旧判定把这种情况当 counterpart_key_already_bound 拒绝 → 正常绑定永远走不通。
+    const { index, service } = harness();
+    const webKey = { channel: 'webchat', native_user_id: 'a' };
+    const feishuKey = { channel: 'feishu', native_user_id: 'on_a', scope: 'cli_1' };
+    index.bind(webKey, 'idp:user:a');
+    // 对端在飞书发过言：桥自绑 provisional（另有一条无 scope 历史脏键也一并归并）
+    index.bind(feishuKey, 'feishu:user:on_a');
+    index.bind({ channel: 'feishu', native_user_id: 'on_a' }, 'feishu:user:on_a');
+
+    const req = await service.requestLink({
+      initiatorSid: 'idp:user:a',
+      initiatorKey: webKey,
+      counterpartKey: feishuKey,
+    });
+    expect(req.ok).toBe(true);
+    if (!req.ok) return;
+
+    const ok = await service.confirm(req.pending.pending_id, feishuKey);
+    expect(ok.ok).toBe(true);
+    // 对端旧 provisional sid 的全部 key（含 scope 变体）都并入 target
+    expect(index.resolve(feishuKey)).toBe('idp:user:a');
+    expect(index.resolve({ channel: 'feishu', native_user_id: 'on_a' })).toBe('idp:user:a');
+    expect(index.listKeys('feishu:user:on_a')).toHaveLength(0);
+  });
+
+  it('对端已并入他人身份（sid 含其它账号的 key）→ request 仍拒绝；adminForce 非管理员拒绝', async () => {
     const { index, service } = harness();
     const webKey = { channel: 'webchat', native_user_id: 'a' };
     const feishuKey = { channel: 'feishu', native_user_id: 'ou_a', scope: 'cli_1' };
     index.bind(webKey, 'idp:user:a');
-    // 对端曾以新人身份出现——但 request 时若已绑定会拒绝。
-    // 模拟：request 时未绑定；confirm 前另一路径误绑？ADL P0：request 时未绑定，
-    // confirm 时 bind。另测：counterpart 先 resolveOrProvision 成 src，再 adminForce。
-    const src = index.resolveOrProvision(feishuKey);
-    expect(src).not.toBe('idp:user:a');
+    // 对端 feishu 账号已与另一个 discord 账号合并成真人身份 idp:user:other
+    index.bind(feishuKey, 'idp:user:other');
+    index.bind({ channel: 'discord', native_user_id: 'd1' }, 'idp:user:other');
 
-    // 已绑定 → request 应失败
     const req = await service.requestLink({
       initiatorSid: 'idp:user:a',
       initiatorKey: webKey,
       counterpartKey: feishuKey,
     });
     expect(req.ok).toBe(false);
+    if (!req.ok) expect(req.reason).toBe('counterpart_key_already_bound');
 
     const forced = service.adminForceLink({
       actorSid: 'idp:user:admin',
@@ -175,23 +205,28 @@ describe('component: identityLinkService', () => {
   });
 
   it('newcomer cannot steal identity by claiming without counterpart confirm', async () => {
-    // B（新人）不能通过「我自称是 A」直接改映射——本服务无单方自称 API。
-    // 仅能 requestLink 且 initiator 必须是已绑定侧；此处验证映射表未被旁路写入。
+    // 新人从新渠道发起「把 alice 的 webchat 并给我」是合法的 request
+    // （同一真人换新号找回旧身份就是这条路）——但防线在 confirm：
+    // 必须由对端（alice 的 webchat）本人确认，发起人自己确认无效，映射不变。
     const { index, service } = harness();
     const aKey = { channel: 'webchat', native_user_id: 'alice' };
     const bKey = { channel: 'feishu', native_user_id: 'ou_mallory', scope: 'cli_1' };
     index.bind(aKey, 'idp:user:alice');
     const mallory = index.resolveOrProvision(bKey);
 
-    // Mallory 若发起「把 alice 的 webchat 绑到我」——initiator_key 与 initiatorSid 不一致会被拒
-    const steal = await service.requestLink({
+    const req = await service.requestLink({
       initiatorSid: mallory,
       initiatorKey: bKey,
       counterpartKey: aKey,
       targetSid: mallory,
     });
-    expect(steal.ok).toBe(false);
-    if (!steal.ok) expect(steal.reason).toBe('counterpart_key_already_bound');
+    expect(req.ok).toBe(true);
+    if (!req.ok) return;
+
+    // Mallory 自己（用自己的 key）冒充确认 → 拒绝，映射不动
+    const fake = await service.confirm(req.pending.pending_id, bKey);
+    expect(fake.ok).toBe(false);
+    if (!fake.ok) expect(fake.reason).toBe('actor_not_counterpart');
     expect(index.resolve(aKey)).toBe('idp:user:alice');
   });
 });
