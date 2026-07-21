@@ -24,7 +24,8 @@
 | **participationPolicy** | **是否说话 / 是否回复** | `outer/inbound-policy.ts` + `participation-state.ts` | `OuterInboundMeta` → `shouldReply` / SPEAK·SILENT |
 | outerBrainFacade | 外脑编排入口（IM + HTTP） | `outer/outer-brain.ts`; `outer/outer-http-inbound.ts` | `ChatIRInboundEvent` / `POST /api/outer/inbound` |
 | structuredReplyParts | reply.v1 → MessagePart[] | `outer/structured-reply-parts.ts` | StructuredReply → parts |
-| knowledgeRetrieval | 知识检索 | `outer/knowledge-retrieval.ts` | query → K/S/P 片段 |
+| knowledgeRetrieval | 知识检索（含按人跨会话记忆注入） | `outer/knowledge-retrieval.ts` | query+senderSid → K/S/P + 本线程 + 跨线程 + 关于此人 片段 |
+| **personMessageRecall** | **按人跨会话召回（chat-ir）**：sid 别名集（bindingIndex 派生）→ 其它 thread 近期发言 | `chat-ir/src/runtime/person-message-recall.ts` | store+sid → PersonMessageHit[]；见 IDENTITY-CROSS-CHANNEL §6.5 |
 | threadOrchestrator | 线程串行 + mention 感知 freshCheck + FIFO 排队 | `outer/thread-orchestrator.ts`; `chat-ir/seen-tracker.ts` | thread ops |
 | outerConversationLoop | 外脑多轮 LLM | `outer/outer-conversation-loop.ts` | context → tool_calls |
 | outerToolExecutor | 外脑工具执行 | `outer/outer-tools.ts` | tool_call → reply/spawn |

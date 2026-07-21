@@ -47,15 +47,16 @@
                     }
                 }
 
-                knowledgeRetrieval = component "Knowledge Retrieval" "【上下文检索】本地 repository K/S/P + 本线程/跨线程历史 → 注入 LLM 前缀" "TypeScript" {
+                knowledgeRetrieval = component "Knowledge Retrieval" "【上下文检索】本地 repository K/S/P + 本线程/跨线程历史 + 按人跨会话记忆（personMessageRecall）→ 注入 LLM 前缀" "TypeScript" {
                     tags "Outer-Module" "Inbound"
                     properties {
                         "path" "packages/server/src/outer/knowledge-retrieval.ts"
                         "horizon.intention" "拼 knowledgeContext 字符串"
-                        "horizon.in" "query + threadId + workspaceId"
-                        "horizon.out" "context + sources 统计"
-                        "horizon.deps" "FilesystemRepositoryStore + chat-ir；禁止 mem9/drive9"
+                        "horizon.in" "query + threadId + workspaceId + senderSid(+bindingIndex)"
+                        "horizon.out" "context + sources 统计（repo/currentThread/crossThread/person）"
+                        "horizon.deps" "FilesystemRepositoryStore + chat-ir（personMessageRecall 别名集折叠）；禁止 mem9/drive9"
                         "horizon.test.integration" "knowledgeRetrieval.component.integration.test.ts"
+                        "horizon.note" "P3 按人跨会话记忆：IDENTITY-CROSS-CHANNEL.md §6.5"
                     }
                 }
 

@@ -2,7 +2,7 @@
 
 > **English:** Cross-channel identity is a **`channel_key → internal_sid` map**. The sole everyday source of truth for “same person on two channels” is a **bilateral confirmation handshake** (system state machine—not LLM judgment). Feishu is **N connections per agent**, with **runtime hot-add** via chat + keychain. Complements [`doc/chat-ir-identity-design.md`](../chat-ir-identity-design.md) §11（本文 supersede 其「仅有 bindings 占位、无 merge」的运行时缺口描述）。
 
-**状态**：设计已定稿（2026-07-16）· **实现**：P0 ✅ 映射+双边确认；P0b ✅ 入站 resolve（webchat/discord + OuterBrain canonicalize）；P1 ✅ 外脑工具 + 入站确认口令；P2 ✅ Fan-in + 连接表 + 热插工具；P2b ✅ `feishuBridge`（`@utlra/feishu-bridge`，connector 已注册 `index.ts`）（见 §9）
+**状态**：设计已定稿（2026-07-16）· **实现**：P0 ✅ 映射+双边确认；P0b ✅ 入站 resolve（webchat/discord + OuterBrain canonicalize）；P1 ✅ 外脑工具 + 入站确认口令；P2 ✅ Fan-in + 连接表 + 热插工具；P2b ✅ `feishuBridge`（`@utlra/feishu-bridge`，connector 已注册 `index.ts`）；P3 ✅ 按人跨会话记忆召回（§6.5）（见 §9）
 
 ---
 
@@ -193,6 +193,22 @@ idp:agent:assistant
 
 **禁止**：`outerConversationLoop` / 模型输出直接改映射文件；`feishuBridge` 绕过 `resolve` 写死 per-channel sid 且永不经索引（过渡期新建人除外）。
 
+### 6.5 按人跨会话记忆召回（P3，person recall）
+
+身份打通的兑现层：外脑回复某人时，除当前 thread 历史外，还注入**该人在其它 thread（含其它渠道）的近期发言**。
+
+| 模块 | 容器 | 职责 |
+|------|------|------|
+| **personMessageRecall** | `chatIrLib`（`packages/chat-ir/src/runtime/person-message-recall.ts`） | `personSidAliases(index, sid)`：canonical sid + 其全部 channel_key 的 provisional 形态（`<channel>:user:<native_id>`）组成别名集——历史消息落库时可能带旧 provisional sid，linkMerge 不回写消息，靠别名集折叠；`recallPersonMessages(store, personSid, opts)`：按别名集扫全部 thread（排除当前），按 `sent_at` 取最近 N 条（默认总量 12、单 thread ≤4），返回消息 + thread 元数据 |
+| **knowledgeRetrieval**（扩展） | `agentServer` | 新增「关于此人的跨会话记忆」section：入站 sender（已 canonicalize）→ recall → 每条带来源标注（渠道/群名/dm）注入 LLM 前缀；`sources.person` 计数 |
+
+```text
+入站 → canonicalize(sender_sid) → recallPersonMessages(threads, sid, {aliases})
+     → 「### 关于此人（跨渠道/跨会话）」块 → knowledgeContext
+```
+
+边界：只读 Chat IR 消息，不新增存储；**不**做 LLM 画像/摘要（那是 mem9 的事）；别名集只来自 bindingIndex，不允许模糊匹配 display_name。
+
 ---
 
 ## 7. 存储边界
@@ -228,6 +244,7 @@ idp:agent:assistant
 | **P1** | 外脑工具 `identity_link_request` / `identity_link_status`；入站「确认绑定/拒绝绑定 \<pending_id\>」确定性口令（OuterBrain Step 0.52 短路，不走 LLM；对端校验 = pending.counterpart_key ∈ 发送者已绑定 keys） | ✅ `identity-link-tools.test.ts`；✅ `identity-link-inbound.test.ts` |
 | **P2** | `FanInChatIRChannel`（chat-ir；入站合流 + thread→connection 出站路由，主渠道为 default）；`ChannelConnectionRegistry`（connections.json + keychain secret_ref + 探测失败回滚 + bootLoad 重连）；工具 `feishu_channel_add/list/remove`（admin 闸 `UTLRA_CHANNEL_ADMIN_SIDS`：条目经 **bindingIndex 折叠比对**——同人从任意已确认渠道入站均放行，白名单限"谁能操作"、不限"接哪些飞书"；`*` = 显式放开） | ✅ `fan-in-channel.test.ts`；✅ `channel-connection-registry.test.ts`；✅ `channel-connection-tools.test.ts` |
 | **P2b** | `feishuBridge`（`packages/feishu-bridge`）：每 connection 一个 `FeishuChannel`（事件源可注入，生产 = 飞书长连接 SDK **可选依赖**，未装时热插显式报错回滚）；入站 `channel_key = {feishu, union_id∥open_id, scope=app_id}` 经 resolve；出站 REST text + `<at>`；Typing = 对最后一条人类消息打 `Typing` reaction，idle/回复后撤；`createFeishuConnector` 已注册 `index.ts` connectors map（kind=feishu） | ✅ `api-client.test.ts`、`inbound.test.ts`、`feishu-channel.test.ts`、`connector.test.ts`、`thread-mapper.test.ts`（27 项） |
+| **P3** | 按人跨会话记忆召回（§6.5）：`personMessageRecall`（chat-ir，别名集 + 跨 thread 最近消息）；`knowledgeRetrieval` 注入「关于此人」块（`sources.person`） | ✅ `person-message-recall.test.ts`；✅ `knowledgeRetrieval.component.integration.test.ts`（person 块用例） |
 
 COMPONENT-TEST-MAP 行状态：⏳ 直至实现转 ✅。
 
@@ -240,6 +257,7 @@ COMPONENT-TEST-MAP 行状态：⏳ 直至实现转 ✅。
 | 2026-07-16 | 初稿：映射表 + 双边确认事实源 + Agent 不裁决；多飞书非单例与运行时热插；P0–P2 |
 | 2026-07-21 | request 冲突判定修正（§3.2）：对端自绑 provisional ≠ 冲突——按 sid 键集合折叠判「孤立自身份」放行、confirm 时 linkMerge；仅「已与他人合并的真身份」拒绝。修复实测中 requestLink 永远走不通的问题 |
 | 2026-07-21 | `channelKeyFromProvisionalSid` 收窄为 webchat/discord/slack/telegram：飞书/微信/钉钉 native id 按 app 分域，从 SID 反推丢 scope 会写脏键（实测 data-shiro 出现过 `feishu:on_xxx` 无 scope 键）；此类渠道只由桥用显式 scoped key resolve |
+| 2026-07-21 | P3 按人跨会话记忆召回（§6.5）：`personMessageRecall`（chat-ir runtime）+ `knowledgeRetrieval`「关于此人」注入——群/私/跨渠道对同一 sid 的发言进入同一记忆源；身份别名集折叠历史 provisional sid |
 | 2026-07-17 | P2b 落地：`@utlra/feishu-bridge`（api-client / inbound / FeishuChannel / connector），connector 注册进 `connectors` map；thread_id 编入 app_id（`feishu:<app_id>:chat:<chat_id>`）保证多连接路由与出站归属 |
 | 2026-07-17 | 通道 admin 闸修正：静态字符串比对 → bindingIndex 折叠比对（linkMerge 后 canonical sid / 新渠道同人不再被锁在门外）；新增 `*` 显式放开 |
 | 2026-07-16 | P0 落地：`IdentityBindingIndex` + `IdentityLinkService`（可注入、可单测）；入站接线 / 工具仍 ⏳ |

@@ -20,7 +20,7 @@
 |-------------|--------|--------|-----------|------|
 | participationPolicy | ✅ `inbound-policy.test.ts` | ✅ `participationPolicy.component.integration.test.ts` | ✅ `inbound-policy.prompt.test.ts` | 样板组件 |
 | outerBrainFacade | 🟡 片段 | ✅ `outerBrainFacade.component.integration.test.ts` | — | + `integration/outer-brain-inbound` 全链 |
-| knowledgeRetrieval | ❌ | ✅ `knowledgeRetrieval.component.integration.test.ts` | — | |
+| knowledgeRetrieval | ❌ | ✅ `knowledgeRetrieval.component.integration.test.ts`（含 P3 按人跨会话块） | — | |
 | threadOrchestrator | ✅ `chat-ir/seen-tracker.test.ts`（freshCheck @ 语义） | ✅ `threadOrchestrator.component.integration.test.ts`（串行 + FIFO 排队） | — | freshCheck 实现于 `@utlra/chat-ir` |
 | outerConversationLoop | ❌ | ✅ `outerConversationLoop.component.integration.test.ts` | — | + `integration/outer-conversation-loop-assembly` |
 | outerToolExecutor | 🟡 tools 单测散落 | ✅ `outerToolExecutor.component.integration.test.ts` | — | `normalizeAgentReplyMentionText` |
@@ -98,6 +98,7 @@
 | ChatIRSeenTracker | ✅ `seen-tracker.test.ts` | — | freshCheck @ 语义（亦被 threadOrchestrator 引用） |
 | **identityBindingIndex** | ✅ `identity-binding-index.test.ts` + `resolve-inbound-sender.test.ts` | ✅ `inbound-sender-canonicalize.component.test.ts`（server） | P0b 桥+Facade 接线 |
 | **FanInChatIRChannel** | ✅ `fan-in-channel.test.ts`（合流/路由/热插/default 回退） | — | ADL [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §5.2 装配 |
+| **personMessageRecall** | ✅ `person-message-recall.test.ts`（别名集折叠、跨 thread 召回、排除当前、上限） | ✅ `knowledgeRetrieval.component.integration.test.ts`（person 块） | ADL [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §6.5 P3 |
 
 ## 飞书桥（`feishuBridge` · `packages/feishu-bridge`）
 

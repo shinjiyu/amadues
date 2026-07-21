@@ -9,20 +9,24 @@
 import type { FilesystemRepositoryStore } from '../workspace-kit/index.js';
 import {
   MessageRecordSchema,
+  recallPersonMessages,
   serializeMessageForLlm,
+  type IdentityBindingIndex,
   type IdentityRegistry,
   type LooseThreadStore,
 } from '@utlra/chat-ir';
 import { resolveAgentTimezone } from '../agent-time.js';
+import { isHumanSender } from './awaiting-inbound-resolver.js';
 
 const MAX_REPO_SESSIONS = 4;
 const MAX_CHARS_PER_ITEM = 600;
 const MAX_CROSS_THREAD_MSGS = 6;
 const MAX_CURRENT_THREAD_MSGS = 20;
+const MAX_PERSON_MSGS = 12;
 
 export interface KnowledgeRetrievalResult {
   context: string;
-  sources: { repo: number; currentThread: number; crossThread: number };
+  sources: { repo: number; currentThread: number; crossThread: number; person: number };
 }
 
 /**
@@ -155,7 +159,52 @@ function retrieveCrossThread(
 }
 
 /**
- * 全面检索：合并执行轨知识 + 当前线程近期历史 + 跨线程相关消息。
+ * P3 按人跨会话记忆（IDENTITY-CROSS-CHANNEL.md §6.5）：
+ * 入站 sender（已 canonicalize）在**其它** thread（含其它渠道）的近期发言。
+ * 别名集来自 bindingIndex——linkMerge 不回写历史消息，旧消息可能带 provisional sid。
+ */
+function retrievePersonSection(
+  senderSid: string,
+  currentThreadId: string,
+  loadThreads: () => LooseThreadStore,
+  registry: IdentityRegistry,
+  bindingIndex: IdentityBindingIndex | null | undefined,
+): { text: string; count: number } {
+  if (!senderSid.trim() || !isHumanSender(senderSid)) return { text: '', count: 0 };
+  try {
+    const hits = recallPersonMessages(loadThreads(), senderSid, {
+      index: bindingIndex ?? null,
+      excludeThreadId: currentThreadId,
+      maxMessages: MAX_PERSON_MSGS,
+    });
+    if (!hits.length) return { text: '', count: 0 };
+
+    const tz = resolveAgentTimezone();
+    const sender = registry.get?.(senderSid);
+    const who = sender?.display_name ?? senderSid;
+    const lines: string[] = [
+      `### 关于此人（${who}）的跨渠道/跨会话记忆`,
+      `（同一人经身份绑定折叠；来自其它会话，按时间新→旧）`,
+    ];
+    for (const h of hits) {
+      const t = h.thread;
+      const where = t
+        ? t.kind === 'dm'
+          ? `${t.channel} 私聊`
+          : `${t.channel} 群聊${t.title ? `「${t.title}」` : ''}`
+        : h.threadId;
+      lines.push(
+        `[来自 ${where}] ${serializeMessageForLlm(h.message, who, sender?.kind ?? 'human', tz)}`,
+      );
+    }
+    return { text: lines.join('\n'), count: hits.length };
+  } catch {
+    return { text: '', count: 0 };
+  }
+}
+
+/**
+ * 全面检索：合并执行轨知识 + 当前线程近期历史 + 跨线程相关消息 + 按人跨会话记忆。
  * 返回可直接注入外脑 LLM prompt 的上下文字符串，以及各来源命中数量。
  *
  * 外脑对话记忆由 OuterMemoryStore 从 mem9 :chat 召回；
@@ -168,14 +217,20 @@ export function retrieveComprehensiveKnowledge(opts: {
   repoStore: FilesystemRepositoryStore;
   loadThreads: () => LooseThreadStore;
   registry: IdentityRegistry;
+  /** 入站发送者（已 canonicalize）；提供时注入「关于此人」跨会话块（P3） */
+  senderSid?: string;
+  bindingIndex?: IdentityBindingIndex | null;
 }): KnowledgeRetrievalResult {
   const { query, threadId, workspaceId, repoStore, loadThreads, registry } = opts;
 
   const repoSection    = retrieveFromRepo(repoStore, query, workspaceId);
   const threadSection  = retrieveFromThread(threadId, loadThreads, registry, MAX_CURRENT_THREAD_MSGS, '当前对话历史');
   const crossSection   = retrieveCrossThread(threadId, query, loadThreads, registry);
+  const personSection  = opts.senderSid
+    ? retrievePersonSection(opts.senderSid, threadId, loadThreads, registry, opts.bindingIndex)
+    : { text: '', count: 0 };
 
-  const sections = [repoSection, threadSection, crossSection].filter(Boolean);
+  const sections = [repoSection, threadSection, personSection.text, crossSection].filter(Boolean);
 
   const repoCount   = repoSection ? 1 : 0;
   const threadCount = threadSection
@@ -184,12 +239,17 @@ export function retrieveComprehensiveKnowledge(opts: {
   const crossCount = crossSection ? crossSection.split('\n').length - 1 : 0;
 
   if (!sections.length) {
-    return { context: '', sources: { repo: 0, currentThread: 0, crossThread: 0 } };
+    return { context: '', sources: { repo: 0, currentThread: 0, crossThread: 0, person: 0 } };
   }
 
   const context = `## 背景知识与历史上下文\n\n${sections.join('\n\n')}`;
   return {
     context,
-    sources: { repo: repoCount, currentThread: threadCount, crossThread: crossCount },
+    sources: {
+      repo: repoCount,
+      currentThread: threadCount,
+      crossThread: crossCount,
+      person: personSection.count,
+    },
   };
 }

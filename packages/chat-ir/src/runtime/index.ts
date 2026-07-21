@@ -12,5 +12,6 @@
 export * from './identity-registry.js';
 export * from './identity-binding-index.js';
 export * from './resolve-inbound-sender.js';
+export * from './person-message-recall.js';
 export * from './fan-in-channel.js';
 export * from './asset-store.js';

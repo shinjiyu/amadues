@@ -31,6 +31,7 @@
    - 任务/对话摘要：`outerMemory` → mem9  
    - 结构化长期 KV：**`memoryBlockStore`**（Cookie 等 **不进** mem9）
    - **跨渠道同人**：`identityBindingIndex` + `identityLinkService`（双边确认）；**禁止** LLM 直接改映射
+   - **按人跨会话记忆**：`personMessageRecall`（chat-ir）——入站 sender 的 sid 别名集（bindingIndex 派生）→ 其它 thread 近期发言注入「关于此人」块；只读 Chat IR，不新增存储；见 [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §6.5
 
 2. **内脑 burst（legacy 三件套）**  
    - 战术：`.brain/*`（BrainFS）  
@@ -64,6 +65,7 @@
 | mem9 门面 | `outer/outer-memory.ts` |
 | **Belief 对账** | `outer/memory-belief-reconcile.ts` |
 | K/S/P 检索 | `outer/knowledge-retrieval.ts` |
+| **按人跨会话召回** | `chat-ir/src/runtime/person-message-recall.ts`（`knowledge-retrieval.ts` 注入） |
 | **Memory Block** | `outer/memory-block-store.ts` · `outer/memory-block-tools.ts` |
 | **身份映射 / 双边确认** | `chat-ir` identityBindingIndex（⏳）· `outer/identity-link-service.ts`（⏳）· [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **IM 通道连接表** | `outer/channel-connection-registry.ts`（⏳） |

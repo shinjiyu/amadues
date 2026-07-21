@@ -504,9 +504,12 @@ export class OuterBrain {
       repoStore,
       loadThreads,
       registry,
+      senderSid,
+      bindingIndex: this.deps.bindingIndex ?? null,
     });
     console.log(
-      `[utlra][outer-brain] knowledge: repo=${sources.repo} thread=${sources.currentThread} cross=${sources.crossThread}`,
+      `[utlra][outer-brain] knowledge: repo=${sources.repo} thread=${sources.currentThread} ` +
+        `cross=${sources.crossThread} person=${sources.person}`,
     );
 
     // ── Step 3: SPEAK/SILENT 决策（先规则，需要时 LLM）──────────────────────
