@@ -83,7 +83,9 @@ describe('kpi-slot-idle', () => {
     expect(r.idle).toBe(true);
   });
 
-  it('ongoing AWAITING ask_user → 占槽', () => {
+  // 数字员工模型（DIGITAL-EMPLOYEE-AUTONOMY.md §6.1）：ask_user 只阻塞依赖该答案的
+  // 提案，不占执行槽；同 KPI 的独立工作仍可续派。
+  it('ongoing AWAITING ask_user → 不占槽（仅挡依赖项）', () => {
     const { registry, kpi, dataRoot } = setup();
     const workDir = path.join(dataRoot, 'workspaces', 'task-ib-1');
     const brainDir = path.join(workDir, '.brain');
@@ -104,7 +106,7 @@ describe('kpi-slot-idle', () => {
       kpiId: 'kpi-leaf',
     });
     const r = evaluateKpiSlotIdle(kpi, registry);
-    expect(r.idle).toBe(false);
-    expect(r.reason).toBe('awaiting_human');
+    expect(r.idle).toBe(true);
+    expect(r.reason).toBe('continue');
   });
 });

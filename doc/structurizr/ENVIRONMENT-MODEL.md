@@ -1,8 +1,8 @@
 # 环境模型（ADL 权威）
 
-> **English:** Pluggable **environment sensors** + **time-aware journal** + **derived metrics** replace the flat `ResourceSnapshot` of [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md). The strategy layer ([`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)) and `autonomyJudge` consume `EnvironmentSnapshot` instead of poking individual data sources.
+> **English:** Pluggable **environment sensors** + **time-aware journal** + **derived metrics** replace the flat `ResourceSnapshot` of [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md). Consumers: `digitalEmployeeLoop` / `selfWorkPolicy` / `autonomyJudge` / heartbeat watchdog — **not** the deleted strategy layer ([`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) is historical only).
 
-> 与 `workspace.dsl` 视图 **`12-L3-Outer-Environment`** 同步。
+> 与 `workspace.dsl` 视图 **`12-L3-Outer-Environment`**、**`14-L3-Digital-Employee-Loop`** 同步。详见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)。
 
 ## 1. 动机
 
@@ -10,8 +10,8 @@
 
 | 缺陷 | 后果 |
 |------|------|
-| 每加一个观测维度（mem9 健康 / 用户活跃度 / 时段语义 …）都要改 schema、改 `autonomyJudge`、改 `autonomyTaskDispatcher` | 扩展不动；判定逻辑与数据源紧耦合 |
-| 每 tick 仅有「现在」，没有「最近一小时怎么变」 | 战略反思层（[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)）只能看瞬时；无法识别「token 速率上行 30%」「AWAITING 已连续过载 47 分钟」等趋势 |
+| 每加一个观测维度（mem9 健康 / 用户活跃度 / 时段语义 …）都要改 schema、改 `autonomyJudge`、改派活逻辑 | 扩展不动；判定逻辑与数据源紧耦合 |
+| 每 tick 仅有「现在」，没有「最近一小时怎么变」 | `SelfWorkPolicy` / 质控只能看瞬时；无法识别「token 速率上行 30%」「AWAITING 已连续过载 47 分钟」等趋势 |
 | 派生指标（rate / streak / zScore）散落在判定方 | 不同消费方各自重算；难以统一阈值与去抖 |
 
 **目标**：把 `resourceProbe` 拆成 **传感器注册表 + 环境日志 + 派生指标** 三件套，让加 sensor = 加一个 handler，让"环境感知"变成"有记忆的环境模型"。
@@ -25,8 +25,9 @@
 | `innerBrainRegistry` / `threadOrchestrator` / `participation-state` | sensor 的**只读输入**（不写） |
 | `autonomyJudge` | 由 `ResourceSnapshot` → 改读 `EnvironmentSnapshot.facets`；hardGates 可基于派生指标。**实现路径**：`outer/environment/autonomy-judge.ts`（2026-06-07 自 outer/ 迁入） |
 | `autonomyPolicyStore` | 同上，路径 `outer/environment/autonomy-policy-store.ts` |
-| `strategyPlanner` | **已删除**（2026-06-07）；KPI 编排见 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) |
-| `kpiManager` / `kpiAdvancer` | 读 `EnvironmentSnapshot.facets` + `evaluateKpiSpawnCapacity` 决定 spawn（非 ResourceSnapshot 适配） |
+| `strategyPlanner` | **已删除**（2026-06-07）；自主提案见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) `selfWorkPolicy` |
+| `digitalEmployeeLoop` / `selfWorkPolicy` / `employeeCalendar` | **主消费方**：容量判定、提案输入、日程 due 上下文 |
+| `kpiManager` / `kpiAdvancer` | 读 `EnvironmentSnapshot.facets` + `evaluateKpiSpawnCapacity`；兼容 / Ops 路径（非 ResourceSnapshot 适配） |
 
 **勿混**：sensor **不替代** `kpiRegistry`、`participationPolicy`、`memoryBlockStore` 等业务状态机；它们仍是真相源，sensor 只暴露**派生量**（如 `kpiVelocitySensor` 从 registry 算出"近 N burst 平均时长"）。
 
@@ -95,8 +96,8 @@ interface FacetEnvelope<T = unknown> {
 |----|------|------|--------|------|
 | **Tick ring buffer** | 内存 | 最近 N（默认 64 tick） | 每 tick | `autonomyJudge`、`environmentChangeDetector` |
 | **当前快照** | `data/environment/current.json` | 覆盖 | 每 tick | Dashboard 实时面板 |
-| **显著事件** | `data/environment/events.jsonl` | 永久（按月轮转） | 事件驱动（detectEvents 命中） | `strategyPlanner.reflect` |
-| **小时聚合** | `data/environment/hourly.jsonl` | 永久 | 每整点 cron-like | `strategyPlanner.reflect`（长程） |
+| **显著事件** | `data/environment/events.jsonl` | 永久（按月轮转） | 事件驱动（detectEvents 命中） | `digitalEmployeeLoop` / `selfWorkPolicy` / Dashboard |
+| **小时聚合** | `data/environment/hourly.jsonl` | 永久 | 每整点 cron-like | `selfWorkPolicy`（长程） / Dashboard |
 
 **禁止**把每 tick 的 ring buffer 全量落盘——量大且无意义；落盘只走"事件 + 聚合"两条稀疏通道。
 
@@ -109,7 +110,10 @@ interface EnvironmentEvent {
   before?: unknown;
   after?: unknown;
   note: string;                  // 给 LLM 看的人话
-  /** 被 strategyPlanner.reflect 消费过的事件标记，避免重复入 prompt */
+  /** 被 SelfWorkPolicy / digitalEmployeeLoop 消费过的事件标记，避免重复入 prompt */
+  consumedAt?: string;
+  consumedBy?: string;
+  /** @deprecated 历史字段；等同 consumedAt */
   consumedByStrategyAt?: string;
 }
 
@@ -156,12 +160,16 @@ interface HourlyAggregate {
 | `mem9Health` | P2 | mem9-client 后台 ping | `staleness` / `errRate1h` |
 | `drive9Health` | P2 | drive9-client 后台 ping | `staleness` / `errRate1h` |
 | `kpiVelocity` | P2 | `kpiRegistry.burstRunHistory` | `avgBurstMs_perKpi` / `successRate1d` |
+| `calendar` | P1-DE | `employeeCalendar` | `dueCount` / `oldestDueMs` / `missedCount` |
+| `commitments` | P1-DE | Calendar + inner pending snapshots | `waitingHuman` / `waitingTime` / `waitingEvent`（不计 running） |
+| `foregroundDemand` | P1-DE | threadOrchestrator + outer loop | `reservedSlots` / `queuePressure` |
+| `selfWorkOutcome` | P2-DE | action-log + burst outcomes | `proposalAcceptanceRate` / `duplicateRate` / `noProgressStreak` |
 | `costRate` | P3 | `llmUsageJournal` × 模型计价 | `usdPerHour` |
 | `userResponsiveness` | P3 | `awaitingInboundResolver` 历史 | `humanReplyP50_min` |
 
 新 sensor 治理：每个 PR 必须给 `description`（LLM-readable 一句话）+ 至少一个 `derive` 量 + `retention 影响评估`。
 
-## 9. 与战略层 / 判定层的接口
+## 9. 与数字员工容量 / 自主提案层的接口
 
 ### 9.1 `autonomyJudge`
 
@@ -181,18 +189,35 @@ hardGates: {
 
 P0 仍是瞬时硬闸门；环境模型上线后 schema 留口子，按需启用。
 
-### 9.2 `strategyPlanner.reflect`
+按 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)，产品语义由 `idle|busy` 收敛为：
 
 ```typescript
-interface StrategyReflectInput {
-  envCurrent: EnvironmentSnapshot;
-  envEvents: EnvironmentEvent[];          // 仅未消费（consumedByStrategyAt 为空）
-  envHourly: Record<string, HourlyAggregate[]>;   // 最近 24h / 7d 聚合
-  // + KPI / burstRunHistory / lastStrategy …（见 STRATEGY-PLANNING-LAYER.md §4）
+interface CapacityVerdict {
+  hasAvailableCapacity: boolean;
+  freeInnerSlots: number;
+  foregroundReservedSlots: number;
+  blockedByHardGate?: string;
 }
 ```
 
-reflect 完成后由 `strategyPlanner` 把读过的事件标 `consumedByStrategyAt`，下一轮不再塞入 prompt。
+`AWAITING_TIME` / `AWAITING_EVENT` / `AWAITING_HUMAN` 是未满足依赖，不计为 RUNNING 容量；具体依赖仍必须进入 `SelfWorkPolicy` 输入，防止生成依赖尚未满足的工作。
+
+### 9.2 `digitalEmployeeLoop` / `selfWorkPolicy`
+
+```typescript
+interface SelfWorkEnvironmentInput {
+  envCurrent: EnvironmentSnapshot;
+  envEvents: EnvironmentEvent[];
+  envHourly: Record<string, HourlyAggregate[]>;
+  pendingCommitments: DependencySummary[];
+  dueCalendar: CalendarCommitment[];
+}
+```
+
+- `digitalEmployeeLoop` 只读 snapshot 计算后的 verdict，不直接调用 sensor；
+- `selfWorkPolicy` 可消费当前、事件和聚合用于提案，但没有修改环境真相的写权；
+- 被策略消费的事件继续通过 journal 标记；字段后续从历史 `consumedByStrategyAt` 迁为中性的 `consumedAt/consumedBy`；
+- 所有 deterministic hardGate 在调用 LLM 提案前完成。
 
 ## 10. 持久化路径
 
@@ -221,13 +246,14 @@ DATA_ROOT/environment/
 | 阶段 | 交付 | 行为变化 |
 |------|------|----------|
 | **P0 ✅** | sensor registry + 5 个内置 sensor（innerBrains/llmUsage/inbound/im/process）+ ring buffer 内存 + `current.json` | 替换 `resourceProbe`：`autonomyPipeline` 经 `getSharedEnvironment` 采集 → `toResourceSnapshot` 适配回 `ResourceSnapshot` 喂旧 judge/dispatch，**行为等价**（旧两条 judge/integration 测的 pre-existing 失败与本改动无关） |
-| **P1 🟡** | `events.jsonl`（按月轮转）+ `hourly.jsonl`（`aggregateHour` 纯函数）+ 基础 derive（rate/delta/streak）+ `timeSensor` | 已落：events 月轮转 + 未消费查询 + markConsumed + derive；`hourly.jsonl` 提供 append/read API，定点 cron 聚合接线待战略层一并接入 |
+| **P1 🟡** | `events.jsonl`（按月轮转）+ `hourly.jsonl`（`aggregateHour` 纯函数）+ 基础 derive（rate/delta/streak）+ `timeSensor` | 已落：events 月轮转 + 未消费查询 + markConsumed + derive；`hourly.jsonl` 提供 append/read API；定点聚合接线归 `employeeCalendar` / `digitalEmployeeLoop`（见 DIGITAL-EMPLOYEE-AUTONOMY.md） |
+| **P1-DE 🟡** | `hasAvailableCapacity`（AWAITING 不占槽 + 自适应前台预留 `foregroundReservedSlots`，读现有 inbound facet）✅；Calendar / commitment 专用 sensors ⏳ | 数字员工容量与等待依赖分离；前台对话扣预留槽而非全停 |
 | **P2** | `mem9Health` / `drive9Health` / `kpiVelocity` sensor + 异常检测（zScore）+ Dashboard 环境面板 | 真正的"环境感知" |
 | **P3** | rate/streak 类 hardGate；`costRate` / `userResponsiveness` sensor | judge 有时序闸门 |
 
 ## 13. Structurizr 视图
 
-- **`12-L3-Outer-Environment`**：`environmentSensorRegistry` ← 各 sensor handler；→ `environmentChangeDetector` → `environmentJournal`（存）+ 消费方（`autonomyJudge` / `strategyPlanner` / Dashboard）
+- **`12-L3-Outer-Environment`**：`environmentSensorRegistry` ← 各 sensor handler；→ `environmentChangeDetector` → `environmentJournal`（存）+ 消费方（`autonomyJudge` / `digitalEmployeeLoop` / `selfWorkPolicy` / Dashboard）
 
 ## 14. 测试策略
 
@@ -244,4 +270,5 @@ DATA_ROOT/environment/
 | 日期 | 说明 |
 |------|------|
 | 2026-06-01 | 初版 ADL：sensor registry + journal + changeDetector；替代 `resourceProbe` 扁平 snapshot |
-| 2026-06-06 | P0 落地：`outer/environment/`（types/sensors/change-detector/journal/sensor-registry/facade）；6 个内置 sensor（5 P0 + `timeSensor`）；`autonomyPipeline` 经 `getSharedEnvironment`+`toResourceSnapshot` 行为等价接管 `resourceProbe`；3 套单测（registry/journal/changeDetector，24 例）全绿。P1 events/derive 一并落地，hourly cron 接线留待战略层 |
+| 2026-06-06 | P0 落地：`outer/environment/`（types/sensors/change-detector/journal/sensor-registry/facade）；6 个内置 sensor（5 P0 + `timeSensor`）；`autonomyPipeline` 经 `getSharedEnvironment`+`toResourceSnapshot` 行为等价接管 `resourceProbe`；3 套单测（registry/journal/changeDetector，24 例）全绿。P1 events/derive 一并落地；hourly 定点接线后归 `employeeCalendar`（2026-07-21） |
+| 2026-07-21 | 数字员工模型：新增 Calendar/commitment/foreground/self-work sensors；idle 收敛为 hasAvailableCapacity；SelfWorkPolicy 消费环境但不越过 hardGates。 |

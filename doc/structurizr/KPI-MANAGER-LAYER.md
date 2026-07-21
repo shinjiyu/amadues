@@ -1,29 +1,37 @@
 # KPI 管理器（ADL 权威）
 
-> **English:** After **environment sensing**, a single **KPI Manager** owns all KPI lifecycle: registry, multi-burst parallelism, burst hygiene, AWAITING review, and spawn/stop/restart decisions. **Strategy Planner is removed.** Physical spawn remains `set_goal` → `innerSpawner`.
+> **English:** **KPI Manager** owns KPI truth, multi-burst hygiene, AWAITING review, and R3–R7. **Strategy Planner is removed.** Day-to-day work-finding is owned by [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) (`digitalEmployeeLoop` / Calendar / SelfWorkPolicy). Physical spawn remains `set_goal` → `innerSpawner`.
 
 > 取代：[`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) 中的 leaf/首拆/单 burst 复用语义；[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)（删除）；[`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md) 中 dispatcher 选 KPI 的独立层。
 
-> 与 `workspace.dsl` 视图 **`10b-L3-Outer-KPI`**、**`12-L3-Outer-Environment`** 同步。
+> 与 `workspace.dsl` 视图 **`10b-L3-Outer-KPI`**、**`12-L3-Outer-Environment`**、**`14-L3-Digital-Employee-Loop`** 同步。
+
+> **2026-07-21 调度边界修订**：自主工作的主模型改为 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)。`kpiManager` 保留 KPI 真相、完成判定协作、R3–R7 与 burst 卫生；“空闲时创造什么工作”移交 `selfWorkPolicy`，“何时必须执行”移交 `employeeCalendar`，“何时重新找活”移交事件驱动 `digitalEmployeeLoop`。本文仍是 KPI 治理权威，但不再把 heartbeat advance 视为最终主循环。
 
 ---
 
-## 1. 三层外脑（心跳 tick）
+## 1. 外脑分层（数字员工主路径 + KPI 治理）
 
 ```mermaid
 flowchart TB
+  TRIG[事件: burst_finished / calendar_due / dependency_resolved]
+  LOOP[digitalEmployeeLoop]
   ENV[环境感知 environmentModel]
-  CAP[kpiSpawnCapacity]
-  KPI[KPI 管理器 kpiManager]
-  ADV[kpiAdvancer]
+  CAL[employeeCalendar]
+  POL[selfWorkPolicy]
   EXEC[物理执行 set_goal / innerSpawner]
+  KPI[kpiManager 治理]
+  ADV[kpiAdvancer]
+  HB[outerHeartbeat watchdog]
 
-  ENV -->|"EnvironmentSnapshot.facets"| CAP
-  ENV -->|"EnvironmentSnapshot + verdict idle?"| KPI
-  KPI --> CAP
-  KPI --> ADV
-  ADV --> CAP
-  KPI -->|"spawn / stop / restart burst"| EXEC
+  TRIG --> LOOP
+  HB -->|"heartbeat_fallback"| LOOP
+  LOOP --> ENV
+  LOOP --> CAL
+  LOOP --> POL
+  LOOP -->|"唯一派发"| EXEC
+  HB --> KPI
+  KPI -->|"R3–R7 / reap / 兼容 fallback"| ADV
   ADV --> EXEC
   IM[IM / HTTP 入站] --> ADV
   OPS[Ops advance_kpi] --> ADV
@@ -31,11 +39,12 @@ flowchart TB
 
 | 层 | 模块 | 职责 | 不做 |
 |----|------|------|------|
-| **L1 环境感知** | `environmentModel` | sensor + journal + policy + hardGates | 不选 KPI、不派 burst |
-| **L2 KPI 管理器** | `kpiManager` | KPI 真相 + burst 编排 + 僵尸清理 + AWAITING 审查 | 不直接 fork 子进程（调 `set_goal`） |
+| **L0 容量主循环** | `digitalEmployeeLoop` + Calendar + SelfWorkPolicy | 有容量就找活；due 优先；提案校验后唯一 `set_goal` | 不做 KPI 结案/reap |
+| **L1 环境感知** | `environmentModel` | sensor + journal + policy + hardGates / capacity | 不选 KPI、不派 burst |
+| **L2 KPI 治理** | `kpiManager` | KPI 真相 + burst 卫生 + R3–R7 + 兼容 advance | 不直接 fork；不是日常找活主引擎 |
 | **L3 物理执行** | `outerToolExecutor.set_goal` | workspace 创建、peer 挂载、spawn worker | 不做 KPI 策略 |
 
-**删除：** `strategyPlanner`、`strategyStore`（宏观 REFLECT+DESIGN / focusOrder）。KPI 优先级由 KPI 管理器内部规则 + 环境资源决定。
+**删除：** `strategyPlanner`、`strategyStore`（宏观 REFLECT+DESIGN / focusOrder）。KPI 治理由 `kpiManager` 负责；空闲找活由 `selfWorkPolicy` 提案；业务定时由 `employeeCalendar` 负责（见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)）。
 
 ---
 
@@ -56,12 +65,13 @@ flowchart TB
 | `set_goal` 禁止同 KPI 并行 | **允许**在资源许可时同 KPI 多 burst |
 | `KpiRecord.bursts[]` length ≤ 1 per leaf | `bursts[]` = 该 KPI 关联的全部 instanceId（含并行） |
 
-### 2.3 调度：心跳即时派（无 cadence）
+### 2.3 调度：KPI 不拥有 cadence；数字员工拥有日程与容量
 
-- **删除** `kpi-cadence.ts` / `isCadenceDue` / `nextDueAt` 调度路径（2026-06-07）。
-- **续派时机**：idle 心跳 + `evaluateKpiAdvanceEligibility`（无 RUNNING / 非 ask_user / 未 achieved / 有 spawn 槽）→ 立即 `advanceKpi`。
-- **定时/延迟**：由内脑 burst 内 `wait_timer` → `AWAITING` → `changeWatcher` 唤醒**同一 instance**；外脑不在 KPI 层再挂 cron/interval。
-- **节流**：`kpi_inner_goal.cooldownMs = 0`；天然上限 = 心跳间隔 + 环境 hardGates（`maxRunningInnerBrains` 等）。
+- **保持删除** `kpi-cadence.ts` / `isCadenceDue` / `nextDueAt` KPI 调度路径（2026-06-07）；不得复活第二套 KPI cron。
+- **P0 当前兼容路径**：idle heartbeat + `evaluateKpiAdvanceEligibility` → `advanceKpi`，仅作为 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) P1 落地前的 fallback。
+- **目标续派时机**：burst 释放容量、日程到期、依赖满足等事件 → `digitalEmployeeLoop` → `hasAvailableCapacity` → Calendar / SelfWorkPolicy → `set_goal`。
+- **业务定时**：由外脑 `employeeCalendar` 持久化；到期前不占 worker 槽。`wait_timer` 仅用于 burst 内短 retry/限速，禁止长睡到下次业务执行点。
+- **节流**：环境 hardGates + 单 trigger 派发上限 + 提案去重/冲突检测；heartbeat interval 不再是正常续航的天然上限。
 
 ### 2.4 burst 互访（解除隔离）
 
@@ -75,28 +85,30 @@ flowchart TB
 
 **路径（规划）：** `packages/server/src/outer/kpi/kpi-manager.ts`（吸收 `kpi-advancer`、`stale-burst-reaper`、`kpi-dispatch-guard` 编排逻辑）
 
-**默认原则：** active KPI **持续运行**；心跳 tick 与环境 verdict 为 idle 时，KPI 管理器扫描所有 active KPI 及其 burst，决定 spawn / stop / retarget。
+**默认原则：** active KPI 是数字员工的长期职责，不等于始终存在 RUNNING burst。KPI 管理器扫描状态并负责治理；`digitalEmployeeLoop` 在有可用容量时优先履行到期日程，否则由 `selfWorkPolicy` 围绕 active KPI 产生可验收工作。
 
 ### 3.1 决策规则（P0）
 
 | # | 条件 | 动作 |
 |---|------|------|
-| **R1** | burst 终态（DONE/ERROR 等）且 KPI 未 `achieved` | 环境 idle + 有槽 → **立即**新开 burst（无 cadence 层） |
-| **R2** | 有 burst `RUNNING`，环境仍有槽位，且存在**可并行的新方向**（不同 charter / 子目标） | **新开 burst**（同 KPI 多 instance） |
-| **R3** | burst `AWAITING` | 审查 awaiting 原因（timer / ask_user / dyflow DESIGN 空转 …）；**不合理** → stop + 改 goal 重开，或 ABORTED 归档 |
-| **R4** | `ask_user` 超时无响应 | stop 或 ABORTED → 换方案 burst（不无限等人类） |
+| **R1** | burst 终态（DONE/ERROR 等）且 KPI 未 `achieved` | 释放容量并触发 `digitalEmployeeLoop`；不得无条件复制上一 charter |
+| **R2** | 有 burst `RUNNING`，仍有系统容量，且提案与在途交付物不冲突 | 可新开独立工作 burst；`maxParallelBurstsPerKpi` 仅作防御上限 |
+| **R3** | burst `AWAITING` | 审查 awaiting 原因；等待只阻塞依赖项并释放员工容量；不合理等待 → stop / ABORTED |
+| **R4** | `ask_user` 未响应 | 保留该依赖；允许同 KPI 的独立工作；超时后升级/换不依赖答案的方向，禁止把整个 KPI 默认为忙 |
 | **R5** | 僵尸 burst（长期 AWAITING/RUNNING 无进展） | 合并原 `staleBurstReaper`：`ABORTED` + archive + action-log |
 | **R6** | 环境 busy（hardGates，读 `EnvironmentSnapshot.facets`） | 不 spawn；可继续 R3/R5 清理 |
-| **R7** | 同 KPI 连续 burst 终态为 `ERROR`/失败 ≥ `maxConsecutiveFailures`（默认 3，可 policy 配） | **熔断**：KPI → `paused` + IM 通知人类原因；**停止心跳续派**，恢复需人工/Ops `advance_kpi` |
+| **R7** | 同路线连续失败 ≥ 阈值（路线 = burst goal 签名） | 优先熔断该路线（`blockedRoutes`，KPI 保持 active，SelfWorkPolicy 换独立方向）；多路线合计连败或路线不可识别 → KPI `paused` + IM |
 
-**R7 失败熔断（消除 503 风暴 / 模糊目标无限续派）— ✅ 2026-06-23 实现：**
+**R7 失败熔断（路线级）— ✅ 2026-07-21 P2 实现（原 KPI 级 2026-06-23）：**
 
-- 计数源：`countConsecutiveBurstFailures(kpi, registry)` —— 该 KPI 的 burst 按 `startedAt` 倒序，末尾连续 `ERROR`/`ABORTED` 计数；`RUNNING`/`BLOCKED` 跳过不计不打断；遇 `DONE`/`AWAITING`/`STOPPED` 即清零。（用 innerBrainRegistry burst 状态，不依赖可能为空的 `burstRunHistory`。）
-- 触发（`tripFailureCircuitBreakers`，心跳每 tick 续派前执行）：写 `kpi.status='paused'` + `kpi.pauseReason`，IM 通知（「⚠️ KPI「…」连续 N 次失败，已自动暂停。最近错误：…。回复『继续 <kpiId>』可重试」）+ `action-log`（reason=`kpi_failure_circuit`）。
-- 双重保险：`evaluateKpiAdvanceEligibility({ maxConsecutiveFailures })` 在无在跑 burst 时返回 `kpi_failure_circuit`；paused KPI 又因 `status!=='active'` 返回 `not_active`。恢复由人工/Ops `resume`（清空 `pauseReason`）。
+- 计数源：`analyzeConsecutiveFailureRoutes(kpi, registry)` —— 该 KPI 的 burst 按 `startedAt` 倒序，末尾连续 `ERROR`/`ABORTED` 按**路线签名**（goal 压空白 + lowercase + 截断）分组；`RUNNING`/`BLOCKED` 跳过不计不打断；遇 `DONE`/`AWAITING`/`STOPPED` 即清零，窗口自愈无需持久化熔断状态。
+- 分流（`selectFailureCircuit`，心跳每 tick 续派前执行）：
+  - **单路线连败 ≥ 阈值** → `routeBlocked`：仅 action-log（reason=`kpi_route_circuit`），KPI 保持 active、不 IM；路线签名经 `listBlockedRoutes` 注入 `SelfWorkContext.blockedRoutes`，提案命中即 `route_blocked` 拒绝，SelfWorkPolicy 换独立方向。
+  - **多路线（≥2 条）合计连败 ≥ 阈值，或 burst 无 goal 无法分路线** → 系统性 `tripped`：`kpi.status='paused'` + `pauseReason` + IM 通知 + action-log（reason=`kpi_failure_circuit`）。恢复由人工/Ops `resume`。
+- 双重保险：`evaluateKpiAdvanceEligibility({ maxConsecutiveFailures })` 保留 KPI 级 gate，防止兼容 advance 路径绕过。
 - 阈值：`DEFAULT_MAX_CONSECUTIVE_FAILURES = 3`，可经 `KpiManagerDeps.maxConsecutiveFailures` 覆盖。
-- 与 R3/R5 区别：R3/R5 处理**单 burst**异常态（AWAITING/僵尸）；R7 处理**KPI 级**重复失败。
-- 落点：`outer/kpi/kpi-failure-circuit.ts`；测试 `kpi-failure-circuit.test.ts` + `kpi-burst-state.test.ts`（eligibility gate）。
+- 与 R3/R5 区别：R3/R5 处理**单 burst**异常态（AWAITING/僵尸）；R7 处理**路线/KPI 级**重复失败。
+- 落点：`outer/kpi/kpi-failure-circuit.ts` + `kpi-burst-state.analyzeConsecutiveFailureRoutes`；测试 `kpi-failure-circuit.test.ts`（路线/系统性分流）+ `kpi-burst-state.test.ts`（路线分析 + eligibility gate）+ `self-work-policy.test.ts`（route_blocked 拒绝）。
 
 **delivery / 一次性语义（与 [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) P4 对齐）：**
 
@@ -117,17 +129,20 @@ flowchart TB
 
 ---
 
-## 4. 心跳 tick 顺序（修订）
+## 4. 心跳 tick 顺序（watchdog，非主找活）
 
 ```
-1. environmentModel.collect → verdict
-2. kpiManager.tick(environment, registry, kpiRegistry)   ← 含 reaper + advance + awaiting review
-3. kpiCompletionJudge.sweep（可选同 tick）
-4. changeWatcher（AWAITING timer 唤醒，非新 KPI sprint）
-5. （可选）legacy heartbeat LLM — 禁止 set_goal(kpi_id)；KPI 仅 kpiManager
+1. 死亡检测
+2. kpiCompletionJudge.sweep
+3. environmentModel.collect（监督快照）
+4. kpiManager.tick — R3–R7 / stale reap；兼容期可含 advance fallback
+5. employeeCalendar missed / overdue 检查
+6. digitalEmployeeLoop.trigger(heartbeat_fallback) — 补漏，须经与事件路径相同门控
+7. （可选）legacy heartbeat LLM — 禁止成为第二派发真相
 ```
 
-**删除 tick 内：** `runStrategyPhase` / `strategyPlanner` / 原 `autonomyTaskDispatcher` KPI 选路（合并进 `kpiManager.tick`）。
+**删除 tick 内：** `runStrategyPhase` / `strategyPlanner` / 原 `autonomyTaskDispatcher` KPI 选路。
+**日常找活不在心跳内完成**：由 burst/calendar/dependency 事件触发 `digitalEmployeeLoop`。
 
 **保留：** `casualChatDispatcher`（`dispatchCasualChat`）— 仅 idle proactive IM 闲聊。
 
@@ -176,7 +191,7 @@ DyFlow FSM（`dyflow-state.json`）：`DESIGN | RUN | ATTRIBUTE | AWAITING | DON
 | `inner-brain-kpi-reuse` / `burst-reuse` | 删除 canonical 复用；保留 burst 列表查询 |
 | `sub-kpi-decomposer` | **删除** |
 | `strategyPlanner` / `strategyStore` | **删除** |
-| `autonomyTaskDispatcher` KPI 分支 | **已删除**；KPI → `kpiManager.tick`；闲聊 → `casualChatDispatcher` |
+| `autonomyTaskDispatcher` KPI 分支 | **已删除**；KPI 找活 → `digitalEmployeeLoop` + `selfWorkPolicy`；闲聊 → `casualChatDispatcher`；兼容 fallback → `kpiManager.tick` |
 | `autonomyJudge` + `autonomyPolicyStore` | 并入 `environment/`（见 ENVIRONMENT-MODEL.md） |
 | `kpi-spawn-capacity` | `environment/kpi-spawn-capacity.ts` — kpiManager / kpiAdvancer 读 facets 评估 spawn 槽位 |
 

@@ -54,4 +54,47 @@ describe('integration: outer brain inbound assembly', () => {
     expect(out.length).toBeGreaterThan(0);
     expect(out[0]!.body.text).toMatch(/外脑未配置 LLM/);
   });
+
+  it('状态/密度快指令无 LLM 也能直接回复，且不落入 LLM 降级', async () => {
+    const threadId = `thread:dm:status-${Date.now()}`;
+    fx.kpiRegistry.create({
+      description: '持续创作小说',
+      createdBy: 'human:alice',
+      kind: 'ongoing',
+    });
+    fx.innerBrainRegistry.register({
+      instanceId: 'ib-status-run',
+      workspaceId: 'task-ib-status-run',
+      workDir: `${fx.workspacesDir}/task-ib-status-run`,
+      goal: '修订第三章',
+      originUser: 'human:alice',
+      originThread: threadId,
+      status: 'RUNNING',
+      startedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+      ticks: 3,
+    });
+
+    await fx.brain.handleInbound({
+      threadId,
+      senderSid: 'human:alice',
+      message: {
+        message_id: `msg:status:${Date.now()}`,
+        parts: [{ type: 'text', text: '状态' }],
+      },
+    });
+    await fx.brain.handleInbound({
+      threadId,
+      senderSid: 'human:alice',
+      message: {
+        message_id: `msg:density:${Date.now()}`,
+        parts: [{ type: 'text', text: '密度' }],
+      },
+    });
+
+    expect(fx.im.messagesMatching(/当前进度/, threadId)).toHaveLength(1);
+    expect(fx.im.messagesMatching(/修订第三章/, threadId)).toHaveLength(1);
+    expect(fx.im.messagesMatching(/过去 24 小时/, threadId)).toHaveLength(1);
+    expect(fx.im.messagesMatching(/执行密度/, threadId)).toHaveLength(1);
+    expect(fx.im.messagesMatching(/外脑未配置 LLM/, threadId)).toHaveLength(0);
+  });
 });

@@ -54,6 +54,8 @@ export interface HeartbeatTaskBridgeConfig {
   defaultHeartbeatMs?: number;
   /** Alert handler configuration (optional) */
   alertConfig?: Partial<AlertHandlerCoreConfig>;
+  /** Preserve missed tasks as due for the digital employee loop. */
+  deferMissedExecution?: boolean;
 }
 
 /** Dependencies injected from the outer heartbeat context */
@@ -115,6 +117,7 @@ export class HeartbeatTaskBridge {
       executeSendMessageAction: deps.executeSendMessageAction,
       notifyUser: deps.notifyUser,
       isAgentBusy: deps.isAgentBusy,
+      deferMissedExecution: config.deferMissedExecution,
     };
     this.scheduler = new TaskScheduler({ ...schedulerConfig, store: this.store });
 

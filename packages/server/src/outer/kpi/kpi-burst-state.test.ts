@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { InnerBrainRegistry } from '../inner-brain-registry.js';
 import type { KpiRecord } from '../kpi-registry.js';
-import { evaluateKpiAdvanceEligibility } from './kpi-burst-state.js';
+import {
+  analyzeConsecutiveFailureRoutes,
+  evaluateKpiAdvanceEligibility,
+} from './kpi-burst-state.js';
 
 describe('kpi-burst-state', () => {
   let tmp = '';
@@ -132,5 +135,35 @@ describe('kpi-burst-state', () => {
     const r = evaluateKpiAdvanceEligibility(kpi, registry, {});
     expect(r.eligible).toBe(true);
     expect(r.mode).toBe('continue');
+  });
+
+  it('analyzeConsecutiveFailureRoutes：按 goal 签名分路线，DONE 打断窗口', () => {
+    const { kpi, registry } = mkKpi(['ib-a', 'ib-b', 'ib-c', 'ib-d', 'ib-e']);
+    const t0 = Date.now();
+    const rows: Array<{ id: string; status: 'ERROR' | 'DONE'; goal: string }> = [
+      { id: 'ib-a', status: 'ERROR', goal: '被 DONE 隔断的旧失败' },
+      { id: 'ib-b', status: 'DONE', goal: '成功一次' },
+      { id: 'ib-c', status: 'ERROR', goal: '路线A 抓新闻' },
+      { id: 'ib-d', status: 'ERROR', goal: '路线B  写工具' },
+      { id: 'ib-e', status: 'ERROR', goal: '  路线a 抓新闻 ' },
+    ];
+    rows.forEach((row, i) => {
+      registry.register({
+        instanceId: row.id,
+        workspaceId: `task-${row.id}`,
+        workDir: path.join(tmp, row.id),
+        goal: row.goal,
+        originUser: 'u',
+        status: row.status,
+        startedAt: new Date(t0 + i * 1000).toISOString(),
+        kpiId: 'kpi-1',
+      });
+    });
+
+    const analysis = analyzeConsecutiveFailureRoutes(kpi, registry);
+    expect(analysis.totalFailures).toBe(3);
+    expect(analysis.distinctRoutes).toBe(2);
+    const routeA = analysis.routes.find((r) => r.route.includes('路线a'));
+    expect(routeA?.failures).toBe(2);
   });
 });

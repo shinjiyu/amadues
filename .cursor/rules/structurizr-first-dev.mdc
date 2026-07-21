@@ -25,4 +25,5 @@ alwaysApply: true
 - [`doc/structurizr/REFACTOR-PLAN.md`](doc/structurizr/REFACTOR-PLAN.md)
 - [`doc/structurizr/COMPONENT-TESTING.md`](doc/structurizr/COMPONENT-TESTING.md)
 - 范例：[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](doc/structurizr/INNER-BRAIN-AWAITING-LIFECYCLE.md)
-- 外脑心跳 tick（战略 + KPI 完成 + 质控）：[`OUTER-HEARTBEAT-OVERSIGHT.md`](doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md) · [`KPI-COMPLETION-JUDGE.md`](doc/structurizr/KPI-COMPLETION-JUDGE.md) · [`STRATEGY-PLANNING-LAYER.md`](doc/structurizr/STRATEGY-PLANNING-LAYER.md) · Cursor rule `outer-heartbeat-tick.mdc`
+- 外脑心跳 tick（watchdog + KPI 完成）：[`OUTER-HEARTBEAT-OVERSIGHT.md`](doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md) · [`KPI-COMPLETION-JUDGE.md`](doc/structurizr/KPI-COMPLETION-JUDGE.md) · 容量驱动主循环：[`DIGITAL-EMPLOYEE-AUTONOMY.md`](doc/structurizr/DIGITAL-EMPLOYEE-AUTONOMY.md) · Cursor rule `outer-heartbeat-tick.mdc`
+- 历史对照（勿按文实现）：[`STRATEGY-PLANNING-LAYER.md`](doc/structurizr/STRATEGY-PLANNING-LAYER.md)

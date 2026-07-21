@@ -37,7 +37,10 @@ export interface AutonomyHardGates {
   maxTokensPerHour: number | null;
   minMsSinceLastAutonomousAction: number;
   blockIfOrchestratorQueuedAbove: number;
+  /** 兼容 advance 路径（evaluateKpiSpawnCapacity）用；数字员工主路径用 foregroundReserveSlots */
   blockIfOuterLoopActive: boolean;
+  /** 前台活跃时为对话预留的内脑槽数（自适应：前台安静时不预留） */
+  foregroundReserveSlots?: number;
 }
 
 export interface AutonomyTaskTypeConfig {

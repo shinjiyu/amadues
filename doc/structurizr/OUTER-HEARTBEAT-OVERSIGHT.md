@@ -1,36 +1,38 @@
-# 外脑心跳：内脑质控与方向把控（ADL）
+# 外脑心跳：数字员工监督与恢复兜底（ADL）
 
-> **English:** **Outer heartbeat** is not only「闲了找活派」. Each tick it **supervises** inner brains: **acceptance** of burst effectiveness toward KPI, and **liveness / stuck / restart** decisions at the outer layer. Milestone-level validation stays inside **Attributor**; burst/KPI-level oversight is heartbeat's job.
+> **English:** Outer heartbeat is the digital employee's **manager check-in and watchdog**, not the main engine that keeps work moving. It supervises burst/KPI effectiveness, liveness, stuck/restart, missed calendar commitments, and recovers lost dispatch events. Normal continuation is event-driven by `digitalEmployeeLoop`; milestone validation stays inside the inner brain.
 
-与 [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md)（调度管道）、[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)（**宏观战略 WHY+HOW**，不受本文影响）、[`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)（KPI 闭环）、[`KPI-BURST-OUTCOME-EVALUATOR.md`](./KPI-BURST-OUTCOME-EVALUATOR.md)（burst 结果评估）互补。
+与 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)（容量驱动自主工作）、[`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)（感知）、[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md)（KPI 治理）、[`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md)（完成判定）互补。旧 [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) 已删除实现，仅供历史对照。
 
 ---
 
-## 0. 心跳 tick 三层（勿混、勿替代）
+## 0. 心跳 tick 边界（勿混、勿替代）
 
-质控是**新增的一层**，**不取代** [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) 的宏观战略。完整 idle tick 顺序：
+正常工作交接不等心跳：burst exit / calendar due / dependency resolved 直接触发 `digitalEmployeeLoop`。心跳只运行监督与补漏：
 
 ```text
 0. 死亡检测
 0b. kpiCompletionJudge.sweep（KPI 完成判定，在派活前）
-1. resourceProbe + autonomyJudge（硬闸门）
-2. 【宏观战略】strategyPlanner REFLECT+DESIGN → strategyStore   ← WHY + HOW，跨 KPI
-3. 【质控】验收 burst 效果 + KPI 完成态 + liveness / stuck
-4. staleBurstReaper（战略 cull，依赖 §2 产出）
-5. dispatchByStrategy / legacy runHeartbeat
+1. environmentModel.collect + hasAvailableCapacity（监督快照）
+2. 【质控】验收 burst 效果 + KPI 完成态 + liveness / stuck
+3. kpiManager：R3–R7、stale reap、失败/成本/安全监督
+4. employeeCalendar：missed / 长时间 due 检查
+5. digitalEmployeeLoop.trigger(heartbeat_fallback)（仅补漏）
+6. 可选 legacy heartbeat LLM（不得成为第二派发真相）
 ```
 
 | 层 | 问什么 | 典型产出 |
 |----|--------|----------|
-| **宏观战略** | **WHY** 还推哪些 KPI？信念是否过期？**HOW** 优先顺序与下一角度？ | `StrategyArtifact.theory`、`focusOrder`、`cullDirectives` |
-| **质控（本文）** | 在途 burst **做得怎么样**？**KPI 是否应 achieved**？是否卡死？ | sweep、achieve_kpi、restart、idle streak |
-| **派遣** | 按战略写 goal 正文 spawn | `set_goal` |
+| **环境/容量** | 员工是否还有可用执行能力？ | `EnvironmentSnapshot`、`hasAvailableCapacity` |
+| **质控（本文）** | 在途工作做得怎样？KPI 是否结案？是否卡死或失约？ | sweep、restart、reap、missed 告警 |
+| **自主提案** | 空闲容量现在做什么最有价值？ | `SelfWorkProposal`（不在 heartbeat 内独占产生） |
+| **派遣** | 到期承诺或合法提案如何执行？ | `digitalEmployeeLoop` → 唯一 `set_goal` |
 
-**原则 O0（用户强调）**：战略思考必须同时包含 **WHY**（值不值得做、为何现在做、 lessons 是否推翻假设）与 **HOW**（focusOrder、下一 burst 角度）；**不能**因加了质控就退化成只看 liveness/deliverable 的战术补丁。
+**原则 O0**：心跳监督不能替代自主工作的价值判断。WHY/HOW 由可测试的 `SelfWorkPolicy` 在需要填充容量时提出；heartbeat 只提供监督信号和 fallback trigger。
 
 ---
 
-## 1. 质控双职责（战术层，不替代战略）
+## 1. 质控双职责（战术层，不替代价值判断）
 
 | 职责 | 心跳在问什么 | 典型动作 |
 |------|--------------|----------|
@@ -52,7 +54,8 @@
 milestone 契约     ← Attributor（内脑 ATTRIBUTE）
 burst 产出/评估    ← kpiBurstHooks + outcomeEvaluator（burst 结束）
 KPI 是否达成       ← kpiCompletionJudge + achieve_kpi（见 KPI-COMPLETION-JUDGE.md）
-KPI 是否推进       ← 心跳 + kpi-dispatch-guard +（P1）strategyPlanner
+KPI 是否治理       ← kpiManager R3–R7 + kpiCompletionJudge
+下一份工作是什么   ← digitalEmployeeLoop + Calendar / SelfWorkPolicy
 agent 是否还活着   ← 心跳 _checkAlive + registry liveness
 ```
 
@@ -66,27 +69,26 @@ agent 是否还活着   ← 心跳 _checkAlive + registry liveness
 
 ---
 
-## 3. 心跳 tick 质控流程（在战略阶段**之后**，与 dispatch **之前**）
+## 3. 心跳 tick 质控流程（watchdog 路径）
 
 ```mermaid
 flowchart TB
-  subgraph tick [outerHeartbeat tick — idle 路径]
+  subgraph tick [outerHeartbeat tick — watchdog]
     D[死亡检测 _checkAlive]
-    P[resourceProbe + autonomyJudge]
-    ST[strategyPlanner WHY+HOW → strategyStore]
+    P[environmentModel + capacity snapshot]
     V[质控：list/read + KPI trail + liveness]
     A{效果 / 存活判定}
     RP[staleBurstReaper]
-    DIS[dispatchByStrategy / legacy]
-    D --> P --> ST --> V --> A
-    A -->|正常推进| DIS
-    A -->|idle 无产出| R[outcomeEvaluator 换 charter 续跑] --> DIS
-    A -->|真 stuck| I[干预 directive/restart] --> DIS
-    ST --> RP --> DIS
+    CAL[Calendar missed / overdue]
+    FB[digitalEmployeeLoop heartbeat_fallback]
+    D --> P --> V --> A
+    A -->|正常| CAL --> FB
+    A -->|真 stuck| I[干预 directive/restart] --> RP --> CAL
+    A -->|等待依赖| W[保留依赖；释放员工容量] --> CAL
   end
 ```
 
-现有实现里 **V + A 的部分逻辑**分散在：`kpi-dispatch-guard`、`buildHeartbeatSystemPrompt`、legacy LLM 心跳、`performanceGoalEngine.reviewGoalsForHeartbeat`。本文档把它们**显式归位**为心跳职责，便于后续收敛到统一「oversight phase」。
+`heartbeat_fallback` 必须经过与事件主路径相同的 single-flight、capacity、Calendar 优先级、提案校验和幂等逻辑，禁止直接复制旧的 `set_goal` 路径。
 
 ---
 
@@ -94,11 +96,11 @@ flowchart TB
 
 | 信号 | 来源 | 当前行为 | 目标行为（演进） |
 |------|------|----------|------------------|
-| 外脑 action-log N tick 无变化 | `_checkAlive` | `console.error` 警告 | ⏳ 联动 IM 告警 / 强制 strategy 重评估 |
+| 外脑 action-log N tick 无变化 | `_checkAlive` | `console.error` 警告 | ⏳ 联动 IM 告警 / SelfWorkPolicy 换向输入 |
 | RUNNING 且 `last_tick_at` > 5min | `list_inner_brains` `liveness=stuck` | 暴露给 LLM / Dashboard | ⏳ 心跳自动 `send_directive` 或 `/restart`（见 todo exec-kill-resume） |
 | RUNNING 且 `pid_alive=false` | registry + spawner | startupResume 扫到 | ✅ 启动时 markStale + resume；运行中 ⏳ 心跳触发 |
-| KPI `consecutiveIdleBursts ≥ 阈值` | kpiRegistry | outcome pivot charter + `scheduleNextKpiBurst` / `advance_kpi` | ✅ |
-| AWAITING 战略上不该再等 | — | — | ⏳ `staleBurstReaper`（[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)） |
+| KPI / 路线连续无产出 ≥ 阈值 | kpiRegistry + self-work outcome | P0 保留 KPI 级兜底；P2 熔断重复路线并让 SelfWorkPolicy 换独立方向 | ⏳ |
+| AWAITING 治理上不该再等 | — | — | ⏳ `staleBurstReaper`（[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) R3–R7） |
 | 自动 resume 达上限 | `resumeCount` | 停自动 resume | ✅ 用户手动 `POST /api/inner-brains/:id/restart` |
 
 相关 todo：[`doc/todo/inner-brain-exec-kill-resume-stuck.md`](../todo/inner-brain-exec-kill-resume-stuck.md)。
@@ -119,13 +121,13 @@ DyFlow 内脑每 tick 在 DESIGN/RUN 间切换、baseNode 多轮自修（[`DYFLO
 
 | 模块 | 质控相关 |
 |------|----------|
-| **outerHeartbeat** | tick 编排宿主；死亡检测；注入 oversight 上下文给 LLM / autonomy |
+| **outerHeartbeat** | watchdog 编排宿主；死亡检测、监督、missed 扫描、fallback trigger |
 | **kpiCompletionJudge** | 心跳 sweep + digest；[`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) |
-| **kpiBurstHooks** | burst onExit → outcomeEvaluator + burstRunHistory；idle streak；onExit autoAchieved |
-| **kpi-dispatch-guard** | sprint 中不并行派活；stuck → `stuck_retry` / pivot charter |
+| **digitalEmployeeLoop**（✅ P1） | 正常事件驱动主循环；heartbeat 只能调用同一 trigger 入口 |
+| **employeeCalendar**（✅ P0/P1） | missed / overdue 暴露给 heartbeat；正常 due 自身触发主循环 |
+| **selfWorkPolicy**（🟡） | conservative + 校验已落；多策略/A-B 待落；不常驻 heartbeat |
 | **list_inner_brains / read_inner_status** | 验收与存活信号的唯一外脑读口 |
-| **staleBurstReaper**（P1） | 战略上 cull AWAITING / 僵尸 burst |
-| **innerBrainStartupResume** | 外脑进程重启恢复 RUNNING |
+| **staleBurstReaper** | R5 清理 AWAITING / 僵尸 burst |
 
 ---
 
@@ -136,3 +138,4 @@ DyFlow 内脑每 tick 在 DESIGN/RUN 间切换、baseNode 多轮自修（[`DYFLO
 | 2026-06-02 | 初版：心跳双职责（验收效果 + 卡死/restart 把控）；与增量 EXECUTE 对齐 |
 | 2026-06-02 | §0：明确三层 tick；质控不替代宏观战略 WHY+HOW |
 | 2026-06-02 | A′ KPI 完成判定；workspace.dsl 边 + rules |
+| 2026-07-21 | 数字员工修订：heartbeat 降为 watchdog/fallback；正常续派由 burst/calendar/dependency 事件触发。 |

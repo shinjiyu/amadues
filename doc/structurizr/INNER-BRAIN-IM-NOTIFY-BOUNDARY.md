@@ -155,16 +155,18 @@ RUN 结束（local_dag 跑完或 failure distill 后）:
 
 ## 8. KPI 语义分层（修订 `suggestKpiAction`）
 
-| 建议动作 | 条件 | 外脑/心跳含义 |
+| 建议动作 | 条件 | 外脑含义（数字员工） |
 |----------|------|----------------|
-| `awaiting_human` | 在途 burst `is_async_waiting` 且存在 `ask_user` pending | **正常等待**；勿重复 set_goal；勿当 stuck |
+| `awaiting_human` | 在途 burst `is_async_waiting` 且存在 `ask_user` pending | **正常等待依赖**；勿重复派**同一依赖工作**；**不**把整个 KPI/员工标为忙；可提案不依赖该答案的独立工作 |
 | `follow_up` | 在途 AWAITING 但无 ask_user / safety_cap 失败循环 | 需外脑介入或换路线 |
-| `achieved` | 不变（`post_complete` + deliverables） | 结案 |
-| `stuck_retry` | idle streak 达阈值 | outcome 换 charter；**不**通知用户 |
+| `achieved` | 不变（`post_complete` + deliverables；ongoing 除外） | 结案 |
+| `stuck_retry` | idle streak 达阈值 | SelfWorkPolicy 换方向；**不**无护栏自动 spawn |
 
 `formatKpiDigest` / 心跳块须展示 `awaiting_human` 与 `follow_up` 不同文案，避免 KPI「看起来像个 BLOCK」。
 
 `shouldAutoAchieveKpi`：**不变**（`isAwaiting` 仍阻止自动 achieved）。
+
+> 代码兼容期：`hasBlockingAskUserForKpi` 仍可能整 KPI 挡 advance；目标行为见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §6.1（⏳ 收窄到依赖粒度）。
 
 ---
 
@@ -187,5 +189,6 @@ RUN 结束（local_dag 跑完或 failure distill 后）:
 | 日期 | 说明 |
 |------|------|
 | 2026-06-06 | 初版：IM 三类通知、dedup、resolver 防 echo、markConsumed、DyFlow AWAITING、KPI awaiting_human |
+| 2026-07-21 | 数字员工：`awaiting_human` 从「勿 set_goal」收窄为「勿重复派依赖工作」；等待不占员工容量 |
 | 2026-06-08 | PARTIAL 通知：goal 含部署但 memory/dyflow 有 `[BLOCKED]` → `ERROR` + `⚠️` 部分完成（仍附产出） |
 | 2026-06-24 | §4.2 D9：IM 正文加固——G1 记忆堆拦截（`省略前文…` 标记的 `completeMessage`/末轮输出不当结果）+ G2 `pickImSummary` 净化（跳过引用/表格/代码/截断行，优先内容标题） |

@@ -20,8 +20,9 @@
 | **身份映射索引** | 本地 JSON | `DATA_ROOT/identity/channel-bindings.json` | **仅** `identityBindingIndex`（经 `identityLinkService` commit 或首次 upsert） | 桥入站 `resolve`；见 [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **身份 link pending** | 本地 JSON | `DATA_ROOT/identity/link-pending/` | `identityLinkService` | confirm/reject/expire |
 | **IM 通道连接表** | 本地 JSON | `DATA_ROOT/channels/connections.json` | `channelConnectionRegistry` | boot + 热插；`secret_ref` → keychain |
+| **数字员工日程** | 本地 JSON（复用 Scheduler） | `DATA_ROOT/scheduled-tasks/`（或等价 TaskStore） | `employeeCalendar` | `digitalEmployeeLoop` due/missed；见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) |
 
-专篇：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md) · [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) · [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md)
+专篇：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md) · [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) · [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) · [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)
 
 ## 分工原则
 

@@ -1,9 +1,10 @@
-# KPI Burst 结果评估（ADL）
+# KPI Burst 结果评估（ADL · 历史评估器 + 现行反馈边界）
 
-> **English:** On **KPI-linked** burst exit, outer brain assembles a **summary + process report**, then **`kpiBurstOutcomeEvaluator`** judges success and may schedule a **retry charter**. **Ad-hoc** bursts skip evaluation and notify the user directly.
+> **English:** On **KPI-linked** burst exit, outer brain may assemble outcome evidence. **Unguarded** `scheduleNextKpiBurst` / onExit auto-spawn is **removed**. Continuation is owned by [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md).
 
-> 取代 per-burst `reflexion.json` / `reflexionTrail` / `scheduleReflexionBurst` 作为 KPI 战术反馈主路径。  
-> 与 [`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) §6 `burstRunHistory`、`TASK-RUN-OBSERVABILITY.md` 互补。
+> 取代 per-burst `reflexion.json` / `reflexionTrail` / `scheduleReflexionBurst`。
+> **现行**：burst exit 只写反馈（history / momentum / action-log），并触发 `burst_finished`；是否再派由 `digitalEmployeeLoop` + Calendar / SelfWorkPolicy 决定。
+> 与 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md)、[`KPI-BURST-LIFECYCLE-REMOVED.md`](./KPI-BURST-LIFECYCLE-REMOVED.md) 互补。
 
 ---
 
@@ -11,9 +12,9 @@
 
 | 类型 | burst 结束 | 外脑行为 |
 |------|------------|----------|
-| **KPI leaf**（`kpi_id` 挂接） | onExit | 组装结果包 → **评估** → 写入 `burstRunHistory.outcomeEvaluation` → 失败可 **换 charter 续跑**；**禁止** `completionNotify` / `ingestInnerOutput` |
-| **Ad-hoc**（无 `kpi_id`） | onExit | **直接** `completionNotify` → 用户；`ingestInnerOutput` → mem9；不评估、不写 KPI 史 |
-| **AWAITING + ask_user** | onExit | 不评估、不续跑；`notifyInnerBrainAwaitingHuman`（KPI/ad-hoc 均可） |
+| **KPI**（有 `kpi_id`） | onExit | 落盘状态 + 可选 outcome/momentum 反馈 → **发出** `burst_finished`；**禁止**直接 spawn / `completionNotify` |
+| **Ad-hoc**（无 `kpi_id`） | onExit | **直接** `completionNotify` → 用户；`ingestInnerOutput` → mem9；不评估、不写 KPI 续派 |
+| **AWAITING + ask_user** | onExit | 不评估；`notifyInnerBrainAwaitingHuman`；等待只阻塞依赖项，释放员工容量 |
 
 ---
 
@@ -34,7 +35,7 @@
 
 1. **是否真的成功？** — 看产物与过程信号，不看内脑自述完成。
 2. **若失败，为何？** — `last_failure`、失败 node、工具 `ok:false`。
-3. **是否换思路重试？** — 写 `suggestedRetryCharter` → `kpi.charter` + 可选同 tick `scheduleNextKpiBurst`。
+3. **是否换思路？** — 可将失败证据 / `suggestedRetryCharter` 写入反馈，供 `SelfWorkPolicy` 消费；**禁止**同 tick `scheduleNextKpiBurst` / onExit 直接 spawn（已删，见 [`KPI-BURST-LIFECYCLE-REMOVED.md`](./KPI-BURST-LIFECYCLE-REMOVED.md)）。
 
 **P0 规则（程序化）：**
 
@@ -51,7 +52,7 @@ suggestedRetryCharter ← 基于 failureReasons 的换角度章程；idle streak
 markAchieved ← 仅当 outcomeEvaluation.successConfirmed（非 reflexion / 非「有 deliverable 即结案」）
 ```
 
-**P1（可选）：** LLM 读摘要+过程 digest，产出 `evidenceSummary` + charter（注入 `strategyPlanner`）。
+**P1（可选）：** LLM 读摘要+过程 digest，产出 `evidenceSummary` + 建议 charter，作为 `SelfWorkPolicy` 输入（**不得**直接 spawn）。
 
 模块：`outer/kpi/kpi-burst-outcome-evaluator.ts`
 
@@ -81,8 +82,8 @@ interface BurstOutcomeEvaluation {
 |------|------|
 | `write_memo` → mem9 `:tasks` | 删除（无人读） |
 | per-burst `reflexion.json` → `reflexionTrail` | `outcomeEvaluation` |
-| `scheduleReflexionBurst` / `POST /api/kpis/:id/reflect` | 评估失败 → `suggestedRetryCharter` + `scheduleNextKpiBurst`；reflect API **410** |
-| `evaluateKpiAutonomyDispatch` 的 `kpi_stuck_reflexion` 硬挡 | 移除；`suggestKpiAction.stuck_retry` 提示战略层 / outcome 换向 |
+| `scheduleReflexionBurst` / `POST /api/kpis/:id/reflect` | **已删除/410**；失败反馈供 SelfWorkPolicy；续派走 `digitalEmployeeLoop` |
+| `evaluateKpiAutonomyDispatch` 的 `kpi_stuck_reflexion` 硬挡 | 移除；`suggestKpiAction.stuck_retry` 提示 SelfWorkPolicy / outcome 换向 |
 | burst onExit 事实晋升 | `record_fact` 实时 `sharedFactSink`（见 `DRIVE9-KNOWLEDGE-SHARED.md`） |
 
 `reflexionTrail` 已从 registry 类型移除（旧盘加载时 strip）。续跑 goal 读 `burstRunHistory`。

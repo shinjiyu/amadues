@@ -124,7 +124,7 @@ describe('evaluateKpiAutonomyDispatch', () => {
     expect(d.reason).toBe('kpi_burst_in_flight');
   });
 
-  it('有 AWAITING ask_user 时拒绝', () => {
+  it('有 AWAITING ask_user 时仍允许同 KPI 的独立工作', () => {
     setup();
     const kpiId = kpiRegistry.create({
       description: 'test kpi',
@@ -147,8 +147,8 @@ describe('evaluateKpiAutonomyDispatch', () => {
       source: 'tool',
     });
     const d = evaluateKpiAutonomyDispatch(kpiRegistry, innerBrainRegistry, kpiId);
-    expect(d.ok).toBe(false);
-    expect(d.reason).toBe('awaiting_human');
+    expect(d.ok).toBe(true);
+    expect(d.reason).toBe('continue');
   });
 
   it('ERROR 后 ongoing 无 RUNNING 时允许续派', () => {

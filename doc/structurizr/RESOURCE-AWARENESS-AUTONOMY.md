@@ -1,14 +1,14 @@
-# 资源感知与心跳自主调度（ADL · P0 形态）
+# 资源感知与心跳自主调度（ADL · P0 历史形态）
 
-> **后继文档（P1 起）**：
-> - 环境模型（替代 `resourceProbe` 扁平 snapshot）：[`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)
-> - 战略规划层（dispatcher 退化为按 strategy 派遣 + 杀僵尸）：[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)
+> **⚠️ 历史文档，非现行调度权威。**
 >
-> 本文为 P0 形态留档；模块边界与触发器演进在后继 ADL 中说明。
-
-> 与 `workspace.dsl` 视图 **`11-L3-Outer-Autonomy`**、`components/agent-server.dsl` 同步。  
-> 实现待办：[`doc/todo/resource-awareness-autonomy.md`](../todo/resource-awareness-autonomy.md)  
-> **心跳质控职责**（验收内脑效果、卡死/restart 把控）见 [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)——本文档只覆盖 **闲忙判定 → 自主派活** 管道。
+> **后继文档**：
+> - 环境模型：[`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)
+> - KPI 治理：[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md)
+> - **现行自主工作模型**：[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)（容量驱动 + Calendar + SelfWorkPolicy；心跳 = watchdog）
+> - [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) 亦已删除实现，仅历史对照
+>
+> 文中 `autonomyTaskDispatcher` /「心跳 idle → 派活」等均为 P0 形态，**不得按本文实现主循环**。hardGates / policy 思想已并入环境模型与数字员工容量判定。
 
 ## 1. 动机
 

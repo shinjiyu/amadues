@@ -35,7 +35,12 @@ export {
   patchAutonomyPolicy,
   markAutonomousAction,
 } from './autonomy-policy-store.js';
-export { evaluateKpiSpawnCapacity, type KpiSpawnCapacity } from './kpi-spawn-capacity.js';
+export {
+  evaluateKpiSpawnCapacity,
+  hasAvailableCapacity,
+  type AvailableCapacity,
+  type KpiSpawnCapacity,
+} from './kpi-spawn-capacity.js';
 
 /** 按 dataRoot 缓存的共享环境实例（registry + journal 跨 tick 复用 ring buffer） */
 const sharedByRoot = new Map<string, { registry: EnvironmentSensorRegistry; journal: EnvironmentJournal }>();

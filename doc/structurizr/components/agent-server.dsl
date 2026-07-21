@@ -226,6 +226,20 @@
                     }
                 }
 
+                agentStatusChatCommand = component "Agent Status Chat Command" "【只读快指令】状态/进度 → 当前快照；密度/今天 → 过去 24h 执行槽位利用率；无 LLM" "TypeScript" {
+                    tags "Outer-Module" "Inbound" "Monitoring"
+                    properties {
+                        "path" "packages/server/src/outer/inbound/agent-status-chat-command.ts; packages/server/src/outer/agent-activity-snapshot.ts"
+                        "horizon.intention" "手机/微信中快速查看当前进度与 24h 工作密度；不打开 Dashboard、不扫描 brain-inspector"
+                        "horizon.in" "整句聊天命令 + innerBrainRegistry + kpiRegistry + AutonomyPolicy + now"
+                        "horizon.out" "当前进度文本或 24h 密度文本 → 当前 thread"
+                        "horizon.deps" "innerBrainRegistry; kpiRegistry; autonomyPolicyStore"
+                        "horizon.test.unit" "agent-activity-snapshot.test.ts; agent-status-chat-command.test.ts"
+                        "horizon.test.integration" "agentStatusChatCommand.component.integration.test.ts"
+                        "horizon.note" "只读、零副作用；整句匹配；AWAITING 不计执行密度；见 IM-INBOUND-INTENT-ROUTING.md §4.1"
+                    }
+                }
+
                 awaitingInboundResolver = component "Awaiting Inbound Resolver" "【IM 必达】人消息 → 同 thread 的 ask_user pending → resolved；拒 agent-mirror/通知 echo" "TypeScript" {
                     tags "Outer-Module" "Inbound" "Inner-Lifecycle"
                     properties {
@@ -316,16 +330,16 @@
                     }
                 }
 
-                kpiManager = component "KPI Manager" "【KPI 编排】环境 idle 后 reap 僵尸 + 续派 burst；吸收 staleBurstReaper + kpiAdvancer 心跳路径" "TypeScript" {
+                kpiManager = component "KPI Manager" "【KPI 治理】KPI 真相 + R3–R7 + burst 卫生；心跳 advance 降为兼容 fallback" "TypeScript" {
                     tags "Outer-Module" "KPI" "Heartbeat"
                     properties {
                         "path" "packages/server/src/outer/kpi/kpi-manager.ts"
-                        "horizon.intention" "唯一心跳 KPI 决策层；strategyPlanner 已删除"
-                        "horizon.in" "EnvironmentSnapshot verdict + kpiRegistry + innerBrainRegistry"
-                        "horizon.out" "reap ABORTED + set_goal(kpi_id) via advancer"
-                        "horizon.deps" "kpi-advancer; stale-burst-reaper; kpi-spawn-capacity; autonomy-policy"
+                        "horizon.intention" "治理 KPI 生命周期；不独占空闲找活、日程或正常续派时钟"
+                        "horizon.in" "EnvironmentSnapshot + kpiRegistry + innerBrainRegistry + SelfWork outcome"
+                        "horizon.out" "reap/stop/pause/complete 治理；兼容 advance fallback"
+                        "horizon.deps" "kpi-advancer; stale-burst-reaper; kpi-spawn-capacity; autonomy-policy; digitalEmployeeLoop"
                         "horizon.test.unit" "kpi-manager.test.ts"
-                        "horizon.note" "见 KPI-MANAGER-LAYER.md"
+                        "horizon.note" "见 KPI-MANAGER-LAYER.md + DIGITAL-EMPLOYEE-AUTONOMY.md"
                     }
                 }
 
@@ -333,26 +347,26 @@
                     tags "Outer-Module" "KPI" "Heartbeat"
                     properties {
                         "path" "packages/server/src/outer/kpi/kpi-advancer.ts"
-                        "horizon.intention" "唯一 KPI 续派路径；已删除 onExit scheduleNextKpiBurst（见 KPI-BURST-LIFECYCLE-REMOVED.md）"
+                        "horizon.intention" "IM/Ops/兼容 heartbeat 的 KPI set_goal 执行器；正常续派由 digitalEmployeeLoop 触发"
                         "horizon.in" "kpiRegistry + innerBrainRegistry + (心跳) EnvironmentSnapshot.facets"
                         "horizon.out" "advanceKpi → outerToolExecutor set_goal"
                         "horizon.deps" "kpi-spawn-capacity; burstRunHistory; kpi-burst-state"
                         "horizon.test.unit" "kpi-advancer.test.ts"
                         "horizon.test.integration" "autonomy-heartbeat.component.integration.test.ts"
-                        "horizon.note" "见 KPI-ADVANCEMENT.md §7"
+                        "horizon.note" "见 DIGITAL-EMPLOYEE-AUTONOMY.md；onExit scheduleNextKpiBurst 已删"
                     }
                 }
 
-                kpiFailureCircuit = component "KPI Failure Circuit" "【R7 失败熔断】同 KPI 连续 burst 失败 ≥ 阈值 → pause + IM 通知 + action-log；停止续派" "TypeScript" {
+                kpiFailureCircuit = component "KPI Failure Circuit" "【R7 路线级熔断】单路线连败 → blockedRoutes（KPI 保持 active）；多路线/无 goal 系统性 → pause + IM + action-log" "TypeScript" {
                     tags "Outer-Module" "KPI" "Heartbeat"
                     properties {
                         "path" "packages/server/src/outer/kpi/kpi-failure-circuit.ts"
-                        "horizon.intention" "消除 503 风暴 / 模糊目标无限续派（见 KPI-MANAGER-LAYER.md §3.1 R7）"
-                        "horizon.in" "kpiRegistry(active) + innerBrainRegistry burst 状态 + 阈值"
-                        "horizon.out" "tripped[]；pause(kpiId, reason) + imClient 通知 + appendAutonomyActionLog"
-                        "horizon.deps" "kpi-burst-state.countConsecutiveBurstFailures; autonomy-action-log"
-                        "horizon.test.unit" "kpi-failure-circuit.test.ts"
-                        "horizon.note" "kpiManager.tick 每 tick 续派前调用；DEFAULT_MAX_CONSECUTIVE_FAILURES=3"
+                        "horizon.intention" "同路线三连败只停该路线换方向；系统性失败才暂停整个职责（DIGITAL-EMPLOYEE-AUTONOMY.md §6.3）"
+                        "horizon.in" "kpiRegistry(active) + innerBrainRegistry burst goal/状态 + 阈值"
+                        "horizon.out" "tripped[]（pause+IM）+ routeBlocked[]（kpi_route_circuit log）+ listBlockedRoutes → SelfWorkContext.blockedRoutes"
+                        "horizon.deps" "kpi-burst-state.analyzeConsecutiveFailureRoutes; autonomy-action-log"
+                        "horizon.test.unit" "kpi-failure-circuit.test.ts; kpi-burst-state.test.ts"
+                        "horizon.note" "✅ P2；kpiManager.tick 每 tick 续派前调用；DEFAULT_MAX_CONSECUTIVE_FAILURES=3；窗口被 DONE/AWAITING 打断即自愈"
                     }
                 }
 
@@ -370,16 +384,59 @@
                 }
 
                 // ── 心跳 / 自主调度 ─────────────────────────────────────
-                outerHeartbeat = component "Outer Heartbeat" "【定时心跳】战略+质控+KPI完成判定+死亡检测+自主调度" "TypeScript" {
+                outerHeartbeat = component "Outer Heartbeat" "【Watchdog】质控+完成判定+死亡/失约检测+自主循环补漏；非正常续派主时钟" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Heartbeat"
                     properties {
                         "path" "packages/server/src/outer/outer-heartbeat.ts"
-                        "horizon.intention" "tick 编排：环境 → kpiManager → 闲聊 dispatch；质控 + KPI 完成判定"
-                        "horizon.in" "HeartbeatDeps + LLM env + registry/KPI trail + strategyStore"
-                        "horizon.out" "post_to_im / set_goal / autonomy dispatch / DEATH-DETECT"
+                        "horizon.intention" "经理巡检与漏事件恢复；正常工作交接由 digitalEmployeeLoop 事件驱动"
+                        "horizon.in" "HeartbeatDeps + EnvironmentSnapshot + registry/KPI/Calendar trail"
+                        "horizon.out" "oversight/reap/missed alert + heartbeat_fallback trigger + DEATH-DETECT"
                         "horizon.env" "UTLRA_OUTER_HEARTBEAT_INTERVAL_MS; UTLRA_OUTER_HEARTBEAT_ENABLED"
-                        "horizon.test.integration" "outer-heartbeat.integration.test.ts; autonomy-heartbeat.component.integration.test.ts"
-                        "horizon.note" "战略 STRATEGY-PLANNING-LAYER.md；质控 OUTER-HEARTBEAT-OVERSIGHT.md；调度 RESOURCE-AWARENESS-AUTONOMY.md"
+                        "horizon.test.integration" "outer-heartbeat.integration.test.ts; autonomy-heartbeat.component.integration.test.ts; outerHeartbeatDigitalEmployee.component.integration.test.ts"
+                        "horizon.note" "见 OUTER-HEARTBEAT-OVERSIGHT.md + DIGITAL-EMPLOYEE-AUTONOMY.md"
+                    }
+                }
+
+                digitalEmployeeLoop = component "Digital Employee Loop" "【容量驱动主循环】多触发 coalesce → 可用容量 → 到期日程优先 → 自主提案 → set_goal" "TypeScript" {
+                    tags "Outer-Module" "Autonomy"
+                    properties {
+                        "path" "packages/server/src/outer/digital-employee-loop.ts; packages/server/src/outer/digital-employee-runtime.ts"
+                        "horizon.intention" "数字员工一释放容量就找下一件有价值的工作；heartbeat 仅 fallback"
+                        "horizon.in" "burst_finished/calendar_due/dependency_resolved/inbound_drained/policy_changed/heartbeat_fallback"
+                        "horizon.out" "dispatch result / sleep reason / action-log"
+                        "horizon.deps" "environmentModelFacade; autonomyJudge; employeeCalendar; selfWorkPolicy; outerToolExecutor"
+                        "horizon.test.unit" "digital-employee-loop.test.ts"
+                        "horizon.test.integration" "digitalEmployeeLoop.component.integration.test.ts"
+                        "horizon.note" "✅ P1；runtime 接 burst/calendar/dependency/heartbeat；single-flight + coalesce + dispatch cap"
+                    }
+                }
+
+                employeeCalendar = component "Employee Calendar" "【数字员工日程表】once/interval/cron 持久化承诺；due/missed；到期不占等待 worker" "TypeScript" {
+                    tags "Outer-Module" "Autonomy" "Scheduler"
+                    properties {
+                        "path" "packages/server/src/scheduler/employee-calendar.ts; packages/server/src/openkuroneko/scheduled-tasks/"
+                        "horizon.intention" "复用现有 Scheduler/TaskScheduler，统一业务日程真相；到期触发主循环"
+                        "horizon.in" "CalendarCommitment CRUD + wall clock + capacity result"
+                        "horizon.out" "calendar_due event + due/missed/status/history"
+                        "horizon.deps" "TaskStore; CronParser; digitalEmployeeLoop; environmentSensorRegistry"
+                        "horizon.test.unit" "task-scheduler.test.ts; employee-calendar.test.ts"
+                        "horizon.test.integration" "digitalEmployeeLoop.component.integration.test.ts"
+                        "horizon.note" "✅ P0/P1；missed 保持 due，由 polling event + heartbeat fallback 唤醒，不建立第二份 calendar store"
+                    }
+                }
+
+                selfWorkPolicy = component "Self Work Policy" "【可测试创造性】4 策略角度轮询 + llm_reflective + AbTest 灰度 + 提案校验（去重/依赖/冲突/路线熔断）+ 指标 JSONL" "TypeScript" {
+                    tags "Outer-Module" "Autonomy" "KPI"
+                    properties {
+                        "path" "packages/server/src/outer/self-work-policy.ts; packages/server/src/outer/self-work-strategies.ts; packages/server/src/outer/self-work-llm-policy.ts; packages/server/src/outer/self-work-metrics.ts"
+                        "horizon.intention" "空闲容量的创造性找活；策略可注入/A-B；只有提案权"
+                        "horizon.in" "active KPI + EnvironmentSnapshot + Calendar + pending dependencies + blockedRoutes + burst history"
+                        "horizon.out" "SelfWorkProposal|null { action, expectedOutcome, reason, strategyId, conflictsWith } + self-work-metrics.jsonl"
+                        "horizon.deps" "kpiRegistry; environmentModelFacade; employeeCalendar; innerBrainRegistry; kpiFailureCircuit.listBlockedRoutes; llm/raw"
+                        "horizon.env" "UTLRA_SELF_WORK_STRATEGY"
+                        "horizon.test.unit" "self-work-policy.test.ts; self-work-strategies.test.ts; self-work-llm-policy.test.ts; self-work-metrics.test.ts"
+                        "horizon.test.integration" "digitalEmployeeLoop.component.integration.test.ts"
+                        "horizon.note" "✅ P2/P3：deterministic 4 策略 + llm_reflective（JSON 契约 + fallback）+ ab: 灰度（探索满 minTrials 后按 acceptance rate 利用）；不能直接 spawn"
                     }
                 }
 
@@ -484,16 +541,16 @@
                     }
                 }
 
-                kpiSpawnCapacity = component "KPI Spawn Capacity" "【KPI spawn 槽位】读 EnvironmentSnapshot.facets + hardGates → canSpawn" "TypeScript" {
+                kpiSpawnCapacity = component "KPI Spawn Capacity" "【执行容量】读 EnvironmentSnapshot.facets + hardGates → canSpawn / hasAvailableCapacity（自适应前台预留）" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment" "KPI"
                     properties {
                         "path" "packages/server/src/outer/environment/kpi-spawn-capacity.ts"
-                        "horizon.intention" "R6 环境 busy 时阻止 spawn；R2 并行 burst 槽位判定"
-                        "horizon.in" "EnvironmentSnapshot.facets + AutonomyPolicy.hardGates"
-                        "horizon.out" "KpiSpawnCapacity { canSpawn, hasInnerSlot, hasLlmCapacity }"
+                        "horizon.intention" "R6 环境 busy 时阻止 spawn；数字员工容量：前台活跃扣预留槽而非全停"
+                        "horizon.in" "EnvironmentSnapshot.facets + AutonomyPolicy.hardGates(foregroundReserveSlots)"
+                        "horizon.out" "KpiSpawnCapacity { canSpawn } + AvailableCapacity { available, freeInnerSlots, foregroundReservedSlots }"
                         "horizon.deps" "autonomyPolicyStore"
                         "horizon.test.unit" "kpi-spawn-capacity.test.ts"
-                        "horizon.note" "kpiManager / kpiAdvancer 心跳路径消费；见 KPI-MANAGER-LAYER.md §3.1 R6"
+                        "horizon.note" "✅ P3 前台预留（foreground_reserved / inbound_pressure）；blockIfOuterLoopActive 仅兼容 advance 路径；见 DIGITAL-EMPLOYEE-AUTONOMY.md §6.4"
                     }
                 }
 
@@ -548,16 +605,16 @@
                     }
                 }
 
-                autonomyJudge = component "Autonomy Judge" "【闲忙判定】hard gates → idle|busy" "TypeScript" {
+                autonomyJudge = component "Autonomy Judge" "【容量判定】hard gates → hasAvailableCapacity；等待依赖不等于 RUNNING" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment"
                     properties {
                         "path" "packages/server/src/outer/environment/autonomy-judge.ts"
-                        "horizon.intention" "环境快照 + policy.hardGates 同步判定是否可 dispatch"
+                        "horizon.intention" "环境快照 + hardGates 判断剩余执行容量；前台预留而非无条件全停"
                         "horizon.in" "ResourceSnapshot + AutonomyPolicy"
-                        "horizon.out" "AutonomyVerdict(idle|busy)"
+                        "horizon.out" "CapacityVerdict(hasAvailableCapacity/freeInnerSlots/blockedByHardGate)"
                         "horizon.deps" "autonomyPolicyStore; environmentSensorRegistry"
                         "horizon.test.unit" "autonomy-judge.test.ts"
-                        "horizon.note" "shim: outer/autonomy-judge.ts re-export；见 ENVIRONMENT-MODEL.md §9.1"
+                        "horizon.note" "兼容期仍输出 idle|busy；目标语义见 ENVIRONMENT-MODEL.md §9.1 + DIGITAL-EMPLOYEE-AUTONOMY.md"
                     }
                 }
 

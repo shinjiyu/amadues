@@ -4,6 +4,6 @@
 
 - **L1**：用户仅经 IM（Discord、本地 WebChat）；运维经监控台观察内外脑与 KPI。
 - **L2**：`agentServer` 外脑进程 + `innerWorker` 子进程 + 共享库（Chat IR、Workspace Kit）。
-- **L3**：外脑模块见 [`modules-catalog.md`](../modules-catalog.md)；KPI 闭环见 [`KPI-CLOSED-LOOP.md`](../KPI-CLOSED-LOOP.md)；记忆边界见 [`MEMORY-STORAGE-BOUNDARY.md`](../MEMORY-STORAGE-BOUNDARY.md)；测试对照见 [`COMPONENT-TEST-MAP.md`](../COMPONENT-TEST-MAP.md)。
+- **L3**：外脑模块见 [`modules-catalog.md`](../modules-catalog.md)；**数字员工自主工作**见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](../DIGITAL-EMPLOYEE-AUTONOMY.md)；KPI 治理见 [`KPI-MANAGER-LAYER.md`](../KPI-MANAGER-LAYER.md)；KPI 闭环见 [`KPI-CLOSED-LOOP.md`](../KPI-CLOSED-LOOP.md)；记忆边界见 [`MEMORY-STORAGE-BOUNDARY.md`](../MEMORY-STORAGE-BOUNDARY.md)；测试对照见 [`COMPONENT-TEST-MAP.md`](../COMPONENT-TEST-MAP.md)。
 
 工具链：[`TOOLCHAIN.md`](../TOOLCHAIN.md)（`validate` / `inspect` / `local` / 代码 diff）。

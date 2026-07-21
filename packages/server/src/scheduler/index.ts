@@ -70,6 +70,12 @@ export type {
 
 // -- Core class exports -------------------------------------------------------
 export { Scheduler } from './scheduler.js';
+export { EmployeeCalendar } from './employee-calendar.js';
+export type {
+  DueCalendarCommitment,
+  EmployeeCalendarPort,
+  EmployeeCalendarScheduler,
+} from './employee-calendar.js';
 export { TaskExecutor as TaskExecutor } from './executor.js';
 export { TaskStore } from './store.js';
 

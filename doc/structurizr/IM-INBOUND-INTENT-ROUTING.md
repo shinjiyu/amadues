@@ -2,6 +2,8 @@
 
 > **English (方案一, 2026-06-24 — authoritative):** The inbound pre-pass **no longer dispatches anything**. It is reduced to a **read-only context assembler**: it gathers active KPIs + in-flight bursts for this origin and injects them as an **advisory block** into the conversation loop. The **conversation-loop LLM is the sole decider** of create/dispatch/follow-up, using its existing tools (`set_goal` one-shot · `set_kpi` create · `advance_kpi` · `send_directive`). It already runs with full context, so it reads "介绍一下自己" and just answers; it only calls a tool when genuinely needed. No extra LLM call, no regex hard-gate, no irrecoverable misclassification. Safety guards (KPI spawn capacity, R7 failure circuit, dispatch guard, KPI reuse/dedup) stay at the **tool-execution layer**, independent of who triggers them.
 
+> **只读状态快指令（2026-07-21）：** `状态` / `进度` 与 `密度` / `今天` 是确定性的只读查询，可在对话 LLM 前短路回复。它们不分类业务意图、不建 KPI、不派 burst；只读取 `innerBrainRegistry`、`kpiRegistry`、autonomy policy，避免调用昂贵的 `brain-inspector` / 全量日志。详见 §4.1。
+
 > **历史语义（已被方案一取代）：** 软闸门 + 高置信显式意图短路派发。保留 §0–§7 作为演进记录与回归用例来源；**派发契约以 §4 方案一为准**。
 
 > 取代：[`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) §2「入站分流」（硬闸门 + 纯正则 + 默认偏 KPI 的旧语义）。  
@@ -27,7 +29,7 @@
 4. **无上下文** — 看不到 active KPI / 在跑 burst / 最近对话；每句都是全新请求。
 5. **`kpi_update` 死分支** — 分类器永不产出 → 每条 KPI 类消息都 create → 重复堆积。
 6. **无确认** — 一句模糊话即自动建长期承诺并 spawn。
-7. **delivery once 也被反复派** — IM 铸 delivery KPI，但管理器无 cadence、只看 `achieved`，模糊目标永不达成 → 无限续派。
+7. **delivery once 也被反复派** — IM 铸 delivery KPI，但无 Calendar commitment、只看 `achieved`，模糊目标永不达成 → 无限续派。
 
 本文重设计逐条消除 1–7。
 
@@ -142,6 +144,24 @@ inboundHint = renderAdvisoryBlock(ctx)        # 注入 fullContext 给对话环
 
 > **分类器去向：** `imIntentClassifier` 退出派发关键路径，**不再决定动作**。可选保留为 `inboundHint` 的弱提示来源（`isKpiQueryIntent` 等），由 `UTLRA_INBOUND_CLASSIFIER_HINT=0` 关闭。回归用例（§9）转为「对话环 LLM 在该上下文下应如何动作」的期望，前置层只断言**零副作用 + 注入了正确上下文**。
 
+### 4.1 只读状态快指令（当前进度 / 24h 任务密度）
+
+状态查询不是派发决策，不需要 LLM。`agentStatusChatCommand` 在 participation policy 之后、awaiting resolver 与 conversation loop 之前识别**整句命令**：
+
+| 命令 | 输出 | 数据源 |
+|---|---|---|
+| `状态` / `进度` / `/status` / `/progress` | active KPI、RUNNING/AWAITING、最近完成/失败、可用容量 | registry + KPI + `hasAvailableCapacity` |
+| `密度` / `今天` / `/density` / `/today` | 过去 24h 执行槽位时长、等待时长、槽位利用率、完成/失败数、最活跃 KPI | registry 的 `startedAt` / `finishedAt` / status |
+
+约束：
+
+1. 只匹配 trim 后的整句命令，普通句子如「今天写什么」仍进入对话环；
+2. 快照只读 registry 与 policy；禁止读取 `brain-inspector`、pi logs、milestones 或 workspace 全目录；
+3. `RUNNING` 区间从 `startedAt` 算至当前时刻；终态算至 `finishedAt`（缺失时用当前时刻并标为估算）；
+4. AWAITING 单独统计等待时长，不计入执行槽位密度；
+5. 执行密度 = 24h 内任务执行时长之和 ÷ (`windowMs × maxRunningInnerBrains`)；上限 100%；
+6. 快指令只回复当前 channel/thread，不改变 KPI、pending、Calendar 或数字员工循环状态。
+
 ---
 
 ## 5. 上下文感知（消除重复 KPI）
@@ -192,6 +212,7 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | 模块 ID | 路径 | 职责（方案一后） |
 |---------|------|------|
 | `inboundContextAssembler` | `outer/inbound/inbound-kpi-router.ts` `assembleInboundContext` + `renderInboundHint` | **只读**装配 active KPIs + live bursts → 生成 `inboundHint`；**零副作用** |
+| `agentStatusChatCommand` | `outer/inbound/agent-status-chat-command.ts` + `outer/agent-activity-snapshot.ts` | 整句状态命令 → 轻量当前进度 / 24h 密度回复；**零副作用、无 LLM** |
 | `imIntentClassifier` | `outer/inbound/im-intent-classifier.ts` | 退出派发关键路径；可选作 `inboundHint` 弱提示（`isKpiQueryIntent` 等），不决定动作 |
 | 对话环工具 | `outer/outer-tools.ts` `OUTER_TOOL_DEFS` | `set_goal`/`set_kpi`/`advance_kpi`/`send_directive` — **唯一派发入口** |
 | `adHocBurstAllocator` | `outer/ad-hoc-burst-allocator.ts` | 一次性 burst（无 kpi_id），由 `set_goal` 工具调用 |
@@ -204,6 +225,7 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 |------|------|--------|
 | `imIntentClassifier` | ✅ `im-intent-classifier.test.ts`（默认 chat / 跟进 / 收窄正则 / 去重降级 / D8）—退出关键路径后仅作模块/弱提示 | — |
 | `inboundContextAssembler` | — | ✅ `inbound-kpi-router.component.integration.test.ts`（只读上下文 + hint + **零副作用**）+ `outer-brain-inbound-kpi-router.integration.test.ts`（前置不派发 → 流入对话环，无 key 降级） |
+| `agentStatusChatCommand` | ✅ `agent-activity-snapshot.test.ts` + `agent-status-chat-command.test.ts`（整句匹配、进度、24h 密度、AWAITING 不计执行密度）+ `inner-brain-registry.test.ts`（statusHistory） | ✅ `outer-brain-inbound.integration.test.ts`（无 LLM 也能命令短路；普通聊天不拦截） |
 
 **关键回归用例**（复现样本）：
 
@@ -235,3 +257,4 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | 2026-06-23 | 初版：软闸门 + 默认聊天 + task_followup + 一次性即 ad-hoc + 长期需确认 + 正则收窄；取代 KPI-ADVANCEMENT §2 |
 | 2026-06-23 | 修 D8：`ADHOC_SIGNAL_RE` 剔除裸 `一下`（误把「介绍一下自己」派成 ad-hoc 任务）；ad-hoc 须高置信祈使（`帮我/帮忙/麻烦你/替我`+动作）或产物指代 |
 | 2026-06-24 | **方案一（P4）**：取消前置层短路派发，派发决策下沉对话环 LLM 工具；`inboundKpiRouter` 降为只读上下文装配 + `inboundHint`；分类器退出关键路径（§4 为权威契约，§0–§3 留作演进/回归来源） |
+| 2026-07-21 | 新增只读状态快指令：`状态/进度` 查询当前快照，`密度/今天` 查询 24h 执行槽位利用率；无 LLM、无副作用、禁止走 brain-inspector。 |

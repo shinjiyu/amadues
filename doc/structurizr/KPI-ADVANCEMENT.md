@@ -1,6 +1,10 @@
-# KPI 推进与 Burst 调度
+# KPI 推进与 Burst 调度（历史）
 
-> **⚠️ 已由 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 取代**（2026-06-07）：扁平 KPI、多 burst 并行、无 sub-KPI / canonical 复用。本文保留历史细节供对照。
+> **⚠️ 历史文档，非现行调度权威。**
+> - 2026-06-07：被 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 取代（扁平 KPI、多 burst、无 sub-KPI / canonical）。
+> - 2026-07-21：自主推进再被 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) 取代（容量驱动 + Calendar + SelfWorkPolicy；心跳仅 watchdog）。
+>
+> 文中 `cadence` / `strategyPlanner` / `focusOrder` / 心跳即时派 / 长 `wait_timer` 等均为历史方案，**不得按本文实现**。
 
 > **English (historical):** Outer brain **owns long-horizon sustainability**. Inner brain stays **sprint-shaped** (LLM closure bias). Chat inbound is classified (**KPI vs ad-hoc**); heartbeat **traverses KPI tree** and **advances** leaf KPIs whose slot is idle. Sub-KPIs are **split on first advancement**; each leaf has an independent **reused burst instance** and **run history**.
 
@@ -14,10 +18,10 @@
 | 原则 | 说明 |
 |------|------|
 | **P1 内脑冲刺** | 每轮 EXECUTE 只靠近目标一小步；里程碑完成 → DONE 是**正常**行为，不是缺陷 |
-| **P2 外脑续航** | 长期 / 周期任务由外脑 **KPI 推进器** 按 cadence 再派 sprint，不指望内脑 `wait_timer` 永动 |
+| **P2 外脑续航（历史）** | 旧：按 cadence 再派 sprint。**现行**：`employeeCalendar` 管业务定时；`digitalEmployeeLoop` 有容量即找活 |
 | **P3 双通道入站** | IM 内容**先分类**：KPI 走登记 + 推进；一次性杂活走 **ad-hoc burst**（无 `kpi_id`） |
 | **P4 子 KPI 首拆** | 父 KPI 创建时**不**预拆子树；**第一次** `advanceKpi` 时完成子 KPI 拆解 |
-| **P5 槽位语义** | `ongoing` 叶子 KPI：`DONE` 与 `AWAITING`（无 `ask_user`）均视为**槽位空闲**，可再派 |
+| **P5 槽位语义（历史）** | 旧：DONE/AWAITING 视为可再派。**现行**：RUNNING 才占执行容量；ask_user 只挡依赖项 |
 | **P6 复用不新建** | 同一 leaf sub-KPI 的多轮 sprint **复用** canonical `instanceId` + `workDir`，只追加 **run 历史** |
 
 ---
@@ -272,7 +276,7 @@ interface AdHocTask {
 |---------|------|------|
 | `imIntentClassifier` | `outer/inbound/im-intent-classifier.ts` | IM → kpi / ad_hoc / chat |
 | `subKpiDecomposer` | `outer/kpi/sub-kpi-decomposer.ts` | 首次 advance 拆 leaf + cadence |
-| `kpiCadence` | **已删除**（2026-06-07）；调度 = 心跳 + eligibility；定时 = AWAITING |
+| `kpiCadence` | **已删除**（2026-06-07）；**现行**业务定时 = `employeeCalendar`（见 DIGITAL-EMPLOYEE-AUTONOMY.md） |
 | `kpiSlotIdle` | `outer/kpi/kpi-slot-idle.ts` | ongoing DONE/AWAITING 槽位判定 |
 | `burstReuse` | `outer/kpi/burst-reuse.ts` | canonical 复用 + preempt |
 | `burstRunHistory` | `outer/kpi/burst-run-history.ts` | run 记录聚合与 digest |

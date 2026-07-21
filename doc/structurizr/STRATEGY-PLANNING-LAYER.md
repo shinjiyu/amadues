@@ -1,6 +1,10 @@
 # 战略规划层
 
-> **⚠️ 已由 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 取代**（2026-06-07）：`strategyPlanner` / `strategyStore` / `dispatchByStrategy` 已删除；KPI 编排改由 `kpiManager` 负责。本文保留历史设计供对照。
+> **⚠️ 历史文档，非现行权威。**
+> - 2026-06-07：`strategyPlanner` / `strategyStore` / `dispatchByStrategy` 已删除；见 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md)。
+> - 2026-07-21：自主找活改由 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) 的 `SelfWorkPolicy`（只有提案权，可测试、可替换）；心跳降为 watchdog。
+>
+> 文中 focusOrder / live 心跳战略相位 / dispatcher 按 strategy 派遣等均为历史方案，**不得按本文实现**。`momentum` 反馈可作为 SelfWorkPolicy 输入信号保留。
 
 > **English (historical):** A layer between **heartbeat** and **task dispatch**: REFLECT on past bursts → DESIGN forward strategy → REAP stale bursts → DISPATCH next burst.
 
@@ -399,8 +403,8 @@ interface BurstFeedbackSignal {
 |------|------|-------------------|
 | `consecutiveIdleBursts` | 卡死检测（触发 pivot charter） | 互补；idle 既加 streak 又扣 momentum |
 | `burstRunHistory` | per-KPI 执行史 + outcome | momentum 是其**标量投影** |
-| `recentLessons` / `focusOrder`（§5） | 战略层 LLM 叙事调度 | **未来**：`strategyPlanner` 落地后 `focusOrder` 为权威，momentum 作为输入量之一 |
-| outcome 换向续跑（`UTLRA_KPI_AUTO_NEXT_BURST`） | 评估失败自动 `scheduleNextKpiBurst` | 与 `kpiAdvancer` 节拍互补 |
+| `recentLessons` / `focusOrder`（§5） | **【已废】** 战略层 LLM 叙事调度 | **现行**：`SelfWorkPolicy` 提案 + `digitalEmployeeLoop`；momentum 可作输入信号 |
+| outcome 换向续跑（`UTLRA_KPI_AUTO_NEXT_BURST`） | **【已废】** 评估失败自动 `scheduleNextKpiBurst` | **现行**：容量释放 → `digitalEmployeeLoop`；禁止 onExit 直 spawn |
 
 ### 16.5 守门
 
@@ -420,3 +424,4 @@ interface BurstFeedbackSignal {
 | 2026-06-06 | P0 代码落地：`outer/strategy/` 七模块（store/trigger/artifact/planner/dispatch/reaper/facade）+ `runStrategyPhase` 编排；`TaskStatus` 加 `ABORTED`；6 套单测 43 例全绿；依赖的环境模型 P0 已先行落地 |
 | 2026-06-06 | P0 接 live 心跳（gated 默认关）：`live-adapter.ts`（真 registry/LLM/process.kill/action-log）+ `autonomyPipeline` 在 idle 时跑 `runLiveStrategyPhase` 并把 `focusOrder`/`strategyMode` 注入 dispatcher（`pickActiveKpi` 按 focusOrder∩active 选）；`UTLRA_STRATEGY_LAYER_ENABLED` 关时零行为差；新增 live-adapter/run-phase/dispatch-focusorder 测，strategy 套共 52 例全绿 |
 | 2026-06-07 | 移除 `UTLRA_STRATEGY_LAYER_ENABLED` 开关（`isStrategyLayerEnabled` 删除）：战略层在 `verdict=idle` 时常开。副作用：idle tick 会先跑一次 strategy 规划（受 `shouldReevaluate` 触发门控）；同步更新 KPI-sprint 组件测断言 |
+| 2026-07-21 | **整篇降为历史**：实现删除后，自主工作权威迁至 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)；§16.4 边界表改为指向 SelfWorkPolicy / digitalEmployeeLoop |

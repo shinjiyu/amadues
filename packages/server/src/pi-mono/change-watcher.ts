@@ -50,6 +50,8 @@ export interface ChangeWatcherOptions {
    * deliverable / IM notify 等完整链路。
    */
   spawnTask: (task: TaskRecord) => { ok: boolean; error?: string };
+  /** Notify the shared capacity loop after a dependency becomes consumable. */
+  onDependencyResolved?: (task: TaskRecord) => void;
 }
 
 // ── ChangeWatcher 主类 ────────────────────────────────────────────────────────
@@ -132,6 +134,7 @@ export class ChangeWatcher {
 
     // 5. 消费 resolved pending，避免下一轮 tick 重复唤醒
     markConsumed(brainDir, unconsumed.map((p) => p.id));
+    this.opts.onDependencyResolved?.(task);
 
     // 6. spawn worker —— 委托给调用方提供的 spawnTask
     try {

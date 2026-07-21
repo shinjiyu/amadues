@@ -42,6 +42,8 @@ export interface AutonomyPipelineDeps {
   getOrchestratorStats?: ResourceProbeDeps['getOrchestratorStats'];
   loadThreads?: () => LooseThreadStore;
   identityRegistry?: IdentityRegistry;
+  /** Disable legacy heartbeat KPI advance when digitalEmployeeLoop is wired. */
+  digitalEmployeeMode?: boolean;
 }
 
 export interface AutonomyPipelineResult {
@@ -100,6 +102,7 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
       defaultThreadId: deps.defaultThreadId,
       awaitingReviewLlm:
         verdict.level === 'idle' ? resolveAwaitingReviewLlmCaller(deps.getLlmEnv) : undefined,
+      allowAdvance: !deps.digitalEmployeeMode,
     },
     envSnapshot,
     verdict,

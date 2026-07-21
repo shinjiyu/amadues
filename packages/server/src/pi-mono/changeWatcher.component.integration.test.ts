@@ -54,16 +54,19 @@ describe('component: changeWatcher', () => {
     });
 
     const spawned: TaskRecord[] = [];
+    const resolved: TaskRecord[] = [];
     const w = new ChangeWatcher({
       registry: reg as unknown as import('../outer/inner-brain-registry.js').InnerBrainRegistry,
       spawnTask: (t) => {
         spawned.push(t);
         return { ok: true };
       },
+      onDependencyResolved: (t) => resolved.push(t),
     });
     await (w as unknown as { tick: () => Promise<void> }).tick();
     expect(spawned).toHaveLength(1);
     expect(spawned[0]!.instanceId).toBe('ib-cw-1');
+    expect(resolved.map((item) => item.instanceId)).toEqual(['ib-cw-1']);
     fs.rmSync(workDir, { recursive: true, force: true });
   });
 });

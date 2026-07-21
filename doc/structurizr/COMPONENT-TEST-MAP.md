@@ -45,29 +45,33 @@
 | kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | |
 | innerBurstExit | ✅ via `kpi-scenario.harness.test.ts` + spawn onExit | — | — | 见 [`KPI-BURST-LIFECYCLE-REMOVED.md`](./KPI-BURST-LIFECYCLE-REMOVED.md) |
 | imIntentClassifier | ✅ `im-intent-classifier.test.ts`（默认 chat / followup / 收窄正则 / 去重降级 / ongoing-only）+ `kpi-description-similarity.test.ts` | ⏳ inbound IM fixture | — | ADL [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §3/§6/§9 |
+| **agentStatusChatCommand** | ✅ `agent-activity-snapshot.test.ts`（当前进度、24h 槽位密度、状态区间、legacy 估算）+ `agent-status-chat-command.test.ts`（整句命令/格式化）+ `inner-brain-registry.test.ts`（statusHistory 持久化） | ✅ `outer-brain-inbound.integration.test.ts`（命令短路且无 LLM 可用；普通聊天仍走原降级路径） | — | 微信/聊天只读快指令；见 [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.1 |
 | subKpiDecomposer | ❌ 已删除 | — | — | 扁平 KPI；见 KPI-MANAGER-LAYER.md §2.1 |
 | kpiBurstState | ✅ `kpi-burst-state.test.ts` + slot-idle/advancer | — | — | R1/R2 + parallel cap + R7 熔断 gate |
-| kpiFailureCircuit | ✅ `kpi-failure-circuit.test.ts` | — | — | R7：连续失败 → pause + IM + action-log（[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) §3.1 R7） |
-| kpiAwaitingReview | ✅ `kpi-awaiting-review.test.ts` | — | — | R3/R4 AWAITING 审查 |
-| kpiCadence | ❌ 已删除 | — | — | 调度见 KPI-MANAGER-LAYER.md §2.3 |
-| kpiSlotIdle | ✅ `kpi-slot-idle.test.ts` | — | — | §5 ongoing 槽位 |
+| kpiFailureCircuit | ✅ `kpi-failure-circuit.test.ts`（路线级：单路线 routeBlocked / 多路线 tripped / 无 goal 兜底）+ `kpi-burst-state.test.ts`（路线分析） | — | — | ✅ P2 路线级熔断；blockedRoutes → SelfWork `route_blocked`（[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §6.3） |
+| kpiAwaitingReview | ✅ `kpi-awaiting-review.test.ts`；⏳ 依赖粒度红测 | — | — | R3/R4；合法等待释放容量，ask_user 不阻塞同 KPI 独立工作 |
+| kpiCadence | ❌ 已删除 | — | — | 不复活；业务定时归 employeeCalendar |
+| kpiSlotIdle | ✅ `kpi-slot-idle.test.ts` | — | — | §5 ongoing 槽位；ask_user 不占槽（依赖级收窄，deprecated shim） |
 | burstReuse | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md §2.2 |
-| burstRunHistory | 🟡 `burst-run-history.test.ts` | — | — | §6 执行史（advancer 路径写入） |
-| kpiManager | ✅ `kpi-manager.test.ts` + `kpi-spawn-capacity.test.ts` | ⏳ `kpiManager.component.integration.test.ts` | — | R5 reap + R1 advance；读 EnvironmentSnapshot |
+| burstRunHistory | 🟡 `burst-run-history.test.ts` | — | — | §6 执行史；✅ index.ts burst onExit 统一写入（SelfWork 去重 + R7 路线分析数据源） |
+| kpiManager | ✅ `kpi-manager.test.ts` + `kpi-spawn-capacity.test.ts` | ⏳ `kpiManager.component.integration.test.ts` | — | KPI 治理 R3–R7；心跳 R1 advance 仅兼容 fallback |
 | kpiAdvancer | ✅ `kpi-advancer.test.ts` | ✅ `autonomy-heartbeat` | — | IM/Ops advance；心跳经 kpiManager |
 | adHocBurstAllocator | ✅ `ad-hoc-burst-allocator.test.ts` | — | — | §8 一次性任务 |
 | inboundContextAssembler | — | ✅ `inbound-kpi-router.component.integration.test.ts`（只读上下文 + hint + 零副作用）+ `outer-brain-inbound-kpi-router.integration.test.ts`（前置不派发→流入对话环） | — | [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4（方案一） |
 | outerToolsKpiAdvancement | ✅ `outer-tools-kpi-advancement.test.ts` | — | — | `set_goal(kpi_id)` 封禁 |
 | kpiCompletionJudge | ✅ `kpi-completion-judge.test.ts` | — | — | ADL [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) §3b ongoing 不结案 |
 | kpiFeedback | ✅ `kpi-feedback.test.ts` | — | — | ADL [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) §16 多巴胺回路 |
-| outerHeartbeat | 🟡 death-detect | ✅ `outer-heartbeat.integration.test.ts` + `autonomy-heartbeat.component.integration.test.ts` | — | ADL [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) |
+| outerHeartbeat | ✅ death-detect + watchdog/fallback；接数字员工后治理-only、LLM 无 set_goal | ✅ `outer-heartbeat.integration.test.ts` + `autonomy-heartbeat.component.integration.test.ts` + `outerHeartbeatDigitalEmployee.component.integration.test.ts` | — | watchdog；非正常续派主时钟；ADL [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) |
+| **digitalEmployeeLoop** | ✅ `digital-employee-loop.test.ts`（优先级、single-flight、coalesce、依赖拒绝） | ✅ `digitalEmployeeLoop.component.integration.test.ts`（Calendar 优先 + burst finish 续派） | — | [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §5 |
+| **employeeCalendar** | ✅ `employee-calendar.test.ts` + `task-scheduler.test.ts`（due 保留、missed 重启不旁路执行） | ✅ 由 `digitalEmployeeLoop.component.integration.test.ts` 覆盖统一执行链 | — | 复用 Scheduler/TaskScheduler；长 wait_timer 迁 Calendar |
+| **selfWorkPolicy** | ✅ `self-work-policy.test.ts`（expectedOutcome、依赖、去重、冲突、route_blocked、null 休眠）+ `self-work-strategies.test.ts`（4 策略同 fixture 可比较、角度轮换、A/B 探索/利用/回退、spec 解析）+ `self-work-metrics.test.ts`（acceptance/duplicate/no-progress/byStrategy）+ `self-work-llm-policy.test.ts`（JSON 契约、sleep、非法/异常 fallback） | ✅ 由 `digitalEmployeeLoop.component.integration.test.ts` 覆盖提案→派发 | — | 只有提案权；✅ P2 多策略 + 指标 JSONL；✅ P3 llm_reflective + AbTest 灰度（`UTLRA_SELF_WORK_STRATEGY`） |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP |
 | completionNotify | 🟡 `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1） |
 | innerBurstExit | 🟡 `inner-burst-exit.test.ts` | — | — | `detectBurstGoalGaps` → partial ERROR |
 | imNotifyDedup | ✅ `im-notify-dedup.test.ts` | — | — | ADL [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md) §2 |
 | awaitingNotify | ✅ `awaiting-notify.test.ts` | — | — | onExit AWAITING + ask_user |
 | pushLoop | ✅ `push-loop.test.ts` | ✅ `pushLoop.component.integration.test.ts` | — | BLOCK **不**推 IM；PROGRESS 可选 |
-| changeWatcher | ✅ `change-watcher.test.ts` + `change-watcher.bootstrap.test.ts` | ✅ `changeWatcher.component.integration.test.ts` | — | spawn 前 markConsumed；bootstrap 仅 tick |
+| changeWatcher | ✅ `change-watcher.test.ts` + `change-watcher.bootstrap.test.ts` | ✅ `changeWatcher.component.integration.test.ts`（含 dependency_resolved callback） | — | spawn 前 markConsumed；短等待恢复；业务长定时归 Calendar |
 | brainAsyncSnapshot | ✅ `brain-async-snapshot.test.ts` | — | — | |
 | awaitingInboundResolver | ✅ `awaiting-inbound-resolver.test.ts` | ✅ `awaitingInboundResolver.component.integration.test.ts` | — | IM→resolve；B2 凭证→credential_ref |
 | memoryBlockStore | ✅ `memory-block-store.test.ts` + `memory-block-tools.test.ts` | ✅ `memoryBlockStore.component.integration.test.ts` | — | B1 工具已接 outerToolExecutor |
@@ -77,11 +81,12 @@
 | environmentSensorRegistry | ✅ `environment-sensor-registry.test.ts` | ⏳ `environmentSensorRegistry.component.integration.test.ts` | — | ADL [`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)；P0 已实现，pipeline 经 toResourceSnapshot 适配（行为等价） |
 | environmentJournal | ✅ `environment-journal.test.ts` | ⏳ `environmentJournal.component.integration.test.ts` | — | ring trim + current.json + events 月轮转 + 未消费查询 + markConsumed |
 | environmentChangeDetector | ✅ `environment-change-detector.test.ts` | — | — | hysteresis / warmUp / rate·delta·streak derive |
+| autonomyJudge / capacity | ✅ `autonomy-judge.test.ts` + `kpi-spawn-capacity.test.ts`（AWAITING 不占槽、前台预留/归零、foreground_reserved、inbound_pressure、reserve=0 关闭） | ⏳ `autonomyJudge.component.integration.test.ts` | — | ✅ P3 自适应前台预留；`blockIfOuterLoopActive` 仅兼容 advance 路径 |
 | strategyStore | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
 | strategyTrigger | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
 | strategyArtifact | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
-| strategyPlanner | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
-| dispatchByStrategy | ❌ 已删除 | — | — | kpiManager 取代 |
+| strategyPlanner | ❌ 已删除 | — | — | 见 DIGITAL-EMPLOYEE-AUTONOMY.md（SelfWorkPolicy 取代宏观战略神） |
+| dispatchByStrategy | ❌ 已删除 | — | — | digitalEmployeeLoop + Calendar / SelfWorkPolicy |
 | staleBurstReaper | ✅ `kpi/stale-burst-reaper.test.ts` | — | — | R5；自 strategy/ 迁入 |
 | strategyLiveAdapter | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
 | kpiAwaitingReviewLlm | ✅ `kpi-awaiting-review-llm.test.ts` | — | — | P3 LLM JSON 解析 |

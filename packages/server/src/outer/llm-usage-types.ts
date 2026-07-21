@@ -3,6 +3,7 @@ export type LlmUsageSource =
   | 'outer_conversation'
   | 'outer_heartbeat'
   | 'kpi_manager'
+  | 'self_work_policy'
   | 'autonomy'
   | 'performance_goal'
   | 'inner_llm_step'

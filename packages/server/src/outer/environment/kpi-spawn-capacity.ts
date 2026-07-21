@@ -17,6 +17,15 @@ export interface KpiSpawnCapacity {
   reason?: string;
 }
 
+export interface AvailableCapacity {
+  available: boolean;
+  freeInnerSlots: number;
+  freeLlmSlots: number;
+  /** 前台活跃时为对话预留的槽数（DIGITAL-EMPLOYEE-AUTONOMY.md §6.4） */
+  foregroundReservedSlots: number;
+  reason?: string;
+}
+
 function innerBrainsFacet(env: EnvironmentSnapshot): InnerBrainsFacet {
   return (env.facets['innerBrains']?.data as InnerBrainsFacet | undefined) ?? {
     running: 0,
@@ -96,4 +105,67 @@ export function evaluateKpiSpawnCapacity(
   }
 
   return { canSpawn: true, hasInnerSlot: true, hasLlmCapacity: true };
+}
+
+/**
+ * Shared digital-employee capacity definition.
+ * AWAITING/blocked counts are intentionally ignored: only actual RUNNING work
+ * consumes an inner-brain execution slot.
+ *
+ * 前台对话不再触发全停（旧 blockIfOuterLoopActive 语义仅留给兼容 advance 路径）：
+ * 前台活跃时扣除自适应预留槽，扣完才休眠；高压入站仍全面暂停。
+ */
+export function hasAvailableCapacity(
+  env: EnvironmentSnapshot,
+  policy: AutonomyPolicy,
+): AvailableCapacity {
+  const g = policy.hardGates;
+  const inner = innerBrainsFacet(env);
+  const llm = llmFacet(env);
+  const inbound = inboundFacet(env);
+
+  const foregroundActive =
+    inbound.outerLoopActiveThreads > 0 || inbound.orchestratorQueuedTotal > 0;
+  const foregroundReservedSlots = foregroundActive
+    ? Math.max(0, g.foregroundReserveSlots ?? 1)
+    : 0;
+
+  const rawFreeInnerSlots = Math.max(0, g.maxRunningInnerBrains - inner.running);
+  const freeInnerSlots = Math.max(0, rawFreeInnerSlots - foregroundReservedSlots);
+  const freeLlmSlots = Math.max(0, g.maxLlmInFlight - llm.inFlight);
+
+  const base = { freeInnerSlots, freeLlmSlots, foregroundReservedSlots };
+
+  if (!policy.enabled) {
+    return { available: false, ...base, reason: 'autonomy_disabled' };
+  }
+  if (process.env['UTLRA_AUTONOMY_ENABLED'] === '0') {
+    return { available: false, ...base, reason: 'env_autonomy_disabled' };
+  }
+  if (freeLlmSlots <= 0) {
+    return {
+      available: false,
+      ...base,
+      reason: `llm_in_flight=${llm.inFlight}>=${g.maxLlmInFlight}`,
+    };
+  }
+  if (g.maxTokensPerHour != null && llm.tokensLast1h.total >= g.maxTokensPerHour) {
+    return {
+      available: false,
+      ...base,
+      reason: `tokens_1h=${llm.tokensLast1h.total}>=${g.maxTokensPerHour}`,
+    };
+  }
+  if (inbound.orchestratorQueuedTotal > g.blockIfOrchestratorQueuedAbove) {
+    return { available: false, ...base, reason: 'inbound_pressure' };
+  }
+  if (freeInnerSlots <= 0) {
+    return {
+      available: false,
+      ...base,
+      reason: rawFreeInnerSlots > 0 ? 'foreground_reserved' : 'no_inner_slot',
+    };
+  }
+
+  return { available: true, ...base };
 }

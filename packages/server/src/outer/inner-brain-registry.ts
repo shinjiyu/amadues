@@ -16,6 +16,12 @@ import { resolveStoredWorkDir } from '../data-root.js';
 
 export type TaskStatus = 'RUNNING' | 'BLOCKED' | 'AWAITING' | 'DONE' | 'STOPPED' | 'ERROR' | 'ABORTED';
 
+/** 轻量状态时间线：供 24h 工作密度聚合；不读取 workspace / brain-inspector。 */
+export interface TaskStatusTransition {
+  status: TaskStatus;
+  at: string;
+}
+
 /** ABORTED 来源：战略层显式 cull vs 静态超时兜底（见 STRATEGY-PLANNING-LAYER.md §9） */
 export type AbortedBy = 'strategy_reflect' | 'stale_awaiting_timeout';
 
@@ -31,6 +37,11 @@ export interface TaskRecord {
   status: TaskStatus;
   startedAt: string;
   finishedAt?: string;
+  /**
+   * 状态切换时间线。新任务由 registry 自动维护；legacy 任务可缺失，
+   * 聚合器会退化为 startedAt/finishedAt 估算。
+   */
+  statusHistory?: TaskStatusTransition[];
   ticks?: number;
   /** 最后一次 tick 完成的时间（ISO 8601）。RUNNING 状态下可用于判断是否卡死 */
   lastTickAt?: string;
@@ -119,7 +130,13 @@ export class InnerBrainRegistry {
 
   /** 注册新任务 */
   register(record: TaskRecord): void {
-    this.tasks.set(record.instanceId, record);
+    this.tasks.set(record.instanceId, {
+      ...record,
+      statusHistory:
+        record.statusHistory && record.statusHistory.length > 0
+          ? [...record.statusHistory]
+          : [{ status: record.status, at: record.startedAt }],
+    });
     this._sortedCache = null;
     this._save();
   }
@@ -132,6 +149,14 @@ export class InnerBrainRegistry {
     // 仅当极少见地改动 startedAt（排序键）时才失效。
     if (patch.startedAt != null && patch.startedAt !== r.startedAt) {
       this._sortedCache = null;
+    }
+    if (patch.status != null && patch.status !== r.status) {
+      const at = patch.finishedAt ?? patch.abortedAt ?? new Date().toISOString();
+      const history =
+        r.statusHistory && r.statusHistory.length > 0
+          ? r.statusHistory
+          : [{ status: r.status, at: r.startedAt }];
+      r.statusHistory = [...history, { status: patch.status, at }];
     }
     Object.assign(r, patch);
     this._save();
@@ -176,6 +201,11 @@ export class InnerBrainRegistry {
     const stale: TaskRecord[] = [];
     for (const r of this.tasks.values()) {
       if (r.status === 'RUNNING') {
+        const history =
+          r.statusHistory && r.statusHistory.length > 0
+            ? r.statusHistory
+            : [{ status: r.status, at: r.startedAt }];
+        r.statusHistory = [...history, { status: 'STOPPED', at: now }];
         r.status = 'STOPPED';
         r.finishedAt = now;
         r.errorMessage = '(server 重启，任务中断)';

@@ -1,31 +1,31 @@
-# KPI 闭环（ADL 与实现对齐）
+# KPI 闭环（ADL · 数字员工对齐）
 
-> 与 `workspace.dsl` 视图 `10-L2-KPI-Closed-Loop`、`10b-L3-Outer-KPI` 同步。  
-> **外脑派遣主路径**（2026-06-07 起）见 [`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md)：`kpiAdvancer` 遍历 leaf KPI + burst 复用。  
-> **burst 结果反馈**（2026-06-07 起）见 [`KPI-BURST-OUTCOME-EVALUATOR.md`](./KPI-BURST-OUTCOME-EVALUATOR.md)（取代 per-burst `reflexion.json` / `scheduleReflexionBurst`）。
+> 与 `workspace.dsl` 视图 `10-L2-KPI-Closed-Loop`、`10b-L3-Outer-KPI`、`14-L3-Digital-Employee-Loop` 同步。
+> **现行权威**：[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)（容量驱动主循环）+ [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md)（KPI 治理）。
+> [`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) / [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) 仅历史对照。
 
 ## 两条链路（勿混）
 
 | 链路 | 触发 | 产出 | 消费者 |
 |------|------|------|--------|
-| **KPI burst 结果评估** | 外脑 `processBurstExitForKpi`（有 `kpi_id`） | `burstRunHistory.outcomeEvaluation` + 可选 `scheduleNextKpiBurst` | `kpiAdvancer` charter、`strategyPlanner`、`view_kpi` |
+| **KPI burst 结果反馈** | burst exit（有 `kpi_id`） | `burstRunHistory` / momentum / action-log | `SelfWorkPolicy` 输入、`kpiManager` R7、`view_kpi` |
 | **Ad-hoc 完成** | 无 `kpi_id` burst DONE | `completionNotify` → IM；`ingestInnerOutput` → mem9 | 用户 |
 
 > **IM 通知 ≠ KPI 评估**：KPI burst **不**走 `completionNotify`（见 [`KPI-BURST-OUTCOME-EVALUATOR.md`](./KPI-BURST-OUTCOME-EVALUATOR.md) §1）。用户可见 ad-hoc 通知走 [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md)。
 
-| **idle 换向续跑** | `outcomeEvaluator` 失败 + `suggestedRetryCharter` | 更新 `kpi.charter` + `scheduleNextKpiBurst` | 同 canonical instance 续跑 |
+| **容量释放后找活** | `burst_finished` / `calendar_due` / dependency resolved | `digitalEmployeeLoop` → Calendar 优先或 SelfWorkPolicy 提案 | 唯一 `set_goal` |
 
 ## 闭环步骤（实现顺序）
 
 ```text
-1. 外脑 set_kpi / IM 路由              → kpiRegistry
-2. kpiAdvancer / advance_kpi           → set_goal(kpi_id) 复用 canonical instance
-3. 子进程 INNER_KPI_ID                 → DyFlow controller
-4. burst onExit processBurstExitForKpi → outcomeEvaluator → burstRunHistory
-5. 失败且可重试                        → suggestedRetryCharter + scheduleNextKpiBurst
-6. successConfirmed + delivery KPI     → 可选 markAchieved
-7. 心跳 strategyPlanner + kpiAdvancer  → 下一 leaf sprint
-8. kpiCompletionJudge.sweep            → achieved（见 KPI-COMPLETION-JUDGE.md）
+1. 外脑 set_kpi / IM 路由                 → kpiRegistry（长期职责）
+2. digitalEmployeeLoop / Ops advance      → 唯一 set_goal（新 workspace sprint）
+3. 子进程 INNER_KPI_ID                    → DyFlow controller
+4. burst exit                             → 状态落盘 + burstRunHistory/momentum 反馈
+5. 发出 burst_finished（禁止 onExit 直接 spawn）
+6. digitalEmployeeLoop                    → capacity → due Calendar / SelfWorkPolicy → set_goal
+7. delivery KPI 达成                      → kpiCompletionJudge.sweep / achieve_kpi
+8. heartbeat watchdog                     → 监督 + missed + heartbeat_fallback（非主时钟）
 ```
 
 ## 数据文件
@@ -40,10 +40,10 @@
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
-| `UTLRA_KPI_STUCK_THRESHOLD` | `3` | outcome 评估 idle 达阈值时用 **pivot charter** 换向（非 meta reflexion） |
-| `UTLRA_KPI_AUTO_NEXT_BURST` | `0` | `1` = 评估失败且 `suggestedRetryCharter` 时自动 `scheduleNextKpiBurst` |
+| `UTLRA_KPI_STUCK_THRESHOLD` | `3` | 无进展 streak 阈值；供 SelfWorkPolicy / R7 路线熔断参考 |
+| `UTLRA_KPI_AUTO_NEXT_BURST` | — | **已废弃**；`scheduleNextKpiBurst` 已删。续派走 `digitalEmployeeLoop` |
 
-单实例复用详见 [`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md)。
+单实例复用详见历史 [`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md)（已废弃）。
 
 ## KPI 规划上下文边界（勿串扰）
 
@@ -65,11 +65,11 @@
 
 ## 外脑心跳在闭环中的角色
 
-心跳（[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)）消费 **burstRunHistory / idleStreak / deliverables / momentum**：
+心跳（[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)）是 **watchdog**，不是主发动机：
 
-- **宏观战略**（[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)）：WHY + HOW focusOrder；
-- **质控**：在途 burst 是否向 KPI 靠近；
+- **容量驱动续派**（[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)）：burst/calendar/dependency 事件 → `digitalEmployeeLoop`；
+- **质控**：在途 burst 是否向 KPI 靠近、卡死/失约；
 - **KPI 完成判定**：[`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md)；
-- **干预**：idle → outcome 换向续跑；真 stuck → `staleBurstReaper`（⏳）。
+- **干预**：R3–R7 / stale reap；漏事件时 `heartbeat_fallback`。
 
 勿与 **Attributor**（单 RUN 归因写 `memory.facts`）混淆。

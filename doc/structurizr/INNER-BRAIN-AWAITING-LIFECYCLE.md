@@ -2,7 +2,9 @@
 
 > **English:** Inner bursts pause in **AWAITING** when `pendings.json` waits on timers or humans. Recovery is **not** only `changeWatcher` polling: it requires **registry↔workspace reconciliation**, **deterministic IM resolve**, and **startup bootstrap**. Complements [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md) (RUNNING on agent restart).
 
-> **配套层**：本文管「**该醒怎么醒**」；战略层 [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) 管「**该死怎么死**」（`staleBurstReaper` 处理战略变更 cull + `maxAwaitingMs` 静态兜底）。两者**互补无重叠**：本文 §5–§6 的 `awaitingInboundResolver` / `registryLifecycleReconcile` / `changeWatcher` 与新增 `staleBurstReaper` 边界见 STRATEGY §9.2。
+> **配套层**：本文管「**该醒怎么醒**」；[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 的 R3–R5 管「不合理等待与僵尸怎么收口」；[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) 管「等待期间员工还能做什么」。三者边界互补。
+
+> **2026-07-21 数字员工边界**：见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)。本文的 AWAITING 是“某个 burst 在等依赖”，不是“整个员工/KPI 正忙”。等待中的 burst 不占 RUNNING 容量；`ask_user` 只阻塞依赖答案的工作；业务级长定时迁移到外脑 Calendar。本文仍负责已有短 timer / human pending 的可靠恢复。
 
 与 [`doc/agent-data-state-machine.md`](../agent-data-state-machine.md) §4–§6 一致；本文档补齐此前 ADL/宪法未写清的 **registry 终态** 与 **用户回复必达** 路径。
 
@@ -42,6 +44,8 @@
 1. **workDir 优先**：`brainAsyncSnapshot(workDir)` 是 registry 终态的判定依据之一。
 2. **registry 是调度投影**：必须与 workDir 定期/事件对账，不能只靠单次 `onExit`。
 3. **AWAITING ≠ 永远挂着**：`is_post_complete` 时 registry **必须** 变为 **DONE**。
+4. **AWAITING ≠ 员工忙碌**：容量判定只计实际 RUNNING；等待信息必须暴露给 SelfWorkPolicy 做依赖排除。
+5. **阻塞不扩散**：一个 ask_user pending 不得成为整个 KPI 的全局自动续派 gate。
 
 ---
 
@@ -151,7 +155,7 @@ foreach record in registry where status in (AWAITING, BLOCKED):
 | **tick** | 对每个 AWAITING/BLOCKED：`expireOverdue` → 若有 `unconsumed resolved` 且 pid 不存活 → **`markConsumed` 再 `spawnTask`**（见 [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md) §6） |
 | **不负责** | IM 入站（交给 resolver）；registry DONE 收口（交给 reconcile）；**AWAITING_HUMAN IM**（交给 `awaitingNotify` onExit） |
 
-宪法 §6.2 的 **IMWatcher** 合并进 **`awaitingInboundResolver`**；**TimerWatcher** 仍为 poll（v1），非最小堆。
+宪法 §6.2 的 **IMWatcher** 合并进 **`awaitingInboundResolver`**；**TimerWatcher** 仍为 poll（v1），仅服务 burst 内短等待。业务日程由 `employeeCalendar` 持久化并发 `calendar_due`，不得新增长 `wait_timer`。
 
 ---
 
@@ -200,6 +204,7 @@ agentServer load
 | **P1** | `read_inner_status` 返回 `async.*` 字段（已有快照） | 外脑 prompt 少误判 |
 | **P2** | 周期 reconcile + metrics | Dashboard 见 reconcile 计数 |
 | **P2** | 宪法 §6.3 tick.lock（可选） | 与文档对齐或删宪法表述 |
+| **P2-DE** | ask_user 从 KPI 全局 gate 收窄为工作依赖；长 timer 迁 Calendar | 等待不占员工容量；同 KPI 独立工作可继续 |
 
 ---
 

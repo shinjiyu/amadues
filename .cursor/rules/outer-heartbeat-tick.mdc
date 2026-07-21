@@ -1,15 +1,17 @@
 ---
-description: 外脑心跳 tick 职责 — 战略 WHY+HOW、KPI 完成判定、内脑质控（改 heartbeat/KPI 调度必读）
+description: 数字员工自主循环与心跳 watchdog — 容量、日程、自主提案、KPI 治理（改调度必读）
 globs:
   - packages/server/src/outer/outer-heartbeat.ts
   - packages/server/src/outer/kpi-completion-judge.ts
   - packages/server/src/outer/kpi-progress.ts
   - packages/server/src/outer/kpi-dispatch-guard.ts
   - packages/server/src/outer/autonomy-*.ts
-  - packages/server/src/outer/strategy/**
+  - packages/server/src/outer/digital-employee-loop.ts
+  - packages/server/src/outer/self-work-policy.ts
+  - packages/server/src/scheduler/**
   - doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md
   - doc/structurizr/KPI-COMPLETION-JUDGE.md
-  - doc/structurizr/STRATEGY-PLANNING-LAYER.md
+  - doc/structurizr/DIGITAL-EMPLOYEE-AUTONOMY.md
 alwaysApply: false
 ---
 
@@ -21,22 +23,26 @@ alwaysApply: false
 
 | 文档 | 职责 |
 |------|------|
-| [`STRATEGY-PLANNING-LAYER.md`](doc/structurizr/STRATEGY-PLANNING-LAYER.md) | 宏观战略 **WHY+HOW**；`strategyPlanner`；**不可**被质控替代 |
-| [`OUTER-HEARTBEAT-OVERSIGHT.md`](doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md) | 质控：验收 burst 效果、卡死/restart |
+| [`DIGITAL-EMPLOYEE-AUTONOMY.md`](doc/structurizr/DIGITAL-EMPLOYEE-AUTONOMY.md) | 容量驱动主循环、Calendar、SelfWorkPolicy、等待依赖边界 |
+| [`OUTER-HEARTBEAT-OVERSIGHT.md`](doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md) | watchdog：验收、卡死/restart、missed、fallback |
+| [`KPI-MANAGER-LAYER.md`](doc/structurizr/KPI-MANAGER-LAYER.md) | KPI 真相、R3–R7、burst 卫生 |
 | [`KPI-COMPLETION-JUDGE.md`](doc/structurizr/KPI-COMPLETION-JUDGE.md) | **KPI 完成判定**：`sweep` / `achieve_kpi` |
 
-Structurizr：`components/agent-server.dsl`（`outerHeartbeat`、`kpiCompletionJudge`、`strategyPlanner`）+ `workspace.dsl` 边与视图 `11`/`13`。
+Structurizr：`components/agent-server.dsl`（`digitalEmployeeLoop`、`employeeCalendar`、`selfWorkPolicy`、`outerHeartbeat`）+ `workspace.dsl` 边与视图 `11`/`14`。
 
 ## 单 tick 顺序（硬约束）
 
 ```text
-死亡检测
-→ kpiCompletionJudge.sweep（派活前结案 active KPI）
-→ resourceProbe + autonomyJudge
-→ strategyPlanner（WHY+HOW，事件驱动）
-→ 质控（liveness / deliverable 趋势）
-→ staleBurstReaper
-→ dispatch / legacy runHeartbeat
+正常主路径（非 heartbeat）：
+burst_finished / calendar_due / dependency_resolved
+→ digitalEmployeeLoop single-flight
+→ environmentModel + hasAvailableCapacity
+→ due Calendar 优先；否则 SelfWorkPolicy
+→ validate → 唯一 set_goal
+
+heartbeat watchdog：
+死亡检测 → completion sweep → 环境/质控 → R3–R7/reap
+→ Calendar missed → digitalEmployeeLoop(heartbeat_fallback)
 ```
 
 ## 三层勿混
@@ -52,13 +58,16 @@ Structurizr：`components/agent-server.dsl`（`outerHeartbeat`、`kpiCompletionJ
 ## 改代码时的检查清单
 
 - [ ] 动 tick 顺序 → 更新 `OUTER-HEARTBEAT-OVERSIGHT.md` §0 + `workspace.dsl` 边
+- [ ] 动容量/等待/日程/自主提案 → 更新 `DIGITAL-EMPLOYEE-AUTONOMY.md`
 - [ ] 动 KPI 结案规则 → 更新 `KPI-COMPLETION-JUDGE.md` + `kpi-progress.ts` + `kpi-completion-judge.test.ts`
-- [ ] 动战略/schema → 更新 `STRATEGY-PLANNING-LAYER.md` + `strategyPlanner` 测项
 - [ ] 更新 `modules-catalog.md`、`COMPONENT-TEST-MAP.md`
 - [ ] 心跳 prompt 与 ADL 一致（`buildHeartbeatSystemPrompt`）
 
 ## 禁止
 
-- 用质控（liveness/deliverable）**替代**战略 WHY（值不值得推、KPI 是否该 achieved）
+- 把等待某项依赖解释成整个 KPI/员工忙碌
+- 用长 `wait_timer` 代替 Calendar，或另造第二份 cron 真相
+- heartbeat 绕过 `digitalEmployeeLoop` 直接制造第二派发路径
+- SelfWorkPolicy 直接 spawn（它只有提案权）
 - 跳过 Structurizr 只改 `outer-heartbeat.ts` prompt
 - 对已 `achieved` KPI 再 `set_goal`

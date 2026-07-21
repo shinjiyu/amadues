@@ -98,6 +98,8 @@ export interface SchedulerConfig {
   defaultHeartbeatMs?: number;
   /** Enable verbose logging */
   verbose?: boolean;
+  /** Preserve missed tasks as due for digitalEmployeeLoop recovery. */
+  deferMissedExecution?: boolean;
 }
 
 /** Callback signatures for executor action dispatching */

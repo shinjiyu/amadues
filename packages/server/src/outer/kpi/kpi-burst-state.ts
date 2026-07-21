@@ -26,7 +26,7 @@ export function runningBurstCount(kpi: KpiRecord, registry: InnerBrainRegistry):
   return listBurstsForKpi(kpi, registry).filter((r) => RUNNING_STATUSES.has(r.status)).length;
 }
 
-/** 任一 burst 在等人类 → 暂缓自动续派（R4 超时由 kpi-awaiting-review 处理） */
+/** 诊断用途：列出 KPI 内仍在等人类的依赖；不得作为整个 KPI 的派发 gate。 */
 export function hasBlockingAskUserForKpi(kpi: KpiRecord, registry: InnerBrainRegistry): boolean {
   for (const rec of listBurstsForKpi(kpi, registry)) {
     if (rec.status !== 'AWAITING') continue;
@@ -65,6 +65,64 @@ export function countConsecutiveBurstFailures(
     if (NON_FAILURE_TERMINAL.has(rec.status)) break;
   }
   return { failures, lastError };
+}
+
+/** 路线签名（与 self-work-policy.routeSignature 同构；本模块零依赖故内联） */
+function routeKey(goal: string): string {
+  return goal.trim().toLocaleLowerCase().replace(/\s+/g, ' ').slice(0, 240);
+}
+
+export interface FailureRoute {
+  route: string;
+  failures: number;
+  lastError?: string;
+}
+
+export interface ConsecutiveFailureRoutes {
+  totalFailures: number;
+  lastError?: string;
+  routes: FailureRoute[];
+  distinctRoutes: number;
+}
+
+/**
+ * R7 路线级失败分析（ADL DIGITAL-EMPLOYEE-AUTONOMY.md §6.3）：
+ * 对末尾连续失败窗口按 burst goal 的路线签名分组。
+ * - 同路线连败 ≥ 阈值 → 只熔断该路线（blockedRoutes），不 pause KPI；
+ * - 多路线（distinctRoutes ≥ 2）合计连败 ≥ 阈值 → 系统性失败，KPI pause。
+ * 窗口被 DONE/AWAITING/STOPPED 打断即自愈，无需持久化熔断状态。
+ */
+export function analyzeConsecutiveFailureRoutes(
+  kpi: KpiRecord,
+  registry: InnerBrainRegistry,
+): ConsecutiveFailureRoutes {
+  const bursts = listBurstsForKpi(kpi, registry).sort((a, b) =>
+    (b.startedAt ?? '').localeCompare(a.startedAt ?? ''),
+  );
+  const byRoute = new Map<string, FailureRoute>();
+  let totalFailures = 0;
+  let lastError: string | undefined;
+  for (const rec of bursts) {
+    if (rec.status === 'RUNNING' || rec.status === 'BLOCKED') continue;
+    if (FAILURE_STATUSES.has(rec.status)) {
+      totalFailures++;
+      const err = rec.errorMessage ?? rec.abortReason;
+      if (!lastError) lastError = err;
+      const route = routeKey(rec.goal ?? '');
+      const entry = byRoute.get(route) ?? { route, failures: 0 };
+      entry.failures++;
+      if (!entry.lastError) entry.lastError = err;
+      byRoute.set(route, entry);
+      continue;
+    }
+    if (NON_FAILURE_TERMINAL.has(rec.status)) break;
+  }
+  return {
+    totalFailures,
+    lastError,
+    routes: [...byRoute.values()],
+    distinctRoutes: byRoute.size,
+  };
 }
 
 export type KpiAdvanceMode = 'first' | 'continue' | 'parallel';
@@ -109,10 +167,6 @@ export function evaluateKpiAdvanceEligibility(
     if (failures >= opts.maxConsecutiveFailures) {
       return { eligible: false, reason: 'kpi_failure_circuit' };
     }
-  }
-
-  if (hasBlockingAskUserForKpi(kpi, registry)) {
-    return { eligible: false, reason: 'awaiting_human' };
   }
 
   if (bursts.length > 0) {

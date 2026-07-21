@@ -59,6 +59,8 @@ export interface KpiManagerDeps {
   awaitingReviewLlm?: AwaitingReviewLlmCaller;
   /** R7：连续失败熔断阈值（默认 3） */
   maxConsecutiveFailures?: number;
+  /** Watchdog mode: perform governance only; work-finding belongs to digitalEmployeeLoop. */
+  allowAdvance?: boolean;
 }
 
 export interface KpiManagerTickResult {
@@ -143,6 +145,17 @@ export async function tickKpiManager(
     defaultThreadId: deps.defaultThreadId,
     maxConsecutiveFailures: deps.maxConsecutiveFailures ?? DEFAULT_MAX_CONSECUTIVE_FAILURES,
   });
+
+  if (deps.allowAdvance === false) {
+    return {
+      awaitingReview,
+      reaped,
+      failureCircuit,
+      advance: null,
+      dispatched: false,
+      reason: 'governance_only',
+    };
+  }
 
   if (verdict.level !== 'idle') {
     return {

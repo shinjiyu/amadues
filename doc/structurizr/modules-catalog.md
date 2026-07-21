@@ -49,7 +49,10 @@
 | pushLoop | 消费 worker 输出 | `outer/push-loop.ts` | PROGRESS 可选推渠道；**BLOCK 不推 IM**（见 IM-NOTIFY-BOUNDARY） |
 | changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | bootstrap + pendings 到期/解封 → **markConsumed** → spawn |
 | llmGateway | LLM 调用 | `llm/` | messages → text/tools |
-| **outerHeartbeat** | **定时心跳 + 内脑质控 + 死亡检测** | `outer/outer-heartbeat.ts` | tick → 验收效果 / 卡死判定 / post_to_im / set_goal |
+| **outerHeartbeat** | **数字员工 watchdog：质控 + 死亡/失约检测 + 漏事件 fallback** | `outer/outer-heartbeat.ts` | tick → sweep/reap/missed + `heartbeat_fallback`；非正常续派主时钟 |
+| **digitalEmployeeLoop** | **✅ 容量驱动主循环：事件 coalesce → 日程优先 → 自主提案 → 唯一派发** | `outer/digital-employee-loop.ts` + `digital-employee-runtime.ts` | burst/calendar/dependency events → `set_goal` 或 sleep |
+| **employeeCalendar** | **✅ 数字员工日程表（复用现有 Scheduler/TaskScheduler）** | `scheduler/employee-calendar.ts` + existing scheduler engine | once/interval/cron + due/missed 保留 → `calendar_due` |
+| **selfWorkPolicy** | **✅ 可替换/可测试创造性：4 deterministic 策略 + llm_reflective（LLM 提案 + fallback）+ AbTest 灰度（指标驱动探索/利用）+ 指标 JSONL** | `outer/self-work-policy.ts` + `self-work-strategies.ts` + `self-work-llm-policy.ts` + `self-work-metrics.ts` | env/KPI/calendar/deps/history/blockedRoutes → `SelfWorkProposal|null` |
 | **llmUsageTracker** | **LLM token/并发计量** | `outer/llm-usage-tracker.ts` | completion → 滚动 usage + journal |
 | **llmUsageJournal** | **Token 统计持久化** | `outer/llm-usage-journal.ts` | entry → `usage/llm-usage.jsonl` + summary API |
 | **resourceProbe** | **资源感知快照（P0；已由 environmentSensorRegistry 在 pipeline 经 toResourceSnapshot 适配接管，行为等价）** | `outer/resource-probe.ts` | registry/tracker → ResourceSnapshot |
@@ -57,29 +60,30 @@
 | **environmentJournal** | **环境模型 — 时序日志（✅ ring + current.json + events.jsonl 月轮转 + hourly + 未消费查询/markConsumed）** | `outer/environment/journal.ts` | snapshot/events → 三层留存 + 未消费查询 |
 | **environmentChangeDetector** | **环境模型 — 派生指标 + 事件检测（✅ hysteresis/warmUp/rate·delta·streak）** | `outer/environment/change-detector.ts` | prev/next → derived + events |
 | **environmentModelFacade** | **环境模型 — facade（collectEnvironmentSnapshot / toResourceSnapshot 适配 / getSharedEnvironment）** | `outer/environment/index.ts` | deps → EnvironmentSnapshot ↔ ResourceSnapshot |
-| **kpiSpawnCapacity** | **KPI spawn 槽位（读 facets + hardGates）** | `outer/environment/kpi-spawn-capacity.ts` | EnvironmentSnapshot + policy → canSpawn |
+| **kpiSpawnCapacity** | **执行容量（兼容名）：读 facets + hardGates；✅ P3 自适应前台预留（前台活跃扣 `foregroundReserveSlots`，高压 inbound_pressure 全停）** | `outer/environment/kpi-spawn-capacity.ts` | EnvironmentSnapshot + policy → `hasAvailableCapacity` / canSpawn |
 | **autonomyPolicyStore** | **闲忙规则（可聊天改）** | `outer/environment/autonomy-policy-store.ts` | policy.json + rubric.md |
-| **autonomyJudge** | **闲忙判定（hard gates）** | `outer/environment/autonomy-judge.ts` | snapshot+policy → idle/busy |
+| **autonomyJudge** | **容量判定（hard gates）** | `outer/environment/autonomy-judge.ts` | snapshot+policy → hasAvailableCapacity（兼容 idle/busy） |
 | **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
-| **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 由 kpiManager 派）** | `outer/casual-chat-dispatcher.ts` | verdict(idle) + personality → post_to_im |
+| **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 找活由 digitalEmployeeLoop / SelfWorkPolicy）** | `outer/casual-chat-dispatcher.ts` | capacity + personality → post_to_im |
 | **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **channelConnectionRegistry** | **IM 多连接 + 飞书热插** | `outer/channel-connection-registry.ts` | connections.json + keychain；N 条 feishu（connector 已注册） |
 | **qrTools** | **URL/文本 → 二维码 PNG 发当前 thread** | `outer/qr-tools.ts` | `qr_generate` 工具；`generateQrPng` 供扫码流（P4a/P4b）附图复用 |
 | **visionTools** | **外脑识图（聊天图片 attachment → 文字描述）** | `outer/vision-tools.ts` | `view_image` 工具；asset → 临时文件 → 复用内脑 `describeImageFile`（智谱 Vision MCP） |
 | **imIntentClassifier** | **入站意图（默认 chat / followup / ad-hoc / kpi_update / kpi_create-ongoing）** | `outer/inbound/im-intent-classifier.ts` | IM 文本 + 上下文 → intent；见 IM-INBOUND-INTENT-ROUTING.md |
 | **subKpiDecomposer** | **【已删除】扁平 KPI** | — | 见 KPI-MANAGER-LAYER.md §2.1 |
-| **kpiBurstState** | **多 burst 资格 + 并行上限 + R7 连败计数** | `outer/kpi/kpi-burst-state.ts` | R1/R2；`maxParallelBurstsPerKpi`；`countConsecutiveBurstFailures` |
-| **kpiFailureCircuit** | **R7 失败熔断（连续失败 → pause + IM 通知）** | `outer/kpi/kpi-failure-circuit.ts` | `selectTrippedKpis` / `tripFailureCircuitBreakers` |
-| **kpiAwaitingReview** | **AWAITING 审查 R3/R4** | `outer/kpi/kpi-awaiting-review.ts` | 不合理 AWAITING / ask_user 超时 → stop |
-| **kpiCadence** | **【已删除】** 调度改心跳即时派；定时 → AWAITING/wait_timer | — | 见 KPI-MANAGER-LAYER.md §2.3 |
+| **kpiBurstState** | **多 burst 资格 + 并行上限 + R7 连败/路线分析** | `outer/kpi/kpi-burst-state.ts` | R1/R2；`maxParallelBurstsPerKpi`；`countConsecutiveBurstFailures` + `analyzeConsecutiveFailureRoutes` |
+| **kpiFailureCircuit** | **✅ R7 路线级熔断（P2）** | `outer/kpi/kpi-failure-circuit.ts` | 单路线连败 → blockedRoutes（KPI 保持 active）；多路线/无 goal → pause + IM |
+| **kpiAwaitingReview** | **AWAITING 审查 R3/R4** | `outer/kpi/kpi-awaiting-review.ts` | 不合理等待收口；合法等待释放员工容量 |
+| **kpiCadence** | **【已删除】** 不复活；业务定时归 `employeeCalendar` | — | 见 DIGITAL-EMPLOYEE-AUTONOMY.md §3 |
 | **kpiSlotIdle** | **ongoing 槽位判定（⏳ DONE/AWAITING=空闲）** | `outer/kpi/kpi-slot-idle.ts` | leaf KPI + registry + snapshot → idle? |
 | **burstReuse** | **【已删除】每次 advance 新 workspace** | — | 见 KPI-MANAGER-LAYER.md §2.2 |
 | **burstRunHistory** | **Burst 执行史（⏳ 外脑读 run digest）** | `outer/kpi/burst-run-history.ts` | onExit → BurstRunRecord[] |
-| **kpiManager** | **KPI 编排（✅ reap 僵尸 + 心跳 advance；取代 strategyPlanner 心跳路径）** | `outer/kpi/kpi-manager.ts` | env idle → reap + set_goal |
+| **kpiManager** | **KPI 治理（✅ R3–R7/reap；数字员工模式下 heartbeat governance-only）** | `outer/kpi/kpi-manager.ts` | KPI/burst truth → stop/reap/pause/complete；非 runtime 兼容 advance |
 | **kpiAdvancer** | **KPI sprint 执行（IM/Ops/advance_kpi；心跳由 kpiManager 调）** | `outer/kpi/kpi-advancer.ts` | advanceKpi → set_goal |
 | **adHocBurstAllocator** | **一次性任务 burst（✅ 无 kpi_id）** | `outer/ad-hoc-burst-allocator.ts` | ad_hoc goal → new instance |
 | **inboundContextAssembler** | **IM 入站只读上下文装配（方案一：前置不派发）** | `outer/inbound/inbound-kpi-router.ts` | assembleInboundContext + renderInboundHint → inboundHint 注入对话环；派发交 set_goal/set_kpi/advance_kpi/send_directive 工具；见 IM-INBOUND-INTENT-ROUTING.md §4 |
-| **strategyPlanner** | **【已删除】** | — | 见 KPI-MANAGER-LAYER.md |
+| **agentStatusChatCommand** | **聊天只读快指令：当前进度 + 过去 24h 任务密度（无 LLM / 无 brain-inspector）** | `outer/inbound/agent-status-chat-command.ts` + `outer/agent-activity-snapshot.ts` | `状态/进度` → live snapshot；`密度/今天` → slot-time utilization / completion / failure / KPI activity |
+| **strategyPlanner** | **【已删除】** | — | 见 DIGITAL-EMPLOYEE-AUTONOMY.md（SelfWorkPolicy） |
 | **strategyStore** | **【已删除】** | — | 见 KPI-MANAGER-LAYER.md |
 | **staleBurstReaper** | **僵尸清理（kpiManager R5）** | `outer/kpi/stale-burst-reaper.ts` | selectStaleAwaiting + reap → ABORTED |
 | **kpiAwaitingReviewLlm** | **AWAITING LLM 复审（P3）** | `outer/kpi/kpi-awaiting-review-llm.ts` | requireProgressSignal 后 optional LLM |
@@ -96,9 +100,10 @@
 | `08-L3-Outer-Inner-Lifecycle` | spawn、registry markStale、changeWatcher、pushLoop、completionNotify、innerBurstExit、KPI |
 | `10-L2-KPI-Closed-Loop` | L2：agentServer ↔ innerWorker |
 | `10b-L3-Outer-KPI` / `10c-L3-Inner-Reflexion` | L3 外脑调度 / 内脑反思分图 |
-| **`11-L3-Outer-Autonomy`** | **心跳：probe → gates → 战略 WHY+HOW → 质控 → KPI dispatch** |
+| **`11-L3-Outer-Autonomy`** | **数字员工自主工作总览：容量 + Calendar + SelfWorkPolicy；heartbeat watchdog** |
+| **`14-L3-Digital-Employee-Loop`** | **数字员工主循环：事件触发 → 容量 → Calendar / SelfWorkPolicy → set_goal；heartbeat watchdog** |
 | **`12-L3-Outer-Environment`** | **环境模型：sensor registry / journal / change detector / 消费方** |
-| **`13-L3-Outer-Strategy`** | **战略层：reflect/design + reaper + dispatch** |
+| **`13-L3-Outer-Strategy`** | **【历史视图名】** 战略层已删除；现行见 `14-L3-Digital-Employee-Loop` |
 
 **KPI 闭环**（实现与 ADL）：见 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)。
 
@@ -225,3 +230,7 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-07-21 | `qrTools`（`outer/qr-tools.ts`）：`qr_generate` 工具 + 扫码流（P4a/P4b）URL 消息自动附二维码 PNG（asset attachment，webchat 内联显示） |
 | 2026-07-21 | P4b-media：`wechatBridge` 媒体收发（CDN AES-128-ECB；入站镜像 → asset store；出站附件真发图/文件，失败降级防链接化文本）；typing 修复（`ilink_user_id` + status=2） |
 | 2026-07-21 | `visionTools`（`outer/view_image`）：外脑识图接通——聊天图片 asset → 内脑 `describeImageFile` 管线；`sendFileMessage` 修复（`md5` + `len` 字符串，解 `invalid request`） |
+| 2026-07-21 | 数字员工自主工作 ADL：新增 `digitalEmployeeLoop` / `employeeCalendar` / `selfWorkPolicy`（⏳）；复用 Scheduler；等待只阻塞依赖，heartbeat 降为 watchdog。 |
+| 2026-07-21 | 数字员工 P0/P1 落地：loop/runtime + Scheduler Calendar adapter + burst/calendar/dependency/heartbeat 接线；SelfWorkPolicy conservative/校验落地，P2/P3 余项保留 🟡。 |
+| 2026-07-21 | 数字员工 P2 落地：`self-work-strategies`（4 策略角度轮询）+ `self-work-metrics`（acceptance/duplicate/no-progress/byStrategy JSONL）；R7 下沉路线级（`kpi_route_circuit` 不 pause KPI）；burst onExit 统一写 `burstRunHistory`。 |
+| 2026-07-21 | 数字员工 P3 落地：`self-work-llm-policy`（llm_reflective + deterministic fallback）；`AbTestSelfWorkPolicy`（探索满 minTrials 后按 acceptance rate 利用）；`hasAvailableCapacity` 自适应前台预留（`foregroundReserveSlots`，前台对话不再全停）。 |

@@ -1,12 +1,11 @@
 /**
  * 外脑定时心跳（OuterHeartbeat）。
  *
- * 心跳是外脑的自主循环，独立于消息触发。
- * 每隔固定间隔，LLM 以"自我反思/规划"模式运行一次，根据长期目标决定是否需要主动行动。
+ * 心跳是数字员工的 watchdog，不是自主派活主循环。
+ * 每隔固定间隔执行完成判定、治理、卡死检查与漏事件恢复。
  *
  * 可用工具：
  *   - post_to_im       → 主动向 IM 线程发消息（有实质内容时才用）
- *   - set_goal         → 向内脑派发任务
  *   - read_inner_status → 观察内脑当前状态
  *
  * 环境变量（统一经 `loadHeartbeatConfigFromEnv()` 收口，见 doc/testing-strategy.md §S1）：
@@ -191,7 +190,9 @@ function buildHeartbeatToolDefs(hasImClient: boolean): ToolDef[] {
     });
   }
 
-  return tools;
+  // Heartbeat is supervision-only. Dispatch is exclusively routed through
+  // digitalEmployeeLoop, which applies capacity/calendar/proposal idempotency.
+  return tools.filter((tool) => tool.function.name !== 'set_goal');
 }
 
 // ── LLM 调用 ──────────────────────────────────────────────────────────────────
@@ -307,23 +308,23 @@ function buildHeartbeatSystemPrompt(
     ? `# 长期目标\n${longTermGoal}`
     : `# 长期目标\n（未设置。你可以在 DATA_ROOT/outer/goal.md 中定义长期目标来指导心跳行为。）`;
 
-  return `你是 ${agentName}，现在进行定时自主规划（心跳模式）。
+  return `你是 ${agentName}，现在进行数字员工 watchdog 巡检（心跳模式）。
 
 # 灵魂设定
 ${soul}
 
 ${goalSection}
 
-## 宏观战略（WHY + HOW，不可被质控替代）
-- **先 WHY**：对照长期目标与 KPI，这些方向**还值不值得推**？burst outcome / lesson 是否推翻原有假设？若不值得 → 暂停或换 KPI，不要硬派 set_goal。
-- **再 HOW**：在 WHY 成立前提下，下一 burst **什么角度**、优先级如何；避免无记忆的「每 tick 随机挑一条 KPI」。
-- KPI 续派 / 僵尸清理属 **kpiManager**（见 KPI-MANAGER-LAYER.md）；下文质控只管**在途 burst 做得怎样**。
+## 数字员工边界
+- 下一份工作由 **digitalEmployeeLoop → Calendar / SelfWorkPolicy** 决定；你不直接派发 set_goal。
+- 心跳只负责完成判定、在途质控、卡死/失约检查、R3–R7 治理与漏事件 fallback。
+- AWAITING 只是某项依赖在等待，不表示整个 KPI 或员工忙碌。
 
 ## 质控职责（战术层，与战略并列）
-- **KPI 完成判定**：每 tick 先核对 active KPI 是否应 achieved（list_kpis / view_kpi 看建议动作）。程序化 sweep 可能已自动结案；若 digest 建议 achieved 但仍 active → achieve_kpi（附 evidence）。**不要**对已 achieved KPI 再 set_goal。
+- **KPI 完成判定**：每 tick 先核对 active KPI 是否应 achieved（list_kpis / view_kpi 看建议动作）。程序化 sweep 可能已自动结案；若 digest 建议 achieved 但仍 active → achieve_kpi（附 evidence）。
 - **验收内脑效果**：用 list_inner_brains / read_inner_status 看 deliverables、ticks、burstRunHistory 是否在向 KPI **实质靠近**；勿因单 tick 产出少就判失败（内脑可能是增量靠近）。
 - **卡死与重启把控**：区分 AWAITING 正常等待 vs RUNNING 长期无 tick（liveness=stuck）/ pid dead；idle streak 无产出时优先反思 burst，真 stuck 才考虑 directive 或告知人类需 /restart。
-- **方向干预**：效果不对 → 换角度 set_goal 或触发反思；不要替内脑完成 milestone 级验收（那是 Attributor 的事）。
+- **方向干预**：效果不对 → 记录证据供 SelfWorkPolicy 换路线；不要直接派发，也不要替内脑完成 milestone 级验收（那是 Attributor 的事）。
 
 ## 职责边界
 - **只管自己的事**：优先推进**本 agent 绑定的 KPI / 在途 burst / 长期目标**。
@@ -338,12 +339,11 @@ ${goalSection}
 3. **只有你能答**：问题指向只有你掌握的信息（你的内脑状态、你负责的任务/部署/改动）。
 
 ## 心跳模式说明
-你不是在回应某人，而是在进行定期的**战略自检（WHY+HOW）**与**在途质控**。
-对照**自己的**长期目标与 KPI：先判断方向是否仍对，再判断是否需要派活或干预。
+你不是在回应某人，而是在进行定期的**在途质控与恢复巡检**。
+对照自己的 KPI，判断是否完成、卡死、失约或需要升级；找活已经由共享容量循环处理。
 
 ## 可用工具
 ${imSection}
-- set_goal：向内脑派发任务（仅推进**本 agent** 目标，勿替他人派活）
 - list_inner_brains：列出**所有** workspace 的内脑实例（判断任务状态的**唯一权威来源**）
 - read_inner_status：查询**单个** workspace 的内脑状态（只反映该 workspace，**不要**用它判断「有没有任务在跑」）
 
@@ -354,17 +354,17 @@ ${imSection}
    - RUNNING = 正在干活，**让它继续**，绝不要因为「还没出结果」就 stop。
    - AWAITING + is_async_waiting=true = 在等定时/外部事件，**正常**，不要 stop、不要催。
    - AWAITING 但无 next_wake_at 且 active_pendings 为空 = 可能真卡住，才考虑处理。
-   - is_post_complete=true = 已完成收尾，不要再 set_goal 同一任务。
+   - is_post_complete=true = 已完成收尾，应进入 KPI 完成判断。
 4. **不要为了「确认要不要继续」而向用户提问**。任务在正常推进时，用户无需被打扰。
 
-## 行动原则（KPI 优先，而非到处参与）
-1. **KPI 自动推进**：长期 KPI 的 sprint 由 **kpiManager** 心跳自动派发；**禁止** set_goal 传 kpi_id（须用 advance_kpi 或等自动续派）。
-2. **一次性杂活**：仅 ad-hoc 任务可 set_goal（**勿传 kpi_id**）；新任务须是**不同子方向**，避免与在途 burst 重复 goal。
+## 行动原则（watchdog）
+1. **禁止派活**：不要 set_goal / advance_kpi；heartbeat fallback 已触发 digitalEmployeeLoop。
+2. **等待不扩散**：ask_user/time/event 只阻塞依赖项，不默认暂停整个 KPI。
 3. **post_to_im 仅用于**：**你自己的**任务完成汇报、**你自己的**硬阻塞（缺凭据/需授权）、**与你 KPI 直接相关**的关键信息。
    **禁止**：替他人传 cookie/文件、催别人进度、对无关群聊接话、问「要不要继续」。
    发消息前必须阅读「当前 IM 对话」：仅在与**你**相关时接话，否则不发。
-4. **克制**：内脑已在等定时（is_async_waiting）或已完成（is_post_complete）时 **不要** set_goal 同一任务。
-5. **每次最多**：发 1 条 IM 消息，创建 1 个内脑任务。
+4. **克制**：正常等待不催促；无监督动作时保持沉默。
+5. **每次最多**：发 1 条 IM 消息，不创建内脑任务。
 6. **关联绩效目标**：推进绩效目标时把 goal_id 填入 performance_goal_id。
 
 ${OUTER_ASYNC_ORCHESTRATION_GUIDE}`;
@@ -627,6 +627,8 @@ export interface HeartbeatDeps {
   config?: HeartbeatConfig;
   loadThreads?: () => LooseThreadStore;
   identityRegistry?: IdentityRegistry;
+  /** Shared capacity loop fallback; heartbeat must not create a second dispatch path. */
+  triggerDigitalEmployee?: () => Promise<unknown>;
 }
 
 export class OuterHeartbeat {
@@ -773,6 +775,8 @@ export class OuterHeartbeat {
       }
     }
 
+    await this.deps.triggerDigitalEmployee?.();
+
     if (this.running) {
       console.log('[utlra][heartbeat] previous tick still running, skipping');
       return;
@@ -811,6 +815,7 @@ export class OuterHeartbeat {
           getOrchestratorStats: this.deps.getOrchestratorStats,
           loadThreads: this.deps.loadThreads,
           identityRegistry: this.deps.identityRegistry,
+          digitalEmployeeMode: Boolean(this.deps.triggerDigitalEmployee),
         });
 
         if (autonomy.skippedLegacyHeartbeat) {

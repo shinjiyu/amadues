@@ -45,6 +45,8 @@ import {
 import { retrieveComprehensiveKnowledge } from './knowledge-retrieval.js';
 import { runOuterConversationLoop } from './outer-conversation-loop.js';
 import { assembleInboundContext, renderInboundHint } from './inbound/inbound-kpi-router.js';
+import { tryHandleAgentStatusChatCommand } from './inbound/agent-status-chat-command.js';
+import { loadAutonomyPolicy } from './environment/autonomy-policy-store.js';
 import { resolveAgentSid, resolveWorkspaceId } from './outer-tools.js';
 import { MessageRecordSchema } from '@utlra/chat-ir';
 import { ThreadOrchestrator, makeFreshCheck } from './thread-orchestrator.js';
@@ -435,6 +437,27 @@ export class OuterBrain {
     if (meta.threadKind === 'dm' && isDmEmptyOrPlaceholderContent(content)) {
       console.log(`[utlra][outer-brain] skip: dm_empty_or_placeholder`);
       return;
+    }
+
+    // ── Step 0.51: 只读状态快指令（无 LLM / 无 brain-inspector）──────────────
+    // ADL IM-INBOUND-INTENT-ROUTING.md §4.1：整句「状态/进度」「密度/今天」。
+    // 放在 ask_user resolver 前，避免把状态查询误当作人类依赖答案。
+    const addressedToAgent =
+      meta.threadKind === 'dm' || meta.isMentionAgent || meta.skipParticipationCheck;
+    if (innerBrainRegistry && isHumanSender(senderSid) && addressedToAgent) {
+      const command = tryHandleAgentStatusChatCommand({
+        content,
+        tasks: innerBrainRegistry.list(),
+        kpis: this.deps.kpiRegistry?.list() ?? [],
+        maxRunningInnerBrains: loadAutonomyPolicy(dataRoot).hardGates.maxRunningInnerBrains,
+      });
+      if (command.handled) {
+        await imClient.postMessage(threadId, {
+          sender_sid: agentSid,
+          text: command.text,
+        });
+        return;
+      }
     }
 
     // ── Step 0.52: 「确认绑定/拒绝绑定 <pending_id>」确定性口令 → 短路处理 ──

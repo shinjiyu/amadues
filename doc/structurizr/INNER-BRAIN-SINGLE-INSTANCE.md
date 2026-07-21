@@ -1,6 +1,7 @@
 # 内脑单实例复用（同一目标禁止多开）
 
-> **⚠️ canonical 单实例复用已废弃**（2026-06-07）：见 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) §2.2 — 每 KPI **多 burst**、每次 advance **新 workspace**、sibling **peer 互读**。本文保留历史语义。
+> **⚠️ canonical 单实例复用已废弃**（2026-06-07）：见 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) §2.2 — 每 KPI **多 burst**、每次 advance **新 workspace**、sibling **peer 互读**。
+> 文中 `scheduleNextKpiBurst` 亦已删除；现行容量释放续派见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)（事件触发共享 loop，**禁止** onExit 直接 spawn）。本文仅历史语义。
 
 > **English (historical):** One **canonical inner brain** per KPI / long-running goal.
 

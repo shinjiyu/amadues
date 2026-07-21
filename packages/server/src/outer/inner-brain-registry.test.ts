@@ -70,6 +70,29 @@ describe('InnerBrainRegistry persistence', () => {
     const reloaded = b.get('ib-rc');
     expect(reloaded?.resumeCount).toBe(2);
   });
+
+  it('records status transitions for lightweight activity-density aggregation', () => {
+    const root = makeRoot();
+    const reg = new InnerBrainRegistry(root);
+    const startedAt = '2026-07-21T08:00:00.000Z';
+    reg.register(baseRecord({ instanceId: 'ib-history', startedAt, status: 'RUNNING' }));
+    reg.update('ib-history', {
+      status: 'AWAITING',
+      finishedAt: '2026-07-21T09:00:00.000Z',
+    });
+    reg.update('ib-history', {
+      status: 'RUNNING',
+      finishedAt: undefined,
+    });
+
+    const history = reg.get('ib-history')?.statusHistory;
+    expect(history?.map((item) => item.status)).toEqual(['RUNNING', 'AWAITING', 'RUNNING']);
+    expect(history?.[0]?.at).toBe(startedAt);
+    expect(history?.[1]?.at).toBe('2026-07-21T09:00:00.000Z');
+
+    const reloaded = new InnerBrainRegistry(root).get('ib-history');
+    expect(reloaded?.statusHistory).toEqual(history);
+  });
 });
 
 describe('InnerBrainRegistry.list sorted cache', () => {

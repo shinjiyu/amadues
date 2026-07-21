@@ -85,6 +85,7 @@ import {
 } from './outer/completion-notify.js';
 import { PushLoop } from './outer/push-loop.js';
 import { OuterHeartbeat, loadHeartbeatConfigFromEnv } from './outer/outer-heartbeat.js';
+import { DigitalEmployeeRuntime } from './outer/digital-employee-runtime.js';
 import { resolveKpiBurstOriginThread } from './outer/default-im-thread.js';
 import { loadInnerLlmEnvFromProcess, runInnerLlmStep } from './llm/inner-llm-step.js';
 import { llmRawChatCompletion } from './llm/raw.js';
@@ -105,6 +106,10 @@ import {
   restartEligibilityErrorMessage,
 } from './outer/inner-brain-restart-policy.js';
 import { dispatchKpiBurst } from './outer/kpi-api-dispatch.js';
+import {
+  mapRegistryStatusToRunExit,
+  recordBurstRunOnExit,
+} from './outer/kpi/burst-run-history.js';
 import {
   buildWorkspaceArtifactsPayload,
   revealWorkspaceAllowed,
@@ -192,6 +197,7 @@ let globalMemoryBlockStore: import('./outer/memory-block-store.js').MemoryBlockS
 const performanceGoalEngine = new PerformanceGoalEngine(DATA_ROOT);
 const innerBrainRegistry = new InnerBrainRegistry(DATA_ROOT);
 const kpiRegistry = new KpiRegistry(DATA_ROOT);
+let digitalEmployeeRuntime: DigitalEmployeeRuntime | null = null;
 
 /** 在 channel 就绪后注入，供 spawnAndAttachWorker onExit 发完成通知 */
 let completionNotifyDeps: CompletionNotifyDeps | null = null;
@@ -228,6 +234,22 @@ function getEngine(workspaceId: string): InnerBrainEngine {
  */
 function detectAwaitingFromBrain(workDir: string): boolean {
   return isBrainAwaitingAsync(workDir);
+}
+
+/** burst onExit：把本轮 run 写进 KPI burstRunHistory（供 SelfWork 去重 / R7 路线分析） */
+function recordBurstRunHistory(instanceId: string, finalStatus: TaskStatus): void {
+  try {
+    const task = innerBrainRegistry.get(instanceId);
+    if (!task?.kpiId) return;
+    recordBurstRunOnExit(kpiRegistry, {
+      kpiId: task.kpiId,
+      instanceId,
+      task,
+      exitStatus: mapRegistryStatusToRunExit(finalStatus, false),
+    });
+  } catch (e) {
+    console.error('[utlra][inner-brain] record burst run history failed:', e);
+  }
 }
 
 function spawnAndAttachWorker(
@@ -322,6 +344,8 @@ function spawnAndAttachWorker(
             }
           }
           console.error(`[utlra][inner-brain] burst error (${id}): ${errorMessage ?? 'unknown'}`);
+          recordBurstRunHistory(id, 'ERROR');
+          void digitalEmployeeRuntime?.trigger('burst_finished');
           return;
         }
 
@@ -366,6 +390,8 @@ function spawnAndAttachWorker(
           `[utlra][inner-brain] burst done (${id}): finalStatus=${finalStatus} ticks=${ticks}` +
           ` deliverables=${deliverableCount} kpi=${record.kpiId ?? '-'}`,
         );
+        recordBurstRunHistory(id, finalStatus);
+        void digitalEmployeeRuntime?.trigger('burst_finished');
       },
     });
     innerBrainRegistry.update(id, { pid });
@@ -1453,6 +1479,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     pushLoop: PushLoop;
     changeWatcher: ChangeWatcher;
     heartbeat: OuterHeartbeat;
+    digitalEmployee: DigitalEmployeeRuntime;
     channel: ChatIRChannel;
   };
 
@@ -1708,10 +1735,52 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   const changeWatcher = createChangeWatcher({
     registry: innerBrainRegistry,
     spawnTask: (task) => spawnAndAttachWorker(task),
+    onDependencyResolved: () => {
+      void digitalEmployeeRuntime?.trigger('dependency_resolved');
+    },
   });
   changeWatcher.start();
 
-  // 外脑心跳：定时自主规划，可主动通过 channel 发消息 / 创建内脑任务
+  const heartbeatConfig = loadHeartbeatConfigFromEnv();
+  const digitalEmployeeToolCtx = {
+    threadId: heartbeatConfig.defaultThreadId || 'default',
+    agentSid,
+    workspaceId: process.env['UTLRA_OUTER_WORKSPACE_ID']?.trim() || 'default',
+    repoRoot: REPO_ROOT,
+    imClient: fanInChannel,
+    assetStore,
+    getEngine,
+    workspaceStore: store,
+    repoStore,
+    dataRoot: DATA_ROOT,
+    memoryStore,
+    innerBrainRegistry,
+    kpiRegistry,
+    loadThreads,
+    skillStore,
+    skillDrive9Store,
+    knowledgeDrive9Store,
+    memoryBlockStore,
+    identityLinkService,
+    bindingIndex,
+    channelConnectionRegistry,
+    channelAdminSids,
+  };
+  digitalEmployeeRuntime = new DigitalEmployeeRuntime({
+    dataRoot: DATA_ROOT,
+    agentSid,
+    defaultThreadId: digitalEmployeeToolCtx.threadId,
+    registry: innerBrainRegistry,
+    kpiRegistry,
+    toolCtx: digitalEmployeeToolCtx,
+    getOrchestratorStats: () => outerBrain!.getOrchestratorStats(),
+    getLlmEnv: loadInnerLlmEnvFromProcess,
+  });
+  void digitalEmployeeRuntime.start()
+    .then(() => digitalEmployeeRuntime?.trigger('policy_changed'))
+    .catch((error) => console.error('[utlra][digital-employee] start failed:', error));
+
+  // 外脑心跳：watchdog + completion/reaper + digitalEmployee fallback
   const heartbeat = new OuterHeartbeat({
     getEngine,
     workspaceStore: store,
@@ -1726,15 +1795,23 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     innerBrainRegistry,
     kpiRegistry,
     getOrchestratorStats: () => outerBrain.getOrchestratorStats(),
-    config: loadHeartbeatConfigFromEnv(),
+    config: heartbeatConfig,
     loadThreads,
     identityRegistry: registry,
+    triggerDigitalEmployee: () =>
+      digitalEmployeeRuntime?.trigger('heartbeat_fallback') ?? Promise.resolve(),
   });
   heartbeat.start();
 
   fanInChannel.start();
 
-  agentRuntime = { pushLoop, changeWatcher, heartbeat, channel: fanInChannel };
+  agentRuntime = {
+    pushLoop,
+    changeWatcher,
+    heartbeat,
+    digitalEmployee: digitalEmployeeRuntime,
+    channel: fanInChannel,
+  };
 
   console.log(
     `[utlra] === Agent 就绪 ===  port=${info.port}  sid=${agentSid}  channel=${channelLabel}  workspace=${process.env['UTLRA_OUTER_WORKSPACE_ID'] ?? 'default'}`,
@@ -1750,6 +1827,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
       agentRuntime?.pushLoop.stop();
       agentRuntime?.changeWatcher.stop();
       agentRuntime?.heartbeat.stop();
+      void agentRuntime?.digitalEmployee.stop();
       agentRuntime?.channel.destroy();
     } catch (e) {
       console.error('[utlra] shutdown hook error', e);

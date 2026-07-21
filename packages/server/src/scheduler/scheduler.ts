@@ -84,6 +84,7 @@ export class Scheduler {
         dataRoot: this.config.dataRoot,
         maxExecutionsPerBeat: this.config.maxExecutionsPerBeat,
         defaultHeartbeatMs: this.config.defaultHeartbeatMs,
+        deferMissedExecution: this.config.deferMissedExecution,
       }, {
         executePromptAction: this.callbacks.executePromptAction,
         executeToolCallAction: this.callbacks.executeToolCallAction,

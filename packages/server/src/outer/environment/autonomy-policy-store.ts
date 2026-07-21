@@ -28,6 +28,7 @@ export function defaultAutonomyPolicy(now = new Date().toISOString()): AutonomyP
       minMsSinceLastAutonomousAction: 0,
       blockIfOrchestratorQueuedAbove: 2,
       blockIfOuterLoopActive: true,
+      foregroundReserveSlots: 1,
     },
     taskTypes: { ...DEFAULT_TASK_TYPES },
     lastAutonomousActionAt: null,

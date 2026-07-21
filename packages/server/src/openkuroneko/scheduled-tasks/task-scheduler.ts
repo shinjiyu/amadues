@@ -56,6 +56,11 @@ export interface TaskSchedulerConfig {
   isAgentBusy?: () => boolean;
   /** Callback: send notification to user */
   notifyUser?: (taskId: string, message: string) => Promise<void>;
+  /**
+   * Calendar mode: keep missed tasks due for the unified digitalEmployeeLoop
+   * instead of executing or pausing them during scheduler initialization.
+   */
+  deferMissedExecution?: boolean;
   /** Injected TaskStore instance (optional, creates new if omitted) */
   store?: TaskStore;
 }
@@ -86,10 +91,10 @@ export class TaskScheduler {
   constructor(configOrDataRoot: string | TaskSchedulerConfig | TaskStoreConfig) {
     if (typeof configOrDataRoot === 'string') {
       this.config = { dataRoot: configOrDataRoot };
-    } else if ('dataRoot' in configOrDataRoot && 'maxExecutionsPerBeat' in configOrDataRoot === false && 'store' in configOrDataRoot === false) {
-      // TaskStoreConfig-like: has dataRoot but no scheduler-specific fields
-      this.config = { dataRoot: configOrDataRoot.dataRoot };
     } else {
+      // TaskStoreConfig is a structural subset of TaskSchedulerConfig, so
+      // preserving all supplied fields is both safe and required for options
+      // such as deferMissedExecution.
       this.config = configOrDataRoot as TaskSchedulerConfig;
     }
     const cfg = this.config as TaskSchedulerConfig;
@@ -136,6 +141,10 @@ export class TaskScheduler {
       if (!task.nextRunAt) continue;
       const nextRun = new Date(task.nextRunAt);
       if (nextRun <= now) {
+        if (this.config.deferMissedExecution) {
+          this.emit({ type: 'task_updated', taskId: task.id });
+          continue;
+        }
         const missedDuration = now.getTime() - nextRun.getTime();
         if (missedDuration > MISSED_THRESHOLD_MS) {
           // Missed too long, pause and notify
