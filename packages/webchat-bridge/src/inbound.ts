@@ -3,7 +3,7 @@
  *
  * 流程：
  * 1. 过滤回声：发送者是 agent 自己 → 直接 return
- * 2. upsertWebChatIdentity → 拿到发送者 sid
+ * 2. upsertWebChatIdentity + resolveInboundSenderSid → 权威 sender_sid
  * 3. ensureThread：如果 IR threads 里没有这条 thread，自动 createThreadRecord 写入
  * 4. parts: text / mention / attachment 翻译；reply_to → MessageRecord.reply_to_message_id
  * 5. attachment.kind 推断（image/video/audio/file），uri 取 chat-server 绝对 URL；
@@ -14,8 +14,10 @@ import {
   MessageRecordSchema,
   ThreadRecordSchema,
   createThreadRecord,
+  resolveInboundSenderSid,
   type ChatAssetStore,
   type ChatIRInboundMessage,
+  type IdentityBindingIndex,
   type IdentityRegistry,
   type LooseThreadStore,
   type MessagePart,
@@ -39,6 +41,8 @@ export interface InboundDeps {
   config: WebChatBridgeConfig;
   agentSid: string;
   registry: IdentityRegistry;
+  /** 跨渠道映射索引；缺省时 sender 保持 provisional 渠道 SID */
+  bindingIndex?: IdentityBindingIndex | null;
   assetStore: ChatAssetStore;
   loadThreads: () => LooseThreadStore;
   saveThreads: (data: LooseThreadStore) => void;
@@ -58,7 +62,27 @@ export interface InboundDeps {
 
 /** 测试 / 手写 config 可能省略 peerAgentUserIds，默认空集。 */
 function peerAgentUserIds(config: WebChatBridgeConfig): Set<string> {
-  return config.peerAgentUserIds ?? new Set<string>();
+  return config.peerAgentUserIds ?? new Set();
+}
+
+function resolveWebChatSender(
+  deps: InboundDeps,
+  userId: string,
+  displayName: string,
+  kind: 'human' | 'agent',
+): string {
+  const provisional = upsertWebChatIdentity(
+    deps.registry,
+    userId,
+    displayName,
+    deps.config.tenant,
+    kind,
+  );
+  return resolveInboundSenderSid(
+    deps.bindingIndex,
+    { channel: 'webchat', native_user_id: userId },
+    provisional,
+  );
 }
 
 export async function handleWebChatInbound(
@@ -71,11 +95,10 @@ export async function handleWebChatInbound(
   const senderKind: 'human' | 'agent' = peerIds.has(msg.sender_user_id)
     ? 'agent'
     : 'human';
-  const senderSid = upsertWebChatIdentity(
-    deps.registry,
+  const senderSid = resolveWebChatSender(
+    deps,
     msg.sender_user_id,
     msg.sender_user_id,
-    deps.config.tenant,
     senderKind,
   );
 
@@ -86,11 +109,10 @@ export async function handleWebChatInbound(
   if (!threadRecord) {
     const participantSidsForNew = wcThread
       ? wcThread.participants.map((u) =>
-          upsertWebChatIdentity(
-            deps.registry,
+          resolveWebChatSender(
+            deps,
             u,
             deps.lookupDisplayName?.(u) ?? u,
-            deps.config.tenant,
             peerIds.has(u) ? 'agent' : 'human',
           ),
         )
@@ -141,11 +163,10 @@ export async function handleWebChatInbound(
           label: wcPart.display_name,
         });
       } else {
-        const sid = upsertWebChatIdentity(
-          deps.registry,
+        const sid = resolveWebChatSender(
+          deps,
           wcPart.user_id,
           wcPart.display_name,
-          deps.config.tenant,
           peerIds.has(wcPart.user_id) ? 'agent' : 'human',
         );
         parts.push({ type: 'mention', target_sid: sid, label: wcPart.display_name });

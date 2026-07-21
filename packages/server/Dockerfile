@@ -17,6 +17,7 @@ COPY packages/chat-ir/package.json packages/chat-ir/
 COPY packages/discord-bridge/package.json packages/discord-bridge/
 COPY packages/webchat-protocol/package.json packages/webchat-protocol/
 COPY packages/webchat-bridge/package.json packages/webchat-bridge/
+COPY packages/feishu-bridge/package.json packages/feishu-bridge/
 COPY packages/server/package.json packages/server/
 
 RUN npm install --include=dev \
@@ -24,6 +25,7 @@ RUN npm install --include=dev \
   --workspace=@utlra/discord-bridge \
   --workspace=@utlra/webchat-protocol \
   --workspace=@utlra/webchat-bridge \
+  --workspace=@utlra/feishu-bridge \
   --workspace=@utlra/server \
   --include-workspace-root
 
@@ -31,12 +33,14 @@ COPY packages/chat-ir packages/chat-ir
 COPY packages/discord-bridge packages/discord-bridge
 COPY packages/webchat-protocol packages/webchat-protocol
 COPY packages/webchat-bridge packages/webchat-bridge
+COPY packages/feishu-bridge packages/feishu-bridge
 COPY packages/server packages/server
 
 RUN npm run build -w @utlra/chat-ir \
  && npm run build -w @utlra/discord-bridge \
  && npm run build -w @utlra/webchat-protocol \
  && npm run build -w @utlra/webchat-bridge \
+ && npm run build -w @utlra/feishu-bridge \
  && npm run build -w @utlra/server
 
 # ── 运行镜像 ──────────────────────────────────────────────────────
@@ -55,6 +59,7 @@ COPY packages/chat-ir/package.json packages/chat-ir/
 COPY packages/discord-bridge/package.json packages/discord-bridge/
 COPY packages/webchat-protocol/package.json packages/webchat-protocol/
 COPY packages/webchat-bridge/package.json packages/webchat-bridge/
+COPY packages/feishu-bridge/package.json packages/feishu-bridge/
 COPY packages/server/package.json packages/server/
 
 RUN npm install --omit=dev \
@@ -62,6 +67,7 @@ RUN npm install --omit=dev \
   --workspace=@utlra/discord-bridge \
   --workspace=@utlra/webchat-protocol \
   --workspace=@utlra/webchat-bridge \
+  --workspace=@utlra/feishu-bridge \
   --workspace=@utlra/server \
   --include-workspace-root
 
@@ -69,6 +75,7 @@ COPY --from=builder /repo/packages/chat-ir/dist packages/chat-ir/dist
 COPY --from=builder /repo/packages/discord-bridge/dist packages/discord-bridge/dist
 COPY --from=builder /repo/packages/webchat-protocol/dist packages/webchat-protocol/dist
 COPY --from=builder /repo/packages/webchat-bridge/dist packages/webchat-bridge/dist
+COPY --from=builder /repo/packages/feishu-bridge/dist packages/feishu-bridge/dist
 COPY --from=builder /repo/packages/server/dist packages/server/dist
 
 RUN mkdir -p /data && chown -R node:node /data

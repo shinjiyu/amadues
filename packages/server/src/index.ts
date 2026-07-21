@@ -31,6 +31,8 @@ import {
 import {
   ChatAssetStore,
   ChatIRSeenTracker,
+  FanInChatIRChannel,
+  IdentityBindingIndex,
   IdentityRegistry,
   MessagePartSchema,
   MessageRecordSchema,
@@ -51,6 +53,8 @@ import {
   suggestGoalCompleteForShutdown,
 } from './outer/inner-lifecycle.js';
 import { OuterBrain, type OuterBrainDeps } from './outer/outer-brain.js';
+import { IdentityLinkService } from './outer/identity-link-service.js';
+import { ChannelConnectionRegistry } from './outer/channel-connection-registry.js';
 import { dispatchOuterHttpInbound } from './outer/outer-http-inbound.js';
 import { createMemoryStore, type OuterMemoryStore } from './outer/outer-memory.js';
 import { createMemoryBlockStore } from './outer/memory-block-store.js';
@@ -91,6 +95,7 @@ import {
 } from './pi-mono/run-tick.js';
 import { formatAgentIsoLocal, resolveAgentTimezone } from './agent-time.js';
 import { buildBrainInspectorPayload } from './pi-mono/brain-snapshot.js';
+import { tailFileLines, resolveLatestPiMonoLog } from './pi-mono/tail-file.js';
 import {
   listStallAlertIndex,
   readStallAlertBundle,
@@ -107,6 +112,7 @@ import {
 import { promoteWorkspaceManifestToRepository } from './repository/promote-from-workspace.js';
 import { DiscordChannel, loadDiscordBridgeConfig } from '@utlra/discord-bridge';
 import { WebChatChannel, loadWebChatBridgeConfig } from '@utlra/webchat-bridge';
+import { createFeishuConnector } from '@utlra/feishu-bridge';
 import { PerformanceGoalEngine } from './performance-goals/engine.js';
 import { renderPerformanceDashboard } from './performance-goals/dashboard.js';
 import { registerHealthRoute } from './api/health-route.js';
@@ -130,17 +136,32 @@ const AGENT_ID =
 configureLlmUsageTracker({ dataRoot: DATA_ROOT, agentId: AGENT_ID });
 const WORKSPACES = path.join(DATA_ROOT, 'workspaces');
 const IDENTITY_FILE = path.join(DATA_ROOT, 'identities.json');
+const IDENTITY_BINDINGS_FILE = path.join(DATA_ROOT, 'identity', 'channel-bindings.json');
 const CHAT_DIR = path.join(DATA_ROOT, 'chat');
 const UPLOADS_DIR = path.join(CHAT_DIR, 'uploads');
 
 fs.mkdirSync(WORKSPACES, { recursive: true });
 fs.mkdirSync(CHAT_DIR, { recursive: true });
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+fs.mkdirSync(path.dirname(IDENTITY_BINDINGS_FILE), { recursive: true });
 
 const store = new FilesystemWorkspaceStore(WORKSPACES);
 fs.mkdirSync(path.dirname(IDENTITY_FILE), { recursive: true });
 const registry = new IdentityRegistry(IDENTITY_FILE);
 registry.save();
+const bindingIndex = new IdentityBindingIndex({ persistPath: IDENTITY_BINDINGS_FILE });
+console.log(
+  `[utlra] identityBindingIndex loaded keys=${bindingIndex.size()} → ${IDENTITY_BINDINGS_FILE}`,
+);
+const IDENTITY_LINK_PENDING_DIR = path.join(DATA_ROOT, 'identity', 'link-pending');
+const identityLinkService = new IdentityLinkService({
+  index: bindingIndex,
+  pendingDir: IDENTITY_LINK_PENDING_DIR,
+  adminSids: (process.env['UTLRA_IDENTITY_ADMIN_SIDS'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+});
 
 const assetStore = new ChatAssetStore(UPLOADS_DIR);
 
@@ -631,9 +652,9 @@ app.get('/api/inner/:ws/pi-logs', (c) => {
   const ws = c.req.param('ws');
   const limit = Math.min(400, Math.max(5, Number(c.req.query('limit') ?? 120)));
   const wd = store.resolveWorkDir(ws);
-  const logsDir = path.join(wd, '.run', 'pi-mono', 'logs');
+  const filePath = resolveLatestPiMonoLog(wd);
 
-  if (!fs.existsSync(logsDir)) {
+  if (!filePath) {
     return c.json({
       entries: [] as unknown[],
       source: null as string | null,
@@ -641,27 +662,8 @@ app.get('/api/inner/:ws/pi-logs', (c) => {
     });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  let filePath: string | null = path.join(logsDir, `${today}.jsonl`);
-  let content = '';
-  if (fs.existsSync(filePath)) {
-    content = fs.readFileSync(filePath, 'utf8');
-  } else {
-    const files = fs
-      .readdirSync(logsDir)
-      .filter((f) => f.endsWith('.jsonl'))
-      .sort()
-      .reverse();
-    if (files[0]) {
-      filePath = path.join(logsDir, files[0]!);
-      content = fs.readFileSync(filePath, 'utf8');
-    } else {
-      filePath = null;
-    }
-  }
-
-  const lines = content.trim().split('\n').filter(Boolean);
-  const sliced = lines.slice(-limit);
+  // 真 tail：从文件尾按块回读最后 limit 行，不整文件载入
+  const sliced = tailFileLines(filePath, limit);
   const entries = sliced.map((line) => {
     try {
       return JSON.parse(line) as unknown;
@@ -1514,6 +1516,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
       agentSid,
       dataRoot: DATA_ROOT,
       registry,
+      bindingIndex,
       assetStore,
       loadThreads,
       saveThreads,
@@ -1534,6 +1537,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
       agentSid,
       dataRoot: DATA_ROOT,
       registry,
+      bindingIndex,
       assetStore,
       loadThreads,
       saveThreads,
@@ -1549,12 +1553,56 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     );
   }
 
+  // Fan-in：进程内唯一 imClient 门面——主渠道为 default 连接，
+  // channelConnectionRegistry 可运行时热插更多连接（ADL IDENTITY-CROSS-CHANNEL.md §5.2）。
+  // 主渠道入站仍直连 onAgentMessage（无需路由记录：未知 thread 出站落 default）。
+  const fanInChannel = new FanInChatIRChannel({ onAgentMessage });
+  fanInChannel.addConnection(`primary-${channelLabel}`, channel, { isDefault: true });
+
   const memoryStore = createMemoryStore(DATA_ROOT, agentSid);
   globalMemoryStore = memoryStore;
   void memoryStore.init();
 
   const memoryBlockStore = createMemoryBlockStore(DATA_ROOT, agentSid);
   globalMemoryBlockStore = memoryBlockStore;
+
+  // IM 通道连接表：secret 只持 keychain ref；kind=feishu 由 @utlra/feishu-bridge 承接
+  // （事件源 = 飞书长连接 SDK，可选依赖：未装时 add 会显式报错并回滚）
+  const feishuConnector = createFeishuConnector({
+    agentSid,
+    registry,
+    bindingIndex,
+    seenTracker,
+    loadThreads,
+    saveThreads,
+    makeInboundHandler: (connectionId) => fanInChannel.makeInboundHandler(connectionId),
+    ...(process.env['FEISHU_DOMAIN']?.trim()
+      ? { domain: process.env['FEISHU_DOMAIN'].trim() }
+      : {}),
+  });
+  const channelConnectionRegistry = new ChannelConnectionRegistry({
+    persistPath: path.join(DATA_ROOT, 'channels', 'connections.json'),
+    fanIn: fanInChannel,
+    connectors: { feishu: feishuConnector },
+    getSecret: async (ref) => {
+      try {
+        const entry = await memoryBlockStore.get('keychain', ref, { includeValue: true });
+        const v = entry?.['value'];
+        return typeof v === 'string' && v ? v : null;
+      } catch {
+        return null;
+      }
+    },
+    bindingIndex,
+    agentSid,
+  });
+  void channelConnectionRegistry.bootLoad();
+  const channelAdminSids: ReadonlySet<string> = new Set(
+    (process.env['UTLRA_CHANNEL_ADMIN_SIDS'] ?? process.env['UTLRA_IDENTITY_ADMIN_SIDS'] ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
 
   let skillStore: SkillMemoryStore | undefined;
   let skillDrive9Store: SkillDrive9Store | undefined;
@@ -1580,17 +1628,21 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   }
 
   completionNotifyDeps = {
-    imClient: channel,
+    imClient: fanInChannel,
     agentSid,
     assetStore,
     getEngine,
   };
 
   outerBrain = new OuterBrain({
-    imClient: channel,
+    imClient: fanInChannel,
     seenTracker,
     assetStore,
     registry,
+    bindingIndex,
+    identityLinkService,
+    channelConnectionRegistry,
+    channelAdminSids,
     getEngine,
     workspaceStore: store,
     repoStore,
@@ -1607,10 +1659,14 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   });
 
   httpOuterBrainDeps = {
-    imClient: channel,
+    imClient: fanInChannel,
     seenTracker,
     assetStore,
     registry,
+    bindingIndex,
+    identityLinkService,
+    channelConnectionRegistry,
+    channelAdminSids,
     getEngine,
     workspaceStore: store,
     repoStore,
@@ -1629,7 +1685,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   // Push Loop：轮询内脑输出，主动推送 BLOCK/COMPLETE/PROGRESS 事件
   const pushLoop = new PushLoop({
     registry: innerBrainRegistry,
-    imClient: channel,
+    imClient: fanInChannel,
     agentSid,
   });
   pushLoop.start();
@@ -1650,7 +1706,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     dataRoot: DATA_ROOT,
     repoRoot: REPO_ROOT,
     getLlmEnv: loadInnerLlmEnvFromProcess,
-    imClient: channel,
+    imClient: fanInChannel,
     assetStore,
     memoryStore,
     outerBrain,
@@ -1663,9 +1719,9 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   });
   heartbeat.start();
 
-  channel.start();
+  fanInChannel.start();
 
-  agentRuntime = { pushLoop, changeWatcher, heartbeat, channel };
+  agentRuntime = { pushLoop, changeWatcher, heartbeat, channel: fanInChannel };
 
   console.log(
     `[utlra] === Agent 就绪 ===  port=${info.port}  sid=${agentSid}  channel=${channelLabel}  workspace=${process.env['UTLRA_OUTER_WORKSPACE_ID'] ?? 'default'}`,

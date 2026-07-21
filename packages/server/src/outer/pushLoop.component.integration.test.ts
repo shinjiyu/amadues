@@ -20,7 +20,9 @@ describe('component: pushLoop', () => {
     root?.cleanup();
   });
 
-  it('新 BLOCK 行 → postMessage + AWAITING（主路径）', async () => {
+  // 2026-07: IM 通知边界重构（88a20f9）后 BLOCK 仅记日志，
+  // AWAITING_HUMAN 通知由 onExit awaitingNotify 统一发送（见 awaiting-notify.ts）。
+  it('新 BLOCK 行 → 仅记日志，不推 IM、不改状态（IM 交 awaitingNotify）', async () => {
     root = createTestDataRoot('push-');
     const reg = new InnerBrainRegistry(root.dataRoot);
     workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'push-ws-'));
@@ -63,7 +65,7 @@ describe('component: pushLoop', () => {
     });
     await (loop as unknown as { tick: () => Promise<void> }).tick();
 
-    expect(posts.some((p) => p.threadId === 'thread:push' && p.body.includes('阻塞'))).toBe(true);
-    expect(reg.get(instanceId)?.status).toBe('AWAITING');
+    expect(posts).toHaveLength(0);
+    expect(reg.get(instanceId)?.status).toBe('RUNNING');
   });
 });

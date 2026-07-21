@@ -11,6 +11,13 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "External" "IM-Interface"
         }
 
+        feishu = softwareSystem "飞书 / Lark" "外部 IM：企业自建应用机器人；一 agent 可 N 条连接（非单例）" {
+            tags "External" "IM-Interface"
+            properties {
+                "horizon.note" "见 IDENTITY-CROSS-CHANNEL.md §5；热插凭证走 keychain"
+            }
+        }
+
         localWebChatIm = softwareSystem "本地 WebChat IM" "apps/chat-server REST/WS 枢纽 + web-chat 浏览器；自建对话入口" {
             tags "IM-Interface"
             properties {
@@ -41,15 +48,16 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             !adrs decisions
 
             // ── L2 共享库（npm 包，非独立进程）────────────────────
-            chatIrLib = container "Chat IR" "消息/线程 schema、ChatIRChannel、ChatIRSeenTracker（mention 感知 freshCheck）、StructuredReply" "npm @utlra/chat-ir" {
+            chatIrLib = container "Chat IR" "消息/线程 schema、ChatIRChannel、FanInChatIRChannel（多连接合流/路由）、ChatIRSeenTracker、identityBindingIndex（channel_key→sid）、StructuredReply" "npm @utlra/chat-ir" {
                 tags "Library"
                 properties {
                     "path" "packages/chat-ir"
-                    "horizon.intention" "渠道无关聊天中间表示 + 运行时观察（反 loop / 抢答）"
-                    "horizon.in" "Channel track/postMessage；mention parts"
-                    "horizon.out" "类型契约；hasAnotherAgentRepliedAfter（独占@不互掐）"
+                    "horizon.intention" "渠道无关聊天中间表示 + 身份映射索引 + 运行时观察（反 loop / 抢答）"
+                    "horizon.in" "Channel track/postMessage；mention parts；channel_key resolve/bind"
+                    "horizon.out" "类型契约；hasAnotherAgentRepliedAfter；resolve→internal_sid"
                     "horizon.deps" "无 kuroneko 业务包"
-                    "horizon.test.unit" "packages/chat-ir/src/seen-tracker.test.ts"
+                    "horizon.adl" "doc/structurizr/IDENTITY-CROSS-CHANNEL.md"
+                    "horizon.test.unit" "packages/chat-ir/src/seen-tracker.test.ts；identity-binding-index.test.ts（⏳）"
                 }
             }
 
@@ -125,6 +133,20 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
                 }
             }
 
+            feishuBridge = container "Feishu Bridge" "飞书 ↔ ChatIR；N 连接/热插；入站经 identityBindingIndex.resolve" "Node.js @utlra/feishu-bridge" {
+                properties {
+                    "path" "packages/feishu-bridge"
+                    "horizon.intention" "多 app 飞书机器人适配；非单例；Typing=reaction"
+                    "horizon.in" "长连接事件; postMessage; channelConnectionRegistry 连接集"
+                    "horizon.out" "ChatIRInboundEvent（sender 经 resolve）; REST send; reaction Typing"
+                    "horizon.deps" "chat-ir; channelConnectionRegistry; identityBindingIndex"
+                    "horizon.test.unit" "api-client.test.ts; inbound.test.ts; feishu-channel.test.ts; connector.test.ts; thread-mapper.test.ts"
+                    "horizon.status" "✅ P2b（长连接事件源 = @larksuiteoapi/node-sdk 可选依赖，未装时热插显式报错）"
+                    "horizon.adl" "doc/structurizr/IDENTITY-CROSS-CHANNEL.md §5"
+                    "horizon.status" "⏳ P2；P0 先身份认同"
+                }
+            }
+
             chatServer = container "Chat Server" "本地 IM 服务：REST + WS 消息枢纽（大群/私聊）" "Node.js apps/chat-server" {
                 properties {
                     "path" "apps/chat-server"
@@ -169,6 +191,9 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         user -> discord "使用 Discord 客户端" "Discord 桌面/移动客户端" {
             tags "http,ws"
         }
+        user -> feishu "使用飞书客户端" "飞书桌面/移动客户端" {
+            tags "http,ws"
+        }
         user -> localWebChatIm "使用 Web Chat 浏览器" "HTTPS/WSS" {
             tags "http,ws"
         }
@@ -176,6 +201,12 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "ws,http"
         }
         kuroneko -> discord "出站回复" "REST" {
+            tags "http"
+        }
+        feishu -> kuroneko "入站消息 / 事件（多连接）" "长连接/Webhook" {
+            tags "ws,http"
+        }
+        kuroneko -> feishu "出站回复 / reaction Typing" "HTTPS" {
             tags "http"
         }
         localWebChatIm -> kuroneko "ChatIR 入站、StructuredReply 出站" "HTTP/WS" {
@@ -240,6 +271,23 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "import"
         }
         kuroneko.discordBridge -> discord "messages.create" "HTTPS" {
+            tags "http"
+        }
+
+        // ── L2 飞书路径（✅ P2b；见 IDENTITY-CROSS-CHANNEL §5）────────
+        feishu -> kuroneko.feishuBridge "im.message.receive 等" "长连接" {
+            tags "ws"
+        }
+        kuroneko.feishuBridge -> kuroneko.chatIrLib "resolve(channel_key) + seenTracker" "npm import" {
+            tags "import"
+        }
+        kuroneko.feishuBridge -> kuroneko.agentServer "ChatIRInboundEvent（canonical sid）" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer -> kuroneko.feishuBridge "postMessage / sendActivity(Typing reaction)" "in-process" {
+            tags "import"
+        }
+        kuroneko.feishuBridge -> feishu "messages + reactions" "HTTPS" {
             tags "http"
         }
 
@@ -374,6 +422,27 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "import"
         }
         kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.memoryBlockStore "memory_block_* list/put/bind" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.identityLinkService "identity_link_request / status（不直接改映射）" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.channelConnectionRegistry "feishu_channel_add/list/remove" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.identityLinkService -> kuroneko.chatIrLib "linkMerge / resolve via identityBindingIndex" "npm import" {
+            tags "import"
+        }
+        kuroneko.agentServer.identityLinkService -> kuroneko.agentServer.outerBrainFacade "投递确认消息（经 imClient Fan-in）" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.channelConnectionRegistry -> kuroneko.agentServer.memoryBlockStore "secret_ref → keychain" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.channelConnectionRegistry -> kuroneko.feishuBridge "createFeishuConnector.connect / destroy" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.outerBrainFacade -> kuroneko.chatIrLib "入站 sender 经 identityBindingIndex.resolve" "npm import" {
             tags "import"
         }
         kuroneko.agentServer.memoryBlockStore -> drive9 "vault/blocks entries" "HTTPS" {
@@ -636,7 +705,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
     views {
         systemContext kuroneko "01-L1-SystemContext" {
-            include user operator discord localWebChatIm brainMonitoring kuroneko llm mem9 drive9
+            include user operator discord feishu localWebChatIm brainMonitoring kuroneko llm mem9 drive9
             autolayout lr
         }
 
@@ -650,13 +719,19 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             autolayout lr
         }
 
+        container kuroneko "03b-L2-Feishu-path" {
+            title "L2 飞书路径（多连接 + resolve）"
+            include user feishu kuroneko.feishuBridge kuroneko.chatIrLib kuroneko.agentServer
+            autolayout lr
+        }
+
         container kuroneko "04-L2-WebChat-path" {
             include user kuroneko.webChat kuroneko.chatServer kuroneko.webchatProtocolLib kuroneko.webchatBridge kuroneko.chatIrLib kuroneko.agentServer kuroneko.workspaceKit kuroneko.innerWorker
             autolayout tb
         }
 
         container kuroneko "05-L2-Libraries" {
-            include kuroneko.chatIrLib kuroneko.workspaceKit kuroneko.webchatProtocolLib kuroneko.agentServer kuroneko.discordBridge kuroneko.webchatBridge kuroneko.chatServer kuroneko.webChat
+            include kuroneko.chatIrLib kuroneko.workspaceKit kuroneko.webchatProtocolLib kuroneko.agentServer kuroneko.discordBridge kuroneko.webchatBridge kuroneko.feishuBridge kuroneko.chatServer kuroneko.webChat
             autolayout lr
         }
 
@@ -667,8 +742,14 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "07-L3-Outer-Inbound-IM" {
             title "L3 Outer — IM 入站（Facade 路径）"
-            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.inboundKpiRouter kuroneko.agentServer.imIntentClassifier kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.memoryBlockStore kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiRegistry kuroneko.agentServer.outerToolExecutor
+            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.inboundKpiRouter kuroneko.agentServer.imIntentClassifier kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.memoryBlockStore kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiRegistry kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.identityLinkService kuroneko.agentServer.channelConnectionRegistry
             autolayout tb
+        }
+
+        component kuroneko.agentServer "07c-L3-Outer-Identity-Link" {
+            title "L3 Outer — 跨渠道身份认同 + 通道注册"
+            include kuroneko.agentServer.identityLinkService kuroneko.agentServer.channelConnectionRegistry kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.memoryBlockStore kuroneko.agentServer.outerBrainFacade
+            autolayout lr
         }
 
         component kuroneko.agentServer "07b-L3-Outer-Inbound-HTTP" {

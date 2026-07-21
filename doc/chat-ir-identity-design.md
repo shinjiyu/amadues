@@ -1,8 +1,8 @@
 # 聊天层 IR 与身份子系统设计
 
-**版本**：v2（与代码现状对齐）
-**最近更新**：2026-05-11
-**实施状态**：设计 ≈ 95% 已落地；下文每节标注代码位置与未实施项。
+**版本**：v2.1（跨渠道认同改以 Structurizr ADL 为准）
+**最近更新**：2026-07-16
+**实施状态**：设计 ≈ 95% 已落地；跨渠道同人运行时见 [`structurizr/IDENTITY-CROSS-CHANNEL.md`](./structurizr/IDENTITY-CROSS-CHANNEL.md)（⏳ 实现）。
 
 > 本文档既是设计稿，也是与现状的对照表。每节末尾的「实现状态」给出代码引用与已知差距。
 
@@ -15,7 +15,7 @@
 - **多说话者**：每条消息显式带 `sender_sid`，废弃 user/assistant 二元假设。
 - **出站结构化**：LLM 输出受 `reply.v1` schema 约束，渲染器再转渠道 wire，避免格式漂移。
 - **agent 与 IM 解耦**：agent 业务代码面对 `ChatIRChannel` interface（3 方法 + 1 callback），不依赖任何具体渠道。当前唯一外部实现是 `DiscordChannel`（直接对接 Discord Gateway / REST），未配 Discord 时有内置 `NullChatIRChannel` 兜底。详见 §10.1。
-- **跨 IM 身份统一**：schema 层 ready（`bindings: ChannelBinding[]`），运行时仅做到 per-channel SID + 占位 bindings；**合并 API 与触发机制未实现**（详见 §11）。
+- **跨 IM 身份统一**：认知层 = `channel_key → internal_sid`；同人事实源 = **双边确认**（[`IDENTITY-CROSS-CHANNEL.md`](./structurizr/IDENTITY-CROSS-CHANNEL.md)）。当前代码仍 per-channel；见 §11。
 
 ---
 
@@ -745,60 +745,46 @@ DiscordChannel.onMessage（client.ts → handleDiscordMessage）
 
 ## 11. 跨 IM 身份统一现状（重要）
 
+> **运行时权威（2026-07-16）**：[`doc/structurizr/IDENTITY-CROSS-CHANNEL.md`](../structurizr/IDENTITY-CROSS-CHANNEL.md)。  
+> 本节保留历史背景；**同人事实源 = 双边确认状态机（或 admin）**，不是 LLM，也不是单方在新渠道自称。
+
 ### 11.1 用户最初的需求
 
 > 同一个真实的人，在 Discord、飞书、Slack 等不同渠道发消息，应被识别为同一个身份；agent 应能跨渠道回忆 / 称呼 / 关联他。
 
-### 11.2 schema 层 ✅ 完备
+### 11.2 schema 层 ✅ 完备；映射索引 ⏳
 
-`IdentityRecord.bindings: ChannelBinding[]` 字段在；**一条 SID 可挂 N 个渠道绑定**：
+`IdentityRecord.bindings: ChannelBinding[]` 字段在（档案/反查视图）。  
+**认知层权威结构**（ADL）：`channel_key → internal_sid`（`identityBindingIndex`）。
 
-```typescript
-{
-  sid: "idp:user:01J8X...",
-  bindings: [
-    { channel: "discord", native_user_id: "1234567890" },
-    { channel: "feishu",  native_user_id: "ou_xxxxx" },
-    { channel: "slack",   native_user_id: "U12345" },
-  ],
-}
-```
+### 11.3 运行时层（升级目标）
 
-### 11.3 运行时层 ⚠️ 只跑了 50%
+**当前代码**仍多为 per-channel SID（`discord:user:…`），入站未统一 `resolve`。  
 
-**当前 SID 编码是渠道前缀化的**：
+**目标行为**（ADL P0）：
 
-```21:24:packages/discord-bridge/src/identity-mapper.ts
-export function discordUserToSid(user: DiscordUserShape): string {
-  if (user.bot) return `idp:agent:discord-bot:${user.id}`;
-  return `discord:user:${user.id}`;
-}
-```
+1. 入站：`channel_key` → `resolve` → `internal_sid`
+2. 跨渠道合并：仅 `identityLinkService` pending → 对端确认 → `linkMerge`
+3. Agent 可发起 request / 查 status；**禁止**模型直接改映射
 
-意味着：
-- Discord 用户张三 → `discord:user:1234567890`
-- 同一个张三在飞书 → 假设有飞书桥，会是 `feishu:user:ou_xxxxx`
-- **当前两条 SID 独立存在，永不自动合并**
+### 11.4 实现缺口（与 ADL §9 对齐）
 
-每条 SID 的 `bindings` 数组只有自己渠道的那条 binding。**bindings 字段是"未来时"占位**。
-
-### 11.4 实现"跨 IM 身份统一"还差的能力
-
-| 缺口 | 含义 | 工作量 |
+| 缺口 | 含义 | 状态 |
 |---|---|---|
-| **Identity merge / link API** | `POST /api/identity/link { source_sid, target_sid }`：把 source 的 bindings 合并到 target，再把消息表里 `sender_sid = source` 的全部改写为 target（或建 alias 表）| 中等：要处理消息表里所有引用；考虑 message_id 不变性 |
-| **触发合并的方式** | 三选一或组合：(a) 用户在 IM web 自己点合并；(b) 同邮箱 / 同手机号映射；(c) agent 推断后建议合并 | 看选哪种；UI 模式最简单 |
-| **SID 编码迁移** | 当前 `discord:user:xxx` 与"理想"`idp:01J8X...`（渠道无关 ULID）不一致；合并时要么沿用旧 SID 加 alias，要么全局 rewrite | 大：需要数据迁移工具 |
+| **identityBindingIndex** | `channel_key → sid` 落盘 + resolve/bind | ⏳ P0 |
+| **identityLinkService** | 双边确认；唯一日常 commit | ⏳ P0 |
+| **入站强制 resolve** | 各桥 / Facade | ⏳ P0 |
+| **SID 迁移** | 渐进 `idp:user:<ulid>` | P0 过渡期可保留旧 sid 作值 |
+| **channelConnectionRegistry + 飞书 N 连接** | 热插 | ⏳ P2（非身份核心） |
 
 ### 11.5 真实语义澄清
 
-**当前实操语义其实是 "per-channel identity"，不是真正的"跨渠道统一 identity"**。
+**当前实操语义**仍是 "per-channel identity"。  
+**ADL 目标语义**：内部 sid 稳定；渠道键只在映射表；同人仅经双边确认。
 
-只有以下两类 SID 是渠道无关的（按规划意图）：
+只有以下两类 SID 长期渠道无关（按规划意图）：
 - `idp:agent:assistant`（主助手）—— 由 `UTLRA_PRIMARY_AGENT_SID` 配置
-- `idp:user:demo`（demo 模式下的种子用户）
-
-其他人类用户的 SID 全部是渠道前缀化的。
+- `idp:user:…`（人类内部身份，含 ULID）
 
 ---
 
@@ -827,7 +813,7 @@ export function discordUserToSid(user: DiscordUserShape): string {
 
 ### 12.3 设计有、代码也没有（最大缺口）
 
-**跨 IM 身份统一**的运行时合并能力（§11.4）。
+**跨 IM 身份统一**运行时（映射索引 + 双边确认）——权威与分期见 [`structurizr/IDENTITY-CROSS-CHANNEL.md`](./structurizr/IDENTITY-CROSS-CHANNEL.md) §9。
 
 ---
 
@@ -857,3 +843,4 @@ export function discordUserToSid(user: DiscordUserShape): string {
 | **2026-05-11** | **v2 与代码现状对齐**：每节补"实现状态"与代码引用；增补 §2.5 主助手 SID 配置 / §2.6 Demo 开放模式 / §10 运行时物理形态 / §11 跨 IM 身份统一现状（重要）/ §12 缺口汇总 / §13 实测 SID 编码举例。明确 `bindings` 字段当前为占位，跨渠道合并未实施。 |
 | 2026-05-14 | §3.5 时间字段约定（强制 ISO 8601 with offset）；§10.1 抽 `ChatIRSeenTracker`：channel 接口缩到 3 方法，反 loop / 新鲜度查询由共享 tracker 提供（chat IR runtime 与具体渠道实现解耦） |
 | 2026-05-11 | §5.2.1 新增：`attach_asset_ids` 运行时语义（自动展开为 attachment parts + 来源合法性校验 + 静默剔除降级）。详细执行规则见独立子协议 `doc/protocols/inner-brain-deliverables.md` |
+| 2026-07-16 | v2.1 §11 / TL;DR：跨渠道认同以 Structurizr [`IDENTITY-CROSS-CHANNEL.md`](./structurizr/IDENTITY-CROSS-CHANNEL.md) 为运行时权威（映射表 + 双边确认；Agent 不裁决） |

@@ -17,8 +17,11 @@
 | **方案参考（P0）** | **本地** | `memory.json` → `plan_references[]` | Designer `search_task_plans` | Designer 编排读；**不进** facts / drive9；见 [`TASK-PLAN-REFERENCE.md`](./TASK-PLAN-REFERENCE.md) |
 | **Memory Block** | **本地** | `DATA_ROOT/vault/blocks/`（索引 + entries） | 外脑 `memory_block_*` | 外脑 CRUD；**不**上 drive9/mem9 |
 | **Belief 修订索引** | 本地 JSON | `DATA_ROOT/belief/{agentSid}.json` | `memory-belief-reconcile`（用户取消/完成） | `read_memory` 折叠提示 |
+| **身份映射索引** | 本地 JSON | `DATA_ROOT/identity/channel-bindings.json` | **仅** `identityBindingIndex`（经 `identityLinkService` commit 或首次 upsert） | 桥入站 `resolve`；见 [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
+| **身份 link pending** | 本地 JSON | `DATA_ROOT/identity/link-pending/` | `identityLinkService` | confirm/reject/expire |
+| **IM 通道连接表** | 本地 JSON | `DATA_ROOT/channels/connections.json` | `channelConnectionRegistry` | boot + 热插；`secret_ref` → keychain |
 
-专篇：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md) · [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)
+专篇：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md) · [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) · [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md)
 
 ## 分工原则
 
@@ -27,6 +30,7 @@
    - K/S/P：`knowledgeRetrieval` → **仅** repository（不走 drive9 grep）  
    - 任务/对话摘要：`outerMemory` → mem9  
    - 结构化长期 KV：**`memoryBlockStore`**（Cookie 等 **不进** mem9）
+   - **跨渠道同人**：`identityBindingIndex` + `identityLinkService`（双边确认）；**禁止** LLM 直接改映射
 
 2. **内脑 burst（legacy 三件套）**  
    - 战术：`.brain/*`（BrainFS）  
@@ -48,6 +52,7 @@
    - `workspace-kit` **import** mem9 / drive9  
    - `outer/*`（除门面模块）**直 import** mem9/drive9 client  
    - secret 全文 **ingest** 到 mem9 或贴进 IM 长期存储  
+   - **跨渠道身份**：模型或桥**绕过** `identityLinkService` 把他人 `channel_key` 绑到任意 sid（含「B 自称是 A」）  
    - **DyFlow**：baseNode / Designer prompt **直读 NodeDef 正文**（应只通过 Assembler 装配后再 ref LocalNode）  
    - **DyFlow**：任何模块**绕过 `nodeDefDrive9Store`** 直访 drive9 `/nodes/shared/`
 
@@ -60,6 +65,8 @@
 | **Belief 对账** | `outer/memory-belief-reconcile.ts` |
 | K/S/P 检索 | `outer/knowledge-retrieval.ts` |
 | **Memory Block** | `outer/memory-block-store.ts` · `outer/memory-block-tools.ts` |
+| **身份映射 / 双边确认** | `chat-ir` identityBindingIndex（⏳）· `outer/identity-link-service.ts`（⏳）· [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
+| **IM 通道连接表** | `outer/channel-connection-registry.ts`（⏳） |
 | 内脑写 mem9 | `openkuroneko/tools/definitions/write-memo.ts` |
 | 内脑写技能（legacy） | `openkuroneko/tools/definitions/write-skill.ts` |
 | drive9 技能（legacy） | `drive9/skill-drive9-store.ts` |

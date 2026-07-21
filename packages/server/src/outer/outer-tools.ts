@@ -64,7 +64,15 @@ import {
 } from '../self-update/session.js';
 import { PerformanceGoalEngine } from '../performance-goals/engine.js';
 import { MEMORY_BLOCK_TOOL_DEFS, dispatchMemoryBlockTool } from './memory-block-tools.js';
+import { IDENTITY_LINK_TOOL_DEFS, dispatchIdentityLinkTool } from './identity-link-tools.js';
+import {
+  CHANNEL_CONNECTION_TOOL_DEFS,
+  dispatchChannelConnectionTool,
+} from './channel-connection-tools.js';
 import type { MemoryBlockStore } from './memory-block-store.js';
+import type { IdentityLinkService } from './identity-link-service.js';
+import type { ChannelConnectionRegistry } from './channel-connection-registry.js';
+import type { IdentityBindingIndex } from '@utlra/chat-ir';
 import type { IActionLogStore } from '../heartbeat/types.js';
 import {
   loadAutonomyPolicy,
@@ -645,6 +653,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
     },
   },
   ...MEMORY_BLOCK_TOOL_DEFS,
+  ...IDENTITY_LINK_TOOL_DEFS,
+  ...CHANNEL_CONNECTION_TOOL_DEFS,
 ];
 
 // ── 工具执行上下文 ──────────────────────────────────────────────────────────
@@ -685,6 +695,14 @@ export interface OuterToolContext {
   knowledgeDrive9Store?: KnowledgeDrive9Store;
   /** Memory Block 存储（keychain 等结构化长期记忆） */
   memoryBlockStore?: MemoryBlockStore;
+  /** 跨渠道同人绑定服务（identity_link_request/status 工具）ADL IDENTITY-CROSS-CHANNEL.md */
+  identityLinkService?: IdentityLinkService;
+  /** channel_key → internal_sid 映射索引（identity_link 工具需要） */
+  bindingIndex?: IdentityBindingIndex | null;
+  /** IM 通道连接表（feishu_channel_add/list/remove 工具）ADL IDENTITY-CROSS-CHANNEL.md §5 */
+  channelConnectionRegistry?: ChannelConnectionRegistry;
+  /** 通道热插管理白名单（UTLRA_CHANNEL_ADMIN_SIDS） */
+  channelAdminSids?: ReadonlySet<string>;
   /**
    * 当前对话由 IM 人类入站触发（webchat/discord 等）。
    * 此上下文内 set_goal **不受** maxRunningInnerBrains 槽位限制（用户直派优先）。
@@ -2376,6 +2394,10 @@ export async function executeOuterTool(
     default: {
       const mb = await dispatchMemoryBlockTool(name, args, ctx);
       if (mb) return mb;
+      const il = await dispatchIdentityLinkTool(name, args, ctx);
+      if (il) return il;
+      const cc = await dispatchChannelConnectionTool(name, args, ctx);
+      if (cc) return cc;
       return { replied: false, output: `未知工具：${name}` };
     }
   }

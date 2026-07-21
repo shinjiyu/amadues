@@ -23,6 +23,7 @@ import {
   type ChatIRInboundMessage,
   type ChatIROutboundBody,
   type ChatIRSeenTracker,
+  type IdentityBindingIndex,
   type IdentityRegistry,
   type LooseThreadStore,
   type MentionResolutionOptions,
@@ -49,6 +50,8 @@ export interface WebChatChannelOptions {
   agentSid: string;
   dataRoot: string;
   registry: IdentityRegistry;
+  /** 跨渠道身份映射；入站 resolve 用 */
+  bindingIndex?: IdentityBindingIndex | null;
   assetStore: ChatAssetStore;
   loadThreads: () => LooseThreadStore;
   saveThreads: (data: LooseThreadStore) => void;
@@ -304,6 +307,7 @@ export class WebChatChannel implements ChatIRChannel {
         config: this.opts.config,
         agentSid: this.opts.agentSid,
         registry: this.opts.registry,
+        ...(this.opts.bindingIndex != null ? { bindingIndex: this.opts.bindingIndex } : {}),
         assetStore: this.opts.assetStore,
         loadThreads: this.opts.loadThreads,
         saveThreads: this.opts.saveThreads,

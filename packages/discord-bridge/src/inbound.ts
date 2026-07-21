@@ -17,9 +17,11 @@ import {
   MessageRecordSchema,
   createThreadRecord,
   ThreadRecordSchema,
+  resolveInboundSenderSid,
   type ChatAssetStore,
   type ChatIRInboundEvent,
   type ChatIRInboundMessage,
+  type IdentityBindingIndex,
   type IdentityRegistry,
   type LooseThreadStore,
   type MessageRecord,
@@ -45,6 +47,7 @@ export interface InboundDeps {
   agentSid: string;
   botUserId: string;
   registry: IdentityRegistry;
+  bindingIndex?: IdentityBindingIndex | null;
   assetStore: ChatAssetStore;
   loadThreads: () => LooseThreadStore;
   saveThreads: (data: LooseThreadStore) => void;
@@ -89,11 +92,16 @@ export async function handleDiscordMessage(
   const threadKind: 'dm' | 'group' = isDm ? 'dm' : 'group';
 
   const senderShape = toUserShape(msg);
-  const senderSid = upsertDiscordIdentity(deps.registry, senderShape, guildId);
+  const provisionalSid = upsertDiscordIdentity(deps.registry, senderShape, guildId);
+  const senderSid = resolveInboundSenderSid(
+    deps.bindingIndex,
+    { channel: 'discord', native_user_id: senderShape.id },
+    provisionalSid,
+  );
 
   for (const u of msg.mentions.users.values()) {
     if (u.id === deps.botUserId) continue;
-    upsertDiscordIdentity(
+    const mentionProv = upsertDiscordIdentity(
       deps.registry,
       {
         id: u.id,
@@ -102,6 +110,11 @@ export async function handleDiscordMessage(
         bot: u.bot,
       },
       guildId,
+    );
+    resolveInboundSenderSid(
+      deps.bindingIndex,
+      { channel: 'discord', native_user_id: u.id },
+      mentionProv,
     );
   }
 

@@ -10,8 +10,9 @@
 
 **L1 约定（系统上下文）**：
 
-- **用户**只经 **IM 接口**（`discord`、`localWebChatIm`）使用系统，**不**直连 `kuroneko` Agent API。
+- **用户**只经 **IM 接口**（`discord`、`feishu`、`localWebChatIm`）使用系统，**不**直连 `kuroneko` Agent API。
 - **本地 IM** 在 L1 为 `localWebChatIm`，L2 由 `chatServer` + `webChat` 实现。
+- **飞书** 在 L1 为 `feishu`，L2 由 `feishuBridge` + `channelConnectionRegistry`（N 连接/热插）实现；身份经 `identityBindingIndex.resolve`。见 [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md)。
 - **内外脑监控** 在 L1 为 `brainMonitoring`，L2 由 `opsConsole` + `performanceDashboard` 实现；**运维/观察者** 与终端用户分离。
 
 ---
@@ -60,6 +61,8 @@
 | **autonomyJudge** | **闲忙判定（hard gates）** | `outer/environment/autonomy-judge.ts` | snapshot+policy → idle/busy |
 | **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
 | **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 由 kpiManager 派）** | `outer/casual-chat-dispatcher.ts` | verdict(idle) + personality → post_to_im |
+| **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
+| **channelConnectionRegistry** | **IM 多连接 + 飞书热插** | `outer/channel-connection-registry.ts` | connections.json + keychain；N 条 feishu（connector 已注册） |
 | **imIntentClassifier** | **入站意图（默认 chat / followup / ad-hoc / kpi_update / kpi_create-ongoing）** | `outer/inbound/im-intent-classifier.ts` | IM 文本 + 上下文 → intent；见 IM-INBOUND-INTENT-ROUTING.md |
 | **subKpiDecomposer** | **【已删除】扁平 KPI** | — | 见 KPI-MANAGER-LAYER.md §2.1 |
 | **kpiBurstState** | **多 burst 资格 + 并行上限 + R7 连败计数** | `outer/kpi/kpi-burst-state.ts` | R1/R2；`maxParallelBurstsPerKpi`；`countConsecutiveBurstFailures` |
@@ -186,10 +189,11 @@ DESIGN → RUN → AWAITING → DONE
 
 | 库 | path |
 |----|------|
-| chatIrLib | `packages/chat-ir` |
+| chatIrLib | `packages/chat-ir`（含 **identityBindingIndex**，见 IDENTITY-CROSS-CHANNEL） |
 | **workspaceKit** | `packages/server/src/workspace-kit` — **外脑专用**（P3a 内联，原 `@utlra/core`）。内脑经 **file** 共享 `workDir`，不 import |
 | webchatProtocolLib | `packages/webchat-protocol` |
 | webchatBridge | `packages/webchat-bridge` — 出站 `asset:` → chat-server `/uploads` |
+| **feishuBridge** | `packages/feishu-bridge` — 多连接（thread_id 编入 app_id）；入站 resolve（union_id + scope=app_id）；Typing=reaction；长连接 SDK 可选依赖 |
 
 ---
 
@@ -211,3 +215,5 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-06-02 | ~~T0 工具晋升 `workspaceScriptTools`~~（已于 2026-06-06 移除，见下行） |
 | 2026-06-06 | **移除 T0 工具晋升** `workspaceScriptTools` / `register_workspace_script_tool` / `ws_*`（[`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §7b 固化收成两层 facts/LocalNode；生产零调用）|
 | 2026-06-02 | DyFlow 内脑重构 ADL：[`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) + [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md)；新内脑模块 designer/runner/baseNodeExecutor/nodeCreatorExecutor/localNodeStore/memoryStore/designerToolRegistry/presetSeeder/nodeAbstractor/nodeAssembler；新外脑模块 nodeDefDrive9Store/nodeDefEviction；视图 `09b-L3-Inner-DyFlow` + `14-L2-DyFlow-Node-Lifecycle`；旧三件套（decomposer/executor/attributor/blockResolver）标 Deprecated-DyFlow；`INNER-EXECUTE-INCREMENTAL.md` 已 superseded |
+| 2026-07-16 | 跨渠道身份认同 ADL：[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md)；模块 `identityLinkService` / `channelConnectionRegistry`；库侧 `identityBindingIndex`；L2 `feishu` + `feishuBridge`（⏳）；视图 `03b` / `07c` |
+| 2026-07-17 | P2b：`feishuBridge`（`packages/feishu-bridge`）落地并注册 connector（kind=feishu）；飞书路径 ⏳ 全部转 ✅ |

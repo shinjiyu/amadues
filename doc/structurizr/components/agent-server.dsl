@@ -585,3 +585,33 @@
                         "horizon.note" "见 RESOURCE-AWARENESS-AUTONOMY.md §8.3；KPI 派遣见 KPI-MANAGER-LAYER.md"
                     }
                 }
+
+                identityLinkService = component "Identity Link Service" "【跨渠道同人】双边确认状态机；唯一日常 commit 映射的入口；Agent 不裁决" "TypeScript" {
+                    tags "Outer-Module" "Identity"
+                    properties {
+                        "path" "packages/server/src/outer/identity-link-service.ts"
+                        "horizon.intention" "pending_link → 对端确认 → identityBindingIndex.linkMerge；拒绝单方自称与 LLM 改表"
+                        "horizon.in" "identity_link_request；confirm/reject 回调（channel_key 鉴权）；adminForce"
+                        "horizon.out" "pending 落盘；确认消息投递；committed 映射"
+                        "horizon.deps" "chat-ir identityBindingIndex；imClient；审计"
+                        "horizon.adl" "doc/structurizr/IDENTITY-CROSS-CHANNEL.md §3"
+                        "horizon.test.unit" "identity-link-tools.test.ts; identity-link-inbound.test.ts"
+                        "horizon.test.integration" "identityLinkService.component.integration.test.ts"
+                        "horizon.status" "✅ P0+P1（工具 + 入站确认口令）"
+                    }
+                }
+
+                channelConnectionRegistry = component "Channel Connection Registry" "【IM 连接表】N 条飞书等连接；运行时热插；secret 仅 keychain ref" "TypeScript" {
+                    tags "Outer-Module" "Identity"
+                    properties {
+                        "path" "packages/server/src/outer/channel-connection-registry.ts"
+                        "horizon.intention" "飞书通道非单例；聊天交付 app 凭证 → add client；非身份同人裁决"
+                        "horizon.in" "feishu_channel_add/list/remove；boot load connections.json"
+                        "horizon.out" "connection 状态；启动/停止 bridge client；agent feishu binding"
+                        "horizon.deps" "memoryBlockStore keychain；feishuBridge（⏳）；identityBindingIndex（bot bind）"
+                        "horizon.adl" "doc/structurizr/IDENTITY-CROSS-CHANNEL.md §5"
+                        "horizon.test.unit" "channel-connection-registry.test.ts"
+                        "horizon.note" "入站合流/出站路由由 chat-ir FanInChatIRChannel 承担（fan-in-channel.test.ts）；registry 只管连接元数据与生命周期"
+                        "horizon.status" "✅ P2+P2b（registry+Fan-in+feishu connector 全落地）"
+                    }
+                }

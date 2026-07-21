@@ -88,6 +88,26 @@
 | **frameworkBenchmarkHarness** | ✅ `token-estimate.test.ts` | ✅ `framework-benchmark.component.integration.test.ts` | — | ADL [`FRAMEWORK-BENCHMARK.md`](./FRAMEWORK-BENCHMARK.md) · S1/S2 + `baseline.json` |
 | **nodeDefDrive9Store** | ✅ `node-def-drive9-store.test.ts`（put/get/index/dedupe/search/tombstone） | — | — | ADL [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §5.4（P1，注入 Drive9Fs） |
 | **nodeDefEviction** | ✅ `node-def-eviction.test.ts`（score + cold + quota） | — | — | dedupe + quota + cold tombstone（P2） |
+| **identityLinkService** | ✅ `identity-link-tools.test.ts` + `identity-link-inbound.test.ts`（P1 工具与确认口令） | ✅ `identityLinkService.component.integration.test.ts` | — | ADL [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §3；双边确认；Agent 不裁决 |
+| **channelConnectionRegistry** | ✅ `channel-connection-registry.test.ts` + `channel-connection-tools.test.ts` | — | — | ADL §5；飞书 N 连接热插；connector 注入式（kind=feishu 已注册） |
+
+## Chat IR 库（`chatIrLib`）
+
+| ADL 模块 ID | 单元测 | 模块测 | 备注 |
+|-------------|--------|--------|------|
+| ChatIRSeenTracker | ✅ `seen-tracker.test.ts` | — | freshCheck @ 语义（亦被 threadOrchestrator 引用） |
+| **identityBindingIndex** | ✅ `identity-binding-index.test.ts` + `resolve-inbound-sender.test.ts` | ✅ `inbound-sender-canonicalize.component.test.ts`（server） | P0b 桥+Facade 接线 |
+| **FanInChatIRChannel** | ✅ `fan-in-channel.test.ts`（合流/路由/热插/default 回退） | — | ADL [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §5.2 装配 |
+
+## 飞书桥（`feishuBridge` · `packages/feishu-bridge`）
+
+| 模块 | 单测 | 组件测 | 备注 |
+|---|---|---|---|
+| **FeishuApiClient** | ✅ `api-client.test.ts`（token 缓存/续取、消息、reaction、probe 失败） | — | fake fetch，不出网 |
+| **handleFeishuInbound** | ✅ `inbound.test.ts`（union_id 稳定键、scope=app_id、去重、@bot、reply、降级） | — | ADL §5.1 |
+| **FeishuChannel** | ✅ `feishu-channel.test.ts`（事件源、出站路由、Typing reaction 生命周期） | — | Typing 模拟见 channel-bridge-guide §5.4 |
+| **createFeishuConnector** | ✅ `connector.test.ts`（探测、失败回滚、fan-in 入站约定） | — | 注册于 `index.ts` connectors map |
+| **thread-mapper** | ✅ `thread-mapper.test.ts` | — | `feishu:<app_id>:chat:<chat_id>` |
 
 ## 元宝 PSTune（`data-yuanbao` workspace · ADL [`BATTLE-TUNE-LOOP.md`](./BATTLE-TUNE-LOOP.md)）
 
@@ -162,3 +182,4 @@ npm run test:unit -w @utlra/server
 
 1. **CI nightly**（可选）`UTLRA_TEST_SPAWN_INNER=1` 跑真实内脑子进程
 2. **index** 子进程内再测 `POST /api/outer/inbound`（HTTP 契约，当前由 `outer-http-inbound.integration.test.ts` 覆盖）
+3. **P0 身份认同**（[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md)）：`identityBindingIndex` + `identityLinkService` 红测 → 实现 → 入站 resolve

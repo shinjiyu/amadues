@@ -14,9 +14,11 @@ import type {
 } from '../workspace-kit/index.js';
 import {
   ThreadRecordSchema,
+  canonicalizeInboundSenderSid,
   type ChatAssetStore,
   type ChatIRChannel,
   type ChatIRSeenTracker,
+  type IdentityBindingIndex,
   type IdentityRegistry,
   type LooseThreadStore,
 } from '@utlra/chat-ir';
@@ -28,6 +30,9 @@ import {
   resolveAwaitingInboundFromIm,
 } from './awaiting-inbound-resolver.js';
 import { tryStopInnerBrainsFromInbound } from './stop-inner-brain.js';
+import { tryHandleIdentityLinkInbound } from './identity-link-inbound.js';
+import type { IdentityLinkService } from './identity-link-service.js';
+import type { ChannelConnectionRegistry } from './channel-connection-registry.js';
 import {
   decideOuterShouldReply,
   isDmEmptyOrPlaceholderContent,
@@ -108,6 +113,8 @@ export interface ImInboundEvent {
   senderSid: string;
   message: {
     message_id: string;
+    /** 落库消息里的 sender；canonicalize 后若与 senderSid 不同会被覆写 */
+    sender_sid?: string;
     parts: Array<{ type: string; text?: string; [k: string]: unknown }>;
   };
   /** 线程参与者 SID 列表（由 WS 广播携带，可用于群/私聊判断） */
@@ -126,6 +133,14 @@ export interface OuterBrainDeps {
    */
   assetStore: ChatAssetStore;
   registry: IdentityRegistry;
+  /** 跨渠道映射；入站再 canonicalize 一次（桥漏接时的兜底） */
+  bindingIndex?: IdentityBindingIndex | null;
+  /** 同人绑定双边确认服务；入站「确认绑定 <id>」短路处理 + LLM 工具 */
+  identityLinkService?: IdentityLinkService;
+  /** IM 通道连接表（feishu 热插工具）ADL IDENTITY-CROSS-CHANNEL.md §5 */
+  channelConnectionRegistry?: ChannelConnectionRegistry;
+  /** 通道热插管理白名单 */
+  channelAdminSids?: ReadonlySet<string>;
   getEngine: (workspaceId: string) => InnerBrainEngine;
   workspaceStore: FilesystemWorkspaceStore;
   repoStore: FilesystemRepositoryStore;
@@ -365,7 +380,15 @@ export class OuterBrain {
   }
 
   private async _processInbound(ev: ImInboundEvent): Promise<void> {
-    const { threadId, senderSid, message, participantSids } = ev;
+    const threadId = ev.threadId;
+    const senderSid = canonicalizeInboundSenderSid(this.deps.bindingIndex, ev.senderSid);
+    const message =
+      senderSid === ev.message.sender_sid
+        ? ev.message
+        : { ...ev.message, sender_sid: senderSid };
+    const participantSids = (ev.participantSids ?? []).map((s) =>
+      canonicalizeInboundSenderSid(this.deps.bindingIndex, s),
+    );
     const {
       imClient,
       seenTracker,
@@ -412,6 +435,24 @@ export class OuterBrain {
     if (meta.threadKind === 'dm' && isDmEmptyOrPlaceholderContent(content)) {
       console.log(`[utlra][outer-brain] skip: dm_empty_or_placeholder`);
       return;
+    }
+
+    // ── Step 0.52: 「确认绑定/拒绝绑定 <pending_id>」确定性口令 → 短路处理 ──
+    // ADL IDENTITY-CROSS-CHANNEL.md §3.2：确认必须来自对端渠道账号本人，不走 LLM。
+    if (this.deps.identityLinkService && this.deps.bindingIndex && isHumanSender(senderSid)) {
+      const linkRes = await tryHandleIdentityLinkInbound(
+        { service: this.deps.identityLinkService, index: this.deps.bindingIndex },
+        senderSid,
+        content,
+      );
+      if (linkRes.handled) {
+        console.log(
+          `[utlra][identity-link] inbound ${linkRes.committed ? 'committed' : 'declined'} ` +
+            `sender=${senderSid} thread=${threadId}`,
+        );
+        await imClient.postMessage(threadId, { sender_sid: agentSid, text: linkRes.reply });
+        return;
+      }
     }
 
     // ── Step 0.55: 用户要求停任务 → 真 stop（先于 ask_user resolve，避免误唤醒）──
@@ -535,6 +576,10 @@ export class OuterBrain {
       skillDrive9Store: this.deps.skillDrive9Store,
       knowledgeDrive9Store: this.deps.knowledgeDrive9Store,
       memoryBlockStore: this.deps.memoryBlockStore,
+      identityLinkService: this.deps.identityLinkService,
+      bindingIndex: this.deps.bindingIndex,
+      channelConnectionRegistry: this.deps.channelConnectionRegistry,
+      channelAdminSids: this.deps.channelAdminSids,
       inboundHumanSid: isHumanSender(senderSid) ? senderSid : undefined,
     };
 

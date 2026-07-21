@@ -10,4 +10,7 @@
  * 数据模型与纯函数工具见 `@utlra/chat-ir/schemas` 与 `@utlra/chat-ir` 顶层。
  */
 export * from './identity-registry.js';
+export * from './identity-binding-index.js';
+export * from './resolve-inbound-sender.js';
+export * from './fan-in-channel.js';
 export * from './asset-store.js';

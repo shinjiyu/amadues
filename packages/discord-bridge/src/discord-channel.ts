@@ -20,6 +20,7 @@ import {
   type ChatIRInboundMessage,
   type ChatIROutboundBody,
   type ChatIRSeenTracker,
+  type IdentityBindingIndex,
   type IdentityRegistry,
   type MentionResolutionOptions,
   type LooseThreadStore,
@@ -41,6 +42,8 @@ export interface DiscordChannelOptions {
   dataRoot: string;
   /** 跨渠道共享：身份注册表（写 identities.json） */
   registry: IdentityRegistry;
+  /** 跨渠道身份映射；入站 resolve 用 */
+  bindingIndex?: IdentityBindingIndex | null;
   /** 跨渠道共享：附件存储（写 uploads/） */
   assetStore: ChatAssetStore;
   /** 跨渠道共享：threads.json 读写 */
@@ -81,6 +84,7 @@ export class DiscordChannel implements ChatIRChannel {
             agentSid: opts.agentSid,
             botUserId: this.botUserId,
             registry: opts.registry,
+            ...(opts.bindingIndex != null ? { bindingIndex: opts.bindingIndex } : {}),
             assetStore: opts.assetStore,
             loadThreads: opts.loadThreads,
             saveThreads: opts.saveThreads,

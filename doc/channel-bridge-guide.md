@@ -469,6 +469,25 @@ this.opts.seenTracker.track(threadId, {
 });
 ```
 
+### 5.4 活动信号（`sendActivity`，可选）
+
+`sendActivity(threadId, 'typing' | 'idle')` 是**可选扩展方法**（不在 `ChatIRChannel` 必选 3 方法内）：
+瞬时、不落库、best-effort——失败只记日志，绝不影响主流程。
+
+| 渠道 | 实现方式 |
+|---|---|
+| WebChat | REST `typing.relay`（原生 typing 指示） |
+| Discord | Gateway typing 事件（原生） |
+| **飞书** | **无 typing API → 用消息表情回复（reaction）模拟**（决策于 2026-07-15，沿用 OpenClaw 方案） |
+
+**飞书 reaction 模拟约定**：
+
+- 入站处理器记录每个 thread 最后一条人类消息的飞书 native `message_id`
+- `typing` → `POST /im/v1/messages/:message_id/reactions`，body `{"reaction_type": {"emoji_type": "Typing"}}`（官方就有 `Typing` 打字中表情；备选 `OnIt` / `OneSecond`），把返回 `reaction_id` 存 `Map<threadId, { messageId, reactionId }>`
+- `idle` → `DELETE /im/v1/messages/:message_id/reactions/:reaction_id`；`postMessage` 成功后也顺手撤（回复已发出 = 不再"打字"）
+- 权限：`im:message.reactions:write_only`（或 `im:message`）；频控 1000 次/分钟
+- 边界都按 best-effort 处理：消息被撤回（230110）、重启丢 `reaction_id`、重复 typing（Map 去重幂等）→ 只记日志
+
 ---
 
 ## 6. 在 agent 入口注入桥
@@ -506,7 +525,11 @@ outerBrain = new OuterBrain({ imClient: channel, seenTracker, /* ... */ });
 channel.start();
 ```
 
-**多渠道并行**：当前架构假设单 `channel` 实例。若需同时跑 Discord + 飞书，需要再写一个 `CompositeChatIRChannel` 把入站事件合流、出站按 thread 路由分发——不在本指南范围。
+**多渠道并行 / 飞书多连接**（已落地 2026-07-16）：进程唯一 imClient = `FanInChatIRChannel`（`@utlra/chat-ir/runtime`）；主渠道是它的 default 连接，`ChannelConnectionRegistry`（`packages/server/src/outer/channel-connection-registry.ts`）负责运行时热插更多连接（keychain secret_ref、探测失败回滚、bootLoad 重连）。新桥要接入多连接：实现 `ChannelConnector.connect(record, secret)` 返回 `{ channel, botNativeId }`，在 `index.ts` 的 `connectors` map 注册。入站回调用 `fanIn.makeInboundHandler(connectionId)`，出站自动按 thread→connection 路由（未知 thread 落 default）。权威设计：[`structurizr/IDENTITY-CROSS-CHANNEL.md`](./structurizr/IDENTITY-CROSS-CHANNEL.md) §5。
+
+**参考实现：`@utlra/feishu-bridge`**（2026-07-17 落地，`packages/feishu-bridge`）——上述全套约定的第一个完整范例：`createFeishuConnector`（探测 token+bot info、失败抛异常触发回滚）、thread_id 编入 app_id（`feishu:<app_id>:chat:<chat_id>`，多连接出站归属天然成立）、入站 `channel_key = {feishu, union_id∥open_id, scope=app_id}` 经 `resolveInboundSenderSid`、Typing = reaction 模拟（§5.4）、事件源接口 `FeishuEventSource` 可注入（生产 = 飞书长连接 SDK 可选依赖）。写新桥先抄它。
+
+**跨渠道同人**：入站 `sender_sid` 必须经 `identityBindingIndex.resolve`；同人绑定仅 `identityLinkService` 双边确认（或 admin），**不**由桥或 LLM 猜测。
 
 ---
 
@@ -543,3 +566,6 @@ channel.start();
 | 2026-05-12 | v2 删 IM Server：adapter 直接 implements `ChatIRChannel`，进程内调用 store/registry/asset |
 | 2026-05-13 | v2.1 §4.0 入站过滤合同表（adapter 该过滤什么 / 不该过滤什么）+ §5.2 加 `asset:<id>` 渲染范例；修 §4.5 `threadRecord` 上下文歧义 |
 | 2026-05-14 | v2.2 抽 `ChatIRSeenTracker`：桥不再自己实现 `countConsecutive*` / `hasAnother*`，只需在入站落库后 + 出站发送后各调一次 `seenTracker.track(...)`。channel 接口缩到 3 方法 |
+| 2026-07-15 | v2.3 新增 §5.4 活动信号：`sendActivity` 各渠道实现对照；确定飞书桥用 reaction（`emoji_type: "Typing"`）模拟打字指示 |
+| 2026-07-16 | v2.4 §6：多连接/飞书热插与跨渠道 resolve 改以 [`structurizr/IDENTITY-CROSS-CHANNEL.md`](./structurizr/IDENTITY-CROSS-CHANNEL.md) 为权威 |
+| 2026-07-17 | v2.5 §6：`@utlra/feishu-bridge` 落地，作为多连接桥参考实现 |
