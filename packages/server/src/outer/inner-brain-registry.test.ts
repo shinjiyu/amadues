@@ -71,3 +71,37 @@ describe('InnerBrainRegistry persistence', () => {
     expect(reloaded?.resumeCount).toBe(2);
   });
 });
+
+describe('InnerBrainRegistry.list sorted cache', () => {
+  it('keeps startedAt-desc order and reflects in-place field updates without reordering', () => {
+    const reg = new InnerBrainRegistry(makeRoot());
+    reg.register(baseRecord({ instanceId: 'ib-old', startedAt: '2026-06-01T00:00:00.000Z' }));
+    reg.register(baseRecord({ instanceId: 'ib-new', startedAt: '2026-06-03T00:00:00.000Z' }));
+    reg.register(baseRecord({ instanceId: 'ib-mid', startedAt: '2026-06-02T00:00:00.000Z' }));
+
+    expect(reg.list().map((r) => r.instanceId)).toEqual(['ib-new', 'ib-mid', 'ib-old']);
+
+    // 逐 tick 更新（非 startedAt）：顺序不变，且缓存反映最新字段
+    reg.update('ib-old', { ticks: 7, status: 'DONE' });
+    const after = reg.list();
+    expect(after.map((r) => r.instanceId)).toEqual(['ib-new', 'ib-mid', 'ib-old']);
+    expect(after.find((r) => r.instanceId === 'ib-old')?.ticks).toBe(7);
+  });
+
+  it('re-sorts after a new register invalidates the cache', () => {
+    const reg = new InnerBrainRegistry(makeRoot());
+    reg.register(baseRecord({ instanceId: 'ib-a', startedAt: '2026-06-01T00:00:00.000Z' }));
+    expect(reg.list().map((r) => r.instanceId)).toEqual(['ib-a']);
+    reg.register(baseRecord({ instanceId: 'ib-z', startedAt: '2026-06-09T00:00:00.000Z' }));
+    expect(reg.list().map((r) => r.instanceId)).toEqual(['ib-z', 'ib-a']);
+  });
+
+  it('reorders when startedAt itself changes via update', () => {
+    const reg = new InnerBrainRegistry(makeRoot());
+    reg.register(baseRecord({ instanceId: 'ib-a', startedAt: '2026-06-01T00:00:00.000Z' }));
+    reg.register(baseRecord({ instanceId: 'ib-b', startedAt: '2026-06-02T00:00:00.000Z' }));
+    expect(reg.list().map((r) => r.instanceId)).toEqual(['ib-b', 'ib-a']);
+    reg.update('ib-a', { startedAt: '2026-06-05T00:00:00.000Z' });
+    expect(reg.list().map((r) => r.instanceId)).toEqual(['ib-a', 'ib-b']);
+  });
+});

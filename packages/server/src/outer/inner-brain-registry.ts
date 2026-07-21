@@ -67,6 +67,12 @@ export interface TaskRecord {
 export class InnerBrainRegistry {
   private readonly registryPath: string;
   private readonly tasks: Map<string, TaskRecord> = new Map();
+  /**
+   * list() 的排序缓存（按 startedAt 降序）。startedAt 在注册后不可变，故只在
+   * 任务集合变化（register / _load）时失效；逐 tick 的 update() 复用同一对象引用、
+   * 不改变排序，无需失效——避免每 3s 轮询都对全部历史任务做 O(n log n) 排序。
+   */
+  private _sortedCache: TaskRecord[] | null = null;
 
   constructor(private readonly dataRoot: string) {
     this.registryPath = path.join(dataRoot, 'inner-brain-registry.json');
@@ -86,6 +92,8 @@ export class InnerBrainRegistry {
       if (migrated) this._save();
     } catch {
       // 文件损坏时忽略，从空状态启动
+    } finally {
+      this._sortedCache = null;
     }
   }
 
@@ -112,6 +120,7 @@ export class InnerBrainRegistry {
   /** 注册新任务 */
   register(record: TaskRecord): void {
     this.tasks.set(record.instanceId, record);
+    this._sortedCache = null;
     this._save();
   }
 
@@ -119,6 +128,11 @@ export class InnerBrainRegistry {
   update(instanceId: string, patch: Partial<TaskRecord>): void {
     const r = this.tasks.get(instanceId);
     if (!r) return;
+    // 逐 tick 的字段更新复用同一对象引用、不改排序，故不失效缓存；
+    // 仅当极少见地改动 startedAt（排序键）时才失效。
+    if (patch.startedAt != null && patch.startedAt !== r.startedAt) {
+      this._sortedCache = null;
+    }
     Object.assign(r, patch);
     this._save();
   }
@@ -128,11 +142,18 @@ export class InnerBrainRegistry {
     return this.tasks.get(instanceId);
   }
 
-  /** 返回所有任务，按启动时间降序 */
+  /**
+   * 返回所有任务，按启动时间降序。
+   *
+   * 结果带缓存（见 {@link _sortedCache}）；调用方请勿原地 mutate 返回数组
+   * （现有调用均为 `.filter()` / `.slice()`，会生成新数组）。
+   */
   list(): TaskRecord[] {
-    return Array.from(this.tasks.values()).sort(
+    if (this._sortedCache) return this._sortedCache;
+    this._sortedCache = Array.from(this.tasks.values()).sort(
       (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
     );
+    return this._sortedCache;
   }
 
   /** 返回当前运行中的任务 */

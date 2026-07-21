@@ -7,6 +7,7 @@ import {
   readDyflowMode,
   seedDyflowBurstState,
 } from '../openkuroneko/inner-brain/status-projection.js';
+import { tailFileLines } from '../pi-mono/tail-file.js';
 import type { RunManifest } from './manifest.js';
 import { emptyManifest } from './manifest.js';
 import { FilesystemWorkspaceStore } from './workspace-store.js';
@@ -526,9 +527,8 @@ export class InnerBrainEngine {
   }
 
   readTelemetryTail(maxLines = 50): string[] {
-    const raw = this.store.readTextFile(this.workspaceId, TELEMETRY_FILE);
-    if (!raw) return [];
-    return raw.trim().split('\n').filter(Boolean).slice(-maxLines);
+    // 真 tail：trace.jsonl 为 append-only 且无 rotation，避免整文件读
+    return tailFileLines(path.join(this.workDir(), TELEMETRY_FILE), maxLines);
   }
 }
 

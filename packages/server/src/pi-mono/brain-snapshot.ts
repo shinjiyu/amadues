@@ -5,6 +5,7 @@ import {
   buildDyflowInspectorPayload,
   isDyflowWorkDir,
 } from '../openkuroneko/inner-brain/dyflow-inspector.js';
+import { tailFileLines, resolveLatestPiMonoLog } from './tail-file.js';
 
 /** 外脑注入的 workDir 读接口（ADL：内脑模块不 npm import workspace-kit） */
 export interface BrainInspectorFileReader {
@@ -41,26 +42,15 @@ export const PI_MONO_TICK_EXPLAINED = {
     'RUN 这一「宏步」内部已包含多轮 LLM/工具。若要看规划与失败原因，见下方 DyFlow 区块（current mode / DAG / last_failure / node_results）或日志里 designer / base-node / runner。',
 } as const;
 
+/**
+ * 读取 pi-mono 日志尾部用于 logHighlights（findLastLogEntry 反向找各模块最近一条）。
+ * 取尾部 800 行：远超单 burst 内各模块最近事件所需，又与文件总大小解耦（真 tail）。
+ */
+const BRAIN_INSPECTOR_LOG_TAIL = 800;
 function readPiMonoLogLines(workDir: string): string[] {
-  const logsDir = path.join(workDir, '.run', 'pi-mono', 'logs');
-  if (!fs.existsSync(logsDir)) return [];
-  const today = new Date().toISOString().slice(0, 10);
-  let filePath = path.join(logsDir, `${today}.jsonl`);
-  let content = '';
-  if (fs.existsSync(filePath)) {
-    content = fs.readFileSync(filePath, 'utf8');
-  } else {
-    const files = fs
-      .readdirSync(logsDir)
-      .filter((f) => f.endsWith('.jsonl'))
-      .sort()
-      .reverse();
-    if (files[0]) {
-      filePath = path.join(logsDir, files[0]!);
-      content = fs.readFileSync(filePath, 'utf8');
-    }
-  }
-  return content.trim().split('\n').filter(Boolean);
+  const filePath = resolveLatestPiMonoLog(workDir);
+  if (!filePath) return [];
+  return tailFileLines(filePath, BRAIN_INSPECTOR_LOG_TAIL);
 }
 
 function findLastLogEntry(

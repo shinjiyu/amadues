@@ -128,19 +128,28 @@ export function buildDyflowInspectorPayload(workDir: string): DyflowInspectorPay
   };
 }
 
-/** 列表行用的轻量摘要 */
+/**
+ * 列表行用的轻量摘要。
+ *
+ * 仅读列表实际需要的 3 个文件（state / dag / memory.last_failure），**不**走
+ * `buildDyflowInspectorPayload`——后者会 readdir + 逐文件读 `local_nodes/`，对每 3s
+ * 轮询的分页列表（每页 20 行）是显著且无谓的磁盘开销。
+ */
 export function summarizeDyflowForList(workDir: string): {
   dyflow_mode: string | null;
   dyflow_dag_nodes: number | null;
   dyflow_failure: string | null;
 } {
-  if (!isDyflowWorkDir(workDir)) {
+  const brainDir = path.join(workDir, '.brain');
+  const stateRaw = readJsonFile<{ mode?: string }>(path.join(brainDir, 'dyflow-state.json'));
+  if (!stateRaw) {
     return { dyflow_mode: null, dyflow_dag_nodes: null, dyflow_failure: null };
   }
-  const full = buildDyflowInspectorPayload(workDir);
+  const dagRaw = readJsonFile<LocalDag>(path.join(brainDir, 'local_dag.json'));
+  const memRaw = readJsonFile<InnerMemory>(path.join(brainDir, 'memory.json'));
   return {
-    dyflow_mode: full.state?.mode ?? null,
-    dyflow_dag_nodes: full.dag?.nodeCount ?? null,
-    dyflow_failure: full.memory?.lastFailure?.summary?.slice(0, 80) ?? null,
+    dyflow_mode: stateRaw.mode != null ? String(stateRaw.mode) : null,
+    dyflow_dag_nodes: dagRaw?.nodes?.length ?? null,
+    dyflow_failure: memRaw?.last_failure?.summary?.slice(0, 80) ?? null,
   };
 }

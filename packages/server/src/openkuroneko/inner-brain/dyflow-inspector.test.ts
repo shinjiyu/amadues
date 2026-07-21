@@ -4,7 +4,11 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { buildDyflowInspectorPayload, isDyflowWorkDir } from './dyflow-inspector.js';
+import {
+  buildDyflowInspectorPayload,
+  isDyflowWorkDir,
+  summarizeDyflowForList,
+} from './dyflow-inspector.js';
 
 describe('dyflow-inspector', () => {
   let root: string;
@@ -60,5 +64,36 @@ describe('dyflow-inspector', () => {
     expect(p.dag?.nodeCount).toBe(1);
     expect(p.memory?.lastFailure?.summary).toContain('proxy');
     expect(p.memory?.nodeResults).toHaveLength(1);
+  });
+
+  describe('summarizeDyflowForList', () => {
+    it('returns nulls for a non-dyflow workDir', () => {
+      root = fs.mkdtempSync(path.join(os.tmpdir(), 'dyflow-insp-'));
+      expect(summarizeDyflowForList(root)).toEqual({
+        dyflow_mode: null,
+        dyflow_dag_nodes: null,
+        dyflow_failure: null,
+      });
+    });
+
+    it('reads mode/dag/failure WITHOUT requiring local_nodes scan', () => {
+      root = fs.mkdtempSync(path.join(os.tmpdir(), 'dyflow-insp-'));
+      const brain = path.join(root, '.brain');
+      fs.mkdirSync(brain, { recursive: true }); // 注意：故意不建 local_nodes/
+      fs.writeFileSync(path.join(brain, 'dyflow-state.json'), JSON.stringify({ mode: 'RUN' }));
+      fs.writeFileSync(
+        path.join(brain, 'local_dag.json'),
+        JSON.stringify({ nodes: [{ id: 'n1', ref: 'preset/base' }, { id: 'n2', ref: 'local/x' }] }),
+      );
+      fs.writeFileSync(
+        path.join(brain, 'memory.json'),
+        JSON.stringify({ last_failure: { summary: 'x'.repeat(200), transient: false } }),
+      );
+
+      const s = summarizeDyflowForList(root);
+      expect(s.dyflow_mode).toBe('RUN');
+      expect(s.dyflow_dag_nodes).toBe(2);
+      expect(s.dyflow_failure).toHaveLength(80); // 截断到 80 字符
+    });
   });
 });
