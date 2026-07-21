@@ -293,25 +293,26 @@ export class IlinkApiClient {
 
   /**
    * 上传媒体：getuploadurl → AES 加密 → CDN upload。
-   * 返回可塞进 sendmessage item 的 CDN 引用与密文大小。
+   * 返回可塞进 sendmessage item 的 CDN 引用、密文大小与明文 MD5。
    */
   async uploadMedia(input: {
     buffer: Buffer;
     /** 1=IMAGE 2=VIDEO 3=FILE 4=VOICE */
     mediaType: 1 | 2 | 3 | 4;
     toUserId: string;
-  }): Promise<{ media: CdnMedia; cipherSize: number }> {
+  }): Promise<{ media: CdnMedia; cipherSize: number; rawMd5: string }> {
     const aeskeyHex = randomAesKeyHex();
     const key = Buffer.from(aeskeyHex, 'hex');
     const cipher = encryptAesEcb(input.buffer, key);
     const filekey = crypto.randomBytes(16).toString('hex');
+    const rawMd5 = crypto.createHash('md5').update(input.buffer).digest('hex');
 
     const up = await this.post('ilink/bot/getuploadurl', {
       filekey,
       media_type: input.mediaType,
       to_user_id: input.toUserId,
       rawsize: input.buffer.length,
-      rawfilemd5: crypto.createHash('md5').update(input.buffer).digest('hex'),
+      rawfilemd5: rawMd5,
       filesize: cipherSizeOf(input.buffer.length),
       no_need_thumb: true,
       aeskey: aeskeyHex,
@@ -336,6 +337,7 @@ export class IlinkApiClient {
         encrypt_type: 1,
       },
       cipherSize: cipher.length,
+      rawMd5,
     };
   }
 
@@ -353,18 +355,24 @@ export class IlinkApiClient {
     }, input.clientId);
   }
 
-  /** 发文件（先 uploadMedia mediaType=3） */
+  /** 发文件（先 uploadMedia mediaType=3）。协议要求 len 为字符串、md5 为明文 MD5。 */
   async sendFileMessage(input: {
     toUserId: string;
     media: CdnMedia;
     fileName: string;
     rawSize: number;
+    rawMd5: string;
     contextToken: string;
     clientId?: string;
   }): Promise<{ clientId: string }> {
     return this.sendItemMessage(input.toUserId, input.contextToken, {
       type: 4,
-      file_item: { media: input.media, file_name: input.fileName, len: input.rawSize },
+      file_item: {
+        media: input.media,
+        file_name: input.fileName,
+        md5: input.rawMd5,
+        len: String(input.rawSize),
+      },
     }, input.clientId);
   }
 

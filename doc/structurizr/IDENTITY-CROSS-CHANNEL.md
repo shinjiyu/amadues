@@ -287,6 +287,7 @@ COMPONENT-TEST-MAP 行状态：⏳ 直至实现转 ✅。
 | 2026-07-21 | P4a+P4b（§6.6）：飞书扫码建应用（registerApp device flow，`feishu_channel_scan_add` 异步工具）；微信 iLink ClawBot 桥 `@utlra/wechat-bridge`（扫码登录 / getupdates 长轮询 / context_token 锚点 / sendtyping），`wechat_channel_add`。既有手填 `feishu_channel_add` 流程不变 |
 | 2026-07-21 | `qrTools`（`outer/qr-tools.ts`）：新工具 `qr_generate`（URL/文本 → 二维码 PNG asset 发当前 thread）；P4a/P4b 扫码流的 URL 消息自动附二维码图片（生成失败降级纯文本，不阻塞流程） |
 | 2026-07-21 | P4b-media：微信桥媒体收发（`media-crypto.ts` CDN AES-128-ECB + 三种 key 编码兼容；`downloadMedia`/`uploadMedia`/`sendImageMessage`/`sendFileMessage`）。入站图/语音/文件/视频镜像落 `ChatAssetStore` → attachment part；出站附件走 getuploadurl+CDN 真发（失败降级防链接化文本，`defangFilename` 零宽空格防 `.md` 等被微信 URL 化）。typing 修复：`getconfig`/`sendtyping` 用 `ilink_user_id`，取消态 status=2 |
+| 2026-07-21 | P4b-media 补丁：`sendFileMessage` 补 `md5` 字段、`len` 改字符串（协议 §5.7；缺失时服务端拒 `invalid request`）。外脑新工具 `view_image`（`outer/vision-tools.ts`）：聊天图片 attachment 的 asset → 内脑 `describeImageFile` 识图管线（智谱 Vision MCP），外脑能"看"用户在 IM 里发的图 |
 | 2026-07-17 | P2b 落地：`@utlra/feishu-bridge`（api-client / inbound / FeishuChannel / connector），connector 注册进 `connectors` map；thread_id 编入 app_id（`feishu:<app_id>:chat:<chat_id>`）保证多连接路由与出站归属 |
 | 2026-07-17 | 通道 admin 闸修正：静态字符串比对 → bindingIndex 折叠比对（linkMerge 后 canonical sid / 新渠道同人不再被锁在门外）；新增 `*` 显式放开 |
 | 2026-07-16 | P0 落地：`IdentityBindingIndex` + `IdentityLinkService`（可注入、可单测）；入站接线 / 工具仍 ⏳ |

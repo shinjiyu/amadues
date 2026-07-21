@@ -225,7 +225,7 @@ describe('IlinkApiClient 业务请求', () => {
     expect(sendBody.msg['context_token']).toBe('ctx1');
   });
 
-  it('sendFileMessage：item_list 带 file_name/len', async () => {
+  it('sendFileMessage：item_list 带 file_name/md5/len（len 为字符串，协议要求）', async () => {
     const { impl, calls } = fakeFetch(() => jsonResponse({}));
     const api = new IlinkApiClient({ botToken: 'tok' }, { fetchImpl: impl });
     await api.sendFileMessage({
@@ -233,11 +233,20 @@ describe('IlinkApiClient 业务请求', () => {
       media: { encrypt_query_param: 'D=', aes_key: 'k' },
       fileName: '报告.pdf',
       rawSize: 123,
+      rawMd5: 'abc123',
       contextToken: 'ctx1',
     });
     const body = JSON.parse(String(calls[0]!.init!.body)) as { msg: Record<string, unknown> };
     expect(body.msg['item_list']).toEqual([
-      { type: 4, file_item: { media: { encrypt_query_param: 'D=', aes_key: 'k' }, file_name: '报告.pdf', len: 123 } },
+      {
+        type: 4,
+        file_item: {
+          media: { encrypt_query_param: 'D=', aes_key: 'k' },
+          file_name: '报告.pdf',
+          md5: 'abc123',
+          len: '123',
+        },
+      },
     ]);
   });
 

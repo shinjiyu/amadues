@@ -65,6 +65,7 @@
 | **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **channelConnectionRegistry** | **IM 多连接 + 飞书热插** | `outer/channel-connection-registry.ts` | connections.json + keychain；N 条 feishu（connector 已注册） |
 | **qrTools** | **URL/文本 → 二维码 PNG 发当前 thread** | `outer/qr-tools.ts` | `qr_generate` 工具；`generateQrPng` 供扫码流（P4a/P4b）附图复用 |
+| **visionTools** | **外脑识图（聊天图片 attachment → 文字描述）** | `outer/vision-tools.ts` | `view_image` 工具；asset → 临时文件 → 复用内脑 `describeImageFile`（智谱 Vision MCP） |
 | **imIntentClassifier** | **入站意图（默认 chat / followup / ad-hoc / kpi_update / kpi_create-ongoing）** | `outer/inbound/im-intent-classifier.ts` | IM 文本 + 上下文 → intent；见 IM-INBOUND-INTENT-ROUTING.md |
 | **subKpiDecomposer** | **【已删除】扁平 KPI** | — | 见 KPI-MANAGER-LAYER.md §2.1 |
 | **kpiBurstState** | **多 burst 资格 + 并行上限 + R7 连败计数** | `outer/kpi/kpi-burst-state.ts` | R1/R2；`maxParallelBurstsPerKpi`；`countConsecutiveBurstFailures` |
@@ -223,3 +224,4 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-07-21 | P4a+P4b：飞书扫码建应用（`scan-register` + `feishu_channel_scan_add`）；微信 iLink 桥 `wechatBridge`（kind=wechat connector + `wechat_channel_add`）；L2 新增 `wechat` 外部系统与 `03c` 视图 |
 | 2026-07-21 | `qrTools`（`outer/qr-tools.ts`）：`qr_generate` 工具 + 扫码流（P4a/P4b）URL 消息自动附二维码 PNG（asset attachment，webchat 内联显示） |
 | 2026-07-21 | P4b-media：`wechatBridge` 媒体收发（CDN AES-128-ECB；入站镜像 → asset store；出站附件真发图/文件，失败降级防链接化文本）；typing 修复（`ilink_user_id` + status=2） |
+| 2026-07-21 | `visionTools`（`outer/view_image`）：外脑识图接通——聊天图片 asset → 内脑 `describeImageFile` 管线；`sendFileMessage` 修复（`md5` + `len` 字符串，解 `invalid request`） |

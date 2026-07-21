@@ -100,6 +100,7 @@
 | **FanInChatIRChannel** | ✅ `fan-in-channel.test.ts`（合流/路由/热插/default 回退） | — | ADL [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §5.2 装配 |
 | **personMessageRecall** | ✅ `person-message-recall.test.ts`（别名集折叠、跨 thread 召回、排除当前、上限） | ✅ `knowledgeRetrieval.component.integration.test.ts`（person 块） | ADL [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §6.5 P3 |
 | **qrTools** | ✅ `qr-tools.test.ts`（PNG 签名、asset 落盘 + attachment 发送、空/超长拒绝） | ✅ `channel-scan-tools.test.ts`（扫码 URL 消息自动附二维码） | `outer/qr-tools.ts`；`qr_generate` |
+| **visionTools** | ✅ `vision-tools.test.ts`（asset → 临时文件 → describe 注入、非图片/缺失拒绝、临时文件清理） | — | `outer/vision-tools.ts`；`view_image` |
 
 ## 飞书桥（`feishuBridge` · `packages/feishu-bridge`）
 

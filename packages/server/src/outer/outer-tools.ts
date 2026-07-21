@@ -75,6 +75,7 @@ import {
   type ChannelScanDeps,
 } from './channel-scan-tools.js';
 import { QR_TOOL_DEFS, dispatchQrTool } from './qr-tools.js';
+import { VISION_TOOL_DEFS, dispatchVisionTool } from './vision-tools.js';
 import type { MemoryBlockStore } from './memory-block-store.js';
 import type { IdentityLinkService } from './identity-link-service.js';
 import type { ChannelConnectionRegistry } from './channel-connection-registry.js';
@@ -663,6 +664,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
   ...CHANNEL_CONNECTION_TOOL_DEFS,
   ...CHANNEL_SCAN_TOOL_DEFS,
   ...QR_TOOL_DEFS,
+  ...VISION_TOOL_DEFS,
 ];
 
 // ── 工具执行上下文 ──────────────────────────────────────────────────────────
@@ -713,6 +715,8 @@ export interface OuterToolContext {
   channelAdminSids?: ReadonlySet<string>;
   /** 扫码接入实现注入（P4a 飞书 / P4b 微信；缺省 = 桥包动态 import）ADL §6.6 */
   channelScan?: ChannelScanDeps;
+  /** view_image 识图实现注入（单测 mock；缺省 = describeImageFile 智谱 Vision MCP） */
+  visionDescribe?: import('./vision-tools.js').ViewImageDescribe;
   /**
    * 当前对话由 IM 人类入站触发（webchat/discord 等）。
    * 此上下文内 set_goal **不受** maxRunningInnerBrains 槽位限制（用户直派优先）。
@@ -2412,6 +2416,8 @@ export async function executeOuterTool(
       if (cs) return cs;
       const qr = await dispatchQrTool(name, args, ctx);
       if (qr) return qr;
+      const vi = await dispatchVisionTool(name, args, ctx);
+      if (vi) return vi;
       return { replied: false, output: `未知工具：${name}` };
     }
   }

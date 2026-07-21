@@ -250,6 +250,7 @@ export class WechatChannel implements ChatIRChannel {
             media: uploaded.media,
             fileName: name,
             rawSize: got.buffer.length,
+            rawMd5: uploaded.rawMd5,
             contextToken,
           });
       return sent.clientId;
