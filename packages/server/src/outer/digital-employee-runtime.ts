@@ -1,8 +1,26 @@
 import path from 'node:path';
 
 import { Scheduler } from '../scheduler/index.js';
-import { EmployeeCalendar } from '../scheduler/employee-calendar.js';
+import {
+  CALENDAR_DUE_TOOL_CALL_ALLOWLIST,
+  EmployeeCalendar,
+} from '../scheduler/employee-calendar.js';
 import { listActivePendings } from '../openkuroneko/pendings/index.js';
+import {
+  collectAdvancePerception,
+  isBootstrapDoneFromHistory,
+} from './advance-perception.js';
+import { ensureCalendarsAfterBootstrap } from './advance-allocator.js';
+import {
+  loadAdvanceCursors,
+  syncAdvanceCursorsFromKpiHistory,
+  upsertAdvanceCursor,
+} from './advance-cursor-store.js';
+import {
+  AdvanceMetricsTracker,
+  detectAdvancePackageKind,
+} from './advance-metrics.js';
+import { listStallAlertIndex } from '../openkuroneko/inner-brain/burst-stall-alert.js';
 import { appendAutonomyActionLog } from './autonomy-action-log.js';
 import { DigitalEmployeeLoop, type DigitalEmployeeTriggerReason } from './digital-employee-loop.js';
 import {
@@ -46,12 +64,15 @@ function resolveStrategySpec(deps: DigitalEmployeeRuntimeDeps): string {
 
 export class DigitalEmployeeRuntime {
   private readonly scheduler: Scheduler;
+  private readonly calendar: EmployeeCalendar;
   private readonly loop: DigitalEmployeeLoop;
   private readonly metrics: SelfWorkMetricsTracker;
+  private readonly advanceMetrics: AdvanceMetricsTracker;
   private dueTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly deps: DigitalEmployeeRuntimeDeps) {
     this.metrics = new SelfWorkMetricsTracker(deps.dataRoot);
+    this.advanceMetrics = new AdvanceMetricsTracker(deps.dataRoot);
     this.scheduler = new Scheduler({
       dataRoot: deps.dataRoot,
       deferMissedExecution: true,
@@ -60,15 +81,36 @@ export class DigitalEmployeeRuntime {
       executePromptAction: async (taskId, prompt) => {
         const task = (await this.scheduler.listTasks()).find((candidate) => candidate.id === taskId);
         const kpiId = typeof task?.metadata['kpiId'] === 'string' ? task.metadata['kpiId'] : undefined;
+        const originThread =
+          typeof task?.metadata['originThreadId'] === 'string'
+            ? task.metadata['originThreadId']
+            : deps.defaultThreadId;
         const result = await executeOuterTool(
           'set_goal',
-          JSON.stringify({ goal: prompt, kpi_id: kpiId, origin_thread: deps.defaultThreadId }),
+          JSON.stringify({ goal: prompt, kpi_id: kpiId, origin_thread: originThread }),
           { ...deps.toolCtx, allowKpiSetGoal: Boolean(kpiId) },
         );
         if (!isSetGoalDispatched(result.output)) throw new Error(result.output);
+        if (kpiId) {
+          this.advanceMetrics.record({
+            at: new Date().toISOString(),
+            kind: 'dispatch',
+            kpiId,
+            packageKind: detectAdvancePackageKind(prompt),
+            hadPerception: true,
+            reason: 'calendar_due',
+          });
+          upsertAdvanceCursor(deps.dataRoot, kpiId, {
+            bootstrapDone: true,
+            sinceAt: new Date().toISOString(),
+          });
+        }
         return result.output;
       },
       executeToolCallAction: async (_taskId, toolName, params) => {
+        if (!CALENDAR_DUE_TOOL_CALL_ALLOWLIST.has(toolName)) {
+          throw new Error(`calendar_tool_call_not_allowlisted:${toolName}`);
+        }
         const result = await executeOuterTool(toolName, JSON.stringify(params), deps.toolCtx);
         return result.output;
       },
@@ -82,55 +124,33 @@ export class DigitalEmployeeRuntime {
       isAgentBusy: () => false,
     });
 
-    const calendar = new EmployeeCalendar(this.scheduler);
+    this.calendar = new EmployeeCalendar(this.scheduler);
+    // 对话环工具注入同一 calendar 实例
+    deps.toolCtx.employeeCalendar = this.calendar;
     this.loop = new DigitalEmployeeLoop({
-      collectEnvironment: async () => {
-        const shared = getSharedEnvironment(deps.dataRoot);
-        const { snapshot } = collectEnvironmentSnapshot(
-          {
-            agentId: deps.agentSid,
-            registry: deps.registry,
-            defaultThreadId: deps.defaultThreadId,
-            getOrchestratorStats: deps.getOrchestratorStats,
-          },
-          shared.registry,
-          shared.journal,
-        );
-        const policy = loadAutonomyPolicy(deps.dataRoot);
-        const capacity = hasAvailableCapacity(snapshot, policy);
-        const tasks = deps.registry.list();
-        const pendingDependencies = tasks
-          .filter((task) => task.status === 'AWAITING' || task.status === 'BLOCKED')
-          .flatMap((task) => {
-            try {
-              return listActivePendings(path.join(task.workDir, '.brain')).map(
-                (pending) => `${task.instanceId}:${pending.id}`,
-              );
-            } catch {
-              return [];
-            }
+      collectEnvironment: async () => this.collectEnvironment(this.calendar),
+      calendar: this.calendar,
+      ensureAdvanceCalendars: async (environment) => {
+        if (!environment.perception || !this.calendar.ensurePeriodicCommitment) return 0;
+        const outcome = await ensureCalendarsAfterBootstrap({
+          kpis: environment.activeKpis,
+          perception: environment.perception,
+          agentId: deps.agentSid,
+          ensure: (input) => this.calendar.ensurePeriodicCommitment!(input),
+        });
+        const at = new Date().toISOString();
+        for (const row of outcome.results) {
+          this.advanceMetrics.record({
+            at,
+            kind: 'calendar_ensure',
+            kpiId: row.kpiId,
+            calendarKey: row.calendarKey,
+            created: row.created,
+            hadPerception: true,
           });
-        const recentActions = deps.kpiRegistry
-          .list()
-          .flatMap((kpi) => kpi.burstRunHistory.slice(-10).map((run) => run.charter))
-          .filter(Boolean);
-
-        return {
-          capacity: {
-            available: capacity.available,
-            freeInnerSlots: capacity.freeInnerSlots,
-            reason: capacity.reason,
-          },
-          activeKpis: deps.kpiRegistry.list({ status: 'active' }),
-          pendingDependencies,
-          runningConflicts: tasks
-            .filter((task) => task.status === 'RUNNING')
-            .map((task) => task.goal),
-          recentActions,
-          blockedRoutes: listBlockedRoutes(deps.kpiRegistry, deps.registry),
-        };
+        }
+        return outcome.created;
       },
-      calendar,
       selfWorkPolicy: this.buildSelfWorkPolicy(),
       dispatchProposal: (proposal) => this.dispatchProposal(proposal),
       log: (entry) => {
@@ -143,6 +163,93 @@ export class DigitalEmployeeRuntime {
         this.recordMetric(entry);
       },
     });
+  }
+
+  private async collectEnvironment(calendar: EmployeeCalendar) {
+    const shared = getSharedEnvironment(this.deps.dataRoot);
+    const { snapshot } = collectEnvironmentSnapshot(
+      {
+        agentId: this.deps.agentSid,
+        registry: this.deps.registry,
+        defaultThreadId: this.deps.defaultThreadId,
+        getOrchestratorStats: this.deps.getOrchestratorStats,
+      },
+      shared.registry,
+      shared.journal,
+    );
+    const policy = loadAutonomyPolicy(this.deps.dataRoot);
+    const capacity = hasAvailableCapacity(snapshot, policy);
+    const tasks = this.deps.registry.list();
+    const pendingDependencies = tasks
+      .filter((task) => task.status === 'AWAITING' || task.status === 'BLOCKED')
+      .flatMap((task) => {
+        try {
+          return listActivePendings(path.join(task.workDir, '.brain')).map(
+            (pending) => `${task.instanceId}:${pending.id}`,
+          );
+        } catch {
+          return [];
+        }
+      });
+    const recentActions = this.deps.kpiRegistry
+      .list()
+      .flatMap((kpi) => kpi.burstRunHistory.slice(-10).map((run) => run.charter))
+      .filter(Boolean);
+
+    const calendarViews = await calendar.listActiveCommitments();
+    const stallAlerts = listStallAlertIndex(this.deps.dataRoot, 40).map((entry) => ({
+      alertId: entry.alertId,
+      instanceId: entry.instanceId,
+      severity: entry.severity,
+      signals: entry.signals,
+      summary: entry.summary,
+      ts: entry.ts,
+    }));
+    const allKpis = this.deps.kpiRegistry.list();
+    syncAdvanceCursorsFromKpiHistory(this.deps.dataRoot, allKpis);
+    const cursors = loadAdvanceCursors(this.deps.dataRoot);
+    const sinceAtByKpi: Record<string, string> = {};
+    for (const [kpiId, cursor] of Object.entries(cursors)) {
+      if (cursor.sinceAt) sinceAtByKpi[kpiId] = cursor.sinceAt;
+    }
+    const perception = collectAdvancePerception({
+      tasks,
+      calendarTasks: calendarViews.map((view) => ({
+        id: view.id,
+        name: view.title,
+        status: view.status,
+        nextRunAt: view.nextRunAt,
+        metadata: {
+          kpiId: view.kpiId,
+          expectedOutcome: view.expectedOutcome,
+          calendarKey: view.calendarKey,
+        },
+      })),
+      kpiBootstrapFlags: allKpis.map((kpi) => ({
+        kpiId: kpi.kpiId,
+        bootstrapDone:
+          isBootstrapDoneFromHistory(kpi.burstRunHistory) ||
+          Boolean(cursors[kpi.kpiId]?.bootstrapDone),
+      })),
+      sinceAtByKpi,
+      stallAlerts,
+    });
+
+    return {
+      capacity: {
+        available: capacity.available,
+        freeInnerSlots: capacity.freeInnerSlots,
+        reason: capacity.reason,
+      },
+      activeKpis: this.deps.kpiRegistry.list({ status: 'active' }),
+      pendingDependencies,
+      runningConflicts: tasks
+        .filter((task) => task.status === 'RUNNING')
+        .map((task) => task.goal),
+      recentActions,
+      blockedRoutes: listBlockedRoutes(this.deps.kpiRegistry, this.deps.registry),
+      perception,
+    };
   }
 
   private buildSelfWorkPolicy() {
@@ -181,6 +288,10 @@ export class DigitalEmployeeRuntime {
     return this.metrics;
   }
 
+  getAdvanceMetrics(): AdvanceMetricsTracker {
+    return this.advanceMetrics;
+  }
+
   async start(): Promise<void> {
     await this.scheduler.start();
     const pollMs = Math.max(250, this.deps.duePollMs ?? 1_000);
@@ -207,8 +318,12 @@ export class DigitalEmployeeRuntime {
     return this.scheduler;
   }
 
+  getCalendar(): EmployeeCalendar {
+    return this.calendar;
+  }
+
   private async triggerIfDue(): Promise<void> {
-    const due = await new EmployeeCalendar(this.scheduler).listDue();
+    const due = await this.calendar.listDue();
     if (due.length > 0) await this.loop.trigger('calendar_due');
   }
 
@@ -238,5 +353,20 @@ export class DigitalEmployeeRuntime {
       { ...this.deps.toolCtx, allowKpiSetGoal: true },
     );
     if (!isSetGoalDispatched(result.output)) throw new Error(result.output);
+
+    const packageKind = detectAdvancePackageKind(proposal.action);
+    this.advanceMetrics.record({
+      at: new Date().toISOString(),
+      kind: 'dispatch',
+      kpiId: proposal.kpiId,
+      packageKind,
+      hadPerception: true,
+      reason: proposal.reason,
+    });
+    if (packageKind === 'repair') {
+      upsertAdvanceCursor(this.deps.dataRoot, proposal.kpiId, {
+        sinceAt: new Date().toISOString(),
+      });
+    }
   }
 }

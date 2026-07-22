@@ -770,6 +770,7 @@ function timeAgo(iso: string): string {
 }
 
 const INNER_BRAIN_PAGE_SIZE = 20;
+const INNER_BRAIN_POLL_MS = 8000;
 
 function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
   const [instances, setInstances] = useState<InstanceRow[]>([]);
@@ -781,12 +782,15 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<'live' | 'all'>('live');
+  const [registryTotal, setRegistryTotal] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
       const qs = new URLSearchParams({
         page: String(page),
         pageSize: String(INNER_BRAIN_PAGE_SIZE),
+        status: statusFilter,
       });
       const r = await fetch(`${apiPrefix}/inner-brains?${qs}`);
       if (!r.ok) {
@@ -804,6 +808,7 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
         total?: number;
         page?: number;
         totalPages?: number;
+        registryTotal?: number;
       };
       const rows = j.instances ?? [];
       const tp = Math.max(1, j.totalPages ?? 1);
@@ -817,6 +822,7 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
       setInstances(rows);
       setTotal(t);
       setTotalPages(tp);
+      setRegistryTotal(j.registryTotal ?? t);
       if (typeof j.page === 'number' && j.page !== page) {
         setPage(j.page);
       }
@@ -826,11 +832,11 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
     } finally {
       setLoading(false);
     }
-  }, [apiPrefix, page]);
+  }, [apiPrefix, page, statusFilter]);
 
   useEffect(() => {
     void refresh();
-    const id = setInterval(() => void refresh(), 3000);
+    const id = setInterval(() => void refresh(), INNER_BRAIN_POLL_MS);
     return () => clearInterval(id);
   }, [refresh]);
 
@@ -871,15 +877,31 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
   return (
     <div>
       <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
           <strong style={{ fontSize: 15 }}>内脑池</strong>
           <span style={{ fontSize: 12, color: '#8b92a8' }}>
             {loading
               ? '加载中…'
-              : total <= INNER_BRAIN_PAGE_SIZE
-                ? `共 ${total} 个实例`
-                : `共 ${total} 个实例 · 第 ${page}/${totalPages} 页`}
+              : statusFilter === 'live'
+                ? `live ${total} · 注册表共 ${registryTotal}`
+                : total <= INNER_BRAIN_PAGE_SIZE
+                  ? `共 ${total} 个实例`
+                  : `共 ${total} 个实例 · 第 ${page}/${totalPages} 页`}
           </span>
+          <label style={{ fontSize: 12, color: '#8b92a8', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            范围
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setPage(1);
+                setStatusFilter(e.target.value as 'live' | 'all');
+              }}
+              style={{ fontSize: 12 }}
+            >
+              <option value="live">进行中 (live)</option>
+              <option value="all">全部历史</option>
+            </select>
+          </label>
           <button type="button" style={{ marginLeft: 'auto', fontSize: 12 }} onClick={() => void refresh()}>
             刷新
           </button>
@@ -887,7 +909,9 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
         {err && <p style={{ color: '#f87171', fontSize: 13 }}>{err}</p>}
         {!loading && instances.length === 0 && (
           <p style={{ color: '#8b92a8', fontSize: 13 }}>
-            暂无内脑实例。外脑调用 <code>set_goal</code> 工具后会在这里出现。
+            {statusFilter === 'live'
+              ? `当前无进行中的内脑（注册表共 ${registryTotal} 条历史）。可切换「全部历史」查看。`
+              : '暂无内脑实例。外脑调用 set_goal 工具后会在这里出现。'}
           </p>
         )}
         {instances.length > 0 && (

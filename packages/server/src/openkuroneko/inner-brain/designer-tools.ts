@@ -22,7 +22,7 @@ import { assembleNodeDef } from './node-assembler.js';
 import { abstractLocalNode } from './node-abstractor.js';
 import type { EnvSnapshot } from './node-abstractor.js';
 import { writeLocalDag } from './local-dag-store.js';
-import { runDeliverableChecks } from './deliverable-check.js';
+import { runDeliverableChecks, deliverableCheckFilePart, isUnsafeRelativePath } from './deliverable-check.js';
 import { createCommitLocalNodeTool } from './commit-local-node-tool.js';
 import {
   appendPlanReferences,
@@ -219,6 +219,21 @@ export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
             `以下节点缺少可机械验的 deliverable（必填），拒收：${noDeliverable.map(n => n.id).join(', ')}。\n` +
             `每个节点都要带 deliverable={summary, checks:[{kind,target,describe?}]}，kind ∈ file|json_key|stdout_contains|stdout_absent，` +
             `选能真正代表「这一格干成了」的机械证据（产物文件存在 / JSON 关键字段非空 / stdout 含成功标志或不含 404）。`,
+        };
+      }
+      // P-rel：拒收绝对路径 / ..（与 inner-brain-deliverables R2.4 对齐）
+      const unsafePathNodes = nodes.filter(n =>
+        (n.deliverable?.checks ?? []).some(c => {
+          const filePart = deliverableCheckFilePart(c);
+          return filePart != null && isUnsafeRelativePath(filePart);
+        }),
+      );
+      if (unsafePathNodes.length > 0) {
+        return {
+          ok: false,
+          output:
+            `以下节点 deliverable.checks 含绝对路径或 \`..\`，拒收：${unsafePathNodes.map(n => n.id).join(', ')}。\n` +
+            `file / json_key 的 target 必须是 workDir 相对路径（可用 workspace/ 前缀），禁止 /tmp/... 与盘符绝对路径。`,
         };
       }
       const dag: LocalDag = {

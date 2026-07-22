@@ -12,9 +12,21 @@
 
 | 类型 | burst 结束 | 外脑行为 |
 |------|------------|----------|
-| **KPI**（有 `kpi_id`） | onExit | 落盘状态 + 可选 outcome/momentum 反馈 → **发出** `burst_finished`；**禁止**直接 spawn / `completionNotify` |
-| **Ad-hoc**（无 `kpi_id`） | onExit | **直接** `completionNotify` → 用户；`ingestInnerOutput` → mem9；不评估、不写 KPI 续派 |
+| **KPI**（有 `kpi_id`） | onExit | **必须** `ingestDeliverables` → `status.deliverables[]`；落盘状态 + 可选 outcome/momentum → **发出** `burst_finished`；**禁止**直接 spawn；**禁止**默认 `completionNotify`（IM） |
+| **Ad-hoc**（无 `kpi_id`） | onExit | **必须** ingest；**直接** `completionNotify` → 用户；`ingestInnerOutput` → mem9；不评估、不写 KPI 续派 |
 | **AWAITING + ask_user** | onExit | 不评估；`notifyInnerBrainAwaitingHuman`；等待只阻塞依赖项，释放员工容量 |
+
+### 1.1 ingest ≠ notify（2026-07-22 验证修订）
+
+> 生产验证见 [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) **Gap A**。
+
+| 步骤 | KPI | Ad-hoc |
+|------|-----|--------|
+| `COMPLETE.deliverables` → asset / `status.deliverables[]` | **必做** | **必做** |
+| IM `completionNotify` | **默认不做**（防刷屏；外脑可后发 `send_file`） | **做** |
+| `burst_finished` / outcome 反馈 | 做 | 不做 |
+
+**禁止**：用 `shouldNotifyUserOnBurstExit === false` 一并跳过 ingest。否则磁盘有 `deliverables.json` / 报告，外脑与渠道仍见「0 交付」，且 outcome 的 `deliverableCount` 易假阴性。
 
 ---
 
@@ -96,3 +108,4 @@ interface BurstOutcomeEvaluation {
 |------|------|--------|
 | burstProcessReport | `burst-process-report.test.ts` | — |
 | kpiBurstOutcomeEvaluator | `kpi-burst-outcome-evaluator.test.ts` | ⏳ `kpiBurstHooks` + fixture |
+| KPI onExit ingest（无 IM） | ✅ `ingestInnerBrainDeliverablesOnExit` | — |

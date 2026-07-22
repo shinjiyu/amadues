@@ -158,6 +158,9 @@ export function createMemoryStore(workDir: string, opts?: CreateMemoryStoreOptio
       mem.node_results[result.nodeInstId] = result;
       if (!result.ok && result.failure) {
         mem.last_failure = result.failure;
+      } else if (result.ok) {
+        // P-clear（DELIVERABLE-PIPELINE-GAPS Gap B）：节点 ok 后清 sticky last_failure
+        mem.last_failure = null;
       }
       write(mem);
     },

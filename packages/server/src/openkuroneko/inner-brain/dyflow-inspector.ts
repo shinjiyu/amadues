@@ -128,12 +128,25 @@ export function buildDyflowInspectorPayload(workDir: string): DyflowInspectorPay
   };
 }
 
+/** 列表轮询路径：超过此体积的 memory.json 不再整文件 JSON.parse（实测可达 0.5–1MB）。 */
+const LIST_MEMORY_MAX_BYTES = 64 * 1024;
+
+function readJsonFileIfSmall<T>(filePath: string, maxBytes: number): T | null {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    if (fs.statSync(filePath).size > maxBytes) return null;
+  } catch {
+    return null;
+  }
+  return readJsonFile<T>(filePath);
+}
+
 /**
  * 列表行用的轻量摘要。
  *
- * 仅读列表实际需要的 3 个文件（state / dag / memory.last_failure），**不**走
- * `buildDyflowInspectorPayload`——后者会 readdir + 逐文件读 `local_nodes/`，对每 3s
- * 轮询的分页列表（每页 20 行）是显著且无谓的磁盘开销。
+ * 只读 dyflow-state + local_dag；memory.json 仅在 ≤64KB 时取 last_failure。
+ * **不**走 `buildDyflowInspectorPayload`（会扫 local_nodes），也避免每 3–8s
+ * 对分页 20 行整读大 memory。
  */
 export function summarizeDyflowForList(workDir: string): {
   dyflow_mode: string | null;
@@ -146,7 +159,10 @@ export function summarizeDyflowForList(workDir: string): {
     return { dyflow_mode: null, dyflow_dag_nodes: null, dyflow_failure: null };
   }
   const dagRaw = readJsonFile<LocalDag>(path.join(brainDir, 'local_dag.json'));
-  const memRaw = readJsonFile<InnerMemory>(path.join(brainDir, 'memory.json'));
+  const memRaw = readJsonFileIfSmall<InnerMemory>(
+    path.join(brainDir, 'memory.json'),
+    LIST_MEMORY_MAX_BYTES,
+  );
   return {
     dyflow_mode: stateRaw.mode != null ? String(stateRaw.mode) : null,
     dyflow_dag_nodes: dagRaw?.nodes?.length ?? null,

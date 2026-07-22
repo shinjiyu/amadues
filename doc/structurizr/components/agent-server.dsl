@@ -343,7 +343,7 @@
                     }
                 }
 
-                kpiAdvancer = component "KPI Advancer" "【KPI sprint 执行】advance_kpi / IM / Ops → set_goal(kpi_id)；心跳改由 kpiManager 调用" "TypeScript" {
+                kpiAdvancer = component "KPI Advancer" "【KPI burst 执行】advance_kpi / IM / Ops → set_goal(kpi_id)；心跳改由 kpiManager 调用" "TypeScript" {
                     tags "Outer-Module" "KPI" "Heartbeat"
                     properties {
                         "path" "packages/server/src/outer/kpi/kpi-advancer.ts"
@@ -635,7 +635,7 @@
                     tags "Outer-Module" "Autonomy"
                     properties {
                         "path" "packages/server/src/outer/casual-chat-dispatcher.ts"
-                        "horizon.intention" "verdict=idle 且无 KPI sprint 在途 → 按 idleChatProbability 起草并 post_to_im"
+                        "horizon.intention" "verdict=idle 且无 KPI 相关 burst 在途 → 按 idleChatProbability 起草并 post_to_im"
                         "horizon.in" "AutonomyVerdict(idle) + policy + personality + kpiRegistry（仅 defer 判定）"
                         "horizon.out" "post_to_im + action-log"
                         "horizon.deps" "participationPolicy; agentPersonality; kpiRegistry; imClient"

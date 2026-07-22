@@ -137,4 +137,11 @@ describe('hasAvailableCapacity 自适应前台预留（P3 §6.4）', () => {
     expect(cap.available).toBe(true);
     expect(cap.foregroundReservedSlots).toBe(0);
   });
+
+  it('默认策略 blockIfOuterLoopActive=false：前台活跃时兼容 advance 路径也不全停', () => {
+    const policy = defaultAutonomyPolicy();
+    expect(policy.hardGates.blockIfOuterLoopActive).toBe(false);
+    const cap = evaluateKpiSpawnCapacity(withInbound(envWithInner(0), 0, 1), policy);
+    expect(cap.canSpawn).toBe(true);
+  });
 });

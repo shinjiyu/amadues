@@ -9,6 +9,7 @@ import type { InnerBrainRegistry, TaskRecord } from '../outer/inner-brain-regist
 import { resolveAgentSid } from '../outer/outer-tools.js';
 import { resolveAgentTimezone } from '../agent-time.js';
 import { safeAgentSid } from '../data-root.js';
+import { tailFileLines } from '../pi-mono/tail-file.js';
 
 export type LogLane = 'chat' | 'outer' | 'inner' | 'autonomy' | 'trace' | 'directive';
 
@@ -36,12 +37,11 @@ export interface LogSessionSummary {
   label: string;
 }
 
+/** 真 tail：只回读文件末尾，避免大 jsonl 整文件载入。 */
 function parseJsonlFile(fp: string, limit: number): Record<string, unknown>[] {
-  if (!fs.existsSync(fp)) return [];
-  const lines = fs.readFileSync(fp, 'utf8').trim().split('\n').filter(Boolean);
-  const slice = lines.slice(-limit);
+  if (!fs.existsSync(fp) || limit <= 0) return [];
   const out: Record<string, unknown>[] = [];
-  for (const line of slice) {
+  for (const line of tailFileLines(fp, limit)) {
     try {
       out.push(JSON.parse(line) as Record<string, unknown>);
     } catch {

@@ -31,7 +31,7 @@
 | **outerHeartbeat** | **编排宿主** | 每 tick：`resourceProbe` → `autonomyJudge` →（若 idle）`autonomyTaskDispatcher`；原有 long-term goal LLM 环保留，可合并为同一 tick 的 Phase B |
 | **participationPolicy** | **硬闸门（闲聊路径）** | 自主 `casual_chat` 仍须过同步冷却/频控；不替代 SPEAK/SILENT |
 | **kpiRegistry / kpiBurstHooks** | **KPI 路径数据源** | `kpi_inner_goal` 读 registry + `burstRunHistory`；idle 换向由 outcomeEvaluator / `kpiAdvancer` 驱动；本模块是 **外脑心跳侧的「主动找事做」** |
-| **performanceGoalEngine** | **KPI 路径数据源** | 长期绩效目标审阅结果可注入 judge；`set_goal` 可带 `performance_goal_id` |
+| **performanceGoalEngine** | **历史设想（未实现 / 已废弃）** | 曾设想注入 judge；现行以 KPI 为唯一长期目标，见 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) §2.4 |
 | **innerBrainRegistry** | **resourceProbe 输入** | RUNNING / AWAITING / BLOCKED 计数 |
 | **threadOrchestrator** | **resourceProbe 输入** | 各 thread 排队深度 |
 | **llmGateway** | **metrics 来源 + judge/dispatcher LLM** | 需在 gateway 层挂 **in-flight 计数** 与 **usage 滚动窗口** |
@@ -50,7 +50,7 @@
 | **autonomyJudge** | **闲忙判定** | `outer/autonomy-judge.ts` | snapshot + policy → `AutonomyVerdict` |
 | **autonomyTaskDispatcher** | **自主任务分发** | `outer/autonomy-task-dispatcher.ts` | verdict(idle) + policy → 执行 `casual_chat` / `kpi_inner_goal` |
 | **outerHeartbeat** | 定时 tick（已有） | `outer/outer-heartbeat.ts` | 注入上述模块；死亡检测不变 |
-| **performanceGoalEngine** | 绩效目标（已有） | `performance-goals/engine.ts` | 供 judge / kpi 路径读取 |
+| **performanceGoalEngine** | 绩效目标（**已废弃**；= KPI） | `performance-goals/engine.ts` | 勿再作为 judge / 找活输入 |
 
 ---
 
@@ -281,6 +281,8 @@ export const AUTONOMY_TASK_HANDLERS: AutonomyTaskHandler[] = [
   "kpi_inner_goal": { "enabled": true, "cooldownMs": 7200000, "maxPerDay": 3 }
 }
 ```
+
+> ⚠️ **历史样例**：`kpi_inner_goal` 的 `cooldownMs`/`maxPerDay`（以及 `minMsSinceLastAutonomousAction`）已被数字员工模型 **DE-4** 从 schema 中**删除**——KPI 找活只看容量，`kpi_inner_goal` 仅剩 `enabled`，旧 policy.json 字段 load 时删除回写。见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §2.1。`casual_chat` 频控仍有效。
 
 ### 8.3 任务选择算法（P0：优先级阶梯 + 性格概率）
 

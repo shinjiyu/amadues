@@ -54,7 +54,7 @@ export interface CasualChatDispatchDeps {
 }
 
 function taskConfig(policy: AutonomyPolicy, id: AutonomyTaskType) {
-  return policy.taskTypes[id] ?? { enabled: false, cooldownMs: 0, maxPerDay: 0 };
+  return policy.taskTypes[id] ?? { enabled: false };
 }
 
 function pickActiveKpi(kpiRegistry: KpiRegistry): KpiRecord | undefined {
@@ -75,10 +75,10 @@ function taskEligible(
 ): { ok: boolean; reason: string } {
   const cfg = taskConfig(policy, taskType);
   if (!cfg.enabled) return { ok: false, reason: `${taskType}_disabled` };
-  if (isTaskOnCooldown(dataRoot, taskType, cfg.cooldownMs)) {
+  if (isTaskOnCooldown(dataRoot, taskType, cfg.cooldownMs ?? 0)) {
     return { ok: false, reason: `${taskType}_cooldown` };
   }
-  if (isTaskOverDailyLimit(dataRoot, taskType, cfg.maxPerDay)) {
+  if (isTaskOverDailyLimit(dataRoot, taskType, cfg.maxPerDay ?? 0)) {
     return { ok: false, reason: `${taskType}_max_per_day` };
   }
   return { ok: true, reason: 'ok' };

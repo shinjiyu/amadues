@@ -63,16 +63,18 @@
 | kpiFeedback | ✅ `kpi-feedback.test.ts` | — | — | ADL [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) §16 多巴胺回路 |
 | outerHeartbeat | ✅ death-detect + watchdog/fallback；接数字员工后治理-only、LLM 无 set_goal | ✅ `outer-heartbeat.integration.test.ts` + `autonomy-heartbeat.component.integration.test.ts` + `outerHeartbeatDigitalEmployee.component.integration.test.ts` | — | watchdog；非正常续派主时钟；ADL [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) |
 | **digitalEmployeeLoop** | ✅ `digital-employee-loop.test.ts`（优先级、single-flight、coalesce、依赖拒绝） | ✅ `digitalEmployeeLoop.component.integration.test.ts`（Calendar 优先 + burst finish 续派） | — | [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §5 |
-| **employeeCalendar** | ✅ `employee-calendar.test.ts` + `task-scheduler.test.ts`（due 保留、missed 重启不旁路执行） | ✅ 由 `digitalEmployeeLoop.component.integration.test.ts` 覆盖统一执行链 | — | 复用 Scheduler/TaskScheduler；长 wait_timer 迁 Calendar |
-| **selfWorkPolicy** | ✅ `self-work-policy.test.ts`（expectedOutcome、依赖、去重、冲突、route_blocked、null 休眠）+ `self-work-strategies.test.ts`（4 策略同 fixture 可比较、角度轮换、A/B 探索/利用/回退、spec 解析）+ `self-work-metrics.test.ts`（acceptance/duplicate/no-progress/byStrategy）+ `self-work-llm-policy.test.ts`（JSON 契约、sleep、非法/异常 fallback） | ✅ 由 `digitalEmployeeLoop.component.integration.test.ts` 覆盖提案→派发 | — | 只有提案权；✅ P2 多策略 + 指标 JSONL；✅ P3 llm_reflective + AbTest 灰度（`UTLRA_SELF_WORK_STRATEGY`） |
+| **employeeCalendar** | ✅ `employee-calendar.test.ts` + `calendar-tools.test.ts`（list/schedule/cancel/remind 幂等、白名单、cap） | ✅ loop due 链；remind→send_message / spawn→set_goal | — | ADL [`EMPLOYEE-CALENDAR.md`](./EMPLOYEE-CALENDAR.md)；对话一等工具 C1–C4 ✅ |
+| **selfWorkPolicy** | ✅ `self-work-policy.test.ts`（expectedOutcome、依赖、去重、冲突、route_blocked、null 休眠）+ `self-work-strategies.test.ts`（4 策略同 fixture 可比较、角度轮换、A/B 探索/利用/回退、spec 解析）+ `self-work-metrics.test.ts`（acceptance/duplicate/no-progress/byStrategy）+ `self-work-llm-policy.test.ts`（JSON 契约、sleep、非法/异常 fallback） | ✅ 由 `digitalEmployeeLoop.component.integration.test.ts` 覆盖提案→派发 | — | 只有提案权；✅ P2 多策略 + 指标 JSONL；✅ P3 llm_reflective + AbTest 灰度（`UTLRA_SELF_WORK_STRATEGY`）；⏳ Duty 整单重放拒收见 advance WP |
+| **advanceWorkPackageBuilder** | ✅ 感知 facet（日历+内脑+stall+cursor）+ 简单调配规则 | ✅ RUNNING/日历闸门；bootstrap+ensure；stall→repair；盲派/重复日历指标 | — | [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP |
-| completionNotify | 🟡 `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1） |
+| completionNotify | ✅ `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) + ingest R4.7 | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1）；ingest≠notify |
+| **deliverableIngestOnExit** | ✅ KPI DONE：ingest 且无 IM（`ingestInnerBrainDeliverablesOnExit`） | — | — | [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap A · 协议 R4.7 |
 | innerBurstExit | 🟡 `inner-burst-exit.test.ts` | — | — | `detectBurstGoalGaps` → partial ERROR |
 | imNotifyDedup | ✅ `im-notify-dedup.test.ts` | — | — | ADL [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md) §2 |
 | awaitingNotify | ✅ `awaiting-notify.test.ts` | — | — | onExit AWAITING + ask_user |
 | pushLoop | ✅ `push-loop.test.ts` | ✅ `pushLoop.component.integration.test.ts` | — | BLOCK **不**推 IM；PROGRESS 可选 |
 | changeWatcher | ✅ `change-watcher.test.ts` + `change-watcher.bootstrap.test.ts` | ✅ `changeWatcher.component.integration.test.ts`（含 dependency_resolved callback） | — | spawn 前 markConsumed；短等待恢复；业务长定时归 Calendar |
-| brainAsyncSnapshot | ✅ `brain-async-snapshot.test.ts` | — | — | |
+| brainAsyncSnapshot | ✅ `brain-async-snapshot.test.ts`（含 OUTER_ASYNC 双轨措辞） | — | — | DE §3.4 对话/心跳共用 guide |
 | awaitingInboundResolver | ✅ `awaiting-inbound-resolver.test.ts` | ✅ `awaitingInboundResolver.component.integration.test.ts` | — | IM→resolve；B2 凭证→credential_ref |
 | memoryBlockStore | ✅ `memory-block-store.test.ts` + `memory-block-tools.test.ts` | ✅ `memoryBlockStore.component.integration.test.ts` | — | B1 工具已接 outerToolExecutor |
 | llmGateway | ✅ `raw.test.ts` 等 | ✅ `llmGateway.component.integration.test.ts` | — | |
@@ -81,7 +83,7 @@
 | environmentSensorRegistry | ✅ `environment-sensor-registry.test.ts` | ⏳ `environmentSensorRegistry.component.integration.test.ts` | — | ADL [`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)；P0 已实现，pipeline 经 toResourceSnapshot 适配（行为等价） |
 | environmentJournal | ✅ `environment-journal.test.ts` | ⏳ `environmentJournal.component.integration.test.ts` | — | ring trim + current.json + events 月轮转 + 未消费查询 + markConsumed |
 | environmentChangeDetector | ✅ `environment-change-detector.test.ts` | — | — | hysteresis / warmUp / rate·delta·streak derive |
-| autonomyJudge / capacity | ✅ `autonomy-judge.test.ts` + `kpi-spawn-capacity.test.ts`（AWAITING 不占槽、前台预留/归零、foreground_reserved、inbound_pressure、reserve=0 关闭） | ⏳ `autonomyJudge.component.integration.test.ts` | — | ✅ P3 自适应前台预留；`blockIfOuterLoopActive` 仅兼容 advance 路径 |
+| autonomyJudge / capacity | ✅ `autonomy-judge.test.ts` + `kpi-spawn-capacity.test.ts`（AWAITING 不占槽、前台预留/归零、foreground_reserved、inbound_pressure、reserve=0 关闭）+ `autonomy-policy-store.test.ts`（DE-4 剥 KPI 日配额/冷却/minMs） | ⏳ `autonomyJudge.component.integration.test.ts` | — | ✅ P3 自适应前台预留；DE-4 时间配额非产能闸；`blockIfOuterLoopActive` 仅兼容 advance 路径 |
 | strategyStore | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
 | strategyTrigger | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
 | strategyArtifact | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
@@ -153,8 +155,8 @@
 | **designer** | ✅ `designer.test.ts`（run/done/empty + ref 校验） | ✅ `controller.component.integration.test.ts`（DESIGN↔RUN↔DONE 全链） | ⏳ `designer.prompt.test.ts` | P0；DESIGN ↔ RUN 切换 + last_failure 决策表 |
 | **runner** | ✅ `runner.test.ts`（顺序图 + terminal stop + 缺 ref + compound 展开） | ✅ `controller.component.integration.test.ts` | — | P0；顺序图 + dispatch + memory 写入 |
 | **baseNodeExecutor** | ✅ `base-node-executor.test.ts`（render/terminal/allowlist/fail-fast + acceptance + shell-evidence + runtime） | — | — | P0；ReAct + §6.7 验票 |
-| **nodeAcceptance** | ✅ `node-acceptance.test.ts`（json/file/string + shell 404 + deliverable AND） | — | — | P0b；DYFLOW §6.7 / §6.7a |
-| **deliverableCheck** | ✅ `deliverable-check.test.ts`（file/json_key/stdout_contains/stdout_absent） | — | — | DYFLOW §6.7a；report_done 闸门 §9a |
+| **nodeAcceptance** | ✅ `node-acceptance.test.ts`（json/file/string + shell 404 + deliverable AND + P-evidence） | — | — | P0b；DYFLOW §6.7 / §6.7a |
+| **deliverableCheck** | ✅ `deliverable-check.test.ts`（file/json_key/stdout_* + P-alias + 绝对路径拒收） | — | — | DYFLOW §6.7a 路径规范；[`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap B |
 | **failureDistill** | ✅ `failure-distill.test.ts`（distill + dedupe append） | — | — | P0b；DYFLOW §7c |
 | **runtimeContext** | ✅ `runtime-context.test.ts`（platform/shell/vault/env_keys） | — | — | P0；baseNode system 常驻环境块 |
 | **resourceBudget** | ✅ `resource-budget.test.ts`（env 解析/live 块/upsert/软阈值） | — | — | P0；§6.1d 上限+当前用量披露 |

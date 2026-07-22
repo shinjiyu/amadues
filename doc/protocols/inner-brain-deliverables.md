@@ -160,11 +160,15 @@ interface DeliverableAsset {
 ```
 1. 吸收所有 deliverables → asset
 2. 写 inner-status.v1.deliverables[]（见 §5）
-3. 发自动通知 postMessage（见 §6.2）
+3. 发自动通知 postMessage（见 §6.2）——仅当本 burst 允许用户 IM 完成通知
 4. 更新 registry 状态为 DONE
 ```
 
 顺序很重要：**先写状态，再发通知**。否则若 LLM 通过 PushLoop 提前看到通知开始决策，可能 read_inner_status 还看不到 deliverables。
+
+| 规则 | 说明 |
+|---|---|
+| **R4.7** | **产物吸收（步骤 1–2）与 IM 完成通知（步骤 3）解耦**。KPI-linked burst **禁止**默认 `completionNotify`（见 Structurizr `KPI-BURST-OUTCOME-EVALUATOR` §1），但 **必须**仍执行步骤 1–2，使 `status.deliverables[]` / `asset_id` 可供 `read_inner_status`、`send_file`、`attach_asset_ids`。**禁止**因 `shouldNotifyUserOnBurstExit===false` 跳过 ingest。验证记录：[`DELIVERABLE-PIPELINE-GAPS.md`](../structurizr/DELIVERABLE-PIPELINE-GAPS.md) Gap A |
 
 ---
 
@@ -381,3 +385,4 @@ LLM 通过两种方式 attach asset：
 | 日期 | 说明 |
 |---|---|
 | 2026-05-11 | v1 初版（R3 设计落地）：把"内脑产物 → asset → 出站"三段链路写死为"单一权威路径"，删除 `listDeliverables` 全扫，`send_file` 参数 file_paths → asset_ids，`attach_asset_ids` 语义从"占位"收紧为"运行时展开为 parts" |
+| 2026-07-22 | **R4.7**：产物吸收与 IM 完成通知解耦（KPI 禁 notify 仍须 ingest）；见 Structurizr [`DELIVERABLE-PIPELINE-GAPS.md`](../structurizr/DELIVERABLE-PIPELINE-GAPS.md) |

@@ -423,5 +423,5 @@ interface BurstFeedbackSignal {
 | 2026-06-06 | §16 反馈调节（多巴胺回路）：`kpi-feedback.ts` + `KpiRecord.momentum` + dispatcher 按 momentum 选 KPI（P0-interim，先于 strategyPlanner） |
 | 2026-06-06 | P0 代码落地：`outer/strategy/` 七模块（store/trigger/artifact/planner/dispatch/reaper/facade）+ `runStrategyPhase` 编排；`TaskStatus` 加 `ABORTED`；6 套单测 43 例全绿；依赖的环境模型 P0 已先行落地 |
 | 2026-06-06 | P0 接 live 心跳（gated 默认关）：`live-adapter.ts`（真 registry/LLM/process.kill/action-log）+ `autonomyPipeline` 在 idle 时跑 `runLiveStrategyPhase` 并把 `focusOrder`/`strategyMode` 注入 dispatcher（`pickActiveKpi` 按 focusOrder∩active 选）；`UTLRA_STRATEGY_LAYER_ENABLED` 关时零行为差；新增 live-adapter/run-phase/dispatch-focusorder 测，strategy 套共 52 例全绿 |
-| 2026-06-07 | 移除 `UTLRA_STRATEGY_LAYER_ENABLED` 开关（`isStrategyLayerEnabled` 删除）：战略层在 `verdict=idle` 时常开。副作用：idle tick 会先跑一次 strategy 规划（受 `shouldReevaluate` 触发门控）；同步更新 KPI-sprint 组件测断言 |
+| 2026-06-07 | 移除 `UTLRA_STRATEGY_LAYER_ENABLED` 开关（`isStrategyLayerEnabled` 删除）：战略层在 `verdict=idle` 时常开。副作用：idle tick 会先跑一次 strategy 规划（受 `shouldReevaluate` 触发门控）；同步更新 KPI burst 组件测断言 |
 | 2026-07-21 | **整篇降为历史**：实现删除后，自主工作权威迁至 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)；§16.4 边界表改为指向 SelfWorkPolicy / digitalEmployeeLoop |

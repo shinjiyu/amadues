@@ -72,9 +72,19 @@ export type {
 export { Scheduler } from './scheduler.js';
 export { EmployeeCalendar } from './employee-calendar.js';
 export type {
+  CalendarCommitmentView,
+  CalendarPurpose,
   DueCalendarCommitment,
   EmployeeCalendarPort,
   EmployeeCalendarScheduler,
+  EnsurePeriodicCommitmentInput,
+  ListCommitmentsFilter,
+  UpsertCommitmentInput,
+} from './employee-calendar.js';
+export {
+  CALENDAR_DUE_TOOL_CALL_ALLOWLIST,
+  MAX_ACTIVE_CALENDAR_COMMITMENTS,
+  MIN_CALENDAR_INTERVAL_MS,
 } from './employee-calendar.js';
 export { TaskExecutor as TaskExecutor } from './executor.js';
 export { TaskStore } from './store.js';

@@ -1,5 +1,9 @@
 /**
- * 闲忙规则持久化 — ADL ENVIRONMENT-MODEL.md（自 outer/autonomy-policy-store.ts 迁入）
+ * 闲忙规则持久化 — ADL ENVIRONMENT-MODEL.md / DIGITAL-EMPLOYEE-AUTONOMY.md DE-4
+ *
+ * DE-4：KPI 找活不存在时间配额概念。`kpi_inner_goal` 只有 enabled 开关；
+ * `cooldownMs`/`maxPerDay` 仅保留给 IM 输出类任务（casual_chat 防刷屏）。
+ * 旧 policy.json 中的 KPI 配额字段与 `minMsSinceLastAutonomousAction` 在 load 时删除并回写。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,7 +15,7 @@ const POLICY_FILE = 'policy.json';
 
 const DEFAULT_TASK_TYPES: Record<string, AutonomyTaskTypeConfig> = {
   casual_chat: { enabled: true, cooldownMs: 3_600_000, maxPerDay: 8 },
-  kpi_inner_goal: { enabled: true, cooldownMs: 0, maxPerDay: 999 },
+  kpi_inner_goal: { enabled: true },
 };
 
 export function defaultAutonomyPolicy(now = new Date().toISOString()): AutonomyPolicy {
@@ -25,12 +29,12 @@ export function defaultAutonomyPolicy(now = new Date().toISOString()): AutonomyP
       maxParallelBurstsPerKpi: 1,
       maxLlmInFlight: 2,
       maxTokensPerHour: null,
-      minMsSinceLastAutonomousAction: 0,
       blockIfOrchestratorQueuedAbove: 2,
-      blockIfOuterLoopActive: true,
+      // 前台对话只走 foregroundReserveSlots 预留，不全停；true 仅兼容 advance 路径。
+      blockIfOuterLoopActive: false,
       foregroundReserveSlots: 1,
     },
-    taskTypes: { ...DEFAULT_TASK_TYPES },
+    taskTypes: structuredClone(DEFAULT_TASK_TYPES),
     lastAutonomousActionAt: null,
     updatedAt: now,
     updatedBy: 'default',
@@ -44,11 +48,51 @@ function policyPath(dataRoot: string): string {
 function mergeTaskTypes(
   base: Record<string, AutonomyTaskTypeConfig>,
 ): Record<string, AutonomyTaskTypeConfig> {
-  const out = { ...DEFAULT_TASK_TYPES, ...base };
+  const out = { ...structuredClone(DEFAULT_TASK_TYPES), ...base };
   for (const key of Object.keys(out)) {
     out[key] = { ...DEFAULT_TASK_TYPES[key], ...out[key] };
   }
   return out;
+}
+
+/**
+ * DE-4：从 policy 中**删除**旧心跳节流概念（不是设成中性值）：
+ * - `hardGates.minMsSinceLastAutonomousAction` 字段删除
+ * - `taskTypes.kpi_inner_goal` 仅保留 `enabled`
+ */
+export function normalizeDigitalEmployeePolicy(policy: AutonomyPolicy): {
+  policy: AutonomyPolicy;
+  changed: boolean;
+} {
+  let changed = false;
+
+  const hardGates = { ...policy.hardGates } as Record<string, unknown>;
+  if ('minMsSinceLastAutonomousAction' in hardGates) {
+    delete hardGates['minMsSinceLastAutonomousAction'];
+    changed = true;
+  }
+
+  const taskTypes = { ...policy.taskTypes };
+  const kpi = taskTypes.kpi_inner_goal;
+  if (!kpi) {
+    taskTypes.kpi_inner_goal = { enabled: true };
+    changed = true;
+  } else if (kpi.cooldownMs !== undefined || kpi.maxPerDay !== undefined) {
+    taskTypes.kpi_inner_goal = { enabled: kpi.enabled };
+    changed = true;
+  }
+
+  if (!changed) return { policy, changed: false };
+  return {
+    policy: {
+      ...policy,
+      hardGates: hardGates as unknown as AutonomyPolicy['hardGates'],
+      taskTypes,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'system',
+    },
+    changed: true,
+  };
 }
 
 export function loadAutonomyPolicy(dataRoot: string): AutonomyPolicy {
@@ -61,7 +105,7 @@ export function loadAutonomyPolicy(dataRoot: string): AutonomyPolicy {
   try {
     const raw = JSON.parse(fs.readFileSync(fp, 'utf8')) as Partial<AutonomyPolicy>;
     const base = defaultAutonomyPolicy();
-    return {
+    const merged: AutonomyPolicy = {
       ...base,
       ...raw,
       version: 1,
@@ -70,6 +114,9 @@ export function loadAutonomyPolicy(dataRoot: string): AutonomyPolicy {
       updatedAt: raw.updatedAt ?? base.updatedAt,
       updatedBy: raw.updatedBy ?? 'system',
     };
+    const { policy, changed } = normalizeDigitalEmployeePolicy(merged);
+    if (changed) saveAutonomyPolicy(dataRoot, policy);
+    return policy;
   } catch {
     return defaultAutonomyPolicy();
   }
@@ -103,8 +150,9 @@ export function patchAutonomyPolicy(
     updatedAt: new Date().toISOString(),
     updatedBy: 'system',
   };
-  saveAutonomyPolicy(dataRoot, next);
-  return next;
+  const { policy } = normalizeDigitalEmployeePolicy(next);
+  saveAutonomyPolicy(dataRoot, policy);
+  return policy;
 }
 
 export function markAutonomousAction(dataRoot: string): void {

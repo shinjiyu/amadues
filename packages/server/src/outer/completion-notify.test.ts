@@ -153,6 +153,67 @@ describe('completion-notify', () => {
   });
 });
 
+describe('ingestInnerBrainDeliverablesOnExit (R4.7 Gap A)', () => {
+  let tmp = '';
+
+  afterEach(() => {
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('KPI 路径：吸收产物到 status.deliverables，不依赖 IM notify', async () => {
+    const { ChatAssetStore } = await import('@utlra/chat-ir');
+    const { ingestInnerBrainDeliverablesOnExit, shouldNotifyUserOnBurstExit } = await import(
+      './completion-notify.js'
+    );
+    const { FakeImChannel } = await import('../testing/index.js');
+
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'comp-ingest-kpi-'));
+    const brain = path.join(tmp, '.brain');
+    const runDir = path.join(tmp, '.run', 'pi-mono');
+    fs.mkdirSync(brain, { recursive: true });
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(brain, 'goal.md'), '抓推特', 'utf8');
+    fs.writeFileSync(path.join(tmp, 'tweet_report.md'), '# report\n1412 tweets\n', 'utf8');
+    fs.writeFileSync(
+      path.join(runDir, 'output'),
+      JSON.stringify({
+        type: 'COMPLETE',
+        message: 'done',
+        deliverables: ['tweet_report.md'],
+      }) + '\n',
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(runDir, 'deliverables.json'),
+      JSON.stringify(['tweet_report.md']),
+      'utf8',
+    );
+
+    let saved: unknown[] = [];
+    const assetStore = new ChatAssetStore(path.join(tmp, 'uploads'));
+    const im = new FakeImChannel();
+    const r = ingestInnerBrainDeliverablesOnExit(
+      {
+        assetStore,
+        getEngine: () =>
+          ({
+            setDeliverables: (d: unknown[]) => {
+              saved = d;
+            },
+            readStatus: () => ({ deliverables: saved }),
+          }) as never,
+      },
+      { workspaceId: 'ws-kpi', workDir: tmp },
+    );
+
+    expect(shouldNotifyUserOnBurstExit({ kpiId: 'kpi-x' })).toBe(false);
+    expect(r.assets).toHaveLength(1);
+    expect(r.assets[0]!.filename).toBe('tweet_report.md');
+    expect(saved).toHaveLength(1);
+    expect(im.outbox).toHaveLength(0);
+  });
+});
+
 describe('notifyInnerBrainTaskFailed', () => {
   it('sends short failure message without fact dump', async () => {
     const { FakeImChannel } = await import('../testing/index.js');

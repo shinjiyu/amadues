@@ -19,7 +19,7 @@
 
 ```text
 1. 外脑 set_kpi / IM 路由                 → kpiRegistry（长期职责）
-2. digitalEmployeeLoop / Ops advance      → 唯一 set_goal（新 workspace sprint）
+2. digitalEmployeeLoop / Ops advance      → 唯一 set_goal（新 workspace **burst**）
 3. 子进程 INNER_KPI_ID                    → DyFlow controller
 4. burst exit                             → 状态落盘 + burstRunHistory/momentum 反馈
 5. 发出 burst_finished（禁止 onExit 直接 spawn）

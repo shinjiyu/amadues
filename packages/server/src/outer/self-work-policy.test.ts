@@ -100,7 +100,40 @@ describe('ConservativeSelfWorkPolicy', () => {
     const policy = new ConservativeSelfWorkPolicy();
     const proposal = await policy.propose(baseContext);
     expect(proposal?.kpiId).toBe('kpi-1');
+    expect(proposal?.action).toContain('bootstrap');
     expect(proposal?.expectedOutcome.length).toBeGreaterThan(0);
     expect(await policy.propose({ ...baseContext, activeKpis: [] })).toBeNull();
+  });
+
+  it('rejects duty-full replay and skips KPI with future calendar perception', async () => {
+    const duty: SelfWorkProposal = {
+      kpiId: 'kpi-1',
+      action: '推进 KPI：持续创作并运营小说 —— 使用方式：首次做 20 条，每日定时……',
+      expectedOutcome: 'x',
+      reason: 'y',
+      strategyId: 'conservative',
+    };
+    expect(validateSelfWorkProposal(duty, baseContext).reason).toBe('duty_replay_forbidden');
+
+    const policy = new ConservativeSelfWorkPolicy();
+    expect(
+      await policy.propose({
+        ...baseContext,
+        perception: {
+          kpiIdsWithHealthyRunning: [],
+          kpiIdsWithUnhealthyRunning: [],
+          kpiIdsWithInFlight: [],
+          kpiIdsWithFuturePeriodicCalendar: ['kpi-1'],
+          kpiIdsBootstrapDone: [],
+          kpiIdsWithRecentStall: [],
+          kpiIdsNeedingRepair: [],
+          sinceAtByKpi: {},
+          innerByKpi: {},
+          calendarByKpi: {},
+          stallByKpi: {},
+          stallByInstance: {},
+        },
+      }),
+    ).toBeNull();
   });
 });

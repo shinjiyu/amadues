@@ -53,13 +53,13 @@ export function buildKpiSprintGoal(kpi: KpiRecord, _kpiRegistry?: KpiRegistry): 
   const historyBlock = formatBurstRunDigest(kpi, 5);
   const charter = kpi.charter?.trim() || kpi.description;
   return (
-    `# KPI sprint（外脑推进）\n\n` +
+    `# KPI burst（外脑推进）\n\n` +
     `origin_user: ${kpi.createdBy}\n\n` +
     `## 本轮章程\n${charter}\n\n` +
     `## KPI\n${kpi.description}\n\n` +
     `${historyBlock}\n` +
     `\n## 执行约束\n` +
-    `- 本轮 EXECUTE 只完成**一小步**，完成后 REVIEW/REPLAN 并结束（外脑将按节拍再派）\n` +
+    `- 本轮 EXECUTE 只完成**一小步**，完成后 REVIEW/REPLAN 并结束（外脑将再派下一发 burst）\n` +
     `- 同 KPI 其它 burst workspace 可通过 peer 只读访问；本 workspace 独立产出\n` +
     `- **不要**调用 wait_timer 长睡；短 retry/限速等待除外\n`
   );
@@ -106,7 +106,7 @@ async function dispatchKpiSprint(
   const m = toolOut.output.match(/instance_id=([^\s,，]+)/);
   const instanceId = m?.[1];
 
-  // 仅记录派发时间；**不**把渲染后的 sprint goal 写回 charter，
+  // 仅记录派发时间；**不**把渲染后的 burst goal 写回 charter，
   // 否则下轮 buildKpiSprintGoal 会把它再包一层模板 → goal.md 嵌套膨胀。
   // charter 只由 Ops advance_kpi / api-dispatch / outcomeEvaluator 写入「干净的下轮章程」。
   const now = new Date().toISOString();
@@ -135,7 +135,7 @@ export async function advanceKpi(
   return dispatchKpiSprint(deps, kpi);
 }
 
-/** 心跳遍历 active KPI，派第一发 eligible sprint */
+/** 心跳遍历 active KPI，派第一发 eligible burst */
 export async function tickKpiAdvancer(deps: KpiAdvancerDeps): Promise<KpiAdvancerTickResult> {
   const results: KpiAdvanceResult[] = [];
   for (const kpi of orderActiveKpis(deps.kpiRegistry)) {

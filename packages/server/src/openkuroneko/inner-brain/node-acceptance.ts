@@ -8,7 +8,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { ExecutionEntry } from '../brain/index.js';
-import { runDeliverableChecks } from './deliverable-check.js';
+import {
+  isUnsafeRelativePath,
+  relativeFileAliases,
+  runDeliverableChecks,
+} from './deliverable-check.js';
 import type { LocalNode, NodeAcceptance, NodeInst, NodeOutputSpec } from './types.js';
 
 export interface NodeEvidence {
@@ -61,6 +65,23 @@ export function gatherEvidence(workDir: string, log: ExecutionEntry[]): NodeEvid
         filePaths.add(resolveWorkPath(workDir, p.trim()));
       }
     }
+    // P-evidence：register_deliverable 路径也计入验票证据
+    if (entry.toolName === 'register_deliverable') {
+      const p = entry.args['relative_path'] ?? entry.args['path'];
+      if (typeof p === 'string' && p.trim()) {
+        filePaths.add(resolveWorkPath(workDir, p.trim()));
+      }
+    }
+    // P-evidence：shell 重定向落盘（> / >> / tee）
+    if (entry.toolName === 'shell_exec') {
+      const cmd = typeof entry.args['command'] === 'string' ? entry.args['command'] : '';
+      for (const m of cmd.matchAll(/(?:>>?|tee(?:\s+-a)?)\s+['"]?([^\s'"|&;<>]+)/gi)) {
+        const rel = m[1];
+        if (rel && !rel.includes('..') && !rel.startsWith('/')) {
+          filePaths.add(resolveWorkPath(workDir, rel));
+        }
+      }
+    }
     for (const m of out.matchAll(/(?:^|\s)([\w./-]+\.(?:json|csv|txt|log|md|mjs|js|ts))(?:\s|$)/gi)) {
       const rel = m[1];
       if (rel && !rel.includes('..')) {
@@ -81,6 +102,32 @@ function resolveWorkPath(workDir: string, rel: string): string {
   const root = path.normalize(workDir);
   if (!abs.startsWith(root)) return abs;
   return abs;
+}
+
+/** P-alias：相对路径在 workDir / workspace/ 下任一处存在且非空则返回绝对路径 */
+function resolveExistingWorkFile(workDir: string, relOrAbs: string): string | null {
+  const root = path.normalize(workDir);
+  const normalized = path.normalize(relOrAbs);
+  if (path.isAbsolute(relOrAbs) || /^[a-zA-Z]:[\\/]/.test(relOrAbs)) {
+    if (fs.existsSync(normalized)) {
+      const st = fs.statSync(normalized);
+      if (st.isFile() && st.size > 0) return normalized;
+    }
+    if (normalized.startsWith(root + path.sep)) {
+      const rel = normalized.slice(root.length + 1).replace(/\\/g, '/');
+      return resolveExistingWorkFile(workDir, rel);
+    }
+    return null;
+  }
+  if (isUnsafeRelativePath(relOrAbs)) return null;
+  for (const cand of relativeFileAliases(relOrAbs)) {
+    const abs = path.normalize(path.join(workDir, cand));
+    if (abs !== root && !abs.startsWith(root + path.sep)) continue;
+    if (!fs.existsSync(abs)) continue;
+    const st = fs.statSync(abs);
+    if (st.isFile() && st.size > 0) return abs;
+  }
+  return null;
 }
 
 function parseJsonFile(absPath: string): { ok: boolean; data?: unknown; reason?: string } {
@@ -108,16 +155,19 @@ function checkOutputSpec(
     if (!candidate) {
       return { ok: false, reason: `未找到可验证的文件产物（key=${spec.key}）` };
     }
-    if (!fs.existsSync(candidate)) {
+    const resolved = resolveExistingWorkFile(ctx.workDir, candidate) ?? (
+      fs.existsSync(candidate) ? candidate : null
+    );
+    if (!resolved) {
       return { ok: false, reason: `文件不存在：${candidate}` };
     }
     if (type === 'json') {
-      const parsed = parseJsonFile(candidate);
+      const parsed = parseJsonFile(resolved);
       if (!parsed.ok) return { ok: false, reason: parsed.reason ?? 'JSON 解析失败' };
       ctx.outputs[spec.key] = parsed.data;
       return { ok: true };
     }
-    ctx.outputs[spec.key] = candidate;
+    ctx.outputs[spec.key] = resolved;
     return { ok: true };
   }
 
@@ -140,17 +190,22 @@ function pickFileForOutput(
 ): string | null {
   const keyHint = key.replace(/[^a-zA-Z0-9._-]/g, '');
   for (const abs of ctx.evidence.filePaths) {
-    if (keyHint && path.basename(abs).includes(keyHint)) return abs;
+    const existing = resolveExistingWorkFile(ctx.workDir, abs);
+    if (!existing) continue;
+    if (keyHint && path.basename(existing).includes(keyHint)) return existing;
   }
   const fromContent = ctx.lastContent.match(
     new RegExp(`["']?([\\w./-]*${keyHint}[\\w./-]*\\.(?:json|csv|txt|log|md|mjs|js))["']?`, 'i'),
   );
   if (fromContent?.[1]) {
-    const abs = resolveWorkPath(ctx.workDir, fromContent[1]);
-    if (fs.existsSync(abs)) return abs;
+    const found = resolveExistingWorkFile(ctx.workDir, fromContent[1]);
+    if (found) return found;
   }
-  const first = [...ctx.evidence.filePaths][0];
-  return first ?? null;
+  for (const abs of ctx.evidence.filePaths) {
+    const existing = resolveExistingWorkFile(ctx.workDir, abs);
+    if (existing) return existing;
+  }
+  return null;
 }
 
 export function validateNodeCompletion(opts: {

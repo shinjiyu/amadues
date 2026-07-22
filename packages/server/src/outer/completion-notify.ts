@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { ChatAssetStore, ChatIRChannel } from '@utlra/chat-ir';
-import type { InnerBrainEngine } from '../workspace-kit/index.js';
+import type { DeliverableAsset, InnerBrainEngine } from '../workspace-kit/index.js';
 
 import {
   buildCompletionReport,
@@ -34,6 +34,24 @@ export interface CompletionNotifyDeps {
 /** KPI 挂接 burst 不走 IM 完成通知（ADL KPI-BURST-OUTCOME-EVALUATOR §1） */
 export function shouldNotifyUserOnBurstExit(record: { kpiId?: string }): boolean {
   return !record.kpiId?.trim();
+}
+
+/**
+ * R4.7 / DELIVERABLE-PIPELINE-GAPS Gap A：产物吸收与 IM 解耦。
+ * onExit(DONE) 与 ERROR+partial **必须**调用；不发送 postMessage。
+ */
+export function ingestInnerBrainDeliverablesOnExit(
+  deps: Pick<CompletionNotifyDeps, 'assetStore' | 'getEngine'>,
+  opts: { workspaceId: string; workDir: string },
+): { assets: DeliverableAsset[]; deliverables: string[] } {
+  const { deliverables } = buildCompletionMessageFromWorkspace(opts.workDir);
+  const ingest = ingestDeliverables(opts.workDir, deliverables, deps.assetStore);
+  try {
+    deps.getEngine(opts.workspaceId).setDeliverables(ingest.assets);
+  } catch (e) {
+    console.error('[completion-notify] setDeliverables failed:', e);
+  }
+  return { assets: ingest.assets, deliverables };
 }
 
 /** 从 output 取最后一条 COMPLETE（忽略其后可能写入的 PROGRESS） */
@@ -231,18 +249,22 @@ async function postCompletionIm(
     originThread: string;
     headerLine: string;
     gapSummary?: string;
+    /** onExit 已调用 ingestInnerBrainDeliverablesOnExit 时置 true，避免重复吸收 */
+    skipIngest?: boolean;
   },
 ): Promise<void> {
   const { message, deliverables } = buildCompletionMessageFromWorkspace(opts.workDir);
-  const ingest = ingestDeliverables(opts.workDir, deliverables, deps.assetStore);
-
-  try {
-    deps.getEngine(opts.workspaceId).setDeliverables(ingest.assets);
-  } catch (e) {
-    console.error('[completion-notify] setDeliverables failed:', e);
+  let assets: DeliverableAsset[];
+  if (opts.skipIngest) {
+    assets = deps.getEngine(opts.workspaceId).readStatus()?.deliverables ?? [];
+  } else {
+    assets = ingestInnerBrainDeliverablesOnExit(deps, {
+      workspaceId: opts.workspaceId,
+      workDir: opts.workDir,
+    }).assets;
   }
 
-  const successCount = ingest.assets.length;
+  const successCount = assets.length;
   const requested = deliverables.length;
   const fileNote =
     successCount > 0
@@ -255,7 +277,7 @@ async function postCompletionIm(
   const completionText =
     `${opts.headerLine}\n\n${gapBlock}${message.trim()}${fileNote}\n\n— \`${opts.instanceId}\``;
 
-  const attachmentParts: AttachmentPart[] = ingest.assets.map((d) => ({
+  const attachmentParts: AttachmentPart[] = assets.map((d) => ({
     type: 'attachment',
     asset_ref: {
       kind: d.kind,
@@ -296,6 +318,8 @@ export async function notifyInnerBrainTaskComplete(
     workspaceId: string;
     workDir: string;
     originThread: string;
+    /** R4.7：onExit 已 ingest 时跳过二次吸收 */
+    skipIngest?: boolean;
   },
 ): Promise<void> {
   const { message } = buildCompletionMessageFromWorkspace(opts.workDir);
@@ -314,6 +338,7 @@ export async function notifyInnerBrainTaskPartial(
     workDir: string;
     originThread: string;
     gapSummary: string;
+    skipIngest?: boolean;
   },
 ): Promise<void> {
   await postCompletionIm(deps, {

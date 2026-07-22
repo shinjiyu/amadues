@@ -1,4 +1,7 @@
 import type { KpiRecord } from './kpi-registry.js';
+import type { AdvancePerception } from './advance-perception.js';
+import { shouldSkipSelfWorkForKpi } from './advance-perception.js';
+import { buildNarrowDraftProposal } from './advance-allocator.js';
 
 export interface SelfWorkProposal {
   kpiId: string;
@@ -22,6 +25,8 @@ export interface SelfWorkContext {
   recentActions: string[];
   /** R7 路线级熔断：同路线连败 ≥ 阈值的 goal/action 签名，提案命中即拒绝 */
   blockedRoutes?: string[];
+  /** 推进感知面（日历 + 内脑）；缺省时跳过感知闸门（兼容旧测） */
+  perception?: AdvancePerception;
 }
 
 export interface SelfWorkPolicy {
@@ -64,6 +69,19 @@ function overlaps(left: string[] = [], right: string[] = []): boolean {
   return left.some((item) => rightSet.has(normalized(item)));
 }
 
+/** Duty 全文 / 旧「推进 KPI：」整单重放检测 */
+export function looksLikeDutyReplay(action: string, kpi?: SelfWorkKpi): boolean {
+  const a = action.trim();
+  if (!a) return false;
+  if (kpi?.charter?.trim() && normalized(a) === normalized(kpi.charter)) return true;
+  if (a.startsWith('推进 KPI：') && kpi?.description && a.includes(kpi.description.slice(0, 80))) {
+    return true;
+  }
+  // 过长且含「使用方式」+「首次」——典型 Duty 说明书塞进 goal
+  if (a.length > 800 && /使用方式|首次|每日定时/.test(a)) return true;
+  return false;
+}
+
 export function validateSelfWorkProposal(
   proposal: SelfWorkProposal,
   context: SelfWorkContext,
@@ -88,6 +106,30 @@ export function validateSelfWorkProposal(
   if (isRouteBlocked(proposal.action, context.blockedRoutes)) {
     return { ok: false, reason: 'route_blocked' };
   }
+
+  const perception = context.perception;
+  if (perception) {
+    if (perception.kpiIdsWithHealthyRunning.includes(proposal.kpiId)) {
+      return { ok: false, reason: 'kpi_has_running_active' };
+    }
+    if (perception.kpiIdsWithInFlight.includes(proposal.kpiId)) {
+      return { ok: false, reason: 'kpi_has_inflight' };
+    }
+    if (perception.kpiIdsWithFuturePeriodicCalendar.includes(proposal.kpiId)) {
+      if (!perception.kpiIdsNeedingRepair.includes(proposal.kpiId)) {
+        return { ok: false, reason: 'kpi_has_scheduled_calendar' };
+      }
+    }
+    if (perception.kpiIdsBootstrapDone.includes(proposal.kpiId)) {
+      if (!perception.kpiIdsNeedingRepair.includes(proposal.kpiId)) {
+        return { ok: false, reason: 'kpi_bootstrap_done_await_calendar' };
+      }
+    }
+  }
+  if (looksLikeDutyReplay(proposal.action, kpi)) {
+    return { ok: false, reason: 'duty_replay_forbidden' };
+  }
+
   return { ok: true, reason: 'proposal_valid' };
 }
 
@@ -99,17 +141,14 @@ export class ConservativeSelfWorkPolicy implements SelfWorkPolicy {
   async propose(context: SelfWorkContext): Promise<SelfWorkProposal | null> {
     const kpi = [...context.activeKpis]
       .filter((candidate) => candidate.status === 'active')
+      .filter((candidate) =>
+        context.perception ? !shouldSkipSelfWorkForKpi(context.perception, candidate.kpiId) : true,
+      )
       .sort((a, b) => b.momentum - a.momentum)[0];
     if (!kpi) return null;
 
-    const action = kpi.charter?.trim() || `推进 KPI：${kpi.description}`;
-    const proposal: SelfWorkProposal = {
-      kpiId: kpi.kpiId,
-      action,
-      expectedOutcome: `产出可验收结果并记录其对“${kpi.description}”的推进证据`,
-      reason: kpi.notes?.trim() || '当前有可用容量，优先推进最高反馈的 active KPI',
-      strategyId: 'conservative',
-    };
+    const proposal = buildNarrowDraftProposal(kpi, context.perception, 'conservative');
+    if (!proposal) return null;
     return validateSelfWorkProposal(proposal, context).ok ? proposal : null;
   }
 }

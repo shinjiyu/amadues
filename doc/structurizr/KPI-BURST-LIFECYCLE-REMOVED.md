@@ -23,7 +23,7 @@
 |------|------|
 | **KPI 下一份有价值工作（目标 P1）** | `digitalEmployeeLoop`（burst_finished 事件）→ Calendar / SelfWorkPolicy → 统一 `set_goal` |
 | **兼容期续派** | `kpiAdvancer.tick`（心跳 fallback）+ IM `advanceKpi` |
-| **sprint 内短等待** | 内脑 `wait_timer` → registry AWAITING → **ChangeWatcher** 到点 spawn；业务长定时归 Calendar |
+| **burst 内短等待** | 内脑 `wait_timer` → registry AWAITING → **ChangeWatcher** 到点 spawn；业务长定时归 Calendar |
 | **等人类** | `awaitingNotify` + IM → **awaitingInboundResolver** → ChangeWatcher |
 | **burst 终态** | `onExit` 写 registry（DONE/AWAITING/ERROR）；`countDeliverables` |
 | **KPI 结案** | `kpiCompletionJudge.sweep`（心跳）；**不再** onExit autoAchieve |

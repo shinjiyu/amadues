@@ -45,6 +45,11 @@ export interface DigitalEmployeeLoopDeps {
   calendar: EmployeeCalendarPort;
   selfWorkPolicy: SelfWorkPolicy;
   dispatchProposal(proposal: SelfWorkProposal): Promise<void>;
+  /**
+   * 基线已完成时幂等 ensure 周期日历（ADV-6）。返回新建条数；
+   * 若 >0，loop 会重新采集环境再跑 SelfWork。
+   */
+  ensureAdvanceCalendars?(environment: DigitalEmployeeEnvironment): Promise<number>;
   log?: (entry: DigitalEmployeeLoopLog) => void;
   maxDispatchesPerTrigger?: number;
 }
@@ -81,7 +86,7 @@ export class DigitalEmployeeLoop {
     const actionsThisRun: string[] = [];
 
     while (dispatched < maxDispatches) {
-      const environment = await this.deps.collectEnvironment();
+      let environment = await this.deps.collectEnvironment();
       if (!environment.capacity.available || environment.capacity.freeInnerSlots <= 0) {
         finalReason = environment.capacity.reason ?? 'no_available_capacity';
         this.writeLog(triggerReasons, 'sleep', false, finalReason);
@@ -99,6 +104,32 @@ export class DigitalEmployeeLoop {
           continue;
         } catch (error) {
           finalReason = 'calendar_dispatch_failed';
+          this.writeLog(
+            triggerReasons,
+            'error',
+            false,
+            finalReason,
+            error instanceof Error ? error.message : String(error),
+          );
+          break;
+        }
+      }
+
+      if (this.deps.ensureAdvanceCalendars) {
+        try {
+          const created = await this.deps.ensureAdvanceCalendars(environment);
+          if (created > 0) {
+            this.writeLog(
+              triggerReasons,
+              'calendar',
+              false,
+              'calendar_ensured',
+              `created=${created}`,
+            );
+            environment = await this.deps.collectEnvironment();
+          }
+        } catch (error) {
+          finalReason = 'calendar_ensure_failed';
           this.writeLog(
             triggerReasons,
             'error',

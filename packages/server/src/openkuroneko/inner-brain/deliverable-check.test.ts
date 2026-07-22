@@ -22,7 +22,37 @@ describe('runDeliverableCheck', () => {
   it('file: rejects path traversal outside workDir', () => {
     const r = runDeliverableCheck(dir, { kind: 'file', target: '../secret.txt' }, '');
     expect(r.ok).toBe(false);
-    expect(r.reason).toMatch(/越界/);
+    expect(r.reason).toMatch(/绝对路径|越界/);
+  });
+
+  it('file: P-alias workspace/X ↔ X', () => {
+    fs.mkdirSync(path.join(dir, 'workspace'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'workspace', 'report.md'), '# in workspace', 'utf8');
+    expect(runDeliverableCheck(dir, { kind: 'file', target: 'report.md' }, '').ok).toBe(true);
+    expect(runDeliverableCheck(dir, { kind: 'file', target: 'workspace/report.md' }, '').ok).toBe(true);
+
+    fs.writeFileSync(path.join(dir, 'root_only.md'), 'root', 'utf8');
+    expect(runDeliverableCheck(dir, { kind: 'file', target: 'workspace/root_only.md' }, '').ok).toBe(
+      true,
+    );
+  });
+
+  it('file: P-rel rejects absolute paths', () => {
+    const r = runDeliverableCheck(dir, { kind: 'file', target: '/tmp/out.md' }, '');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/绝对路径/);
+  });
+
+  it('json_key: P-alias on file part', () => {
+    fs.mkdirSync(path.join(dir, 'workspace'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'workspace', 'meta.json'),
+      JSON.stringify({ id: 'abc' }),
+      'utf8',
+    );
+    expect(
+      runDeliverableCheck(dir, { kind: 'json_key', target: 'meta.json#id' }, '').ok,
+    ).toBe(true);
   });
 
   it('json_key: resolves dot path incl. array index', () => {

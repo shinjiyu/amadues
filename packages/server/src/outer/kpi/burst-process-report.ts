@@ -7,6 +7,7 @@ import path from 'node:path';
 import { resolveInnerToolAuditPaths } from '../../openkuroneko/inner-brain/inner-tool-audit.js';
 import type { FailureSummary, InnerMemory, NodeResult } from '../../openkuroneko/inner-brain/types.js';
 import { pickDeliverableExcerpt } from '../../openkuroneko/burst/completion-report.js';
+import { tailFileLines } from '../../pi-mono/tail-file.js';
 
 export interface BurstProcessReportInput {
   workDir: string;
@@ -77,29 +78,23 @@ function tailJsonlFiles(dir: string, maxLines: number): string {
 
   const lines: string[] = [];
   for (const file of files.slice(-2)) {
-    try {
-      const raw = fs.readFileSync(path.join(dir, file), 'utf8');
-      const fileLines = raw.split('\n').filter(Boolean);
-      for (const line of fileLines.slice(-maxLines)) {
-        try {
-          const entry = JSON.parse(line) as {
-            event?: string;
-            data?: { name?: string; ok?: boolean; preview?: string };
-          };
-          if (entry.event === 'tool.result') {
-            const ok = entry.data?.ok ?? true;
-            const name = entry.data?.name ?? '?';
-            const preview = entry.data?.preview ?? '';
-            lines.push(`${ok ? 'ok' : 'FAIL'} ${name}: ${preview}`);
-          } else if (entry.event === 'tool.call') {
-            lines.push(`call ${entry.data?.name ?? '?'}`);
-          }
-        } catch {
-          lines.push(line.slice(0, 160));
+    for (const line of tailFileLines(path.join(dir, file), maxLines)) {
+      try {
+        const entry = JSON.parse(line) as {
+          event?: string;
+          data?: { name?: string; ok?: boolean; preview?: string };
+        };
+        if (entry.event === 'tool.result') {
+          const ok = entry.data?.ok ?? true;
+          const name = entry.data?.name ?? '?';
+          const preview = entry.data?.preview ?? '';
+          lines.push(`${ok ? 'ok' : 'FAIL'} ${name}: ${preview}`);
+        } else if (entry.event === 'tool.call') {
+          lines.push(`call ${entry.data?.name ?? '?'}`);
         }
+      } catch {
+        lines.push(line.slice(0, 160));
       }
-    } catch {
-      /* skip file */
     }
   }
   return lines.length > 0 ? lines.slice(-maxLines).join('\n') : '（工具日志为空）';
@@ -111,11 +106,7 @@ function tailPiMonoLogs(workDir: string, maxLines: number): string {
   const files = fs.readdirSync(logDir).filter((f) => f.endsWith('.jsonl')).sort();
   if (files.length === 0) return '（无 pi-mono 日志）';
   try {
-    const raw = fs.readFileSync(path.join(logDir, files[files.length - 1]!), 'utf8');
-    return raw
-      .split('\n')
-      .filter(Boolean)
-      .slice(-maxLines)
+    return tailFileLines(path.join(logDir, files[files.length - 1]!), maxLines)
       .map((l) => l.slice(0, 200))
       .join('\n');
   } catch {

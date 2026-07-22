@@ -64,14 +64,69 @@ function isNonEmpty(value: unknown): boolean {
   return true;
 }
 
-function checkFile(workDir: string, target: string): DeliverableCheckResult['reason'] | null {
-  const abs = resolveInside(workDir, target);
-  if (!abs) return `路径越界：${target}`;
-  if (!fs.existsSync(abs)) return `文件不存在：${target}`;
-  const st = fs.statSync(abs);
-  if (!st.isFile()) return `不是文件：${target}`;
-  if (st.size <= 0) return `文件为空：${target}`;
+/** P-rel：file / json_key 的相对路径部分禁止绝对路径与 `..` */
+export function isUnsafeRelativePath(rel: string): boolean {
+  const t = rel.trim().replace(/\\/g, '/');
+  if (!t) return true;
+  if (t.includes('..')) return true;
+  if (path.isAbsolute(t)) return true;
+  if (/^[a-zA-Z]:[\\/]/.test(t)) return true;
+  if (t.startsWith('/')) return true;
+  return false;
+}
+
+/** P-alias：`X` ↔ `workspace/X` */
+export function relativeFileAliases(rel: string): string[] {
+  const t = rel.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  if (!t) return [];
+  const aliases = new Set<string>([t]);
+  if (t.startsWith('workspace/')) {
+    aliases.add(t.slice('workspace/'.length));
+  } else {
+    aliases.add(`workspace/${t}`);
+  }
+  return [...aliases];
+}
+
+/** 从 check 取出需落盘验票的相对路径（stdout_* 无路径） */
+export function deliverableCheckFilePart(check: DeliverableCheck): string | null {
+  const target = (check.target ?? '').trim();
+  if (!target) return null;
+  if (check.kind === 'file') return target;
+  if (check.kind === 'json_key') {
+    const hashIdx = target.indexOf('#');
+    return (hashIdx < 0 ? target : target.slice(0, hashIdx)).trim() || null;
+  }
   return null;
+}
+
+function checkFile(workDir: string, target: string): DeliverableCheckResult['reason'] | null {
+  if (isUnsafeRelativePath(target)) return `禁止绝对路径或越界路径：${target}`;
+  let sawMissing = false;
+  let lastEmpty: string | null = null;
+  let lastNotFile: string | null = null;
+  for (const cand of relativeFileAliases(target)) {
+    const abs = resolveInside(workDir, cand);
+    if (!abs) continue;
+    if (!fs.existsSync(abs)) {
+      sawMissing = true;
+      continue;
+    }
+    const st = fs.statSync(abs);
+    if (!st.isFile()) {
+      lastNotFile = cand;
+      continue;
+    }
+    if (st.size <= 0) {
+      lastEmpty = cand;
+      continue;
+    }
+    return null;
+  }
+  if (lastEmpty) return `文件为空：${lastEmpty}`;
+  if (lastNotFile) return `不是文件：${lastNotFile}`;
+  if (sawMissing) return `文件不存在：${target}`;
+  return `路径越界：${target}`;
 }
 
 function checkJsonKey(workDir: string, target: string): string | null {
@@ -80,9 +135,19 @@ function checkJsonKey(workDir: string, target: string): string | null {
   const rel = target.slice(0, hashIdx).trim();
   const dotPath = target.slice(hashIdx + 1).trim();
   if (!rel || !dotPath) return `json_key 格式应为 "rel.json#a.b.c"：${target}`;
+  if (isUnsafeRelativePath(rel)) return `禁止绝对路径或越界路径：${rel}`;
   const fileErr = checkFile(workDir, rel);
   if (fileErr) return fileErr;
-  const abs = resolveInside(workDir, rel)!;
+  // 找到实际命中的别名文件再 parse
+  let abs: string | null = null;
+  for (const cand of relativeFileAliases(rel)) {
+    const resolved = resolveInside(workDir, cand);
+    if (resolved && fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+      abs = resolved;
+      break;
+    }
+  }
+  if (!abs) return `文件不存在：${rel}`;
   let data: unknown;
   try {
     data = JSON.parse(fs.readFileSync(abs, 'utf8'));

@@ -60,7 +60,7 @@ flowchart TB
 
 | 旧语义 | 新语义 |
 |--------|--------|
-| 每 leaf KPI ≤ 1 canonical `instanceId` | 每 KPI **可有多条** active burst（并行 sprint） |
+| 每 leaf KPI ≤ 1 canonical `instanceId` | 每 KPI **可有多条** active burst（可并行） |
 | `findCanonicalBurstForKpi` 强制复用 workspace | **默认每次新 burst 新 workspace**；续跑仅 `changeWatcher` / 显式 restart |
 | `set_goal` 禁止同 KPI 并行 | **允许**在资源许可时同 KPI 多 burst |
 | `KpiRecord.bursts[]` length ≤ 1 per leaf | `bursts[]` = 该 KPI 关联的全部 instanceId（含并行） |
@@ -73,7 +73,20 @@ flowchart TB
 - **业务定时**：由外脑 `employeeCalendar` 持久化；到期前不占 worker 槽。`wait_timer` 仅用于 burst 内短 retry/限速，禁止长睡到下次业务执行点。
 - **节流**：环境 hardGates + 单 trigger 派发上限 + 提案去重/冲突检测；heartbeat interval 不再是正常续航的天然上限。
 
-### 2.4 burst 互访（解除隔离）
+### 2.4 绩效目标 = KPI（同一概念）
+
+数字员工模型下 **「KPI」与「绩效目标」是同一概念**，唯一真相源是 `kpiRegistry`（`kpi-registry.json`）。
+
+| 旧名 | 现状 |
+|------|------|
+| `set_kpi` / `list_kpis` / `advance_kpi` / `achieve_kpi` | **唯一**长期目标 CRUD + 派发身份 |
+| `performanceGoalEngine`（`performance/goals.json` + scorecard） | **已废弃侧车**：无独立 ADL；全部 `data*` 上 goals=0；**不**接入 `digitalEmployeeLoop` |
+| 外脑工具 `read_performance_goals` / `manage_performance_goal` | 软废弃：只返回迁移提示，引导改用 KPI 工具 |
+| legacy heartbeat `reviewGoalsForHeartbeat` | 已停用（不再注入 performanceBlock） |
+
+关系类/常驻目标用 `set_kpi(kind=ongoing)`，不要再开第二套 `performance/` 目标库。
+
+### 2.5 burst 互访（解除隔离）
 
 - 同 KPI 下所有 burst workspace **默认互相可读**（`collectPeerWorkspaceIds` 按 `kpiId` 聚合全部 sibling）。
 - **取消**「仅 handoff 摘要、禁止读正文」的强隔离；peer 工具可读 sibling `.brain` / 产出目录（仍受 workDir guard，禁止写 sibling）。
@@ -120,7 +133,7 @@ flowchart TB
 - timer：`execute_at` 已过期 > grace → 可 preempt（现有 advancer preempt 逻辑迁入）
 - ask_user：超过 `maxAwaitingMs` / 无 IM 回复 → R4
 - dyflow `DESIGN` 空转 streak / `AWAITING` 无 pending → 不合理，重开
-- `wait_timer` 用于 sprint 内短等待；**禁止**长睡代替外脑续派
+- `wait_timer` 用于 **单次 burst 内**短等待；**禁止**长睡代替外脑续派
 
 ### 3.2 与 KPI Completion Judge 边界
 
@@ -152,13 +165,13 @@ flowchart TB
 
 - 唯一 spawn API：`executeOuterTool('set_goal', { goal, kpi_id?, allowKpiSetGoal: true })`（KPI 路径由 kpiManager 调用）。
 - IM ad-hoc：无 `kpi_id` 的一次性 burst。
-- AWAITING 唤醒：`changeWatcher` → `spawnAndAttachWorker`（同 instance，非 R1 新 sprint）。
+- AWAITING 唤醒：`changeWatcher` → `spawnAndAttachWorker`（同 instance，非 R1 新 burst）。
 
 ### 5.1 charter 写入纪律（✅ 2026-06-23 修复嵌套膨胀）
 
-- `buildKpiSprintGoal(kpi)` 渲染模板：`# KPI sprint … ## 本轮章程\n{charter || description} …`。
-- **`dispatchKpiSprint` 派发后只更新 `lastBurstAt`，禁止把渲染后的 `goal` 写回 `kpi.charter`**。  
-  旧 bug（`kpi-advancer.ts` `charter: kpi.charter ?? goal.slice(0,500)`）会让下轮 `buildKpiSprintGoal` 把整段模板再包一层 → `goal.md` 多重嵌套（`## 本轮章程\n# KPI sprint…## 本轮章程…`）。
+- `buildKpiSprintGoal(kpi)`（**遗留函数名**；语义 = 构建 KPI **burst** goal，见 [`TERMINOLOGY.md`](./TERMINOLOGY.md) §3）渲染模板：`# KPI burst … ## 本轮章程\n{charter || description} …`。
+- **派发后只更新 `lastBurstAt`，禁止把渲染后的 `goal` 写回 `kpi.charter`**。  
+  旧 bug（`kpi-advancer.ts` `charter: kpi.charter ?? goal.slice(0,500)`）会让下轮把整段模板再包一层 → `goal.md` 多重嵌套（`## 本轮章程\n# KPI burst…## 本轮章程…`）。
 - `charter` 只允许由「干净的下轮章程」写入：Ops `advance_kpi(charter)`、`kpi-api-dispatch`、`outcomeEvaluator.suggestedRetryCharter`。
 - 回归测试：`kpi-advancer.test.ts`「多轮 dispatch 不把渲染 goal 写回 charter」。
 
@@ -225,3 +238,4 @@ DyFlow FSM（`dyflow-state.json`）：`DESIGN | RUN | ATTRIBUTE | AWAITING | DON
 |------|------|
 | 2026-06-07 | P3：staleBurstReaper 迁入 kpi/；删除 strategy/*；environment/ 收 autonomyJudge+policy；R3 LLM 复审 |
 | 2026-06-07 | P1：扁平 KPI + 多 burst + R3/R4 awaiting review |
+| 2026-07-21 | §2.4：明确绩效目标 = KPI；废弃 `performanceGoalEngine` 侧车与相关外脑工具/心跳注入 |

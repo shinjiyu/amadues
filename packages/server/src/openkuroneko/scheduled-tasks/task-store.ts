@@ -108,7 +108,8 @@ export class TaskStore {
     if (!filter) return tasks;
 
     if (filter.status) {
-      tasks = tasks.filter(t => t.status === filter.status);
+      const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
+      tasks = tasks.filter((t) => statuses.includes(t.status));
     }
     if (filter.tags && filter.tags.length > 0) {
       tasks = tasks.filter(t =>

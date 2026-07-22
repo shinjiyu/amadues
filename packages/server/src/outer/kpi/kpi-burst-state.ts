@@ -135,7 +135,7 @@ export interface KpiAdvanceEligibility {
 
 /**
  * 是否可为 KPI 再开 burst（心跳 tick 即时决策，无 cadence 层）。
- * - 无 burst → first（R1 首 sprint）
+ * - 无 burst → first（R1 首发）
  * - 无 RUNNING → continue（R1 续派）
  * - 有 RUNNING 且系统有槽 → parallel（R2）
  */

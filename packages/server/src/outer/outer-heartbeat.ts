@@ -32,6 +32,12 @@ import type { LogEntry } from './outer-brain.js';
 import { formatAgentIsoLocal, formatAgentLocalDateTime, resolveAgentTimezone } from '../agent-time.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
+import {
+  collectAdvancePerception,
+  computeBurstLiveness,
+  formatAdvancePerceptionDigest,
+} from './advance-perception.js';
+import { listStallAlertIndex } from '../openkuroneko/inner-brain/burst-stall-alert.js';
 import { PerformanceGoalEngine } from '../performance-goals/engine.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE, buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
 import { runAutonomyPipeline } from './autonomy-pipeline.js';
@@ -124,10 +130,6 @@ function buildHeartbeatToolDefs(hasImClient: boolean): ToolDef[] {
               type: 'string',
               description: '工作区 ID，默认 "default"',
             },
-            performance_goal_id: {
-              type: 'string',
-              description: '若此动作是为了推进某个绩效目标，请填写该 goal_id',
-            },
           },
           required: ['goal'],
         },
@@ -178,10 +180,6 @@ function buildHeartbeatToolDefs(hasImClient: boolean): ToolDef[] {
               type: 'string',
               description:
                 '目标线程 ID。可填写已知的线程 ID；留空则使用默认心跳线程（若已配置）。',
-            },
-            performance_goal_id: {
-              type: 'string',
-              description: '若此动作是为了推进某个绩效目标，请填写该 goal_id',
             },
           },
           required: ['text'],
@@ -246,7 +244,10 @@ async function callLlmWithTools(
  * 供心跳上下文注入。心跳此前只读 default workspace status，多内脑场景下会把
  * 实际在跑的 burst 误判为「无任务」。
  */
-function buildLiveBurstSummary(registry: InnerBrainRegistry | undefined): string {
+function buildLiveBurstSummary(
+  registry: InnerBrainRegistry | undefined,
+  stallByInstance: Record<string, { severity: string; signals: string[]; summary: string }> = {},
+): string {
   if (!registry) return '（多内脑注册表未启用）';
   const live = registry
     .list()
@@ -275,8 +276,14 @@ function buildLiveBurstSummary(registry: InnerBrainRegistry | undefined): string
         : outerPhase.phase !== 'unknown'
           ? ` phase=${outerPhase.phase}`
           : '';
+    const liveness = computeBurstLiveness(t);
     const livenessPart =
-      liveProg?.lastTickAt ? ` last_tick=${formatAgentIsoLocal(liveProg.lastTickAt)}` : '';
+      (liveness ? ` liveness=${liveness}` : '') +
+      (liveProg?.lastTickAt ? ` last_tick=${formatAgentIsoLocal(liveProg.lastTickAt)}` : '');
+    const stall = stallByInstance[t.instanceId];
+    const stallPart = stall
+      ? ` stall=${stall.severity}:${stall.signals.join('|')}`
+      : '';
     return (
       `- ${t.instanceId} [${t.status}]` +
       (t.kpiId ? ` kpi=${t.kpiId}` : '') +
@@ -285,8 +292,10 @@ function buildLiveBurstSummary(registry: InnerBrainRegistry | undefined): string
       ` ticks=${liveTicks}` +
       phasePart +
       livenessPart +
+      stallPart +
       asyncPart +
-      `\n  goal: ${t.goal.replace(/\s+/g, ' ').slice(0, 80)}`
+      `\n  goal: ${t.goal.replace(/\s+/g, ' ').slice(0, 80)}` +
+      (stall ? `\n  stall: ${stall.summary.slice(0, 120)}` : '')
     );
   });
   return `当前在途 burst ${live.length} 个：\n${lines.join('\n')}`;
@@ -316,14 +325,15 @@ ${soul}
 ${goalSection}
 
 ## 数字员工边界
-- 下一份工作由 **digitalEmployeeLoop → Calendar / SelfWorkPolicy** 决定；你不直接派发 set_goal。
+- 下一份工作由 **digitalEmployeeLoop → Calendar（定时轨优先）/ SelfWorkPolicy（实时轨）** 决定；你不直接派发 set_goal。
+- **双轨并存**：同一 KPI 可既有未到期 cron 日程，又在容量空闲时做 bootstrap/repair；禁止在汇报里说「系统没有定时调度」。
 - 心跳只负责完成判定、在途质控、卡死/失约检查、R3–R7 治理与漏事件 fallback。
 - AWAITING 只是某项依赖在等待，不表示整个 KPI 或员工忙碌。
 
 ## 质控职责（战术层，与战略并列）
 - **KPI 完成判定**：每 tick 先核对 active KPI 是否应 achieved（list_kpis / view_kpi 看建议动作）。程序化 sweep 可能已自动结案；若 digest 建议 achieved 但仍 active → achieve_kpi（附 evidence）。
 - **验收内脑效果**：用 list_inner_brains / read_inner_status 看 deliverables、ticks、burstRunHistory 是否在向 KPI **实质靠近**；勿因单 tick 产出少就判失败（内脑可能是增量靠近）。
-- **卡死与重启把控**：区分 AWAITING 正常等待 vs RUNNING 长期无 tick（liveness=stuck）/ pid dead；idle streak 无产出时优先反思 burst，真 stuck 才考虑 directive 或告知人类需 /restart。
+- **卡死与重启把控**：区分 AWAITING 正常等待 vs RUNNING 长期无 tick（liveness=stuck）/ pid dead；对照推进感知里的 stall 信号（cap/空转/long_run）；idle streak 无产出时优先反思 burst，真 stuck 才考虑 directive 或告知人类需 /restart。不要臆造状态。
 - **方向干预**：效果不对 → 记录证据供 SelfWorkPolicy 换路线；不要直接派发，也不要替内脑完成 milestone 级验收（那是 Attributor 的事）。
 
 ## 职责边界
@@ -365,7 +375,7 @@ ${imSection}
    发消息前必须阅读「当前 IM 对话」：仅在与**你**相关时接话，否则不发。
 4. **克制**：正常等待不催促；无监督动作时保持沉默。
 5. **每次最多**：发 1 条 IM 消息，不创建内脑任务。
-6. **关联绩效目标**：推进绩效目标时把 goal_id 填入 performance_goal_id。
+6. **长期目标 = KPI**（同一概念）；不要再提「绩效目标」侧车或 performance_goal_id。
 
 ${OUTER_ASYNC_ORCHESTRATION_GUIDE}`;
 }
@@ -435,7 +445,23 @@ async function runHeartbeat(
   }
 
   // 跨 workspace 在途任务汇总（权威来源，优先于 default workspace 单点状态）
-  const liveBurstSummary = buildLiveBurstSummary(ctx.innerBrainRegistry);
+  const stallAlerts = listStallAlertIndex(ctx.dataRoot, 40).map((entry) => ({
+    alertId: entry.alertId,
+    instanceId: entry.instanceId,
+    severity: entry.severity,
+    signals: entry.signals,
+    summary: entry.summary,
+    ts: entry.ts,
+  }));
+  const advancePerception = collectAdvancePerception({
+    tasks: ctx.innerBrainRegistry?.list() ?? [],
+    stallAlerts,
+  });
+  const liveBurstSummary = buildLiveBurstSummary(
+    ctx.innerBrainRegistry,
+    advancePerception.stallByInstance,
+  );
+  const advanceDigest = formatAdvancePerceptionDigest(advancePerception);
 
   const kpiCompletionBlock =
     ctx.kpiRegistry && ctx.innerBrainRegistry
@@ -456,13 +482,16 @@ async function runHeartbeat(
 ${threadSection}
 ## 在途任务（跨所有 workspace，权威来源）
 ${liveBurstSummary}
+
+## 推进感知（与 SelfWork / list_inner 同源）
+${advanceDigest}
 ${kpiCompletionBlock ? `\n${kpiCompletionBlock}\n` : ''}
 
 ## default workspace 状态（仅供参考，不代表全部任务）
 ${innerStatusText}
 ${memSection ? `\n${memSection}\n` : ''}
 ${performanceBlock ? `\n${performanceBlock}\n` : ''}
-请对照**你自己的**长期目标、KPI 与在途 burst${threadSection ? '，以及当前 IM 对话（仅在与你相关时接话）' : ''}，判断现在是否需要主动行动。与别人 KPI 无关时不要 post_to_im。`;
+请对照**你自己的**长期目标、KPI 与在途 burst${threadSection ? '，以及当前 IM 对话（仅在与你相关时接话）' : ''}，判断现在是否需要主动行动。与别人 KPI 无关时不要 post_to_im。依据上方推进感知与 liveness/stall 字段，不要臆测内脑状态。`;
 
   const messages: ConvMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -828,10 +857,8 @@ export class OuterHeartbeat {
       // 热更新：每次 tick 重新读取 soul 和 long-term goal
       const soul = loadSoul(this.deps.dataRoot);
       const longTermGoal = loadOuterGoal(this.deps.dataRoot);
-      const performanceBlock = await this.performanceEngine.reviewGoalsForHeartbeat(
-        env,
-        this.deps.memoryStore,
-      );
+      // 绩效目标侧车已废弃（= KPI）；不再做 scorecard 审阅注入。
+      const performanceBlock = '';
 
       const ctx: OuterToolContext = {
         threadId: this.config.defaultThreadId,

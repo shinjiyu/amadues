@@ -21,8 +21,11 @@
 - `pushLoop` 发送 **BLOCK**（legacy `.run/pi-mono/output` 里 `type=BLOCK` 只记日志，不 `postMessage`）
 - `onExit` 读 output 最后一条 BLOCK 发 IM（legacy；改读 `pendings.json`）
 - `completionNotify` 与 `pushLoop` 对同一 `COMPLETE` 双发（既有分工保持）
+- **用「KPI 不发 COMPLETE IM」连带跳过 `ingestDeliverables`**（见 [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap A；协议 R4.7）
 
 **与内脑 `BLOCK` 状态**：registry `BLOCKED` / `AWAITING` 表「burst 遇阻或等人」语义，**不等于** IM 通知类型；IM 只用上表三行。
+
+**与产物吸收**：本文件只管 IM。KPI 默认不发 COMPLETE 通知时，`onExit(DONE)` **仍须**把 `COMPLETE.deliverables` 写入 `status.deliverables[]`（asset），供外脑/`send_file` 使用。
 
 ---
 
@@ -192,3 +195,4 @@ RUN 结束（local_dag 跑完或 failure distill 后）:
 | 2026-07-21 | 数字员工：`awaiting_human` 从「勿 set_goal」收窄为「勿重复派依赖工作」；等待不占员工容量 |
 | 2026-06-08 | PARTIAL 通知：goal 含部署但 memory/dyflow 有 `[BLOCKED]` → `ERROR` + `⚠️` 部分完成（仍附产出） |
 | 2026-06-24 | §4.2 D9：IM 正文加固——G1 记忆堆拦截（`省略前文…` 标记的 `completeMessage`/末轮输出不当结果）+ G2 `pickImSummary` 净化（跳过引用/表格/代码/截断行，优先内容标题） |
+| 2026-07-22 | §1：明确 KPI 禁 COMPLETE IM ≠ 跳过 ingest；交叉 [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap A |

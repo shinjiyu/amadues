@@ -66,6 +66,7 @@ import { getDrive9Client, resolveDrive9Config } from './drive9/drive9-client.js'
 import { InnerBrainRegistry, type TaskRecord, type TaskStatus } from './outer/inner-brain-registry.js';
 import {
   enrichInnerBrainInstanceRow,
+  filterInnerBrainRecords,
   parseInnerBrainListPagination,
 } from './outer/list-inner-brain-instances.js';
 import { KpiRegistry } from './outer/kpi-registry.js';
@@ -77,6 +78,7 @@ import { createChangeWatcher, type ChangeWatcher } from './pi-mono/change-watche
 import { isBrainAwaitingAsync } from './outer/brain-async-snapshot.js';
 import { notifyInnerBrainAwaitingHuman } from './outer/awaiting-notify.js';
 import {
+  ingestInnerBrainDeliverablesOnExit,
   notifyInnerBrainTaskComplete,
   notifyInnerBrainTaskFailed,
   notifyInnerBrainTaskPartial,
@@ -320,6 +322,12 @@ function spawnAndAttachWorker(
             stoppedBy: stoppedBy as 'idle' | 'max_ticks' | 'stop_signal',
           });
           const notifyUser = shouldNotifyUserOnBurstExit(record);
+          if (partialWithDeliverables && completionNotifyDeps) {
+            ingestInnerBrainDeliverablesOnExit(completionNotifyDeps, {
+              workspaceId: record.workspaceId,
+              workDir: record.workDir,
+            });
+          }
           if (partialWithDeliverables && notifyUser) {
             globalMemoryStore?.ingestInnerOutput(record.workDir, record.workspaceId);
           }
@@ -331,6 +339,7 @@ function spawnAndAttachWorker(
                 workDir: record.workDir,
                 originThread: record.originThread,
                 gapSummary: errorMessage,
+                skipIngest: true,
               }).catch((e: unknown) =>
                 console.error('[utlra][inner-brain] partial notify failed:', e),
               );
@@ -363,6 +372,12 @@ function spawnAndAttachWorker(
         });
 
         const notifyUser = shouldNotifyUserOnBurstExit(record);
+        if (finalStatus === 'DONE' && completionNotifyDeps) {
+          ingestInnerBrainDeliverablesOnExit(completionNotifyDeps, {
+            workspaceId: record.workspaceId,
+            workDir: record.workDir,
+          });
+        }
         if (record.originThread && completionNotifyDeps) {
           if (finalStatus === 'DONE' && notifyUser) {
             void notifyInnerBrainTaskComplete(completionNotifyDeps, {
@@ -370,6 +385,7 @@ function spawnAndAttachWorker(
               workspaceId: record.workspaceId,
               workDir: record.workDir,
               originThread: record.originThread,
+              skipIngest: true,
             }).catch((e: unknown) =>
               console.error('[utlra][inner-brain] completion notify failed:', e),
             );
@@ -1211,25 +1227,35 @@ app.post('/api/outer/workspace/:ws/shutdown', async (c) => {
 
 // ── 多内脑实例管理 API ──────────────────────────────────────────────────────
 
-/** 列出内脑任务实例（分页；仅 enrich 当前页以减轻负载） */
+/** 列出内脑任务实例（分页；仅 enrich 当前页；默认 status=live） */
 app.get('/api/inner-brains', (c) => {
   const { page, pageSize } = parseInnerBrainListPagination({
     page: c.req.query('page'),
     pageSize: c.req.query('pageSize'),
   });
+  const status = c.req.query('status') ?? 'live';
   const all = innerBrainRegistry.list();
-  const total = all.length;
+  const filtered = filterInnerBrainRecords(all, status);
+  const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * pageSize;
-  const slice = all.slice(start, start + pageSize);
+  const slice = filtered.slice(start, start + pageSize);
   const now = Date.now();
 
   const instances = slice.map((r) =>
     enrichInnerBrainInstanceRow(r, getEngine, formatAgentIsoLocal, now),
   );
 
-  return c.json({ instances, total, page: safePage, pageSize, totalPages });
+  return c.json({
+    instances,
+    total,
+    page: safePage,
+    pageSize,
+    totalPages,
+    status,
+    registryTotal: all.length,
+  });
 });
 
 /** 查询指定实例详情 */

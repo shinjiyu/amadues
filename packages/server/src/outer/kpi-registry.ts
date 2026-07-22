@@ -35,7 +35,7 @@ export type KpiCadence =
   | { type: 'cron'; hours: number[]; tz: string }
   | { type: 'continuous'; minGapMs: number };
 
-/** 单轮 sprint 执行史（同一 canonical burst 内多轮） */
+/** 单轮 burst 执行史（写入 kpi.burstRunHistory） */
 export type BurstRunExitStatus = 'DONE' | 'AWAITING' | 'ERROR' | 'PREEMPTED' | 'ABORTED';
 
 /** KPI burst 外脑评估结果 — ADL KPI-BURST-OUTCOME-EVALUATOR.md §4 */
@@ -108,14 +108,14 @@ export interface KpiRecord {
   isLeaf: boolean;
   /** 外脑推进节拍 */
   cadence: KpiCadence;
-  /** 下一发 sprint 章程（战略层 / 推进器） */
+  /** 下一发 burst 章程（战略层 / 推进器） */
   charter?: string;
   /** cadence 计算的下次 due 时刻 */
   nextDueAt?: string;
   /** 本 leaf 复用的 canonical instanceId */
   /** @deprecated 扁平 KPI 多 burst；盘里 legacy 字段只读 */
   canonicalInstanceId?: string;
-  /** 同一 burst 内多轮 sprint 执行史 */
+  /** 同一 KPI 下多轮 burst 执行史 */
   burstRunHistory: BurstRunRecord[];
 }
 

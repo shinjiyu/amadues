@@ -76,7 +76,7 @@ describe('kpi-advancer', () => {
     expect(tick.results[0]?.reason).toBe('kpi_parallel_sprint');
   });
 
-  it('delivery KPI 首 burst → dispatch sprint', async () => {
+  it('delivery KPI 首 burst → dispatch', async () => {
     const deps = baseDeps();
     const kpi = deps.kpiRegistry.create({ description: '写 hello', createdBy: 'u' });
     vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
@@ -107,13 +107,13 @@ describe('kpi-advancer', () => {
     await tickKpiAdvancer(deps);
     await tickKpiAdvancer(deps);
 
-    // charter 不应被设为渲染后的 sprint goal
+    // charter 不应被设为渲染后的 burst goal
     const after = deps.kpiRegistry.get(kpi.kpiId);
     expect(after?.charter).toBeUndefined();
 
-    // 第二轮 goal 里 "# KPI sprint" 头只出现一次（无嵌套）
+    // 第二轮 goal 里 "# KPI burst" 头只出现一次（无嵌套）
     expect(goals.length).toBe(2);
-    const occurrences = goals[1]!.split('# KPI sprint').length - 1;
+    const occurrences = goals[1]!.split('# KPI burst').length - 1;
     expect(occurrences).toBe(1);
     expect(goals[1]).toContain('台湾情报常态收集');
   });

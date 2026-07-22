@@ -99,6 +99,61 @@ describe('runDesigner', () => {
     if (outcome.kind === 'run') expect(outcome.dag.nodes[0]?.deliverable?.checks[0]?.kind).toBe('file');
   });
 
+  it('commit_local_dag rejects absolute deliverable paths (P-rel), then recovers', async () => {
+    const { store, memory } = setup();
+    const llm = createFakeLLM([
+      {
+        label: 'abs-path',
+        match: ({ messages }) => messages.length === 1,
+        reply: {
+          content: '',
+          toolCalls: [{
+            id: 'd1',
+            name: 'commit_local_dag',
+            args: {
+              nodes: [{
+                id: 'n1',
+                ref: 'preset/base',
+                instruction: 'write report',
+                deliverable: {
+                  summary: 'report',
+                  checks: [{ kind: 'file', target: '/tmp/report.md' }],
+                },
+              }],
+            },
+          }],
+        },
+      },
+      {
+        label: 'good',
+        match: () => true,
+        reply: {
+          content: '',
+          toolCalls: [{
+            id: 'd2',
+            name: 'commit_local_dag',
+            args: {
+              nodes: [{
+                id: 'n1',
+                ref: 'preset/base',
+                instruction: 'write report',
+                deliverable: {
+                  summary: 'report',
+                  checks: [{ kind: 'file', target: 'workspace/report.md' }],
+                },
+              }],
+            },
+          }],
+        },
+      },
+    ]);
+    const outcome = await runDesigner({ llm, logger: silentLogger(), store, memory, workDir: root, burstId: 'b1' });
+    expect(outcome.kind).toBe('run');
+    if (outcome.kind === 'run') {
+      expect(outcome.dag.nodes[0]?.deliverable?.checks[0]?.target).toBe('workspace/report.md');
+    }
+  });
+
   it('returns kind=done when designer reports done', async () => {
     const { store, memory } = setup();
     const llm = createFakeLLM([

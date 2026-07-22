@@ -38,12 +38,7 @@ export function evaluateHardGates(
   if (g.maxTokensPerHour != null && snapshot.llm.tokensLast1h.total >= g.maxTokensPerHour) {
     return busy(`tokens_1h=${snapshot.llm.tokensLast1h.total}>=${g.maxTokensPerHour}`, reasons, nowMs);
   }
-  if (policy.lastAutonomousActionAt) {
-    const last = Date.parse(policy.lastAutonomousActionAt);
-    if (Number.isFinite(last) && nowMs - last < g.minMsSinceLastAutonomousAction) {
-      return busy(`min_interval_ms not elapsed`, reasons, nowMs);
-    }
-  }
+  // DE-4: minMsSinceLastAutonomousAction 不再作为 hard gate（旧心跳全员冷却）。
   if (snapshot.inbound.orchestratorQueuedTotal > g.blockIfOrchestratorQueuedAbove) {
     return busy(
       `orchestrator_queued=${snapshot.inbound.orchestratorQueuedTotal}>${g.blockIfOrchestratorQueuedAbove}`,

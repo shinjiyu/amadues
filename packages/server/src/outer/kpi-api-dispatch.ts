@@ -78,7 +78,7 @@ function buildToolCtx(deps: KpiApiDispatchDeps, threadId: string): OuterToolCont
 }
 
 /**
- * 为 active KPI 推进一发内脑 sprint（kpiAdvancer）。
+ * 为 active KPI 推进一发内脑 burst（kpiAdvancer）。
  */
 export async function dispatchKpiBurst(
   deps: KpiApiDispatchDeps,

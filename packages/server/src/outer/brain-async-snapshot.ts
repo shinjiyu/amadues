@@ -189,15 +189,19 @@ export function formatBrainAsyncSnapshotForLlm(snap: BrainAsyncSnapshot): BrainA
   };
 }
 
-/** 写入外脑 system prompt（对话 + 心跳共用） */
+/** 写入外脑 system prompt（对话 + 心跳共用）— ADL DIGITAL-EMPLOYEE-AUTONOMY.md §3.4 · TERMINOLOGY.md */
 export const OUTER_ASYNC_ORCHESTRATION_GUIDE = `
-## 内脑 sprint / 外脑续航（必读，KPI-ADVANCEMENT.md）
-- **KPI / ongoing 任务**：由外脑 **KPI 推进器**按节拍再派 sprint；内脑每轮 DONE 是正常行为。
-- **禁止**外脑 LLM 为 KPI 直接 set_goal 绕过推进器；IM 识别为 KPI 时走登记 + advance。
-- **一次性杂活**：ad-hoc set_goal（无 kpi_id），做完即结束。
+## 内脑 burst / 双轨推进（必读）
+- **同一 ongoing KPI = 实时推进 + 定时日历，两轨并存**，不是二选一：
+  1. **实时轨**：有容量时 digitalEmployeeLoop → SelfWork（bootstrap / repair）或对话 \`advance_kpi\`；适合首轮基线、卡死修复、用户催办。
+  2. **定时轨**：\`employeeCalendar\`（cron 式日程）到期 → \`calendar_due\` → 窄增量 **burst**；适合「每日/每小时收集汇报」。基线有产物后系统会幂等 ensure 周期承诺。
+- **日历一等工具**：\`list_calendar\` / \`schedule_commitment\` / \`cancel_commitment\` / \`pause_commitment\` / \`resume_commitment\`。聊天预约（提醒我开会）、一次性到点派活、KPI 周期、白名单 tool_call 都走日历。
+- **禁止**对用户说「系统没有日历 / 没有 cron / 只有容量自动续派」——有工具就调用；容量续派是实时轨，不能代替日程。
+- **禁止**外脑 LLM 为 KPI 直接 \`set_goal(kpi_id)\`；登记用 \`set_kpi\`，立即推进用 \`advance_kpi\`。
+- **一次性杂活**：ad-hoc \`set_goal\`（无 kpi_id），做完即结束。
 - burst 结束后看 **read_inner_status** / **list_inner_brains**：
   - \`has_ask_user_pending=true\`：等人类，勿抢派。
-  - ongoing KPI：DONE 或仅 timer 的 AWAITING → 由 KPI 管理器决定是否再派（见 KPI-MANAGER-LAYER.md）。
-  - DyFlow：\`controller.mode\` 来自 dyflow-state（DESIGN/RUN/ATTRIBUTE/AWAITING），无 legacy planning/DECOMPOSE。
-  - \`wait_timer\` 仅用于单次 sprint 内短等待（限速/retry），**不要**长睡到下一汇报点。
+  - 健康 RUNNING / 未到期日历：默认不再聊天里重复派发；让实时环或日历到期处理。
+  - DyFlow：\`controller.mode\` 来自 dyflow-state（DESIGN/RUN/ATTRIBUTE/AWAITING）。
+  - \`wait_timer\` 仅单次 burst 内短等待（限速/retry），**不要**长睡到下一业务时间点——业务定时归 Calendar（\`schedule_commitment\`）。
 `.trim();

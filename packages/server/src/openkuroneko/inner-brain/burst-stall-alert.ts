@@ -17,6 +17,7 @@ import {
 } from './burst-stall-evaluator.js';
 import type { DyflowState, InnerMemory } from './types.js';
 import type { MemoryStore } from './memory-store.js';
+import { tailFileLines } from '../../pi-mono/tail-file.js';
 
 export const STALL_ALERT_SCHEMA = 'burst-stall-alert.v1' as const;
 
@@ -119,9 +120,7 @@ function readJsonFile<T>(fp: string): T | null {
 
 function tailJsonlFile(fp: string | null, maxLines: number): { file: string | null; lines: string[] } {
   if (!fp || !fs.existsSync(fp)) return { file: fp, lines: [] };
-  const content = fs.readFileSync(fp, 'utf8');
-  const lines = content.trim().split('\n').filter(Boolean);
-  return { file: fp, lines: lines.slice(-maxLines) };
+  return { file: fp, lines: tailFileLines(fp, maxLines) };
 }
 
 function resolveLatestJsonl(dir: string): string | null {

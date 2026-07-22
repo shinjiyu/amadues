@@ -53,8 +53,7 @@ describe('kpi-manager', () => {
   function baseDeps(): KpiManagerDeps {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kpi-mgr-'));
     const policy = defaultAutonomyPolicy();
-    policy.hardGates.minMsSinceLastAutonomousAction = 0;
-    policy.taskTypes.kpi_inner_goal = { enabled: true, cooldownMs: 0, maxPerDay: 99 };
+    policy.taskTypes.kpi_inner_goal = { enabled: true };
     saveAutonomyPolicy(tmp, policy);
 
     const kpiRegistry = new KpiRegistry(tmp);
@@ -146,5 +145,40 @@ describe('kpi-manager', () => {
     const result = await tickKpiManager(deps, idleEnvironment(), idleVerdict);
     expect(result.dispatched).toBe(true);
     expect(result.instanceId).toBe('ib-kpi-1');
+  });
+
+  it('DE-4: 旧 kpi_inner_goal maxPerDay/cooldown 不挡 advance', async () => {
+    const deps = baseDeps();
+    deps.kpiRegistry.create({ description: '写 hello', createdBy: 'u' });
+    const policy = defaultAutonomyPolicy();
+    // 故意写回旧配额（save 不走 normalize）；load 在 tick 内会剥掉，且 eligible 也不再读配额
+    policy.taskTypes.kpi_inner_goal = { enabled: true, cooldownMs: 7_200_000, maxPerDay: 3 };
+    saveAutonomyPolicy(tmp, policy);
+    // 直接污染磁盘绕过 normalize 的路径：再写入一次原始 JSON
+    fs.writeFileSync(
+      path.join(tmp, 'autonomy', 'policy.json'),
+      JSON.stringify(
+        {
+          ...policy,
+          hardGates: { ...policy.hardGates, minMsSinceLastAutonomousAction: 900_000 },
+          taskTypes: {
+            ...policy.taskTypes,
+            kpi_inner_goal: { enabled: true, cooldownMs: 7_200_000, maxPerDay: 3 },
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    vi.spyOn(outerTools, 'executeOuterTool').mockResolvedValue({
+      replied: false,
+      output: '已创建新内脑实例并启动任务。instance_id=ib-kpi-2',
+    });
+
+    const result = await tickKpiManager(deps, idleEnvironment(), idleVerdict);
+    expect(result.dispatched).toBe(true);
+    expect(result.reason).not.toMatch(/max_per_day|cooldown/);
   });
 });

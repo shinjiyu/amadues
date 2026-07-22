@@ -15,11 +15,6 @@ import {
   markAutonomousAction,
 } from '../environment/autonomy-policy-store.js';
 import {
-  isTaskOnCooldown,
-  isTaskOverDailyLimit,
-  recordTaskDispatch,
-} from '../autonomy-task-state.js';
-import {
   reap,
   selectStaleAwaiting,
   type ReaperDeps,
@@ -96,15 +91,13 @@ function buildAdvancerDeps(
   };
 }
 
-function kpiTaskEligible(dataRoot: string, policy: AutonomyPolicy): { ok: boolean; reason: string } {
-  const cfg = policy.taskTypes.kpi_inner_goal ?? { enabled: false, cooldownMs: 0, maxPerDay: 0 };
+/**
+ * 兼容 advance 路径仅尊重 enabled 开关。
+ * DE-4：不再检查 cooldown / maxPerDay（数字员工模型禁止时间配额作产能闸）。
+ */
+function kpiTaskEligible(policy: AutonomyPolicy): { ok: boolean; reason: string } {
+  const cfg = policy.taskTypes.kpi_inner_goal ?? { enabled: false };
   if (!cfg.enabled) return { ok: false, reason: 'kpi_inner_goal_disabled' };
-  if (isTaskOnCooldown(dataRoot, 'kpi_inner_goal', cfg.cooldownMs)) {
-    return { ok: false, reason: 'kpi_inner_goal_cooldown' };
-  }
-  if (isTaskOverDailyLimit(dataRoot, 'kpi_inner_goal', cfg.maxPerDay)) {
-    return { ok: false, reason: 'kpi_inner_goal_max_per_day' };
-  }
   return { ok: true, reason: 'ok' };
 }
 
@@ -186,7 +179,7 @@ export async function tickKpiManager(
     };
   }
 
-  const elig = kpiTaskEligible(deps.dataRoot, policy);
+  const elig = kpiTaskEligible(policy);
   if (!elig.ok) {
     return { awaitingReview, reaped, failureCircuit, advance: null, dispatched: false, reason: elig.reason };
   }
@@ -208,7 +201,8 @@ export async function tickKpiManager(
   }
 
   const ok = advance.results.find((r) => r.ok);
-  recordTaskDispatch(deps.dataRoot, 'kpi_inner_goal');
+  // DE-4：不再写 kpi_inner_goal 日计数（task-state），避免像「日配额仍生效」；
+  // lastAutonomousActionAt 仅作观测信息保留。
   markAutonomousAction(deps.dataRoot);
 
   return {

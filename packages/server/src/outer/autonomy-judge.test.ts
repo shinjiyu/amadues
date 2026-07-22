@@ -52,4 +52,13 @@ describe('autonomy-judge', () => {
     expect(verdict.level).toBe('busy');
     expect(verdict.blockedByHardGate).toBe('policy.enabled=false');
   });
+
+  it('DE-4: 残留的 minMsSinceLastAutonomousAction 字段不再挡 idle', () => {
+    const policy = defaultAutonomyPolicy();
+    // 模拟旧 policy.json 内存残留（schema 已删除该字段）
+    (policy.hardGates as Record<string, unknown>)['minMsSinceLastAutonomousAction'] = 900_000;
+    policy.lastAutonomousActionAt = new Date().toISOString();
+    const verdict = evaluateAutonomyVerdict(baseSnapshot(), policy);
+    expect(verdict.level).toBe('idle');
+  });
 });

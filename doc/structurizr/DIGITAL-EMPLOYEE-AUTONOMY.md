@@ -4,7 +4,7 @@
 
 > **状态**：P0–P3 已实现（见 §10）。本文取代“心跳是自主推进主发动机”“KPI cadence”“长 `wait_timer` 充当周期任务”的调度语义。
 
-> **相关权威**：[`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)（感知）、[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md)（KPI 治理）、[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)（监督）、[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)（单 burst 恢复）。
+> **相关权威**：[`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)（感知）、[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md)（KPI 治理）、[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)（监督）、[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)（单 burst 恢复）、[`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md)（**「推进」= 感知驱动的资源调配**）。
 
 ---
 
@@ -61,6 +61,13 @@ hasAvailableCapacity =
 | 有一个 RUNNING burst，但仍有空槽 | 部分忙 | 可继续填充剩余容量 |
 | 用户正在前台对话 | 前台优先 | 预留前台容量；不必无条件停掉全部后台 |
 | hardGate / 预算触顶 | 是 | 不派自主工作；到期日程进入延迟/升级流程 |
+| `kpi_inner_goal.maxPerDay` / `cooldownMs` | **否（禁止）** | 旧心跳节流残留；**不得**挡住数字员工找活 |
+| `minMsSinceLastAutonomousAction` | **否（禁止）** | 旧全员冷却；容量只看槽位/LLM/预算，不看墙钟间隔 |
+
+> **DE-4 时间配额概念不存在于 KPI 找活。**  
+> `hasAvailableCapacity` / `digitalEmployeeLoop` 只消费 hardGates 槽位、LLM、token/成本与前台预留。  
+> schema 层：`taskTypes.kpi_inner_goal` **只有 `enabled` 一个字段**；`hardGates` **没有** `minMsSinceLastAutonomousAction` 字段。旧 `policy.json` 中的这些字段在 load/patch 时**删除**并回写（不是设成中性值——`cooldownMs=0`/`maxPerDay=999` 这种"归一化"仍会让 agent 向用户解释不存在的概念）。  
+> `casual_chat` 的 cooldown/maxPerDay **保留**（防 IM 刷屏，不是找活产能；类型上为可选字段）。
 
 ### 2.2 可扩展环境传感器
 
@@ -115,13 +122,30 @@ interface CalendarCommitment {
 
 ### 3.3 `wait_timer` 边界
 
-`wait_timer` 仅用于单 burst 内短时技术等待：
+`wait_timer` 仅用于单 burst 内短时技术等待。**外脑对话 prompt 不得引导内脑用 `wait_timer` 长睡实现周期巡检**：监控/周期类 KPI 的每个 burst 做一次检查并给出产出即结束，下一轮由数字员工调度触发。
+
+`wait_timer` 合法场景：
 
 - API 限速；
 - 短暂 retry backoff；
 - 已经开始的事务在短窗口内等待结果。
 
 “明天发布”“每小时巡检”“下周复盘”等业务时间承诺必须写入 Calendar。长 `wait_timer` 不得代替日程。
+
+### 3.4 双轨推进（实时 + 定时）— 外脑 prompt 必读
+
+**同一 ongoing KPI 可以同时走两条轨**，不是二选一：
+
+| 轨 | 谁触发 | 何时 |
+|----|--------|------|
+| **实时推进** | `digitalEmployeeLoop` → SelfWorkPolicy / repair / bootstrap / 对话 `advance_kpi` | 有容量、无健康在途、尚无未到期周期日历抢跑时；首轮基线、stall 修复、用户催办 |
+| **定时增量** | `employeeCalendar`（cron 承诺）→ `calendar_due` → 窄 increment `set_goal` | 基线有产物后 `ensurePeriodicCommitment`；到期再派。到期前不占槽 |
+
+**禁止外脑 LLM 对用户说「系统没有 cron / 只有容量自动续派」**——`employeeCalendar` 就是 cron 式日程；容量续派是实时轨，不能代替日程。
+
+> **日历不只服务 KPI**：聊天预约、一次性提醒、白名单 tool_call 与 KPI 增量同属 Calendar，经对话工具读写、经 loop 到期执行。权威设计见 [`EMPLOYEE-CALENDAR.md`](./EMPLOYEE-CALENDAR.md)。
+
+对话 / 心跳 / `OUTER_ASYNC_ORCHESTRATION_GUIDE` / `set_kpi`·`advance_kpi`（及日历工具落地后的 `list_calendar` / `schedule_commitment`）说明必须一致。
 
 ---
 
@@ -140,6 +164,8 @@ interface SelfWorkProposal {
   conflictsWith?: string[];
 }
 ```
+
+> **「推进」精细化**：推进是 **资源调配**，前置是加厚 **日程 + 内脑** 感知（与 list/read 同源），再用简单规则决定起内脑 / 写日历 / 休眠。见 [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md)。禁止在盲区用 Duty 全文当默认 `action`。
 
 ### 4.1 合法提案契约
 
@@ -285,11 +311,11 @@ Heartbeat 不再是连续推进的唯一主时钟，也不直接决定下一份�
 - **前台安静** → 预留归零，全部槽可用于自主工作（自适应，无需人工切换）；
 - **高压入站**（`orchestratorQueuedTotal > blockIfOrchestratorQueuedAbove`）→ `inbound_pressure` 全面暂停自主派发（hardGate 语义保留）；
 - 不抢占不可安全中断的 RUNNING burst；
-- 旧 `blockIfOuterLoopActive` 全停语义仅保留给 heartbeat 兼容 advance 路径（`evaluateKpiSpawnCapacity`），数字员工主路径不再使用。
+- 旧 `blockIfOuterLoopActive` 全停语义**默认关闭**（`defaultAutonomyPolicy` 置 `false`，存量 policy.json 已迁移）；字段保留为显式 opt-in 兼容闸，仅作用于 heartbeat 兼容 advance 路径（`evaluateKpiSpawnCapacity`），数字员工主路径不读。
 
-### 6.5 “一小步 sprint”
+### 6.5 有边界的工作包（旧称「一小步 sprint」）
 
-替换为“有边界的工作包”：
+替换为“有边界的工作包”（见 [`TERMINOLOGY.md`](./TERMINOLOGY.md)：一轮执行 = **burst**）：
 
 - 有明确 expectedOutcome；
 - 有 token / 时间 / 工具范围预算；
@@ -370,7 +396,8 @@ Heartbeat 不再是连续推进的唯一主时钟，也不直接决定下一份�
 - 读取 legacy `KpiRecord.cadence/nextDueAt`，不再作为调度权威；
 - 迁移长 `wait_timer` 为 Calendar commitment；
 - 数字员工 runtime 已接线时，heartbeat 的 `kpiManager` 只治理不 advance；fallback 统一触发 `digitalEmployeeLoop`；
-- 现有 Scheduler store/schema 优先复用，不建立第二份日程真相。
+- 现有 Scheduler store/schema 优先复用，不建立第二份日程真相；
+- 启动 load `autonomy/policy.json` 时剥掉旧 KPI 日配额/冷却与 `minMsSinceLastAutonomousAction`（见 §2.1 DE-4）；`kpi-manager` 兼容 advance 路径也不再读这些字段。
 
 ---
 
@@ -395,3 +422,10 @@ Heartbeat 不再是连续推进的唯一主时钟，也不直接决定下一份�
 | 2026-07-21 | P0/P1 代码落地：统一容量、Scheduler Calendar adapter、事件 loop、保留 missed due、依赖级 ask_user、heartbeat watchdog/fallback；P2/P3 保持部分实现。 |
 | 2026-07-21 | P2 落地：多策略 SelfWorkPolicy（角度轮询）+ 指标 JSONL；R7 下沉路线级（单路线 → blockedRoutes，不 pause KPI；多路线/不可识别 → pause）；burst exit 统一写 burstRunHistory。 |
 | 2026-07-21 | P3 落地：`llm_reflective`（SelfWorkLlmCaller + JSON 契约 + fallback）；自适应前台预留（前台活跃扣 `foregroundReserveSlots`，高压 `inbound_pressure` 全停，`blockIfOuterLoopActive` 仅留兼容路径）；`AbTestSelfWorkPolicy`（探索满 minTrials 后按 acceptance rate 利用）。 |
+| 2026-07-21 | DE-4：废弃 KPI 时间配额作产能闸；`loadAutonomyPolicy` 归一化旧 `maxPerDay`/`cooldown`/`minMs`；`kpiTaskEligible` 不再检查日配额。 |
+| 2026-07-21 | DE-4 收尾：`blockIfOuterLoopActive` 默认 `false`（前台只走预留槽）；外脑对话 prompt 不再教内脑 `wait_timer` 长睡做周期巡检（周期续派由数字员工调度负责）；`kpi_inner_goal` 停写日计数；policy 工具暴露 `foreground_reserve_slots` 并标废弃旋钮。 |
+| 2026-07-22 | 交叉 [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md)：**推进 = 感知驱动调配**（日程+内脑 facet）；非重型 WP 状态机。 |
+| 2026-07-22 | §3.4 **双轨推进**：外脑 prompt/工具说明必须教「实时 SelfWork + Calendar 定时」并存；禁止声称无 cron。 |
+| 2026-07-22 | 日历升格为一等工具（聊天预约等）：见 [`EMPLOYEE-CALENDAR.md`](./EMPLOYEE-CALENDAR.md)。 |
+| 2026-07-22 | 名词统一：执行轮次一律称 **burst**；见 [`TERMINOLOGY.md`](./TERMINOLOGY.md)。 |
+| 2026-07-21 | DE-4 彻底化：从 schema 删除概念而非归一化——`kpi_inner_goal` 仅剩 `enabled`，`hardGates` 删除 `minMsSinceLastAutonomousAction`；policy 工具不再暴露/打印这些旋钮；load 时删除旧字段并回写。 |

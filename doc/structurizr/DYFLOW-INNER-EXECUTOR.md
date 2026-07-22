@@ -296,7 +296,7 @@ NodeInst.deliverable?: NodeDeliverable
 
 | kind | 通过条件 |
 |------|----------|
-| `file` | `path.join(workDir, target)` 存在、是文件、size>0 |
+| `file` | workDir 内相对路径存在、是文件、size>0（路径解析见下「路径规范」） |
 | `json_key` | `rel.json` 存在且 `JSON.parse` 成功，且 `#` 后点路径解析到非 null/undefined（数组/字符串需非空） |
 | `stdout_contains` | 本节点 executionLog 聚合 stdout（所有 `shell_exec` 输出 + lastContent）**包含** target 子串 |
 | `stdout_absent` | 同上 stdout **不含** target（捕捉 `404`/`error`/`失败` 等假成功信号） |
@@ -304,6 +304,17 @@ NodeInst.deliverable?: NodeDeliverable
 - `deliverable` **存在时**：节点 ok ⟺ `interface.outputs` 机械验票通过 **且** 全部 `checks` 通过；任一 check 失败 → `status: failed`，`missing[]` 列出失败 check 的 `describe`/`target`。
 - `deliverable` **缺省时**：退化为原 §6.7 行为（仅 `interface.outputs`）——向后兼容（历史图 / 非 Designer 路径）。
 - 共享引擎：`inner-brain/deliverable-check.ts`（`runDeliverableChecks`），同时被 `node-acceptance.ts` 与 Designer `report_done` 闸门（§9a）复用。
+
+**路径规范（2026-07-22 · 假阴性验证）**：
+
+> 生产验证见 [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) **Gap B**。现行实现多为字面 `path.join(workDir, target)`，易在「声明 `workspace/X`、落盘为根下 `X`」时误杀。
+
+| 规则 ID | 要求 |
+|---------|------|
+| **P-alias** | `kind=file` 与 `interface.outputs[].type=file`：候选路径含声明 `target`、去/加 `workspace/` 前缀的同名相对路径；**任一**存在且 size>0 → 通过 |
+| **P-rel** | `commit_local_dag`：**拒收**绝对路径或含 `..` 的 `checks.target` / file 输出声明（与 `inner-brain-deliverables` R2.4 对齐） |
+| **P-clear** | 节点终态 `ok` 时清除或归档本节点导致的 sticky `memory.last_failure`，避免后续轮次误读「永远契约失败」 |
+| **P-evidence** | 成功 `shell_exec` / 写文件工具留下的相对路径须进入 `gatherEvidence`，与 `register_deliverable`（管外脑回传）互补 |
 
 **`commit_local_dag` 编排期硬约束（2026-06-06，bot2 `ib-mq1vvq2p-3165` 实测驱动）**：实测 16 节点约 10 个 `capped`，Designer 反复发 `preset/base` + **巨型单体 instruction**（把整段 Playwright 脚本 + 2000 字小说正文塞进 `instruction`，等于 Designer 替 baseNode 干活让其复制粘贴），且 DESIGN 一轮耗时 20 分钟。`commit_local_dag` 两条机械拒收：
 
@@ -718,3 +729,4 @@ burst 结束 → registry DONE；子进程退出
 | 2026-06-06 | §6.7a：**节点级交付物 `NodeInst.deliverable`**（file/json_key/stdout_contains/stdout_absent 机械验票，与 interface.outputs 取 AND）；§9a：**`report_done` 目标级闸门 `verify`**（复用同引擎，防 Designer 假完成）；新增 `deliverable-check.ts`；修复 `normalizeNodeInst` 丢弃 `acceptance` 的 bug。理由：bot2 ib-mq13z7co-9420「凭空断言已发布 5 章」终结 burst |
 | 2026-06-06 | §7b：**移除「Tool 晋升」层（C）**——删 `register_workspace_script_tool` / `ws_*` / `workspace-script-tools.ts`；固化收成两层 facts(A)/LocalNode(B)；稳定脚本改 `record_fact` 记路径。理由：bot2 生产注册 0 次、调用 0 次，零收益却增维护成本。`doc/todo/dyflow-tool-promotion.md` 标 deprecated |
 | 2026-06-08 | **内脑失败处理**：Designer LLM/空转 giveup → `dyflow-state.mode=ERROR`（不再 DONE+onComplete）；`resolveInnerBurstFinalStatus` → registry ERROR + `notifyInnerBrainTaskFailed` 短消息（不 dump seed facts） |
+| 2026-07-22 | §6.7a：**路径规范** P-alias / P-rel / P-clear / P-evidence（交付物假阴性）；交叉验证 [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap B；测项 ⏳ |

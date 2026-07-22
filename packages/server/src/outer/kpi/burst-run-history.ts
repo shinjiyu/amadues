@@ -55,7 +55,7 @@ export function buildBurstRunRecord(input: {
 export function formatBurstRunDigest(kpi: KpiRecord, maxRuns = 5): string {
   const runs = kpi.burstRunHistory.slice(-maxRuns);
   if (runs.length === 0) return '（暂无 burst 执行史）';
-  const lines = ['## [Burst 执行史]（最近 sprint）'];
+  const lines = ['## [Burst 执行史]（最近几发）'];
   for (const r of runs.reverse()) {
     const ev = r.outcomeEvaluation;
     lines.push(

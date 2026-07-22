@@ -71,6 +71,29 @@ describe('validateNodeCompletion', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it('file output: P-alias resolves workspace/X when evidence points at root X', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accept-alias-'));
+    fs.mkdirSync(path.join(dir, 'workspace'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'workspace', 'report.md'), '# ok\n', 'utf8');
+    const log: ExecutionEntry[] = [
+      {
+        toolName: 'register_deliverable',
+        args: { relative_path: 'report.md' },
+        result: { ok: true, output: 'registered' },
+      },
+    ];
+    const r = validateNodeCompletion({
+      node: baseNode([{ key: 'report', type: 'file' }]),
+      inst,
+      workDir: dir,
+      lastContent: 'wrote report.md',
+      executionLog: log,
+    });
+    expect(r.status).toBe('ok');
+    expect(String(r.outputs['report'])).toMatch(/report\.md$/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it('fails string output when content too short and no evidence', () => {
     const r = validateNodeCompletion({
       node: baseNode([{ key: 'result', type: 'string' }]),
@@ -160,5 +183,23 @@ describe('gatherEvidence', () => {
       { toolName: 'write_file', args: { path: 'out/a.json' }, result: { ok: true, output: 'x' } },
     ]);
     expect([...ev.filePaths][0]).toContain('out');
+  });
+
+  it('collects register_deliverable and shell redirect paths (P-evidence)', () => {
+    const ev = gatherEvidence('/w', [
+      {
+        toolName: 'register_deliverable',
+        args: { relative_path: 'workspace/report.md' },
+        result: { ok: true, output: 'registered' },
+      },
+      {
+        toolName: 'shell_exec',
+        args: { command: 'echo hi > out/from_shell.txt' },
+        result: { ok: true, output: '' },
+      },
+    ]);
+    const paths = [...ev.filePaths].join('|');
+    expect(paths).toMatch(/report\.md/);
+    expect(paths).toMatch(/from_shell\.txt/);
   });
 });

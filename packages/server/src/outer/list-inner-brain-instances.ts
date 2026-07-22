@@ -9,14 +9,14 @@ import type { InnerBrainEngine } from '../workspace-kit/index.js';
 import { summarizeDyflowForList, isDyflowWorkDir } from '../openkuroneko/inner-brain/dyflow-inspector.js';
 import { resolveOuterBrainPhase } from '../openkuroneko/inner-brain/status-projection.js';
 import { isPidAlive, readWorkerStatus } from '../pi-mono/inner-brain-spawner.js';
+import { computeBurstLiveness } from './advance-perception.js';
 import type { TaskRecord } from './inner-brain-registry.js';
-
-const STUCK_THRESHOLD_MS = 5 * 60 * 1000;
 
 export type InnerBrainInstanceRow = {
   instance_id: string;
   workspace_id: string;
   registry_status: TaskRecord['status'];
+  kpi_id: string | null;
   liveness: 'active' | 'stuck' | 'dead' | null;
   pid: number | null;
   pid_alive: boolean | null;
@@ -48,6 +48,32 @@ export function parseInnerBrainListPagination(query: {
   return { page, pageSize };
 }
 
+const LIVE_STATUSES = new Set<TaskRecord['status']>(['RUNNING', 'AWAITING', 'BLOCKED']);
+
+/**
+ * status 过滤：
+ * - 缺省 / `live`：RUNNING|AWAITING|BLOCKED（dashboard 默认，避免扫几百条历史 DONE）
+ * - `all`：全部
+ * - 其它：逗号分隔状态名
+ */
+export function filterInnerBrainRecords(
+  records: TaskRecord[],
+  statusQuery?: string,
+): TaskRecord[] {
+  const raw = statusQuery?.trim().toLowerCase();
+  if (!raw || raw === 'live') {
+    return records.filter((r) => LIVE_STATUSES.has(r.status));
+  }
+  if (raw === 'all') return records;
+  const wanted = new Set(
+    raw
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean),
+  );
+  return records.filter((r) => wanted.has(r.status));
+}
+
 export function enrichInnerBrainInstanceRow(
   r: TaskRecord,
   getEngine: (workspaceId: string) => InnerBrainEngine,
@@ -72,17 +98,7 @@ export function enrichInnerBrainInstanceRow(
   const workerPhase = workerStatus?.phase ?? null;
 
   const pidAlive = r.status === 'RUNNING' && r.pid != null ? isPidAlive(r.pid) : null;
-
-  let liveness: 'active' | 'stuck' | 'dead' | null = null;
-  if (r.status === 'RUNNING') {
-    if (pidAlive === false) {
-      liveness = 'dead';
-    } else {
-      const anchor = lastTickAt ?? r.startedAt;
-      const sinceAnchor = now - new Date(anchor).getTime();
-      liveness = sinceAnchor > STUCK_THRESHOLD_MS ? 'stuck' : 'active';
-    }
-  }
+  const liveness = computeBurstLiveness(r, now);
 
   const outerPhase = resolveOuterBrainPhase(r.workDir);
   const dyflow = isDyflowWorkDir(r.workDir)
@@ -100,6 +116,7 @@ export function enrichInnerBrainInstanceRow(
     instance_id: r.instanceId,
     workspace_id: r.workspaceId,
     registry_status: r.status,
+    kpi_id: r.kpiId ?? null,
     liveness,
     pid: r.pid ?? null,
     pid_alive: pidAlive,

@@ -95,5 +95,25 @@ describe('dyflow-inspector', () => {
       expect(s.dyflow_dag_nodes).toBe(2);
       expect(s.dyflow_failure).toHaveLength(80); // 截断到 80 字符
     });
+
+    it('skips oversized memory.json instead of parsing it for list', () => {
+      root = fs.mkdtempSync(path.join(os.tmpdir(), 'dyflow-insp-'));
+      const brain = path.join(root, '.brain');
+      fs.mkdirSync(brain, { recursive: true });
+      fs.writeFileSync(path.join(brain, 'dyflow-state.json'), JSON.stringify({ mode: 'RUN' }));
+      fs.writeFileSync(path.join(brain, 'local_dag.json'), JSON.stringify({ nodes: [] }));
+      fs.writeFileSync(
+        path.join(brain, 'memory.json'),
+        JSON.stringify({
+          facts: Array.from({ length: 2000 }, (_, i) => `fact-${i}-${'x'.repeat(40)}`),
+          last_failure: { summary: 'should-not-load' },
+        }),
+      );
+      expect(fs.statSync(path.join(brain, 'memory.json')).size).toBeGreaterThan(64 * 1024);
+
+      const s = summarizeDyflowForList(root);
+      expect(s.dyflow_mode).toBe('RUN');
+      expect(s.dyflow_failure).toBeNull();
+    });
   });
 });

@@ -105,7 +105,7 @@ describe('component: autonomyHeartbeat', () => {
     root = createTestDataRoot('aut-hb-skip-');
     patchAutonomyPolicy(root.dataRoot, {
       enabled: true,
-      hardGates: { minMsSinceLastAutonomousAction: 0, maxLlmInFlight: 5 },
+      hardGates: { maxLlmInFlight: 5 },
       taskTypes: { casual_chat: { enabled: true, cooldownMs: 0, maxPerDay: 99 } },
     });
     savePersonality(root.dataRoot, {
@@ -186,8 +186,8 @@ describe('component: autonomyHeartbeat', () => {
     root = createTestDataRoot('aut-hb-kpi-sprint-');
     patchAutonomyPolicy(root.dataRoot, {
       enabled: true,
-      hardGates: { minMsSinceLastAutonomousAction: 0, maxLlmInFlight: 5 },
-      taskTypes: { kpi_inner_goal: { enabled: true, cooldownMs: 0, maxPerDay: 99 } },
+      hardGates: { maxLlmInFlight: 5 },
+      taskTypes: { kpi_inner_goal: { enabled: true } },
     });
 
     const registry = new InnerBrainRegistry(root.dataRoot);

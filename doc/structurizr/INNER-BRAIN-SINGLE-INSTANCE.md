@@ -6,7 +6,7 @@
 > **English (historical):** One **canonical inner brain** per KPI / long-running goal.
 
 与 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)、[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md)、[`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) 互补。  
-**粒度（2026-06-07）**：canonical 绑定 **leaf sub-KPI**（非父 KPI）；多轮 sprint 复用同一 instance，执行史见 `burstRunHistory`。
+**粒度（2026-06-07）**：canonical 绑定 **leaf sub-KPI**（非父 KPI）；多轮 **burst** 复用同一 instance，执行史见 `burstRunHistory`。名词见 [`TERMINOLOGY.md`](./TERMINOLOGY.md)。
 
 ---
 

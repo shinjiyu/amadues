@@ -11,6 +11,8 @@ import {
   type SelfWorkLlmCaller,
 } from './self-work-llm-policy.js';
 import type { SelfWorkMetricsSummary } from './self-work-metrics.js';
+import { buildNarrowDraftProposal } from './advance-allocator.js';
+import { shouldSkipSelfWorkForKpi } from './advance-perception.js';
 import {
   validateSelfWorkProposal,
   type SelfWorkContext,
@@ -33,21 +35,16 @@ function buildAngleProposal(
   kpi: SelfWorkKpi,
   angle: SelfWorkAngle,
   strategyId: string,
-): SelfWorkProposal {
+  context: SelfWorkContext,
+): SelfWorkProposal | null {
   const desc = kpi.description;
   switch (angle) {
     case 'draft':
-      return {
-        kpiId: kpi.kpiId,
-        action: kpi.charter?.trim() || `推进 KPI：${desc}`,
-        expectedOutcome: `产出可验收结果并记录其对“${desc}”的推进证据`,
-        reason: kpi.notes?.trim() || '优先推进明确 backlog / 未完成交付',
-        strategyId,
-      };
+      return buildNarrowDraftProposal(kpi, context.perception, strategyId);
     case 'research':
       return {
         kpiId: kpi.kpiId,
-        action: `调研并总结“${desc}”的最新可行动情报`,
+        action: `调研并总结「${desc.slice(0, 120)}」的最新可行动情报（本轮有限范围）`,
         expectedOutcome: `≥3 条可验证的新信息，并说明各自对该 KPI 的下一步含义`,
         reason: '信息增益优先：先降低不确定性再投入执行',
         strategyId,
@@ -55,7 +52,7 @@ function buildAngleProposal(
     case 'tooling':
       return {
         kpiId: kpi.kpiId,
-        action: `为“${desc}”构建或改进一个可复用的自动化工具/脚本`,
+        action: `为「${desc.slice(0, 120)}」构建或改进一个可复用的自动化工具/脚本`,
         expectedOutcome: `一个可运行的工具/脚本 + 使用说明，能降低该 KPI 的重复人工成本`,
         reason: '自动化优先：一次投入换长期执行效率',
         strategyId,
@@ -63,7 +60,7 @@ function buildAngleProposal(
     case 'testing':
       return {
         kpiId: kpi.kpiId,
-        action: `验证“${desc}”现有交付物的质量并记录问题`,
+        action: `验证「${desc.slice(0, 120)}」现有交付物的质量并记录问题`,
         expectedOutcome: `一份可复现的验证报告（通过项 + 缺陷清单 + 建议修复顺序）`,
         reason: '质量优先：确认既有交付可靠再扩展新工作',
         strategyId,
@@ -74,6 +71,9 @@ function buildAngleProposal(
 function activeKpisByMomentum(context: SelfWorkContext): SelfWorkKpi[] {
   return [...context.activeKpis]
     .filter((kpi) => kpi.status === 'active')
+    .filter((kpi) =>
+      context.perception ? !shouldSkipSelfWorkForKpi(context.perception, kpi.kpiId) : true,
+    )
     .sort((a, b) => b.momentum - a.momentum);
 }
 
@@ -91,8 +91,8 @@ export class AngleSelfWorkPolicy implements SelfWorkPolicy {
     const angles = this.angleOrder(context);
     for (const kpi of activeKpisByMomentum(context)) {
       for (const angle of angles) {
-        const proposal = buildAngleProposal(kpi, angle, this.strategyId);
-        if (validateSelfWorkProposal(proposal, context).ok) return proposal;
+        const proposal = buildAngleProposal(kpi, angle, this.strategyId, context);
+        if (proposal && validateSelfWorkProposal(proposal, context).ok) return proposal;
       }
     }
     return null;

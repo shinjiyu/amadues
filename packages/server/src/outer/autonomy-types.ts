@@ -35,7 +35,6 @@ export interface AutonomyHardGates {
   maxParallelBurstsPerKpi: number;
   maxLlmInFlight: number;
   maxTokensPerHour: number | null;
-  minMsSinceLastAutonomousAction: number;
   blockIfOrchestratorQueuedAbove: number;
   /** 兼容 advance 路径（evaluateKpiSpawnCapacity）用；数字员工主路径用 foregroundReserveSlots */
   blockIfOuterLoopActive: boolean;
@@ -43,10 +42,14 @@ export interface AutonomyHardGates {
   foregroundReserveSlots?: number;
 }
 
+/**
+ * DE-4：cooldown/maxPerDay 仅适用于 IM 输出类任务（casual_chat 防刷屏）。
+ * KPI 找活（kpi_inner_goal）只有 enabled 开关，不存在时间配额概念。
+ */
 export interface AutonomyTaskTypeConfig {
   enabled: boolean;
-  cooldownMs: number;
-  maxPerDay: number;
+  cooldownMs?: number;
+  maxPerDay?: number;
 }
 
 export interface AutonomyPolicy {

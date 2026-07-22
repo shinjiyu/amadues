@@ -34,6 +34,7 @@ export {
   saveAutonomyPolicy,
   patchAutonomyPolicy,
   markAutonomousAction,
+  normalizeDigitalEmployeePolicy,
 } from './autonomy-policy-store.js';
 export {
   evaluateKpiSpawnCapacity,

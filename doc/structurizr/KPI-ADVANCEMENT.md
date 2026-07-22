@@ -3,10 +3,11 @@
 > **⚠️ 历史文档，非现行调度权威。**
 > - 2026-06-07：被 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 取代（扁平 KPI、多 burst、无 sub-KPI / canonical）。
 > - 2026-07-21：自主推进再被 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) 取代（容量驱动 + Calendar + SelfWorkPolicy；心跳仅 watchdog）。
+> - 2026-07-22：**「推进」如何切片 / 入历**见现行设计 [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md)（非本文 cadence/sub-KPI 树）。
 >
 > 文中 `cadence` / `strategyPlanner` / `focusOrder` / 心跳即时派 / 长 `wait_timer` 等均为历史方案，**不得按本文实现**。
 
-> **English (historical):** Outer brain **owns long-horizon sustainability**. Inner brain stays **sprint-shaped** (LLM closure bias). Chat inbound is classified (**KPI vs ad-hoc**); heartbeat **traverses KPI tree** and **advances** leaf KPIs whose slot is idle. Sub-KPIs are **split on first advancement**; each leaf has an independent **reused burst instance** and **run history**.
+> **English (historical):** Outer brain **owns long-horizon sustainability**. Inner brain stays **burst-shaped** (one bounded run; historically called “sprint-shaped”). Chat inbound is classified (**KPI vs ad-hoc**); heartbeat **traverses KPI tree** and **advances** leaf KPIs whose slot is idle. Sub-KPIs are **split on first advancement**; each leaf has an independent **reused burst instance** and **run history**. (Canonical term today: **burst** — see [`TERMINOLOGY.md`](./TERMINOLOGY.md).)
 
 > 与 `workspace.dsl` 视图 **`10b-L3-Outer-KPI`**、**`11-L3-Outer-Autonomy`**、**`07-L3-Outer-Inbound-IM`** 同步。  
 > 取代/修订：[`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md) §「外脑 set_goal 派 burst」为默认路径；[`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md) 粒度升为 **per leaf sub-KPI**；[`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) §ongoing 例外见本文 §5。
@@ -18,11 +19,11 @@
 | 原则 | 说明 |
 |------|------|
 | **P1 内脑冲刺** | 每轮 EXECUTE 只靠近目标一小步；里程碑完成 → DONE 是**正常**行为，不是缺陷 |
-| **P2 外脑续航（历史）** | 旧：按 cadence 再派 sprint。**现行**：`employeeCalendar` 管业务定时；`digitalEmployeeLoop` 有容量即找活 |
+| **P2 外脑续航（历史）** | 旧：按 cadence 再派 burst。**现行**：`employeeCalendar` 管业务定时；`digitalEmployeeLoop` 有容量即找活 |
 | **P3 双通道入站** | IM 内容**先分类**：KPI 走登记 + 推进；一次性杂活走 **ad-hoc burst**（无 `kpi_id`） |
 | **P4 子 KPI 首拆** | 父 KPI 创建时**不**预拆子树；**第一次** `advanceKpi` 时完成子 KPI 拆解 |
 | **P5 槽位语义（历史）** | 旧：DONE/AWAITING 视为可再派。**现行**：RUNNING 才占执行容量；ask_user 只挡依赖项 |
-| **P6 复用不新建** | 同一 leaf sub-KPI 的多轮 sprint **复用** canonical `instanceId` + `workDir`，只追加 **run 历史** |
+| **P6 复用不新建** | 同一 leaf sub-KPI 的多轮 **burst** **复用** canonical `instanceId` + `workDir`，只追加 **run 历史** |
 
 ---
 
@@ -76,7 +77,7 @@ interface KpiRecord {
   cadence: KpiCadence;
   status: 'active' | 'paused' | 'achieved' | 'abandoned';
   description: string;
-  charter?: string;              // 战略层 / 推进器写入的「下一发 sprint 章程」
+  charter?: string;              // 战略层 / 推进器写入的「下一发 burst 章程」
   nextDueAt?: string;
   canonicalInstanceId?: string;  // 本 leaf 的复用 burst（见 §4）
   burstRunHistory: BurstRunRecord[]; // 见 §6
@@ -163,7 +164,7 @@ return false;
 2. append `BurstRunRecord { exitStatus: 'PREEMPTED' }`  
 3. `advanceKpi` 写入新 charter → respawn  
 
-**内脑不再承担长周期节拍**；`wait_timer` 仅用于 **单次 sprint 内**短等待（限速、短 retry），不用于「睡到 21:00 汇报」。
+**内脑不再承担长周期节拍**；`wait_timer` 仅用于 **单次 burst 内**短等待（限速、短 retry），不用于「睡到 21:00 汇报」。
 
 修订：[`brain-async-snapshot.ts`](../packages/server/src/outer/brain-async-snapshot.ts) 对外脑 prompt；删除「ongoing 靠内脑 timer 续跑」指引。
 
@@ -171,7 +172,7 @@ return false;
 
 ## 6. Burst 执行历史（外脑可读）
 
-外脑推进下一发 sprint 前必须能读到 **同一 burst instance 内的多轮执行史**。
+外脑推进下一发 **burst** 前必须能读到 **同一 instance 内的多轮执行史**。
 
 ### 6.1 `BurstRunRecord`（存 `kpi.burstRunHistory[]`）
 

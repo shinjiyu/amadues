@@ -65,6 +65,27 @@ describe('memoryStore', () => {
     expect(store.read().node_results['n1']?.ok).toBe(false);
   });
 
+  it('recordNodeResult ok clears sticky last_failure (P-clear)', () => {
+    const store = createMemoryStore(root);
+    store.recordNodeResult({
+      nodeInstId: 'n1',
+      ref: 'local/foo',
+      ok: false,
+      failure: failure('n1'),
+      at: 't1',
+    });
+    expect(store.read().last_failure).not.toBeNull();
+    store.recordNodeResult({
+      nodeInstId: 'n2',
+      ref: 'local/foo',
+      ok: true,
+      outputs: { result: 'ok' },
+      at: 't2',
+    });
+    expect(store.read().last_failure).toBeNull();
+    expect(store.read().node_results['n2']?.ok).toBe(true);
+  });
+
   it('clearLastFailure resets only the failure pointer', () => {
     const store = createMemoryStore(root);
     store.setLastFailure(failure('n1'));

@@ -1,6 +1,7 @@
 # 模块视界目录（细粒度 · 与 workspace.dsl 同步）
 
-> 对齐规则见 [`GRANULARITY.md`](./GRANULARITY.md)。**一模块 = 一事 + 可写清 In/Out**。
+> 对齐规则见 [`GRANULARITY.md`](./GRANULARITY.md)。**一模块 = 一事 + 可写清 In/Out**。  
+> **名词**：一轮内脑执行 = **burst**（废弃文档中的 sprint 同义用法）— [`TERMINOLOGY.md`](./TERMINOLOGY.md)。
 
 ---
 
@@ -45,14 +46,15 @@
 | **nodeDefEviction** | **NodeDef 治理 sweep（P2，外脑心跳级）** | `outer/node-def-eviction.ts` | dedupe + quota + cold tombstone |
 | outerMemory | mem9 记忆 | `outer/outer-memory.ts` | chat/task → mem9 |
 | **memoryBlockStore** | **结构化 Block CRUD** | `outer/memory-block-store.ts` + `memory-block-tools.ts` | `memory_block_*`；bind → `.brain/secrets/` |
-| completionNotify | 完成通知（IM 精简） | `outer/completion-notify.ts` + `completion-report.ts` | DONE → `audience=im` 正文 + 附件；`completion-notified.json` 去重 |
+| completionNotify | 完成通知（IM 精简） | `outer/completion-notify.ts` + `completion-report.ts` | DONE → ingest（`ingestInnerBrainDeliverablesOnExit`）+ 可选 IM；KPI 默认不 IM；`completion-notified.json` 去重 |
 | pushLoop | 消费 worker 输出 | `outer/push-loop.ts` | PROGRESS 可选推渠道；**BLOCK 不推 IM**（见 IM-NOTIFY-BOUNDARY） |
 | changeWatcher | AWAITING 唤醒 | `pi-mono/change-watcher.ts` | bootstrap + pendings 到期/解封 → **markConsumed** → spawn |
 | llmGateway | LLM 调用 | `llm/` | messages → text/tools |
 | **outerHeartbeat** | **数字员工 watchdog：质控 + 死亡/失约检测 + 漏事件 fallback** | `outer/outer-heartbeat.ts` | tick → sweep/reap/missed + `heartbeat_fallback`；非正常续派主时钟 |
 | **digitalEmployeeLoop** | **✅ 容量驱动主循环：事件 coalesce → 日程优先 → 自主提案 → 唯一派发** | `outer/digital-employee-loop.ts` + `digital-employee-runtime.ts` | burst/calendar/dependency events → `set_goal` 或 sleep |
-| **employeeCalendar** | **✅ 数字员工日程表（复用现有 Scheduler/TaskScheduler）** | `scheduler/employee-calendar.ts` + existing scheduler engine | once/interval/cron + due/missed 保留 → `calendar_due` |
-| **selfWorkPolicy** | **✅ 可替换/可测试创造性：4 deterministic 策略 + llm_reflective（LLM 提案 + fallback）+ AbTest 灰度（指标驱动探索/利用）+ 指标 JSONL** | `outer/self-work-policy.ts` + `self-work-strategies.ts` + `self-work-llm-policy.ts` + `self-work-metrics.ts` | env/KPI/calendar/deps/history/blockedRoutes → `SelfWorkProposal|null` |
+| **employeeCalendar** | **✅ 数字员工日程表（复用 Scheduler）；✅ 对话一等工具 list/schedule/cancel/pause（见 EMPLOYEE-CALENDAR）** | `scheduler/employee-calendar.ts` + `outer/calendar-tools.ts` + existing scheduler engine | once/interval/cron + due/missed → `calendar_due`；purpose: kpi_increment / chat_appointment / … |
+| **selfWorkPolicy** | **✅ 可替换/可测试创造性：4 deterministic 策略 + llm_reflective + AbTest；✅ 推进经感知闸门（禁 Duty 整单重放）** | `outer/self-work-policy.ts` + `self-work-strategies.ts` + `self-work-llm-policy.ts` + `self-work-metrics.ts` | env/KPI/calendar/deps/history/blockedRoutes/perception → `SelfWorkProposal|null`；见 [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
+| **advanceWorkPackageBuilder** | **✅ 推进调配：感知面（日历+内脑+stall+cursor）+ 简单规则 + P3 指标** | `outer/advance-perception.ts` + `advance-allocator.ts` + `advance-cursor-store.ts` + `advance-metrics.ts` | 读 facet → execute_due / set_goal / ensure_calendar / repair / sleep；见 [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
 | **llmUsageTracker** | **LLM token/并发计量** | `outer/llm-usage-tracker.ts` | completion → 滚动 usage + journal |
 | **llmUsageJournal** | **Token 统计持久化** | `outer/llm-usage-journal.ts` | entry → `usage/llm-usage.jsonl` + summary API |
 | **resourceProbe** | **资源感知快照（P0；已由 environmentSensorRegistry 在 pipeline 经 toResourceSnapshot 适配接管，行为等价）** | `outer/resource-probe.ts` | registry/tracker → ResourceSnapshot |
@@ -61,7 +63,7 @@
 | **environmentChangeDetector** | **环境模型 — 派生指标 + 事件检测（✅ hysteresis/warmUp/rate·delta·streak）** | `outer/environment/change-detector.ts` | prev/next → derived + events |
 | **environmentModelFacade** | **环境模型 — facade（collectEnvironmentSnapshot / toResourceSnapshot 适配 / getSharedEnvironment）** | `outer/environment/index.ts` | deps → EnvironmentSnapshot ↔ ResourceSnapshot |
 | **kpiSpawnCapacity** | **执行容量（兼容名）：读 facets + hardGates；✅ P3 自适应前台预留（前台活跃扣 `foregroundReserveSlots`，高压 inbound_pressure 全停）** | `outer/environment/kpi-spawn-capacity.ts` | EnvironmentSnapshot + policy → `hasAvailableCapacity` / canSpawn |
-| **autonomyPolicyStore** | **闲忙规则（可聊天改）** | `outer/environment/autonomy-policy-store.ts` | policy.json + rubric.md |
+| **autonomyPolicyStore** | **闲忙规则（可聊天改）；DE-4：schema 无 KPI 时间配额（kpi_inner_goal 仅 enabled；hardGates 无 minMsSinceLast），旧字段 load 时删除回写** | `outer/environment/autonomy-policy-store.ts` | policy.json + rubric.md；casual_chat 频控保留 |
 | **autonomyJudge** | **容量判定（hard gates）** | `outer/environment/autonomy-judge.ts` | snapshot+policy → hasAvailableCapacity（兼容 idle/busy） |
 | **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
 | **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 找活由 digitalEmployeeLoop / SelfWorkPolicy）** | `outer/casual-chat-dispatcher.ts` | capacity + personality → post_to_im |
@@ -79,7 +81,7 @@
 | **burstReuse** | **【已删除】每次 advance 新 workspace** | — | 见 KPI-MANAGER-LAYER.md §2.2 |
 | **burstRunHistory** | **Burst 执行史（⏳ 外脑读 run digest）** | `outer/kpi/burst-run-history.ts` | onExit → BurstRunRecord[] |
 | **kpiManager** | **KPI 治理（✅ R3–R7/reap；数字员工模式下 heartbeat governance-only）** | `outer/kpi/kpi-manager.ts` | KPI/burst truth → stop/reap/pause/complete；非 runtime 兼容 advance |
-| **kpiAdvancer** | **KPI sprint 执行（IM/Ops/advance_kpi；心跳由 kpiManager 调）** | `outer/kpi/kpi-advancer.ts` | advanceKpi → set_goal |
+| **kpiAdvancer** | **KPI burst 执行（IM/Ops/`advance_kpi`；心跳由 kpiManager 调）** | `outer/kpi/kpi-advancer.ts` | advanceKpi → set_goal |
 | **adHocBurstAllocator** | **一次性任务 burst（✅ 无 kpi_id）** | `outer/ad-hoc-burst-allocator.ts` | ad_hoc goal → new instance |
 | **inboundContextAssembler** | **IM 入站只读上下文装配（方案一：前置不派发）** | `outer/inbound/inbound-kpi-router.ts` | assembleInboundContext + renderInboundHint → inboundHint 注入对话环；派发交 set_goal/set_kpi/advance_kpi/send_directive 工具；见 IM-INBOUND-INTENT-ROUTING.md §4 |
 | **agentStatusChatCommand** | **聊天只读快指令：当前进度 + 过去 24h 任务密度（无 LLM / 无 brain-inspector）** | `outer/inbound/agent-status-chat-command.ts` + `outer/agent-activity-snapshot.ts` | `状态/进度` → live snapshot；`密度/今天` → slot-time utilization / completion / failure / KPI activity |
@@ -88,7 +90,7 @@
 | **staleBurstReaper** | **僵尸清理（kpiManager R5）** | `outer/kpi/stale-burst-reaper.ts` | selectStaleAwaiting + reap → ABORTED |
 | **kpiAwaitingReviewLlm** | **AWAITING LLM 复审（P3）** | `outer/kpi/kpi-awaiting-review-llm.ts` | requireProgressSignal 后 optional LLM |
 | **kpiFeedback** | **多巴胺反馈调节（momentum 增量 + 选 KPI）** | `outer/kpi-feedback.ts` | BurstFeedbackSignal → Δmomentum / selectKpiByMomentum |
-| performanceGoalEngine | 长期绩效目标审阅 | `performance-goals/engine.ts` | goals → heartbeat block |
+| performanceGoalEngine | **已废弃侧车**（绩效目标 = KPI）；保留代码/存储，不接入数字员工环 | `performance-goals/engine.ts` | 见 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) §2.4 |
 
 **视图**（Structurizr，按路径拆开避免一张图过密）：
 
@@ -109,7 +111,7 @@
 
 **KPI 完成判定**：见 [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md)。  
 **心跳内脑质控**（验收效果 + 卡死/restart 把控）：见 [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)。  
-**资源感知与心跳自主调度**（P0 ADL）：见 [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md)。  
+**资源感知与心跳自主调度**（P0 历史 ADL，勿按文实现；现行为 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)）：见 [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md)。  
 **环境模型**（P1 起替代 resourceProbe）：见 [`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)。  
 **战略规划层**（P1 心跳重构）：见 [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)。
 
@@ -141,8 +143,8 @@
 | **designer** | **DyFlow DESIGN** 阶段（P0） | `inner-brain/designer.ts` | memory + last_failure + LocalNode index → local_dag.json |
 | **runner** | **DyFlow RUN** 阶段（P0） | `inner-brain/runner.ts` | local_dag.json → 派发 baseNode/Creator |
 | **baseNodeExecutor** | **baseNode（猛猛干 ReAct）**（P0） | `inner-brain/base-node-executor.ts` | LocalNode + instruction? + memory → outputs / failure_summary；**runtime context** §6.1b；**§6.7 验票** |
-| **nodeAcceptance** | **完成验票 + shell-evidence**（P0b） | `inner-brain/node-acceptance.ts` | executionLog + outputs → ok/failed；shell 404 假成功；集成 NodeInst.deliverable |
-| **deliverableCheck** | **节点级交付物机械验票引擎**（DYFLOW §6.7a/§9a） | `inner-brain/deliverable-check.ts` | file/json_key/stdout_contains/stdout_absent；被 nodeAcceptance + report_done 复用 |
+| **nodeAcceptance** | **完成验票 + shell-evidence**（P0b） | `inner-brain/node-acceptance.ts` | executionLog + outputs → ok/failed；shell 404 假成功；P-evidence；集成 NodeInst.deliverable |
+| **deliverableCheck** | **节点级交付物机械验票引擎**（DYFLOW §6.7a/§9a） | `inner-brain/deliverable-check.ts` | file/json_key/stdout_*；P-alias 路径别名；被 nodeAcceptance + report_done 复用 |
 | **failureDistill** | **RUN 失败→constraints**（P0b） | `inner-brain/failure-distill.ts` | controller RUN 后 mandatory 红线蒸馏 |
 | **runtimeContext** | baseNode system 常驻环境块（P0） | `inner-brain/runtime-context.ts` | workDir + dataRoot → OS/shell/vault 契约 |
 | **innerKeychainTools** | 内脑 vault 只读（P0） | `inner-brain/keychain-tools.ts` | `keychain_entries` / `keychain_get` |
@@ -234,3 +236,5 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-07-21 | 数字员工 P0/P1 落地：loop/runtime + Scheduler Calendar adapter + burst/calendar/dependency/heartbeat 接线；SelfWorkPolicy conservative/校验落地，P2/P3 余项保留 🟡。 |
 | 2026-07-21 | 数字员工 P2 落地：`self-work-strategies`（4 策略角度轮询）+ `self-work-metrics`（acceptance/duplicate/no-progress/byStrategy JSONL）；R7 下沉路线级（`kpi_route_circuit` 不 pause KPI）；burst onExit 统一写 `burstRunHistory`。 |
 | 2026-07-21 | 数字员工 P3 落地：`self-work-llm-policy`（llm_reflective + deterministic fallback）；`AbTestSelfWorkPolicy`（探索满 minTrials 后按 acceptance rate 利用）；`hasAvailableCapacity` 自适应前台预留（`foregroundReserveSlots`，前台对话不再全停）。 |
+| 2026-07-22 | 产物管道缺口落地：[`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md)；`ingestInnerBrainDeliverablesOnExit`；deliverableCheck P-alias / P-rel / P-clear / P-evidence |
+| 2026-07-22 | 「推进」工作包 ADL：[`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md)；模块 `advanceWorkPackageBuilder` ✅ P0/P1 |

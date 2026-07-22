@@ -5,4 +5,5 @@ export {
   saveAutonomyPolicy,
   patchAutonomyPolicy,
   markAutonomousAction,
+  normalizeDigitalEmployeePolicy,
 } from './environment/autonomy-policy-store.js';
