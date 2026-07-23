@@ -9,7 +9,9 @@
 | **工作区 File-as-State** | 本地磁盘 | `<workDir>/.brain/*`、`.run/*` | 内脑阶段机、外脑 `set_goal` | Controller、Dashboard |
 | **执行轨 Repository** | `FilesystemRepositoryStore` | `DATA_ROOT/repository/` | 晋升 `promote-from-workspace` | **外脑** `knowledgeRetrieval`（K/S/P） |
 | **外脑记忆 mem9** | HTTPS | mem9 `${sid}:chat` | `OuterMemoryStore`、`ingestInnerOutput` | `readMemoryContext` |
-| **技能 drive9** | HTTPS | `/skills/shared/` | 内脑 `write_skill`、burst 结束 merge skills | `seedInnerBrainSharedContext`（含 drive9+本地池并集）、`get_skill_content` |
+| **技能 drive9** | HTTPS | `/skills/shared/` | 内脑 `write_skill`、burst 结束 merge skills | `seedInnerBrainSharedContext`（含 drive9+本地池并集）、`get_skill_content`；作为 EW kind=`skill_md` 的正文源 |
+| **Executable Workflow（✅ P0–P3）** | 本地 + drive9 | `DATA_ROOT/workflows/`；`/workflows/shared/{id}@{ver}.json` | `workflowPromote`（+ drive9 sync）；boot `workflowDrive9Seed` | `workflowRunner` / SelfWork execute / `workflow_*`；见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) |
+| **EW 执行迹（✅）** | 本地 | `<workDir>/.run/workflow_run.json` | `workflowRunner` | onExit / Dashboard |
 | **事实 drive9（完全共享）** | HTTPS | `/knowledge/shared/` | `record_fact` → `sharedFactSink` → `storeShared`（实时） | `seedDrive9FactsToMemory` → `.brain/memory.json` `fact_records`；见 [`DRIVE9-KNOWLEDGE-SHARED.md`](./DRIVE9-KNOWLEDGE-SHARED.md) |
 | **节点 drive9（DyFlow，P1）** | HTTPS | `/nodes/shared/` | 内脑 `nodeAbstractor`（Creator commit auto-export）+ 外脑 `nodeDefEviction`（tombstone, P2） | Designer tool `search_and_instance` → `nodeAssembler` → `imported/*` LocalNode |
 | **节点 LocalNode（DyFlow，P0）** | **本地** | `<workDir>/.brain/local_nodes/{preset,creator,imported}/*.json` | `presetSeeder` / `nodeCreatorExecutor` / `nodeAssembler` | `localNodeStore` → `designer` / `runner` |
@@ -38,7 +40,7 @@
    - 战术：`.brain/*`（BrainFS）  
    - 归档：archive sessions  
    - 软记忆：~~`write_memo`~~ 已删除；KPI 过程见 `kpiBurstOutcomeEvaluator`  
-   - 可复用步骤：`write_skill` → drive9 `/skills/shared/`
+   - 可复用步骤：`write_skill` → drive9 `/skills/shared/`（提示层；**不等于** Executable Workflow）
    - 环境事实（legacy）：`knowledge.md` 路径已退役；DyFlow 见下条
 
 3. **内脑 burst（DyFlow target，P0→P2 落地）**  
@@ -47,6 +49,7 @@
    - 跨 burst 事实：**drive9 `/knowledge/shared/`** ↔ `memory.fact_records`（写同步 / 读 seed，无 burst 晋升）  
    - 节点共享（P1+）：`nodeAbstractor`（Creator commit auto-export → drive9 `/nodes/shared/`）+ `nodeAssembler`（drive9 → `imported/*` LocalNode）  
    - KPI 结果：burst onExit → `kpiBurstOutcomeEvaluator`（见 [`KPI-BURST-OUTCOME-EVALUATOR.md`](./KPI-BURST-OUTCOME-EVALUATOR.md)）  
+   - **确定性工作流（⏳）**：`burstMode=execute` + `workflowRef` → `workflowRunner` 逐步验收；Skills / playbook / frozen_dag 为载体；见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md)  
    - **退役（P2）**：`write_skill` / `write_knowledge` / `write_constraint` 工具 + `.brain/skills/` / `.brain/knowledge.md` / `.brain/constraints.md` 接口被 LocalNode + memory.facts/constraints 取代；具体迁移见 [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §11
 
 4. **禁止**  
@@ -57,6 +60,7 @@
    - **跨渠道身份**：模型或桥**绕过** `identityLinkService` 把他人 `channel_key` 绑到任意 sid（含「B 自称是 A」）  
    - **DyFlow**：baseNode / Designer prompt **直读 NodeDef 正文**（应只通过 Assembler 装配后再 ref LocalNode）  
    - **DyFlow**：任何模块**绕过 `nodeDefDrive9Store`** 直访 drive9 `/nodes/shared/`
+   - **Executable Workflow**：execute 模式**静默改** EW 正文或绕过 `expect`；用「再 seed skill」代替逐步法令（见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) W1–W4）
 
 ## 代码入口
 
@@ -83,6 +87,7 @@
 | **DyFlow Assembler（P1）** | `openkuroneko/inner-brain/node-assembler.ts` |
 | **DyFlow drive9 NodeDef 门面（P1）** | `drive9/node-def-drive9-store.ts` |
 | **DyFlow NodeDef 治理（P2）** | `outer/node-def-eviction.ts` |
+| **Executable Workflow（⏳ P0）** | `outer/executable-workflow-store.ts` · `outer/workflow-promote.ts` · `outer/burst-mode-gate.ts` · `inner-brain/workflow-runner.ts` · [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) |
 
 ## 守门
 

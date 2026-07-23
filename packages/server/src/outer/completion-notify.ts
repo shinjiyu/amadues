@@ -1,6 +1,5 @@
 /**
- * 内脑任务完成 → IM 通知：从工作区磁盘重建「结果优先」的完成正文。
- * 避免只转发 milestones 过程描述或 output 里过时的薄报告。
+ * 内脑任务完成 → IM 通知：工作区重建白话短结论（有附件不贴报告全文）。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -240,6 +239,33 @@ function markCompletionNotified(
   );
 }
 
+/** ✅ 摘要 + 正文：去掉与标题重复的首段，不带调试 instanceId */
+function formatCompletionImText(
+  headerLine: string,
+  message: string,
+  fileNote: string,
+  gap: string,
+): string {
+  const header = headerLine.trim();
+  const summary = header.replace(/^✅\s*/, '').trim();
+  const body = message.trim();
+  const paras = body ? body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean) : [];
+  const first = paras[0] ?? '';
+  const summaryStem = summary.replace(/…$/, '');
+  const duplicate =
+    first.length > 0 &&
+    (first === summary ||
+      first.startsWith(summaryStem) ||
+      summaryStem.startsWith(first.slice(0, Math.min(40, first.length))));
+  const rest = duplicate ? paras.slice(1).join('\n\n') : body;
+  const chunks: string[] = [header];
+  if (gap) chunks.push(gap);
+  if (rest) chunks.push(rest);
+  let text = chunks.join('\n\n');
+  if (fileNote) text += `\n${fileNote}`;
+  return text;
+}
+
 async function postCompletionIm(
   deps: CompletionNotifyDeps,
   opts: {
@@ -268,14 +294,16 @@ async function postCompletionIm(
   const requested = deliverables.length;
   const fileNote =
     successCount > 0
-      ? `\n\n📎 已附上 ${successCount} 个产出文件，请直接查看附件。`
+      ? successCount === 1
+        ? '（附件里有产出）'
+        : `（附了 ${successCount} 个文件）`
       : requested > 0
-        ? `\n\n⚠️ 登记了 ${requested} 个产物但附件吸收失败（见 .run/deliverables.log）。`
+        ? '（有登记产物但附件没带上）'
         : '';
 
-  const gapBlock = opts.gapSummary?.trim() ? `${opts.gapSummary.trim()}\n\n---\n\n` : '';
-  const completionText =
-    `${opts.headerLine}\n\n${gapBlock}${message.trim()}${fileNote}\n\n— \`${opts.instanceId}\``;
+  const gap = opts.gapSummary?.trim() ?? '';
+  // 白话短结论：✅ 摘要 + 可选补充；不重复贴同一段正文，不带 instanceId
+  const completionText = formatCompletionImText(opts.headerLine, message, fileNote, gap);
 
   const attachmentParts: AttachmentPart[] = assets.map((d) => ({
     type: 'attachment',

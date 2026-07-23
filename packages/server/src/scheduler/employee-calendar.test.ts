@@ -186,6 +186,39 @@ describe('EmployeeCalendar', () => {
     expect(createTask).toHaveBeenCalledTimes(2);
   });
 
+  it('distinct kpi_increment calendarKeys for same kpi do not collapse via legacy seedKind', async () => {
+    const morning = task({
+      id: 'm1',
+      metadata: {
+        kpiId: 'kpi-1',
+        calendarKey: 'kpi-1:increment:morning',
+        seedKind: 'increment',
+        purpose: 'kpi_increment',
+      },
+    });
+    const createTask = vi.fn().mockResolvedValue('m2');
+    const updateTask = vi.fn();
+    const calendar = new EmployeeCalendar({
+      listTasks: vi.fn().mockResolvedValue([morning]),
+      triggerTask: vi.fn(),
+      createTask,
+      updateTask,
+    });
+    const noon = await calendar.upsertCommitment({
+      calendarKey: 'kpi-1:increment:noon',
+      title: '午班',
+      purpose: 'kpi_increment',
+      schedule: { type: 'cron', expression: '0 13 * * *', timezone: 'Asia/Shanghai' },
+      action: { type: 'prompt', content: '午增量' },
+      expectedOutcome: '报告',
+      agentId: 'a',
+      kpiId: 'kpi-1',
+    });
+    expect(noon.created).toBe(true);
+    expect(createTask).toHaveBeenCalledOnce();
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
   it('cancel / pause / resume resolve by calendarKey', async () => {
     const existing = task({
       id: 'x1',

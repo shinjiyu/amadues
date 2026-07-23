@@ -30,16 +30,27 @@ export function buildSelfWorkPrompt(context: SelfWorkContext): string {
   const list = (items: string[] | undefined, empty: string) =>
     items && items.length > 0 ? items.map((item) => `- ${item}`).join('\n') : empty;
 
+  const knownEw = context.activeKpis
+    .map((kpi) => {
+      const ref = context.pickWorkflowRef?.(kpi.kpiId);
+      return ref ? `- ${kpi.kpiId} → ${ref.id}@${ref.version}` : null;
+    })
+    .filter(Boolean)
+    .join('\n');
+
   return [
     '你是数字员工的自主找活策略。当前有空闲执行容量，请为一个 active KPI 提出下一件最有价值的工作。',
     '',
     '## active KPI',
     kpis || '（无）',
     '',
+    '## 已知 Executable Workflow（有则优先 execute，勿再 explore）',
+    knownEw || '（无；本轮用 explore 式 action 即可）',
+    '',
     '## 最近已做（禁止重复）',
     list(context.recentActions.slice(-10), '（无）'),
     '',
-    '## 被熔断的失败路线（禁止重试，换独立方向）',
+    '## 被熔断的失败路线（禁止重试，换独立方向；含 ew:id@version）',
     list(context.blockedRoutes, '（无）'),
     '',
     '## 未满足的依赖（依赖这些答案的工作不要提）',
@@ -49,10 +60,12 @@ export function buildSelfWorkPrompt(context: SelfWorkContext): string {
     list(context.runningConflicts, '（无）'),
     '',
     '要求：action 具体可执行；expectedOutcome 可验收；不重复、不依赖未满足条件。',
+    '若 KPI 已有 EW：优先输出 burstMode=execute + workflowRef，action 写「按工作流确定性再跑」。',
     '若没有真正有价值的工作，诚实输出 {"sleep":true}，禁止为了看起来忙而编造。',
     '',
     '只输出 JSON（二选一）：',
     '{"kpiId":"...","action":"...","expectedOutcome":"...","reason":"..."}',
+    '{"kpiId":"...","action":"...","expectedOutcome":"...","reason":"...","burstMode":"execute","workflowRef":{"id":"...","version":"..."}}',
     '{"sleep":true}',
   ].join('\n');
 }
@@ -81,6 +94,18 @@ export function parseSelfWorkLlmResponse(text: string): ParsedSelfWorkLlmRespons
   const reason = typeof parsed['reason'] === 'string' ? parsed['reason'] : '';
   if (!kpiId || !action || !expectedOutcome) return null;
 
+  const burstMode = parsed['burstMode'] === 'execute' ? 'execute' : undefined;
+  let workflowRef: { id: string; version: string } | undefined;
+  const wr = parsed['workflowRef'];
+  if (wr && typeof wr === 'object') {
+    const id = typeof (wr as { id?: unknown }).id === 'string' ? (wr as { id: string }).id.trim() : '';
+    const version =
+      typeof (wr as { version?: unknown }).version === 'string'
+        ? String((wr as { version: string }).version).trim()
+        : '';
+    if (id && version) workflowRef = { id, version };
+  }
+
   return {
     sleep: false,
     proposal: {
@@ -89,6 +114,8 @@ export function parseSelfWorkLlmResponse(text: string): ParsedSelfWorkLlmRespons
       expectedOutcome,
       reason: reason || 'LLM 提案',
       strategyId: LLM_REFLECTIVE_STRATEGY_ID,
+      ...(burstMode ? { burstMode } : {}),
+      ...(workflowRef ? { workflowRef } : {}),
     },
   };
 }

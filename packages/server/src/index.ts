@@ -62,6 +62,9 @@ import { initSkillMemoryStore, type SkillMemoryStore } from './mem9/skill-memory
 import { Mem9Client } from './mem9/mem9-client.js';
 import { initSkillDrive9Store, type SkillDrive9Store } from './drive9/skill-drive9-store.js';
 import { initKnowledgeDrive9Store, type KnowledgeDrive9Store } from './drive9/knowledge-drive9-store.js';
+import { initWorkflowDrive9Store, type WorkflowDrive9Store } from './drive9/workflow-drive9-store.js';
+import { seedWorkflowsFromDrive9 } from './drive9/workflow-drive9-seed.js';
+import { ExecutableWorkflowStore } from './outer/executable-workflow-store.js';
 import { getDrive9Client, resolveDrive9Config } from './drive9/drive9-client.js';
 import { InnerBrainRegistry, type TaskRecord, type TaskStatus } from './outer/inner-brain-registry.js';
 import {
@@ -124,6 +127,7 @@ import { createWechatConnector } from '@utlra/wechat-bridge';
 import { PerformanceGoalEngine } from './performance-goals/engine.js';
 import { renderPerformanceDashboard } from './performance-goals/dashboard.js';
 import { registerHealthRoute } from './api/health-route.js';
+import { registerWorkflowsRoute } from './api/workflows-route.js';
 import { registerParticipationLabRoutes } from './api/participation-lab-route.js';
 import { buildLogTimeline, listLogSessions } from './api/log-explorer.js';
 import { buildLlmUsageSummary } from './outer/llm-usage-journal.js';
@@ -477,6 +481,7 @@ app.use(
 
 /** agent 进程存活。 */
 registerHealthRoute(app, DATA_ROOT);
+registerWorkflowsRoute(app, DATA_ROOT);
 registerParticipationLabRoutes(app);
 
 app.get('/api/workspaces', (c) => {
@@ -1673,16 +1678,31 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   let skillStore: SkillMemoryStore | undefined;
   let skillDrive9Store: SkillDrive9Store | undefined;
   let knowledgeDrive9Store: KnowledgeDrive9Store | undefined;
+  let workflowDrive9Store: WorkflowDrive9Store | undefined;
+  const executableWorkflowStore = new ExecutableWorkflowStore({ dataRoot: DATA_ROOT });
 
   const drive9Config = resolveDrive9Config();
   if (drive9Config) {
     skillDrive9Store = initSkillDrive9Store(drive9Config.apiKey, drive9Config.apiUrl);
     knowledgeDrive9Store = initKnowledgeDrive9Store() ?? undefined;
+    workflowDrive9Store = initWorkflowDrive9Store(drive9Config.apiKey, drive9Config.apiUrl) ?? undefined;
     const sourceNote = drive9Config.source === 'env'
       ? 'DRIVE9_* env'
       : `drive9 ctx (${drive9Config.contextName ?? 'current'})`;
     console.log(`[utlra] SkillDrive9Store 已初始化 → drive9 /skills/shared/ via ${sourceNote}`);
     console.log(`[utlra] KnowledgeDrive9Store 已初始化 → drive9 /knowledge/shared/ via ${sourceNote}`);
+    console.log(`[utlra] WorkflowDrive9Store 已初始化 → drive9 /workflows/shared/ via ${sourceNote}`);
+    if (workflowDrive9Store) {
+      void seedWorkflowsFromDrive9(workflowDrive9Store, executableWorkflowStore)
+        .then((r) => {
+          console.log(
+            `[utlra] ExecutableWorkflow seed from drive9: imported=${r.imported} skipped=${r.skipped} errors=${r.errors}`,
+          );
+        })
+        .catch((e: unknown) => {
+          console.warn('[utlra] ExecutableWorkflow seed failed:', (e as Error).message);
+        });
+    }
   } else {
     const mem9ApiKey = process.env['MEM9_API_KEY'];
     if (mem9ApiKey) {
@@ -1722,6 +1742,9 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     skillStore,
     skillDrive9Store,
     knowledgeDrive9Store,
+    executableWorkflowStore,
+    workflowDrive9Store,
+    getEmployeeCalendar: () => digitalEmployeeRuntime?.getCalendar(),
   });
 
   httpOuterBrainDeps = {
@@ -1746,6 +1769,9 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     skillStore,
     skillDrive9Store,
     knowledgeDrive9Store,
+    executableWorkflowStore,
+    workflowDrive9Store,
+    getEmployeeCalendar: () => digitalEmployeeRuntime?.getCalendar(),
   };
 
   // Push Loop：轮询内脑输出，主动推送 BLOCK/COMPLETE/PROGRESS 事件
@@ -1786,6 +1812,8 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     skillStore,
     skillDrive9Store,
     knowledgeDrive9Store,
+    executableWorkflowStore,
+    workflowDrive9Store,
     memoryBlockStore,
     identityLinkService,
     bindingIndex,
@@ -1826,6 +1854,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     identityRegistry: registry,
     triggerDigitalEmployee: () =>
       digitalEmployeeRuntime?.trigger('heartbeat_fallback') ?? Promise.resolve(),
+    getEmployeeCalendar: () => digitalEmployeeRuntime?.getCalendar(),
   });
   heartbeat.start();
 

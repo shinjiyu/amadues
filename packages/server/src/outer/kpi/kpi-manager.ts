@@ -34,6 +34,11 @@ import {
   DEFAULT_MAX_CONSECUTIVE_FAILURES,
   type FailureCircuitResult,
 } from './kpi-failure-circuit.js';
+import {
+  tripWorkflowFailureCircuit,
+  type TripWorkflowCircuitResult,
+} from '../workflow-failure-circuit.js';
+import { ExecutableWorkflowStore } from '../executable-workflow-store.js';
 
 export { DEFAULT_STALE_AWAITING_POLICY, type StaleAwaitingPolicy } from './kpi-awaiting-policy.js';
 export { buildKpiReaperDeps } from './kpi-reaper-live.js';
@@ -56,12 +61,16 @@ export interface KpiManagerDeps {
   maxConsecutiveFailures?: number;
   /** Watchdog mode: perform governance only; work-finding belongs to digitalEmployeeLoop. */
   allowAdvance?: boolean;
+  /** EW 连败熔断（P2）；缺省用 toolCtx.executableWorkflowStore */
+  executableWorkflowStore?: ExecutableWorkflowStore;
 }
 
 export interface KpiManagerTickResult {
   awaitingReview: AwaitingReviewResult;
   reaped: ReapOutcome;
   failureCircuit: FailureCircuitResult;
+  /** EW 连败 → pause workflow（P2） */
+  workflowCircuit: TripWorkflowCircuitResult;
   advance: KpiAdvancerTickResult | null;
   dispatched: boolean;
   reason: string;
@@ -139,11 +148,23 @@ export async function tickKpiManager(
     maxConsecutiveFailures: deps.maxConsecutiveFailures ?? DEFAULT_MAX_CONSECUTIVE_FAILURES,
   });
 
+  const ewStore =
+    deps.executableWorkflowStore ??
+    deps.toolCtx.executableWorkflowStore ??
+    new ExecutableWorkflowStore({ dataRoot: deps.dataRoot });
+  const workflowCircuit = tripWorkflowFailureCircuit({
+    dataRoot: deps.dataRoot,
+    registry: deps.registry,
+    store: ewStore,
+    maxConsecutiveFailures: deps.maxConsecutiveFailures ?? DEFAULT_MAX_CONSECUTIVE_FAILURES,
+  });
+
   if (deps.allowAdvance === false) {
     return {
       awaitingReview,
       reaped,
       failureCircuit,
+      workflowCircuit,
       advance: null,
       dispatched: false,
       reason: 'governance_only',
@@ -155,6 +176,7 @@ export async function tickKpiManager(
       awaitingReview,
       reaped,
       failureCircuit,
+      workflowCircuit,
       advance: null,
       dispatched: false,
       reason: verdict.blockedByHardGate ?? 'busy',
@@ -164,7 +186,15 @@ export async function tickKpiManager(
   const policy = loadAutonomyPolicy(deps.dataRoot);
   const hasActiveKpi = deps.kpiRegistry.list({ status: 'active' }).length > 0;
   if (!hasActiveKpi) {
-    return { awaitingReview, reaped, failureCircuit, advance: null, dispatched: false, reason: 'no_active_kpi' };
+    return {
+      awaitingReview,
+      reaped,
+      failureCircuit,
+      workflowCircuit,
+      advance: null,
+      dispatched: false,
+      reason: 'no_active_kpi',
+    };
   }
 
   const spawnCapacity = evaluateKpiSpawnCapacity(environment, policy);
@@ -173,6 +203,7 @@ export async function tickKpiManager(
       awaitingReview,
       reaped,
       failureCircuit,
+      workflowCircuit,
       advance: null,
       dispatched: false,
       reason: spawnCapacity.reason ?? 'spawn_capacity_blocked',
@@ -181,7 +212,15 @@ export async function tickKpiManager(
 
   const elig = kpiTaskEligible(policy);
   if (!elig.ok) {
-    return { awaitingReview, reaped, failureCircuit, advance: null, dispatched: false, reason: elig.reason };
+    return {
+      awaitingReview,
+      reaped,
+      failureCircuit,
+      workflowCircuit,
+      advance: null,
+      dispatched: false,
+      reason: elig.reason,
+    };
   }
 
   const tickFn = deps.advancerTick ?? tickKpiAdvancer;
@@ -193,6 +232,7 @@ export async function tickKpiManager(
       awaitingReview,
       reaped,
       failureCircuit,
+      workflowCircuit,
       advance,
       dispatched: false,
       reason: last?.reason ?? 'kpi_no_dispatch',
@@ -209,6 +249,7 @@ export async function tickKpiManager(
     awaitingReview,
     reaped,
     failureCircuit,
+    workflowCircuit,
     advance,
     dispatched: true,
     reason: ok?.reason ?? 'kpi_sprint_dispatched',

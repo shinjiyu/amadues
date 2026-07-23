@@ -61,7 +61,10 @@ export const CALENDAR_TOOL_DEFS: ToolDef[] = [
           when: {
             type: 'string',
             description:
-              '何时执行：ISO8601 时刻 | 5 段 cron（如 0 9 * * 1）| 纯数字分钟（如 30 表示 30 分钟后）| JSON {"in_minutes":n}',
+              '何时执行：ISO8601 | 5 段 cron | 分钟数 | JSON {"in_minutes":n}。' +
+              '一天多次用**一条** cron 写多小时，例如 Asia/Shanghai 下 `0 9,13,21 * * *`（早/午/晚），' +
+              '不要连调三次同 kpi_increment 默认键（默认键是 `{kpiId}:increment`，会互相覆盖）。' +
+              '若必须多条，须显式不同 calendar_key（如 `{kpiId}:increment:morning`）。',
           },
           action_kind: {
             type: 'string',
@@ -88,7 +91,10 @@ export const CALENDAR_TOOL_DEFS: ToolDef[] = [
           kpi_id: { type: 'string', description: 'kpi_increment 必填' },
           calendar_key: {
             type: 'string',
-            description: '可选幂等键；缺省按 purpose 自动生成',
+            description:
+              '可选幂等键；缺省按 purpose 自动生成。' +
+              'kpi_increment 缺省为 `{kpiId}:increment`（同 KPI 只会保留一条）。' +
+              '多条并行须显式不同键，或改用单条多时刻 cron。',
           },
           origin_thread: {
             type: 'string',
@@ -149,7 +155,9 @@ export const CALENDAR_TOOL_DEFS: ToolDef[] = [
 
 function requireCalendar(ctx: OuterToolContext): EmployeeCalendarPort {
   if (!ctx.employeeCalendar) {
-    throw new Error('calendar_unavailable');
+    throw new Error(
+      'calendar_unavailable: employeeCalendar 未注入对话/心跳上下文（接线缺陷，不是系统没有日历）',
+    );
   }
   return ctx.employeeCalendar;
 }

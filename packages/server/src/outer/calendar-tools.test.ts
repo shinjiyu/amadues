@@ -127,6 +127,17 @@ describe('calendar-tools', () => {
     expect(upsertCommitment).toHaveBeenCalled();
   });
 
+  it('list_calendar without employeeCalendar surfaces wiring error (not “no calendar”)', async () => {
+    const ctx = mockCtx({
+      listDue: async () => [],
+      execute: async () => undefined,
+    });
+    delete ctx.employeeCalendar;
+    const result = await executeOuterTool('list_calendar', '{}', ctx);
+    expect(result.output).toMatch(/calendar_unavailable/);
+    expect(result.output).toMatch(/未注入/);
+  });
+
   it('rejects spawn without goal and non-allowlisted tool', async () => {
     const calendar: EmployeeCalendarPort = {
       listDue: async () => [],

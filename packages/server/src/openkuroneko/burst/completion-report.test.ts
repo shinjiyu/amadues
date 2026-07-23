@@ -119,7 +119,7 @@ describe('buildCompletionReport', () => {
   });
 
   describe('audience: im', () => {
-    it('prioritizes excerpt, omits milestones/goal/assessment soft noise', () => {
+    it('有附件时只用短结论，不贴报告摘要/文件清单', () => {
       const text = buildCompletionReport(
         {
           goal: '调研 Kuroneko',
@@ -133,18 +133,36 @@ describe('buildCompletionReport', () => {
             nextStrategy: '下次加 SBOM',
           },
           deliverables: ['report.md'],
-          resultExcerpt: '（摘自 `report.md`）\n\n## 结论\n用户 A 得分 9 分。',
+          completeMessage: '用户 A 得分 9 分。',
+          resultExcerpt: '（摘自 `report.md`）\n\n## 结论\n很长很长的报告正文不该进 IM。'.repeat(3),
         },
         im,
       );
-      expect(text).toContain('## 结果');
       expect(text).toContain('用户 A 得分 9 分');
-      expect(text).toContain('## 产出文件');
-      expect(text).toContain('`report.md`');
+      expect(text).not.toContain('很长很长的报告');
+      expect(text).not.toContain('## 结果');
+      expect(text).not.toContain('## 产出文件');
+      expect(text).not.toContain('`report.md`');
       expect(text).not.toContain('里程碑');
       expect(text).not.toContain('输入范围');
       expect(text).not.toContain('略宽');
       expect(text).not.toContain('冗余 knowledge');
+    });
+
+    it('有附件但无结论时只说看附件', () => {
+      const text = buildCompletionReport(
+        {
+          goal: 'g',
+          milestones: 'm',
+          knowledge: null,
+          lastExecLog: null,
+          completionAssessment: null,
+          deliverables: ['report.md'],
+          resultExcerpt: '（摘自 `report.md`）\n\n' + 'x'.repeat(800),
+        },
+        im,
+      );
+      expect(text).toBe('做完了，详情看附件。');
     });
 
     it('shows hardFailures only when present', () => {
@@ -164,12 +182,13 @@ describe('buildCompletionReport', () => {
         },
         im,
       );
-      expect(text).toContain('## 需注意');
+      expect(text).toContain('另外：');
       expect(text).toContain('产物缺失');
+      expect(text).not.toContain('## 需注意');
     });
 
     it('pickImSummary extracts first substantive line', () => {
-      const body = '## 结果\n\n完成了评估与打分。';
+      const body = '完成了评估与打分。';
       expect(pickImSummary(body)).toContain('完成了评估');
     });
 
@@ -217,7 +236,7 @@ describe('buildCompletionReport', () => {
       expect(text).not.toContain('省略前文');
       expect(text).not.toContain('write_file 工具的 path');
       expect(text).not.toContain('跨任务数据复用路径');
-      expect(text).toContain('内脑已完成');
+      expect(text).toContain('做完了');
     });
 
     it('末轮 executor 输出是记忆尾巴时同样拦截', () => {
@@ -239,7 +258,7 @@ describe('buildCompletionReport', () => {
         im,
       );
       expect(text).not.toContain('seed fact dump');
-      expect(text).toContain('内脑已完成');
+      expect(text).toContain('做完了');
     });
 
     it('uses completeMessage instead of seed facts when no deliverable excerpt', () => {

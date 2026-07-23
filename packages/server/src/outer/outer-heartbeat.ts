@@ -24,6 +24,7 @@ import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
 import { llmRawChatCompletion } from '../llm/raw.js';
 import { executeOuterTool, resolveAgentSid, resolveWorkspaceId } from './outer-tools.js';
 import type { OuterToolContext, ToolDef } from './outer-tools.js';
+import type { EmployeeCalendarPort } from '../scheduler/employee-calendar.js';
 import { isSetGoalDispatched } from './inner-brain-kpi-reuse.js';
 import { loadSoul } from './soul.js';
 import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
@@ -40,6 +41,7 @@ import {
 import { listStallAlertIndex } from '../openkuroneko/inner-brain/burst-stall-alert.js';
 import { PerformanceGoalEngine } from '../performance-goals/engine.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE, buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
+import { OUTER_EXECUTABLE_WORKFLOW_GUIDE } from './executable-workflow-guide.js';
 import { runAutonomyPipeline } from './autonomy-pipeline.js';
 import type { ResourceProbeDeps } from './resource-probe.js';
 import { OUTER_TOOL_DEFS } from './outer-tools.js';
@@ -356,6 +358,8 @@ ${goalSection}
 ${imSection}
 - list_inner_brains：列出**所有** workspace 的内脑实例（判断任务状态的**唯一权威来源**）
 - read_inner_status：查询**单个** workspace 的内脑状态（只反映该 workspace，**不要**用它判断「有没有任务在跑」）
+- workflow_list / workflow_get：只读查看已晋升 Executable Workflow（监督用；**不要**在心跳里 workflow_run / set_goal）
+- workflow_pause：连败 EW 可 pause（治理）；晋升仍留给对话/ATTRIBUTE
 
 ## 状态判断原则（重要，先读再判断）
 1. **先调 list_inner_brains 看全量在途任务**。上方「在途任务」已给出汇总，但行动前应再确认。
@@ -376,6 +380,8 @@ ${imSection}
 4. **克制**：正常等待不催促；无监督动作时保持沉默。
 5. **每次最多**：发 1 条 IM 消息，不创建内脑任务。
 6. **长期目标 = KPI**（同一概念）；不要再提「绩效目标」侧车或 performance_goal_id。
+
+${OUTER_EXECUTABLE_WORKFLOW_GUIDE}
 
 ${OUTER_ASYNC_ORCHESTRATION_GUIDE}`;
 }
@@ -658,6 +664,8 @@ export interface HeartbeatDeps {
   identityRegistry?: IdentityRegistry;
   /** Shared capacity loop fallback; heartbeat must not create a second dispatch path. */
   triggerDigitalEmployee?: () => Promise<unknown>;
+  /** 与 DigitalEmployeeRuntime 共享的日历 Port（心跳工具若调日历时用） */
+  getEmployeeCalendar?: () => EmployeeCalendarPort | undefined;
 }
 
 export class OuterHeartbeat {
@@ -876,6 +884,7 @@ export class OuterHeartbeat {
         memoryStore: this.deps.memoryStore,
         innerBrainRegistry: this.deps.innerBrainRegistry,
         kpiRegistry: this.deps.kpiRegistry,
+        employeeCalendar: this.deps.getEmployeeCalendar?.(),
       };
 
       this.deps.workspaceStore.ensureWorkspace(workspaceId);

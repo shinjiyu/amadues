@@ -453,6 +453,7 @@ DATA_ROOT/inner/tool-logs/<workspaceId>/YYYY-MM-DD.jsonl
 |----|------|--------|------|------|
 | **A 事实** | `memory.facts` / `fact_records`（`record_fact` / `preset/extract_facts`） | Designer / baseNode 读上下文 | 读 | 知识、选择器、API 形状、账号归属、**稳定脚本路径 + 运行方式**；**治理**见 [`FACTS-KNOWLEDGE-GOVERNANCE.md`](./FACTS-KNOWLEDGE-GOVERNANCE.md)（topic 合并 + 淘汰 + prompt 上限） |
 | **B 节点** | LocalNode（`preset/node_creator` pack） | Designer 排 `ref: local/…`，**仍 LLM ReAct** | 中（prompt 更短，仍多轮） | **仍需临场判断分支 / 改参 / 组合多工具 / 解释失败** 的战术 |
+| **C 工作流** | **Executable Workflow**（skills / playbook / frozen_dag …） | `burstMode=execute` + `workflowRef` | **高**（逐步 expect，禁 redesign） | 已知 SOP 重复执行；见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) |
 
 **晋升判定（RUN 结束复盘按序问）：**
 
@@ -460,9 +461,12 @@ DATA_ROOT/inner/tool-logs/<workspaceId>/YYYY-MM-DD.jsonl
 1. 只是知识 / 选择器 / API 形状 / 稳定脚本路径？
      → A：record_fact / extract_facts（脚本写明「python workspace/foo.py 做 X」）
 2. 战术仍要临场改参、组合多工具、解释失败？
-     → B：node_creator pack
+     → B：node_creator pack / LocalNode
+3. 路径已稳定、下次必须逐步照做、不许 redesign？
+     → C：ATTRIBUTE **`promote_executable_workflow`** → Executable Workflow（之后 execute burst）
 ```
 
+**谁晋升 C**：主路径是 **Mandatory Attributor**（与 `record_skill` 同阶段）；外脑 `workflow_promote` 仅人工补录/改版。不是「聊天偶然想起」才固化。
 **反例（bot2 教训）**：登录 PS、查 ELO、跑 `ps_playwright_v6.py` 都属 **A**——脚本已落盘，用 `record_fact` 记路径即可，baseNode 下次 `shell_exec` 直接跑；而「据 last_failure 换对战格式」才是 **B**。
 
 > **为什么不要「Tool 晋升」层**：把固定脚本声明成 `ws_*` 工具，省的只是「一次 `shell_exec` → 一次 `ws_` 调用」的微小差别，却要维护注册表、materialize、Designer 可见清单、路径穿越校验。bot2 实证零收益。固定脚本的「可复用」本质是**记住路径**（A 层 fact），不是再造一个工具名。

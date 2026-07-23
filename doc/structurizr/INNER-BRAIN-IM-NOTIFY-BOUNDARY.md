@@ -75,30 +75,31 @@
 
 ### 4.1 IM 完成正文来源（`audience=im`）
 
-**禁止**把 `memory.json` 全量 active facts（含 drive9 seed）当作 IM `## 结果` fallback。
+**禁止**把 `memory.json` 全量 active facts（含 drive9 seed）当作 IM 结论 fallback。  
+**产品口径（2026-07-22）**：IM 只说白话短结论；有附件时**不**贴报告摘要 / 文件清单 / `instanceId` 调试脚注（详情看附件）。`verbose` 仍保留完整排障章节。
 
 按序命中即停：
 
 | 优先级 | 来源 | 说明 |
 |--------|------|------|
-| 1 | `pickDeliverableExcerpt` | `.md` / `.json` / `.txt` 产物摘要 |
-| 2 | `pi-mono/output` 最后一条 `COMPLETE.message` | DyFlow 官方结论 |
-| 3 | `execution-context.json` 末轮 executor 输出 | 短摘要 |
-| 4 | 固定句 | 「内脑已完成…详见产出文件」 |
+| 1 | `pi-mono/output` 最后一条 `COMPLETE.message` | DyFlow 官方结论（短截） |
+| 2 | `execution-context.json` 末轮 executor 输出 | 短摘要 |
+| 3 | `pickDeliverableExcerpt` | **仅当无登记产物文件时**才内联短摘；有附件则跳过 |
+| 4 | 固定句 | 「做完了，详情看附件。」/「做完了。」 |
 
-`knowledge` / `fact_records` **仅** `audience=verbose`（外脑记忆、排障）使用；与 `notifyInnerBrainTaskFailed`（❌ 短原因、不 dump facts）一致。
+硬失败（若有）追加一行「另外：…」。`knowledge` / `fact_records` **仅** `audience=verbose`（外脑记忆、排障）使用。
 
 实现：`completion-report.ts` `buildImCompletionReport` + `completion-notify.ts` `buildCompletionMessageFromWorkspace`。
 
 ### 4.2 IM 正文加固（2026-06-24，D9：完成转发一堆无关信息）
 
-**事故**：`COMPLETE.message`（= DyFlow `outcome.reason`）本身可能是 `BrainFS.tail(knowledge)` 的**记忆尾巴**（含 `…（省略前文 N 字符，仅展示最近内容）` + seed facts），priority-2 直接信任 → 把工具用法/路径备忘当「## 结果」发进 `webchat:global`；且 `✅` 标题抓到引用块/表格/代码片段成乱码。
+**事故**：`COMPLETE.message`（= DyFlow `outcome.reason`）本身可能是 `BrainFS.tail(knowledge)` 的**记忆尾巴**（含 `…（省略前文 N 字符，仅展示最近内容）` + seed facts），priority-2 直接信任 → 把工具用法/路径备忘当结论发进 `webchat:global`；且 `✅` 标题抓到引用块/表格/代码片段成乱码。
 
 边界消费侧（IM 出口）强制两条，**不依赖上游产出干净**：
 
 | # | 规则 | 实现 |
 |---|------|------|
-| **G1 记忆堆拦截** | `completeMessage` / 末轮 executor 输出若命中 `省略前文…仅展示最近内容` 等记忆尾标记 → **视为不可用**，回退下一优先级（最终落固定句「内脑已完成…详见产出文件」） | `buildImCompletionReport` `isMemoryDump()` |
+| **G1 记忆堆拦截** | `completeMessage` / 末轮 executor 输出若命中 `省略前文…仅展示最近内容` 等记忆尾标记 → **视为不可用**，回退下一优先级（最终落固定句「做完了…」） | `buildImCompletionReport` `isMemoryDump()` |
 | **G2 标题净化** | `pickImSummary` 跳过噪声行（`>` 引用 / `\|` 表格 / `` ` `` 代码 / `-`·`*` 列表 / `…`·`（摘自`·`（省略` / 表格分隔线）；**优先取正文首个内容标题**（`#`，但跳过模板小节名「结果/产出文件/需注意/核心结论/关键事实」），否则取首句干净散文 | `pickImSummary()` |
 
 > **上游遗留（follow-up）**：DyFlow `done` 的 `outcome.reason` 不应直接塞 `knowledge` 尾巴；理想在 controller 产出干净结论。当前以 IM 边界 G1/G2 兜底（防御纵深，符合 §4.1「IM 出口不 dump facts」）。
@@ -196,3 +197,4 @@ RUN 结束（local_dag 跑完或 failure distill 后）:
 | 2026-06-08 | PARTIAL 通知：goal 含部署但 memory/dyflow 有 `[BLOCKED]` → `ERROR` + `⚠️` 部分完成（仍附产出） |
 | 2026-06-24 | §4.2 D9：IM 正文加固——G1 记忆堆拦截（`省略前文…` 标记的 `completeMessage`/末轮输出不当结果）+ G2 `pickImSummary` 净化（跳过引用/表格/代码/截断行，优先内容标题） |
 | 2026-07-22 | §1：明确 KPI 禁 COMPLETE IM ≠ 跳过 ingest；交叉 [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap A |
+| 2026-07-22 | §4.1：IM 白话短结论——有附件不贴报告摘要/文件清单/instanceId；优先级改为 COMPLETE.message → 末轮 →（无附件时）短摘 → 固定句 |

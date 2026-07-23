@@ -174,6 +174,18 @@
 | **nodeAbstractor** | ✅ `node-abstractor.test.ts`（sanitize 残留/origin 过滤/dedupe） | — | ⏳ `node-abstractor.prompt.test.ts` | P1；origin 过滤 + dedupeKey |
 | **nodeSkillStore** | ✅ `node-skill-store.test.ts` | — | — | ADL [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) |
 | **nodeSkillLoader** | ✅ `node-skill-loader.test.ts` | — | — | 执行前加载绑定+全局技能 |
+| **executableWorkflowStore** | ✅ `executable-workflow-store.test.ts` | — | — | ADL [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) P0 |
+| **workflowPromote** | ✅ `workflow-promote.test.ts` | — | — | 无 expect 拒收；version bump |
+| **workflowRunner** | ✅ `workflow-runner.test.ts`（含 browser/frozen 注入） | ✅ `designer-execute-gate.test.ts` | — | async 逐步 expect + failurePolicy |
+| **workflowKindAdapters** | ✅ `workflow-adapters.test.ts` | — | — | dry-run + browser/frozen 注入真跑 |
+| **workflowTools** | ✅ `workflow-tools.test.ts` | — | — | list/get/promote/run/pause |
+| **workflowDrive9Store** | ✅ `workflow-drive9-store.test.ts` | — | — | `/workflows/shared/{id}@{ver}.json` |
+| **workflowDrive9Seed** | ✅ `workflow-drive9-seed.test.ts` | — | — | boot seed + miss pull |
+| **workflowForKpi** | ✅ `workflow-for-kpi.test.ts` | — | — | SelfWork execute 优先 |
+| **workflowsRoute** | ✅ `workflows-route.test.ts` | — | — | Dashboard `GET /api/workflows` |
+| **workflowFailureCircuit** | ✅ `workflow-failure-circuit.test.ts` | ✅ `kpi-manager.test.ts`（tick pause EW） | — | execute 连败 → pause EW |
+| **workflowPromoteSuggest** | ✅ `workflow-promote-suggest.test.ts` | — | — | 建议不写 store |
+| **burstModeGate** | ✅ `burst-mode-gate.test.ts` + `set-goal-execute.test.ts` | — | — | explore\|execute 收权 |
 | **dyflowAttributor** | ✅ `attributor.test.ts`（record_fact + record_skill） | ✅ `controller.component.integration.test.ts` | — | RUN→ATTRIBUTE |
 | **nodeAssembler** | ✅ `node-assembler.test.ts`（applyBinding 无残留/幂等/缺 required） | — | ⏳ `node-assembler.prompt.test.ts` | P1；binding 推断 + 失败包容 |
 | brainFs | ✅ `parse-milestones.test.ts` | ✅ `brainFs.component.integration.test.ts` | — | DyFlow 后仅余通用文件读写（tail 等） |

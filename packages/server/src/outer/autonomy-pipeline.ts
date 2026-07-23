@@ -125,6 +125,14 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
       kpiResult.failureCircuit.tripped.map((t) => `${t.kpiId}(${t.failures})`).join(','),
     );
   }
+  if (kpiResult.workflowCircuit.paused.length > 0) {
+    console.log(
+      `[utlra][kpi-manager] workflow_circuit paused=` +
+        kpiResult.workflowCircuit.paused
+          .map((t) => `${t.routeKey}(${t.failures})`)
+          .join(','),
+    );
+  }
   if (kpiResult.dispatched) {
     console.log(
       `[utlra][kpi-manager] dispatched kpi=${kpiResult.kpiId ?? '-'} ` +

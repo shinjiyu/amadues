@@ -50,6 +50,8 @@ export interface DyflowControllerContext {
   instanceId?: string;
   /** registry.startedAt ISO；长时空转判定 */
   burstStartedAt?: string | null;
+  /** 关联 KPI（ATTRIBUTE promote 打 kpi: 标签） */
+  kpiId?: string;
 }
 
 /** P1：节点共享（drive9）配置；提供后 Designer 有 search_and_instance，creator 自动导出 */
@@ -90,7 +92,7 @@ export function createDyflowController(
   ctx: DyflowControllerContext,
   deps: DyflowControllerDeps,
 ): DyflowController {
-  const { workDir, workspaceId, burstId, instanceId, burstStartedAt } = ctx;
+  const { workDir, workspaceId, burstId, instanceId, burstStartedAt, kpiId } = ctx;
   const { llm, toolRegistry, logger, onComplete } = deps;
 
   function burstStartedAtMs(): number | null {
@@ -246,7 +248,14 @@ export function createDyflowController(
             return { hadWork: true };
           }
 
-          const attr = await runDyflowAttributor(runCtx, { llm, logger, memory, workDir, localStore: store });
+          const attr = await runDyflowAttributor(runCtx, {
+            llm,
+            logger,
+            memory,
+            workDir,
+            localStore: store,
+            ...(kpiId?.trim() ? { kpiId: kpiId.trim() } : {}),
+          });
           const factSweep = memory.sweepFacts();
           const constraintSweep = memory.sweepConstraints();
           logger.info('dyflow-controller', {

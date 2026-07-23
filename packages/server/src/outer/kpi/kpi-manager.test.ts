@@ -7,6 +7,9 @@ import { InnerBrainRegistry } from '../inner-brain-registry.js';
 import { KpiRegistry } from '../kpi-registry.js';
 import { defaultAutonomyPolicy, saveAutonomyPolicy } from '../autonomy-policy-store.js';
 import type { EnvironmentSnapshot } from '../environment/environment-types.js';
+import { ExecutableWorkflowStore } from '../executable-workflow-store.js';
+import { promoteWorkflow } from '../workflow-promote.js';
+import { writeBurstModeMarker } from '../../openkuroneko/inner-brain/workflow-runner.js';
 import {
   reapStaleBursts,
   tickKpiManager,
@@ -180,5 +183,42 @@ describe('kpi-manager', () => {
     const result = await tickKpiManager(deps, idleEnvironment(), idleVerdict);
     expect(result.dispatched).toBe(true);
     expect(result.reason).not.toMatch(/max_per_day|cooldown/);
+  });
+
+  it('tick 触发 workflowFailureCircuit pause EW', async () => {
+    const deps = baseDeps();
+    const store = new ExecutableWorkflowStore({ dataRoot: tmp });
+    deps.executableWorkflowStore = store;
+    promoteWorkflow(store, {
+      id: 'ew-tick',
+      kind: 'shell_pipeline',
+      title: 'tick',
+      steps: [{ id: 's1', action: 'assert', expect: { fileExists: 'x' } }],
+    });
+
+    for (let i = 0; i < 3; i++) {
+      const ws = path.join(tmp, 'workspaces', `task-ew-${i}`);
+      fs.mkdirSync(path.join(ws, '.brain'), { recursive: true });
+      writeBurstModeMarker(ws, {
+        burstMode: 'execute',
+        workflowRef: { id: 'ew-tick', version: '1' },
+      });
+      const t = new Date(Date.now() - (3 - i) * 60_000).toISOString();
+      deps.registry.register({
+        instanceId: `ib-ew-${i}`,
+        workspaceId: `task-ew-${i}`,
+        workDir: ws,
+        goal: `[ew:ew-tick@1] fail ${i}`,
+        originUser: 'u',
+        status: 'ERROR',
+        startedAt: t,
+        finishedAt: t,
+        errorMessage: `fail-${i}`,
+      });
+    }
+
+    const result = await tickKpiManager(deps, idleEnvironment(), busyVerdict);
+    expect(result.workflowCircuit.paused.some((h) => h.id === 'ew-tick')).toBe(true);
+    expect(store.getMeta('ew-tick')?.paused).toBe(true);
   });
 });

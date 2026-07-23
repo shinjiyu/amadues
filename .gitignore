@@ -59,3 +59,6 @@ packages/server/supabase/
 exports/
 packages/server/*.jsonl
 packages/server/ou_battle_log.json
+
+.local/
+

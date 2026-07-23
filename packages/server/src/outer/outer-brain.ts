@@ -48,6 +48,7 @@ import { assembleInboundContext, renderInboundHint } from './inbound/inbound-kpi
 import { tryHandleAgentStatusChatCommand } from './inbound/agent-status-chat-command.js';
 import { loadAutonomyPolicy } from './environment/autonomy-policy-store.js';
 import { resolveAgentSid, resolveWorkspaceId } from './outer-tools.js';
+import type { EmployeeCalendarPort } from '../scheduler/employee-calendar.js';
 import { MessageRecordSchema } from '@utlra/chat-ir';
 import { ThreadOrchestrator, makeFreshCheck } from './thread-orchestrator.js';
 import { loadSoul, ensureSoulFile } from './soul.js';
@@ -161,10 +162,19 @@ export interface OuterBrainDeps {
   skillDrive9Store?: SkillDrive9Store;
   /** 事实 drive9 存储层（/knowledge/shared/） */
   knowledgeDrive9Store?: KnowledgeDrive9Store;
+  /** Executable Workflow 本地注册表 */
+  executableWorkflowStore?: import('./executable-workflow-store.js').ExecutableWorkflowStore;
+  /** drive9 `/workflows/shared/` */
+  workflowDrive9Store?: import('../drive9/workflow-drive9-store.js').WorkflowDrive9Store;
   /** Memory Block（keychain / vault blocks） */
   memoryBlockStore?: MemoryBlockStore;
   /** 行为日志存储（可选，由 heartbeat 模块注入，用于心跳检测） */
   actionLogStore?: IActionLogStore;
+  /**
+   * 员工日历 Port（懒取）。聊天里 list_calendar / schedule_commitment 必须打到
+   * 与 DigitalEmployeeRuntime 同一实例，否则工具会 calendar_unavailable。
+   */
+  getEmployeeCalendar?: () => EmployeeCalendarPort | undefined;
 }
 
 const MAX_AGENT_CHAIN = Number(process.env['UTLRA_OUTER_MAX_AGENT_CHAIN'] ?? '20');
@@ -601,12 +611,15 @@ export class OuterBrain {
       skillStore: this.deps.skillStore,
       skillDrive9Store: this.deps.skillDrive9Store,
       knowledgeDrive9Store: this.deps.knowledgeDrive9Store,
+      executableWorkflowStore: this.deps.executableWorkflowStore,
+      workflowDrive9Store: this.deps.workflowDrive9Store,
       memoryBlockStore: this.deps.memoryBlockStore,
       identityLinkService: this.deps.identityLinkService,
       bindingIndex: this.deps.bindingIndex,
       channelConnectionRegistry: this.deps.channelConnectionRegistry,
       channelAdminSids: this.deps.channelAdminSids,
       inboundHumanSid: isHumanSender(senderSid) ? senderSid : undefined,
+      employeeCalendar: this.deps.getEmployeeCalendar?.(),
     };
 
     // ── Step 3.4: IM 入站上下文（只读；方案一：前置层不派发，派发交对话环 LLM 工具）──

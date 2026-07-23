@@ -162,10 +162,15 @@ interface SelfWorkProposal {
   strategyId: string;
   blockedBy?: string[];
   conflictsWith?: string[];
+  /** ⏳ 已知 SOP：带上则 loop 应 set_goal(burstMode=execute, workflowRef) */
+  workflowRef?: { id: string; version: string };
+  burstMode?: 'explore' | 'execute';
 }
 ```
 
 > **「推进」精细化**：推进是 **资源调配**，前置是加厚 **日程 + 内脑** 感知（与 list/read 同源），再用简单规则决定起内脑 / 写日历 / 休眠。见 [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md)。禁止在盲区用 Duty 全文当默认 `action`。
+
+> **确定性再跑**：当提案是「按已晋升流程再执行」时，必须 `burstMode=execute` + `workflowRef`，不得再发探索型 charter。见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md)。
 
 ### 4.1 合法提案契约
 

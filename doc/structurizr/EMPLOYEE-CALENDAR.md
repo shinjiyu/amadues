@@ -277,3 +277,5 @@ expected_outcome: string
 |------|------|
 | 2026-07-22 | 初版：纠正「日历仅 KPI 后台」；对话一等工具 + purpose 分型 + 唯一执行入口 |
 | 2026-07-22 | 名词：到期派活称 **burst**（不用 sprint）；见 [`TERMINOLOGY.md`](./TERMINOLOGY.md) |
+| 2026-07-22 | 接线修复：`OuterBrain` / `OuterHeartbeat` 经 `getEmployeeCalendar` 懒取 `DigitalEmployeeRuntime.getCalendar()`，聊天不再 `calendar_unavailable` |
+| 2026-07-22 | 修复：显式不同 `calendarKey` 的同 KPI `kpi_increment` 不再被 seedKind 遗留回退冲成一条；一天 N 次优先单条多小时 cron |

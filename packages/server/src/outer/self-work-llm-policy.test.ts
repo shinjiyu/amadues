@@ -66,6 +66,21 @@ describe('parseSelfWorkLlmResponse', () => {
     expect(parseSelfWorkLlmResponse('{"kpiId":"kpi-1"}')).toBeNull();
     expect(parseSelfWorkLlmResponse('随便聊两句')).toBeNull();
   });
+
+  it('解析 burstMode + workflowRef', () => {
+    const parsed = parseSelfWorkLlmResponse(
+      JSON.stringify({
+        kpiId: 'kpi-1',
+        action: '按 EW 再跑',
+        expectedOutcome: 'ok',
+        reason: 'known',
+        burstMode: 'execute',
+        workflowRef: { id: 'ew-1', version: '3' },
+      }),
+    );
+    expect(parsed?.proposal?.burstMode).toBe('execute');
+    expect(parsed?.proposal?.workflowRef).toEqual({ id: 'ew-1', version: '3' });
+  });
 });
 
 describe('LlmReflectiveSelfWorkPolicy', () => {
@@ -140,5 +155,16 @@ describe('buildSelfWorkPrompt', () => {
     expect(prompt).toContain('ib-1:pending-1');
     expect(prompt).toContain('在跑的目标');
     expect(prompt).toContain('"sleep":true');
+    expect(prompt).toContain('Executable Workflow');
+    expect(prompt).toContain('burstMode');
+  });
+
+  it('注入 pickWorkflowRef 已知 EW', () => {
+    const prompt = buildSelfWorkPrompt(
+      context({
+        pickWorkflowRef: (id) => (id === 'kpi-1' ? { id: 'ew-novel', version: '2' } : null),
+      }),
+    );
+    expect(prompt).toContain('kpi-1 → ew-novel@2');
   });
 });

@@ -11,6 +11,7 @@ import { llmRawChatCompletion } from '../llm/raw.js';
 import { OUTER_REPLY_ONLY_TOOL_DEFS, OUTER_TOOL_DEFS, executeOuterTool } from './outer-tools.js';
 import type { OuterToolContext, ToolDef } from './outer-tools.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE } from './brain-async-snapshot.js';
+import { OUTER_EXECUTABLE_WORKFLOW_GUIDE } from './executable-workflow-guide.js';
 import {
   isToolOutputOk,
   recordOuterToolCall,
@@ -155,12 +156,16 @@ ${participantsBlock}
 
 ## 能力
 - 聊天/讨论/观点：直接用 reply_to_user 回复，简短说清楚
-- 一次性任务（写代码、搜索、整理文档）：set_goal 派发内脑（无 kpi_id）
+- 一次性任务（写代码、搜索、整理文档）：set_goal 派发内脑（无 kpi_id）——默认 **explore**
+- **再跑已知流程**（用户说按上次/不要摸索/确定性执行/指定 workflow）：\`workflow_list\` → \`set_goal(burst_mode=execute, workflow_id, workflow_version)\` 或 \`workflow_run\`（以用户指定为准）
+- **聊天指定固化**（用户说晋升/冻结/存成工作流）：\`workflow_suggest_promote\`（可选）→ **必须** \`workflow_promote\`（可带 workspace_id / playbook_path / dag_path / steps_json）
+- **探索成功后自动固化**：内脑 ATTRIBUTE 会调 \`promote_executable_workflow\`；你可用 \`workflow_list\` 核对结果
 - **长期 / 开放式 / 周期目标**（"想办法"、"长期跟进"、"持续监控"、"每日收集"、"这是个 KPI"等）：
   1. 先用 set_kpi（周期/常驻用 kind=ongoing）注册，拿到 kpi_id；系统通常会自动 advance 首轮
   2. 需要立刻再推一发时用 **advance_kpi**（不要 set_goal(kpi_id)）；goal/charter 写清**本轮**窄产出
   3. **双轨**（同一 KPI 可同时）：**实时**——有容量时数字员工环会 bootstrap/repair；**定时**——基线有产物后 employeeCalendar 会 ensure cron 式增量日程，到期再派。**禁止**说「系统没有定时/cron/日历」
   4. **聊天预约 / 提醒 / 到点派活**：用 **schedule_commitment**（remind 或 spawn_goal）；查日程用 **list_calendar**；取消/暂停用 cancel/pause_commitment
+  4a. **一天 N 次报告**：优先一条多小时 cron（如 0 9,13,21 * * * + timezone=Asia/Shanghai），不要连建三条默认 kpi_increment（默认键会互相覆盖）；若建多条必须显式不同 calendar_key
   5. **禁止**内脑 wait_timer 长睡做周期检查；每个 burst 做完本轮即结束
   6. 一句话告诉用户："已建 KPI（id），首轮已开跑；日常增量走日程，紧急可再催"
   7. burst 结束后用 view_kpi；用户确认完成 → achieve_kpi；勿把已完成 KPI 仍当「活跃」
@@ -169,6 +174,8 @@ ${participantsBlock}
   10. 内脑等用户输入：send_directive(feedback) 或引导用户回复
 - **持续监督 / 每日巡检**：ongoing KPI + 双轨；不要每轮聊天再 advance，也不要停掉健康在跑的内脑只为「改成定时」
 - @mention 用昵称，IM 会自动解析
+
+${OUTER_EXECUTABLE_WORKFLOW_GUIDE}
 
 ${OUTER_ASYNC_ORCHESTRATION_GUIDE}
 

@@ -32,6 +32,7 @@ import {
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import { isSetGoalDispatched } from './inner-brain-kpi-reuse.js';
 import { listBlockedRoutes } from './kpi/kpi-failure-circuit.js';
+import { listPausedWorkflowRoutes } from './workflow-failure-circuit.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import { executeOuterTool, type OuterToolContext } from './outer-tools.js';
 import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
@@ -39,6 +40,8 @@ import { buildSelfWorkLlmCaller } from './self-work-llm-policy.js';
 import { SelfWorkMetricsTracker } from './self-work-metrics.js';
 import type { SelfWorkProposal } from './self-work-policy.js';
 import { createSelfWorkPolicy } from './self-work-strategies.js';
+import { ExecutableWorkflowStore } from './executable-workflow-store.js';
+import { findWorkflowRefForKpi } from './workflow-for-kpi.js';
 
 export interface DigitalEmployeeRuntimeDeps {
   dataRoot: string;
@@ -247,8 +250,20 @@ export class DigitalEmployeeRuntime {
         .filter((task) => task.status === 'RUNNING')
         .map((task) => task.goal),
       recentActions,
-      blockedRoutes: listBlockedRoutes(this.deps.kpiRegistry, this.deps.registry),
+      blockedRoutes: [
+        ...listBlockedRoutes(this.deps.kpiRegistry, this.deps.registry),
+        ...listPausedWorkflowRoutes(
+          this.deps.toolCtx.executableWorkflowStore ??
+            new ExecutableWorkflowStore({ dataRoot: this.deps.dataRoot }),
+        ),
+      ],
       perception,
+      pickWorkflowRef: (kpiId: string) => {
+        const store =
+          this.deps.toolCtx.executableWorkflowStore ??
+          new ExecutableWorkflowStore({ dataRoot: this.deps.dataRoot });
+        return findWorkflowRefForKpi(store, kpiId);
+      },
     };
   }
 
@@ -349,6 +364,13 @@ export class DigitalEmployeeRuntime {
         goal,
         kpi_id: proposal.kpiId,
         origin_thread: this.deps.defaultThreadId,
+        ...(proposal.burstMode === 'execute' && proposal.workflowRef
+          ? {
+              burst_mode: 'execute',
+              workflow_id: proposal.workflowRef.id,
+              workflow_version: proposal.workflowRef.version,
+            }
+          : {}),
       }),
       { ...this.deps.toolCtx, allowKpiSetGoal: true },
     );

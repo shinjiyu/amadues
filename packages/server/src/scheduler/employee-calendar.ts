@@ -319,11 +319,25 @@ export class EmployeeCalendar implements EmployeeCalendarPort {
     });
     const byKey = tasks.find((task) => task.metadata['calendarKey'] === calendarKey);
     if (byKey) return byKey;
-    if (purpose === 'kpi_increment' && kpiId) {
-      return tasks.find(
-        (task) =>
-          task.metadata['kpiId'] === kpiId && task.metadata['seedKind'] === 'increment',
-      );
+
+    // ADV-6 遗留回退：仅当调用方写入「规范键」`{kpiId}:increment` 时，
+    // 才用 kpiId+seedKind 找回早期无 calendarKey / 仅 seedKind 的条目。
+    // 禁止：任意显式 key（如 twitter-morning）回落匹配同 KPI 的 increment，
+    // 否则一天三班会被互相 upsert 冲成一条。
+    const canonicalIncrementKey =
+      purpose === 'kpi_increment' && kpiId ? `${kpiId.trim()}:increment` : null;
+    if (canonicalIncrementKey && calendarKey === canonicalIncrementKey) {
+      return tasks.find((task) => {
+        if (task.metadata['kpiId'] !== kpiId || task.metadata['seedKind'] !== 'increment') {
+          return false;
+        }
+        const existingKey = task.metadata['calendarKey'];
+        return (
+          existingKey == null ||
+          existingKey === '' ||
+          existingKey === canonicalIncrementKey
+        );
+      });
     }
     return undefined;
   }

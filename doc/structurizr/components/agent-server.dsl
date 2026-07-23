@@ -592,6 +592,46 @@
                     }
                 }
 
+                // ── Executable Workflow（确定性工作流 ⊃ Skills）──────────────────────────
+                executableWorkflowStore = component "Executable Workflow Store" "【⏳】版本化确定性工作流注册表；Skills/playbook/frozen_dag 等为 kind" "TypeScript" {
+                    tags "Outer-Module" "Executable-Workflow" "Planned-P0"
+                    properties {
+                        "path" "packages/server/src/outer/executable-workflow-store.ts"
+                        "horizon.intention" "EW CRUD + version；P0 本地 DATA_ROOT/workflows；P1 drive9 /workflows/shared/"
+                        "horizon.in" "id/version get · list · put"
+                        "horizon.out" "ExecutableWorkflow"
+                        "horizon.deps" "filesystem；P1 drive9-client"
+                        "horizon.test.unit" "executable-workflow-store.test.ts"
+                        "horizon.note" "见 EXECUTABLE-WORKFLOW.md；Skill ⊂ EW"
+                    }
+                }
+
+                workflowPromote = component "Workflow Promote" "【⏳】探索产物冻结为 EW；无 expect 拒收；version bump" "TypeScript" {
+                    tags "Outer-Module" "Executable-Workflow" "Planned-P0"
+                    properties {
+                        "path" "packages/server/src/outer/workflow-promote.ts"
+                        "horizon.intention" "从 workspace skill/playbook/dag 组装可执行契约"
+                        "horizon.in" "workDir + kind hints"
+                        "horizon.out" "ExecutableWorkflow@version → store"
+                        "horizon.deps" "executableWorkflowStore"
+                        "horizon.test.unit" "workflow-promote.test.ts"
+                        "horizon.note" "不变量 W1–W4；见 EXECUTABLE-WORKFLOW.md §6"
+                    }
+                }
+
+                burstModeGate = component "Burst Mode Gate" "【⏳】set_goal / Designer 按 explore|execute 收权" "TypeScript" {
+                    tags "Outer-Module" "Executable-Workflow" "Planned-P0"
+                    properties {
+                        "path" "packages/server/src/outer/burst-mode-gate.ts"
+                        "horizon.intention" "execute 必绑 workflowRef；禁静默 redesign"
+                        "horizon.in" "set_goal args · burstMode"
+                        "horizon.out" "allow/deny + 注入 runner 模式"
+                        "horizon.deps" "executableWorkflowStore；inner designer/controller"
+                        "horizon.test.unit" "burst-mode-gate.test.ts"
+                        "horizon.note" "缺省 explore 兼容现状；见 EXECUTABLE-WORKFLOW.md §5"
+                    }
+                }
+
                 autonomyPolicyStore = component "Autonomy Policy Store" "【闲忙规则】policy.json + policy-rubric.md；聊天 tools 可改" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment"
                     properties {

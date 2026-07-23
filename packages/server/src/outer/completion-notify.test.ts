@@ -34,7 +34,7 @@ describe('completion-notify', () => {
     expect(ev?.deliverables).toEqual(['r.md']);
   });
 
-  it('buildCompletionMessageFromWorkspace includes knowledge and report excerpt', () => {
+  it('buildCompletionMessageFromWorkspace 白话短结论，有附件不贴报告全文', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'comp-notify-'));
     const brain = path.join(tmp, '.brain');
     const runDir = path.join(tmp, '.run', 'pi-mono');
@@ -56,22 +56,23 @@ describe('completion-notify', () => {
       path.join(runDir, 'output'),
       JSON.stringify({
         type: 'COMPLETE',
-        message: '所有里程碑已完成。\n\n## 最终目标\n测试\n\n## 完成的里程碑\n很长过程…',
+        message: '评估完成，用户 A 得 9 分。',
         deliverables: ['final_report.md'],
       }) + '\n',
       'utf8',
     );
 
     const { message } = buildCompletionMessageFromWorkspace(tmp);
-    expect(message).toContain('## 结果');
-    expect(message).toContain('完成了评估');
+    expect(message).toContain('评估完成');
+    expect(message).not.toContain('## 结果');
+    expect(message).not.toContain('## 产出文件');
+    expect(message).not.toContain('细节行');
     expect(message).not.toContain('## 里程碑进度');
     expect(message).not.toContain('输入范围');
     expect(message).not.toContain('## 任务目标');
-    expect(message).not.toContain('## 自评');
   });
 
-  it('buildCompletionMessageFromWorkspace surfaces memory.json last_failure as 需注意', () => {
+  it('buildCompletionMessageFromWorkspace surfaces memory.json last_failure briefly', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'comp-notify-'));
     const brain = path.join(tmp, '.brain');
     const runDir = path.join(tmp, '.run', 'pi-mono');
@@ -99,8 +100,9 @@ describe('completion-notify', () => {
     );
 
     const { message } = buildCompletionMessageFromWorkspace(tmp);
-    expect(message).toContain('## 需注意');
+    expect(message).toContain('另外：');
     expect(message).toContain('final_report.md');
+    expect(message).not.toContain('## 需注意');
   });
 
   it('buildCompletionMessageFromWorkspace uses COMPLETE.message not seed facts for im', () => {
@@ -292,7 +294,8 @@ describe('notifyInnerBrainTaskPartial', () => {
     expect(text).toMatch(/^⚠️ 内脑任务部分完成/);
     expect(text).not.toMatch(/^✅/);
     expect(text).toContain('未远程部署');
-    expect(text).toContain('report.md');
-    expect(text).toContain('已附上 1 个产出文件');
+    expect(text).toContain('（附件里有产出）');
+    expect(text).not.toContain('已附上 1 个产出文件');
+    expect(text).not.toMatch(/— `ib-partial`/);
   });
 });

@@ -15,9 +15,9 @@ Dropbox 风格的 Drive9 文件浏览器，用于可视化浏览 kuroneko 云端
 配置 Drive9 API（任选其一）：
 
 ```bash
-# 方式 1：环境变量（仓库根 .env）
-DRIVE9_API_KEY=your-key
-DRIVE9_SERVER=https://api.drive9.ai   # 可选
+# 方式 1：环境变量（本地自建优先；scripts/local-dashboard 会加载 .env.kuroneko）
+DRIVE9_API_KEY=kuroneko-local-...
+DRIVE9_SERVER=http://127.0.0.1:9009
 
 # 方式 2：CLI 配置
 # ~/.drive9/config 中设置 current_context

@@ -6,8 +6,9 @@ import { MemoryBlocksPanel } from './memory-blocks-panel.js';
 import { LogExplorerPanel } from './log-explorer.js';
 import { UsagePanel } from './usage-panel.js';
 import { StallAlertsPanel } from './stall-alerts-panel.js';
+import { WorkflowsPanel } from './workflows-panel.js';
 
-type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation' | 'logs' | 'usage' | 'stalls';
+type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation' | 'logs' | 'usage' | 'stalls' | 'workflows';
 
 const TENANT = 'default';
 
@@ -186,6 +187,9 @@ export function App() {
           <button type="button" className={tab === 'stalls' ? 'active' : ''} onClick={() => setTab('stalls')}>
             节点触顶
           </button>
+          <button type="button" className={tab === 'workflows' ? 'active' : ''} onClick={() => setTab('workflows')}>
+            Workflows
+          </button>
         </div>
         {tab === 'data' && <DataPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'inner' && <InnerBrainPoolPanel apiPrefix={apiPrefix} />}
@@ -195,6 +199,7 @@ export function App() {
         {tab === 'logs' && <LogExplorerPanel apiPrefix={apiPrefix} />}
         {tab === 'usage' && <UsagePanel apiPrefix={apiPrefix} />}
         {tab === 'stalls' && <StallAlertsPanel apiPrefix={apiPrefix} />}
+        {tab === 'workflows' && <WorkflowsPanel apiPrefix={apiPrefix} />}
       </div>
     </div>
   );

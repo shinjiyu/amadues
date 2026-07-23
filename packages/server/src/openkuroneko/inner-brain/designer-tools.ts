@@ -34,6 +34,7 @@ import {
   type PlanReferenceSource,
 } from './plan-reference-port.js';
 import type { DeliverableCheck, LocalDag, LockedMilestone, NodeDeliverable, NodeInst } from './types.js';
+import { assertDesignerMayRedesign } from './workflow-runner.js';
 
 /** 单节点 instruction 上限：超过即视为「巨型单体」反模式，commit_local_dag 拒收 */
 const MAX_INSTRUCTION_CHARS = 4000;
@@ -174,7 +175,12 @@ export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
       notes: { type: 'string', description: '可选：设计备注' },
     },
     required: ['nodes'],
-    async call(args) {
+      async call(args) {
+      try {
+        assertDesignerMayRedesign(workDir);
+      } catch (e) {
+        return { ok: false, output: (e as Error).message };
+      }
       const rawNodes = Array.isArray(args['nodes']) ? (args['nodes'] as unknown[]) : [];
       const nodes = rawNodes.map((n, i) => normalizeNodeInst(n, i)).filter((n): n is NodeInst => n !== null);
       if (nodes.length === 0) return { ok: false, output: 'commit_local_dag: nodes 为空或全部缺少 ref' };

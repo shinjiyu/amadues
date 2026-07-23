@@ -19,6 +19,10 @@
 | **commitment / 日历承诺** | 未来必须兑现的日程条目 | 「日历工具」若指另一套存储 | `employeeCalendar` / Scheduler task |
 | **SelfWork** | 无 due 时，围绕 KPI 的自主提案 | 与 burst 本身混淆 | `SelfWorkPolicy` |
 | **digitalEmployeeLoop** | 容量主循环：due 优先 → SelfWork → 唯一 `set_goal` | 「心跳派活」作主时钟 | `digital-employee-loop.ts` |
+| **Executable Workflow（EW）** | 已冻结、可逐步验收的**确定性工作流**契约；Skills 是其一种载体 | 把 EW 叫成「又一个 skill」 | [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) |
+| **BurstMode** | 本发 burst 自由度：`explore`（默认可 redesign）\| `execute`（绑 EW，禁 redesign） | 与 KPI / SelfWork 混称 | `set_goal.burstMode`（⏳） |
+| **WorkflowKind** | EW 载体：`skill_md` / `browser_playbook` / `frozen_dag` / `shell_pipeline` / … | 与 BurstMode 混用 | 同上 |
+| **promote（工作流）** | 探索产物 → 带版本的 EW | 仅 `record_fact` / 写 skill 提示而不冻结执行契约 | `workflowPromote`（⏳） |
 
 ### 1.1 `burst` vs 旧称 `sprint`
 
@@ -40,6 +44,9 @@ KPI（长期）
 | AWAITING | 不是「整个 KPI 忙碌」；是该 burst 在等依赖 |
 | advance / 推进 | 是调配（派 burst / ensure 日历 / sleep），不是一种新对象 |
 | repair / bootstrap | 是本轮 work package **种类**，仍落成一次 burst |
+| Skill / skill_md | **不是** Executable Workflow 的同义词；只是 EW 的一种 `WorkflowKind` |
+| explore burst | 可 DESIGN / 换路线；产出候选，**不保证**可重复执行 |
+| execute burst | 必须 `workflowRef`；逐步 `expect`；默认禁止 redesign |
 
 ---
 
@@ -75,3 +82,4 @@ KPI（长期）
 | 日期 | 说明 |
 |------|------|
 | 2026-07-22 | 初版：统一 burst，废弃文档中的 sprint 同义用法 |
+| 2026-07-23 | 增补 Executable Workflow / BurstMode / WorkflowKind / promote（工作流）；明确 Skill ⊂ EW |

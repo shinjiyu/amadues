@@ -11,6 +11,9 @@ export interface SelfWorkProposal {
   strategyId: string;
   blockedBy?: string[];
   conflictsWith?: string[];
+  /** 确定性再跑：带上则 loop 应 set_goal(burstMode=execute) */
+  burstMode?: 'explore' | 'execute';
+  workflowRef?: { id: string; version: string };
 }
 
 export type SelfWorkKpi = Pick<
@@ -27,6 +30,8 @@ export interface SelfWorkContext {
   blockedRoutes?: string[];
   /** 推进感知面（日历 + 内脑）；缺省时跳过感知闸门（兼容旧测） */
   perception?: AdvancePerception;
+  /** 可选：为 KPI 查找已晋升 EW → 优先 execute 提案 */
+  pickWorkflowRef?: (kpiId: string) => { id: string; version: string } | null;
 }
 
 export interface SelfWorkPolicy {
@@ -129,6 +134,15 @@ export function validateSelfWorkProposal(
   if (looksLikeDutyReplay(proposal.action, kpi)) {
     return { ok: false, reason: 'duty_replay_forbidden' };
   }
+  if (proposal.burstMode === 'execute') {
+    if (!proposal.workflowRef?.id?.trim() || !proposal.workflowRef?.version?.trim()) {
+      return { ok: false, reason: 'execute_missing_workflow_ref' };
+    }
+    const ewRoute = `ew:${proposal.workflowRef.id.trim()}@${String(proposal.workflowRef.version).trim()}`;
+    if (isRouteBlocked(ewRoute, context.blockedRoutes)) {
+      return { ok: false, reason: 'route_blocked' };
+    }
+  }
 
   return { ok: true, reason: 'proposal_valid' };
 }
@@ -146,6 +160,21 @@ export class ConservativeSelfWorkPolicy implements SelfWorkPolicy {
       )
       .sort((a, b) => b.momentum - a.momentum)[0];
     if (!kpi) return null;
+
+    const wfRef = context.pickWorkflowRef?.(kpi.kpiId) ?? null;
+    if (wfRef) {
+      const executeProposal: SelfWorkProposal = {
+        kpiId: kpi.kpiId,
+        action:
+          `【本轮工作包·execute】按已晋升工作流 ${wfRef.id}@${wfRef.version} 确定性再跑；禁止 redesign / 换路线。`,
+        expectedOutcome: `workflow ${wfRef.id}@${wfRef.version} 逐步 expect 全过（.run/workflow_run.json ok）`,
+        reason: 'known_executable_workflow',
+        strategyId: 'conservative',
+        burstMode: 'execute',
+        workflowRef: wfRef,
+      };
+      return validateSelfWorkProposal(executeProposal, context).ok ? executeProposal : null;
+    }
 
     const proposal = buildNarrowDraftProposal(kpi, context.perception, 'conservative');
     if (!proposal) return null;

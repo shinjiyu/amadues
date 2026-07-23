@@ -54,6 +54,9 @@
 | **digitalEmployeeLoop** | **✅ 容量驱动主循环：事件 coalesce → 日程优先 → 自主提案 → 唯一派发** | `outer/digital-employee-loop.ts` + `digital-employee-runtime.ts` | burst/calendar/dependency events → `set_goal` 或 sleep |
 | **employeeCalendar** | **✅ 数字员工日程表（复用 Scheduler）；✅ 对话一等工具 list/schedule/cancel/pause（见 EMPLOYEE-CALENDAR）** | `scheduler/employee-calendar.ts` + `outer/calendar-tools.ts` + existing scheduler engine | once/interval/cron + due/missed → `calendar_due`；purpose: kpi_increment / chat_appointment / … |
 | **selfWorkPolicy** | **✅ 可替换/可测试创造性：4 deterministic 策略 + llm_reflective + AbTest；✅ 推进经感知闸门（禁 Duty 整单重放）** | `outer/self-work-policy.ts` + `self-work-strategies.ts` + `self-work-llm-policy.ts` + `self-work-metrics.ts` | env/KPI/calendar/deps/history/blockedRoutes/perception → `SelfWorkProposal|null`；见 [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
+| **executableWorkflowStore** | **✅ Executable Workflow 注册表（版本化契约）** | `outer/executable-workflow-store.ts` | EW CRUD；见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) |
+| **workflowPromote** | **✅ 探索产物 → 冻结 EW（须 expect）** | `outer/workflow-promote.ts` | workspace 产物 → `ExecutableWorkflow@version` |
+| **burstModeGate** | **✅ set_goal / Designer 按 explore\|execute 收权** | `outer/burst-mode-gate.ts` + `set_goal` + designer | execute 缺 `workflowRef` 拒收；禁 redesign |
 | **advanceWorkPackageBuilder** | **✅ 推进调配：感知面（日历+内脑+stall+cursor）+ 简单规则 + P3 指标** | `outer/advance-perception.ts` + `advance-allocator.ts` + `advance-cursor-store.ts` + `advance-metrics.ts` | 读 facet → execute_due / set_goal / ensure_calendar / repair / sleep；见 [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
 | **llmUsageTracker** | **LLM token/并发计量** | `outer/llm-usage-tracker.ts` | completion → 滚动 usage + journal |
 | **llmUsageJournal** | **Token 统计持久化** | `outer/llm-usage-journal.ts` | entry → `usage/llm-usage.jsonl` + summary API |
@@ -167,7 +170,17 @@
 | **nodeAbstractor** | **LocalNode → NodeDef（auto-export）**（P1） | `inner-brain/node-abstractor.ts` | LocalNode + envSnapshot + skills → drive9 NodeDef |
 | **nodeSkillStore** | **节点绑定技能读写**（P1） | `inner-brain/node-skill-store.ts` | `.brain/local_nodes/skills/` |
 | **nodeSkillLoader** | **baseNode 执行前加载技能**（P1） | `inner-brain/node-skill-loader.ts` | 绑定技能 + 全局检索 → prompt |
-| **nodeSkillTools** | **Attributor record_skill**（P1） | `inner-brain/node-skill-tools.ts` | RUN 后蒸馏操作步骤 |
+| **nodeSkillTools** | **Attributor record_skill**（P1） | `inner-brain/node-skill-tools.ts` | RUN 后蒸馏操作步骤；可晋升为 EW kind=`skill_md` |
+| **workflowRunner** | **✅ execute 模式逐步执行 EW（async；可注入 browser/frozen）** | `inner-brain/workflow-runner.ts` | assert/shell/skill_step/browser_steps/run_node |
+| **workflowKindAdapters** | **✅ browser_playbook / frozen_dag 适配（P3–P4 真跑）** | `inner-brain/workflow-adapters.ts` + `workflow-frozen-live.ts` | dry-run 落盘；execute 默认真跑 |
+| **workflowTools** | **✅ 外脑 workflow_list/get/promote/run/pause** | `outer/workflow-tools.ts` | 见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) §10 |
+| **workflowDrive9Store** | **✅ drive9 `/workflows/shared/`** | `drive9/workflow-drive9-store.ts` | promote 同步；跨 agent 共享 |
+| **workflowDrive9Seed** | **✅ boot/miss pull → 本地 put** | `drive9/workflow-drive9-seed.ts` | P3 |
+| **workflowForKpi** | **✅ KPI tag → EW 匹配；SelfWork 优先 execute** | `outer/workflow-for-kpi.ts` | tag `kpi:{kpiId}` |
+| **workflowsRoute** | **✅ Dashboard 只读 list/get** | `api/workflows-route.ts` | `GET /api/workflows` |
+| **workflowFailureCircuit** | **✅ execute 连败 pause EW** | `outer/workflow-failure-circuit.ts` | 心跳 tick；不 pause KPI |
+| **workflowPromoteSuggest** | **✅ promote 建议（外脑只读）** | `outer/workflow-promote-suggest.ts` | `workflow_suggest_promote` |
+| **promoteExecutableWorkflow** | **✅ ATTRIBUTE 层 C 晋升（主路径）** | `inner-brain/promote-executable-workflow-tool.ts` | Attributor 工具 |
 | **nodeAssembler** | **NodeDef + binding → LocalNode**（P1） | `inner-brain/node-assembler.ts` | NodeDef + workDir + hints → imported LocalNode |
 | brainFs | File-as-State（DyFlow 主用 memory/local_nodes；brainFs 余通用文件读写） | `brain/brain-fs.ts` | 读写 `.brain/*` |
 | completionReport | burst DONE → 完成报告正文（im/verbose） | `openkuroneko/burst/completion-report.ts` | goal/milestones/deliverables → report |
@@ -238,3 +251,7 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-07-21 | 数字员工 P3 落地：`self-work-llm-policy`（llm_reflective + deterministic fallback）；`AbTestSelfWorkPolicy`（探索满 minTrials 后按 acceptance rate 利用）；`hasAvailableCapacity` 自适应前台预留（`foregroundReserveSlots`，前台对话不再全停）。 |
 | 2026-07-22 | 产物管道缺口落地：[`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md)；`ingestInnerBrainDeliverablesOnExit`；deliverableCheck P-alias / P-rel / P-clear / P-evidence |
 | 2026-07-22 | 「推进」工作包 ADL：[`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md)；模块 `advanceWorkPackageBuilder` ✅ P0/P1 |
+| 2026-07-23 | 确定性工作流 ADL：[`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md)；Executable Workflow ⊃ Skills；`burstMode` explore\|execute |
+| 2026-07-23 | EW P0+P0.1 落地：store/promote/gate/runner/adapters + 外脑 `workflow_*` 工具（25 单测） |
+| 2026-07-23 | EW P1：drive9 `/workflows/shared/` + SelfWork `workflowRef` → execute（46 相关单测） |
+| 2026-07-23 | EW P2：failure circuit + promote suggest + kpi_sequence |

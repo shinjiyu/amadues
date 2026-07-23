@@ -55,8 +55,9 @@ describe('component: completionNotify', () => {
       'utf8',
     );
     const { message } = buildCompletionMessageFromWorkspace(tmp);
-    expect(message).toMatch(/## 结果|## 产出文件/);
     expect(message).toContain('结论 9 分');
+    expect(message).not.toContain('## 结果');
+    expect(message).not.toContain('## 产出文件');
     expect(message).not.toContain('seed 记忆不应出现');
     expect(message).not.toContain('输入范围');
     expect(message).not.toContain('## 里程碑进度');

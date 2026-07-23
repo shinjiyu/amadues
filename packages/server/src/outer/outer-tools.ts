@@ -65,11 +65,21 @@ import type { OuterMemoryStore } from './outer-memory.js';
 import type { SkillMemoryStore } from '../mem9/skill-memory-store.js';
 import type { SkillDrive9Store } from '../drive9/skill-drive9-store.js';
 import type { KnowledgeDrive9Store } from '../drive9/knowledge-drive9-store.js';
+import { gateBurstMode } from './burst-mode-gate.js';
+import { ExecutableWorkflowStore } from './executable-workflow-store.js';
+import { formatExecuteGoalPrefix } from './workflow-failure-circuit.js';
+import {
+  runExecutableWorkflow,
+  writeBurstModeMarker,
+} from '../openkuroneko/inner-brain/workflow-runner.js';
+import { defaultExecutableWorkflowRunnerDeps } from '../openkuroneko/inner-brain/default-workflow-runner-deps.js';
+import { resolveWorkflowWithDrive9 } from '../drive9/workflow-drive9-seed.js';
 import {
   initSelfUpdateSession,
   readSelfUpdateSession,
 } from '../self-update/session.js';
 import { MEMORY_BLOCK_TOOL_DEFS, dispatchMemoryBlockTool } from './memory-block-tools.js';
+import { WORKFLOW_TOOL_DEFS, dispatchWorkflowTool } from './workflow-tools.js';
 import { IDENTITY_LINK_TOOL_DEFS, dispatchIdentityLinkTool } from './identity-link-tools.js';
 import {
   CHANNEL_CONNECTION_TOOL_DEFS,
@@ -190,6 +200,19 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
             type: 'string',
             description:
               '（可选）额外 peer workspace_id。挂 kpi_id 时默认同 KPI 全部 sibling workspace 互读；spawn 时只写 `.inbox/` 名字+摘要目录，正文用 read_peer_file 按需读取。',
+          },
+          burst_mode: {
+            type: 'string',
+            description:
+              'explore（默认，可 redesign）| execute（确定性工作流，须 workflow_id+workflow_version，禁 Designer redesign）',
+          },
+          workflow_id: {
+            type: 'string',
+            description: 'burst_mode=execute 时必填：已晋升 Executable Workflow id',
+          },
+          workflow_version: {
+            type: 'string',
+            description: 'burst_mode=execute 时必填：workflow 版本号',
           },
         },
         required: ['goal'],
@@ -650,6 +673,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
     },
   },
   ...MEMORY_BLOCK_TOOL_DEFS,
+  ...WORKFLOW_TOOL_DEFS,
   ...IDENTITY_LINK_TOOL_DEFS,
   ...CHANNEL_CONNECTION_TOOL_DEFS,
   ...CHANNEL_SCAN_TOOL_DEFS,
@@ -694,6 +718,10 @@ export interface OuterToolContext {
   skillDrive9Store?: SkillDrive9Store;
   /** 事实 drive9 存储层（/knowledge/shared/，方案 B） */
   knowledgeDrive9Store?: KnowledgeDrive9Store;
+  /** Executable Workflow 注册表（确定性执行）ADL EXECUTABLE-WORKFLOW.md */
+  executableWorkflowStore?: ExecutableWorkflowStore;
+  /** drive9 `/workflows/shared/`（P1） */
+  workflowDrive9Store?: import('../drive9/workflow-drive9-store.js').WorkflowDrive9Store;
   /** Memory Block 存储（keychain 等结构化长期记忆） */
   memoryBlockStore?: MemoryBlockStore;
   /** 跨渠道同人绑定服务（identity_link_request/status 工具）ADL IDENTITY-CROSS-CHANNEL.md */
@@ -832,11 +860,33 @@ async function execSetGoal(
     origin_thread?: string;
     kpi_id?: string;
     peer_workspace_ids?: string;
+    burst_mode?: string;
+    workflow_id?: string;
+    workflow_version?: string;
   },
   ctx: OuterToolContext,
 ): Promise<ToolCallResult> {
   const goal = args.goal?.trim() ?? '';
   if (!goal) return { replied: false, output: '（goal 为空，已跳过）' };
+
+  const ewStore =
+    ctx.executableWorkflowStore ?? new ExecutableWorkflowStore({ dataRoot: ctx.dataRoot });
+  const workflowRef =
+    args.workflow_id?.trim() && args.workflow_version?.trim()
+      ? { id: args.workflow_id.trim(), version: args.workflow_version.trim() }
+      : undefined;
+  // execute：本地 miss 时先从 drive9 pull，再 gate
+  if (args.burst_mode === 'execute' && workflowRef) {
+    await resolveWorkflowWithDrive9(ewStore, workflowRef, ctx.workflowDrive9Store);
+  }
+  const modeGate = gateBurstMode({
+    burstMode: args.burst_mode,
+    workflowRef,
+    store: args.burst_mode === 'execute' ? ewStore : undefined,
+  });
+  if (!modeGate.ok) {
+    return { replied: false, output: `（${modeGate.error}）` };
+  }
 
   if (ctx.freshCheck) {
     const anotherReplied = await ctx.freshCheck();
@@ -885,6 +935,54 @@ async function execSetGoal(
 
     // 清除可能残留的停止信号
     clearStopSignal(workDir);
+
+    writeBurstModeMarker(workDir, {
+      burstMode: modeGate.burstMode,
+      workflowRef: modeGate.workflowRef,
+    });
+
+    // execute：跑 EW，不启 DyFlow Designer（禁 redesign）
+    if (modeGate.burstMode === 'execute' && modeGate.workflowRef) {
+      const wf = await resolveWorkflowWithDrive9(
+        ewStore,
+        modeGate.workflowRef,
+        ctx.workflowDrive9Store,
+      );
+      if (!wf) {
+        return {
+          replied: false,
+          output: `（workflow 不存在: ${modeGate.workflowRef.id}@${modeGate.workflowRef.version}）`,
+        };
+      }
+      fs.writeFileSync(path.join(workDir, 'goal.md'), `# Execute\n\n${goal}\n`, 'utf8');
+      const run = await runExecutableWorkflow(wf, defaultExecutableWorkflowRunnerDeps(workDir));
+      const stampedGoal = `${formatExecuteGoalPrefix(modeGate.workflowRef)} ${goal}`;
+      const taskRecord: TaskRecord = {
+        instanceId,
+        workspaceId: wsId,
+        workDir,
+        goal: stampedGoal,
+        originUser,
+        originThread,
+        status: run.ok ? 'DONE' : 'ERROR',
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        ticks: run.steps.length,
+        deliverableCount: run.ok ? 1 : 0,
+        ...(run.ok ? {} : { errorMessage: `workflow failed at ${run.abortedAt ?? '?'}` }),
+        ...(resolvedKpiId ? { kpiId: resolvedKpiId } : {}),
+      };
+      registry.register(taskRecord);
+      if (resolvedKpiId && ctx.kpiRegistry) {
+        ctx.kpiRegistry.attachBurst(resolvedKpiId, instanceId);
+      }
+      return {
+        replied: false,
+        output: run.ok
+          ? `已按工作流 ${wf.id}@${wf.version} 执行完成（${run.steps.length} 步，instance=${instanceId}）`
+          : `工作流 ${wf.id}@${wf.version} 失败于步骤 ${run.abortedAt}：${run.steps.find((s) => !s.ok)?.detail ?? ''}（instance=${instanceId}）`,
+      };
+    }
 
     // 共享上下文 seed：drive9 技能 + 本地池补充 + drive9 事实（方案 B）
     await seedInnerBrainSharedContext({
@@ -2313,7 +2411,17 @@ export async function executeOuterTool(
       return execReplyToUser(args as { text?: string; attach_asset_ids?: string }, ctx);
     case 'set_goal':
       return execSetGoal(
-        args as { goal?: string; workspace_id?: string; origin_user?: string; origin_thread?: string; kpi_id?: string },
+        args as {
+          goal?: string;
+          workspace_id?: string;
+          origin_user?: string;
+          origin_thread?: string;
+          kpi_id?: string;
+          peer_workspace_ids?: string;
+          burst_mode?: string;
+          workflow_id?: string;
+          workflow_version?: string;
+        },
         ctx,
       );
     case 'set_kpi':
@@ -2402,6 +2510,8 @@ export async function executeOuterTool(
       if (cal) return cal;
       const mb = await dispatchMemoryBlockTool(name, args, ctx);
       if (mb) return mb;
+      const wf = await dispatchWorkflowTool(name, args, ctx);
+      if (wf) return wf;
       const il = await dispatchIdentityLinkTool(name, args, ctx);
       if (il) return il;
       const cc = await dispatchChannelConnectionTool(name, args, ctx);

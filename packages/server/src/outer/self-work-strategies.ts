@@ -88,6 +88,23 @@ export class AngleSelfWorkPolicy implements SelfWorkPolicy {
   ) {}
 
   async propose(context: SelfWorkContext): Promise<SelfWorkProposal | null> {
+    for (const kpi of activeKpisByMomentum(context)) {
+      const wfRef = context.pickWorkflowRef?.(kpi.kpiId) ?? null;
+      if (wfRef) {
+        const executeProposal: SelfWorkProposal = {
+          kpiId: kpi.kpiId,
+          action:
+            `【本轮工作包·execute】按已晋升工作流 ${wfRef.id}@${wfRef.version} 确定性再跑；禁止 redesign / 换路线。`,
+          expectedOutcome: `workflow ${wfRef.id}@${wfRef.version} 逐步 expect 全过（.run/workflow_run.json ok）`,
+          reason: 'known_executable_workflow',
+          strategyId: this.strategyId,
+          burstMode: 'execute',
+          workflowRef: wfRef,
+        };
+        if (validateSelfWorkProposal(executeProposal, context).ok) return executeProposal;
+      }
+    }
+
     const angles = this.angleOrder(context);
     for (const kpi of activeKpisByMomentum(context)) {
       for (const angle of angles) {

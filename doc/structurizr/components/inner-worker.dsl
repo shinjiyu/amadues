@@ -54,6 +54,19 @@
                     }
                 }
 
+                workflowRunner = component "Workflow Runner" "【⏳】execute 模式：按 Executable Workflow steps 逐步执行并机械验收" "TypeScript" {
+                    tags "Inner-Module" "Executable-Workflow" "Planned-P0"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/workflow-runner.ts"
+                        "horizon.intention" "绑定 workflowRef；禁 redesign；逐步 expect；写 workflow_run.json"
+                        "horizon.in" "ExecutableWorkflow@version + workDir"
+                        "horizon.out" "step results · DONE|ERROR per failurePolicy"
+                        "horizon.deps" "workflowKindAdapters; browserPlaybook; baseNodeExecutor(受限); memoryStore"
+                        "horizon.test.unit" "workflow-runner.test.ts"
+                        "horizon.note" "见 EXECUTABLE-WORKFLOW.md §5–§7；Skill 仅为 kind 之一"
+                    }
+                }
+
                 baseNodeExecutor = component "BaseNode Executor (DyFlow)" "单 baseNode 执行：LLM + tools allowlist + ReAct（猛猛干）；产出 outputs 或 high-confidence failure_summary" "TypeScript" {
                     tags "Inner-Module" "DyFlow-Phase" "Planned"
                     properties {

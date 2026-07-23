@@ -18,6 +18,8 @@
 
 节点技能 = **与 LocalNode id 绑定的可复用步骤**，随节点提升 / 实例化 / 共享。
 
+> **与 Executable Workflow**：Node Skills / drive9 skills 属于 EW 的 **`skill_md` kind（提示→可晋升）**；确定性逐步执行见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md)，勿把「有 skill 文件」等同于「可 execute」。
+
 ---
 
 ## 2. 三个概念
@@ -127,3 +129,4 @@ promote_local_node({ id, ..., sourceRef? })
 | 日期 | 说明 |
 |------|------|
 | 2026-06-08 | 初版：节点绑定技能；Attributor 蒸馏；Runner 加载；promote/Assembler 携带 |
+| 2026-07-23 | 交叉引用 Executable Workflow：skill ⊂ EW；execute 不以 skill 提示代替逐步法令 |

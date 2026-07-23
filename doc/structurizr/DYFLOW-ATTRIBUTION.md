@@ -64,10 +64,10 @@ RunContext {
 | 项 | 值 |
 |----|-----|
 | 模块 | `openkuroneko/inner-brain/attributor.ts` |
-| 工具 | `record_fact`, `record_constraint`, `record_skill`（仅归因阶段；技能见 [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md)） |
+| 工具 | `record_fact`, `record_constraint`, `record_skill`, **`promote_executable_workflow`（层 C）**（仅归因阶段） |
 | 轮次上限 | `INNER_ATTRIBUTOR_MAX_ROUNDS`（默认 20） |
 | 输入 | run-context + memory.goal/constraints/facts 摘要 |
-| 输出 | 写入 `memory.json`；无 CONTROL flag（换向仍由 Designer） |
+| 输出 | 写入 `memory.json`；成功路径可写入 `DATA_ROOT/workflows/`；无 CONTROL flag（换向仍由 Designer） |
 
 任务顺序（prompt）：
 
@@ -76,8 +76,18 @@ RunContext {
 3. **红线/避坑**：应永久避免的模式 → `record_constraint`（`[红线]` / `[避坑]` / `[run-failure]` 由模型择一）
 4. 成功节点也要蒸馏（Playwright 可行、脚本路径、API 形状等）
 5. **可复用操作步骤** → `record_skill`（指定 `nodeRef`；见 [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) §4）
+6. **路径已稳定、下次必须照做** → `promote_executable_workflow`（层 C；见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md)）；仅知识勿升 C
 
-LLM 失败时：记 warn，仍执行 `failure-distill`（仅 RUN 失败），进入 DESIGN。
+### 4.1 `promote_executable_workflow`（层 C 主路径）
+
+| 项 | 值 |
+|----|-----|
+| 谁调 | **Mandatory Attributor**（主）；外脑 `workflow_promote` 为人工补录/改版 |
+| 何时 | 本轮 RUN **成功**且路径可机检（`from=auto` 扫 `local_dag` / playbook，或 `steps_json`） |
+| 写入 | `ExecutableWorkflowStore` → `DATA_ROOT/workflows/{id}/`；可选 tag `kpi:{INNER_KPI_ID}` |
+| 不变量 | 仍遵守 W3（每步机械 expect）；禁止无 expect 晋升 |
+
+实现：`promote-executable-workflow-tool.ts` · Attributor registry · 测试：`promote-executable-workflow-tool.test.ts`。
 
 ---
 

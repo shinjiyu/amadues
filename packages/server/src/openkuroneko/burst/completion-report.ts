@@ -7,14 +7,14 @@ import path from 'node:path';
 import { BrainFS } from '../brain/brain-fs.js';
 
 const REPORT_DELIVERABLE_EXCERPT_MAX = 2800;
-const REPORT_DELIVERABLE_EXCERPT_IM_MAX = 2200;
+/** IM 只留短结论；长文看附件（调试期曾用 2200） */
+const REPORT_DELIVERABLE_EXCERPT_IM_MAX = 480;
 const REPORT_KNOWLEDGE_MAX = 2000;
-const REPORT_KNOWLEDGE_IM_MAX = 900;
 const REPORT_LAST_CONTENT_MAX = 600;
-const REPORT_LAST_CONTENT_IM_MAX = 450;
+const REPORT_LAST_CONTENT_IM_MAX = 360;
 const REPORT_GOAL_MAX = 400;
-const REPORT_IM_MAX_TOTAL = 3200;
-const REPORT_IM_MAX_DELIVERABLE_LINES = 8;
+const REPORT_IM_MAX_TOTAL = 900;
+const REPORT_COMPLETE_MESSAGE_IM_MAX = 480;
 
 /** `im` = 用户 IM 通知（结果优先、去过程噪音）；`verbose` = 外脑记忆/排障（保留完整章节） */
 export type CompletionReportAudience = 'im' | 'verbose';
@@ -204,65 +204,69 @@ function buildVerboseCompletionReport(input: CompletionReportInput): string {
 
 /**
  * 记忆尾巴标记（`BrainFS.tail` 截断提示）。命中即视为「seed facts 记忆堆」，
- * 不得当 IM `## 结果`（ADL INNER-BRAIN-IM-NOTIFY-BOUNDARY §4.2 G1）。
+ * 不得当 IM 结论（ADL INNER-BRAIN-IM-NOTIFY-BOUNDARY §4.2 G1）。
  */
 function isMemoryDump(s: string): boolean {
   return /省略前文\s*\d+\s*字符|仅展示最近内容/.test(s);
 }
 
-/** 用户 IM：只保留结论 + 产出列表 + 硬失败；不 dump memory seed facts */
+/**
+ * 用户 IM：白话短结论，不贴长报告 / 文件清单 / 调试小节。
+ * 有附件时正文更短——详情看附件；verbose 仍保留完整排障章节。
+ */
 function buildImCompletionReport(input: CompletionReportInput): string {
-  const sections: string[] = [];
-  const excerpt = (input.resultExcerpt ?? '').trim();
+  const hasFiles = input.deliverables.length > 0;
   const completeMessageRaw = (input.completeMessage ?? '').trim();
-  const completeMessage = completeMessageRaw && !isMemoryDump(completeMessageRaw) ? completeMessageRaw : '';
+  const completeMessage =
+    completeMessageRaw && !isMemoryDump(completeMessageRaw) ? completeMessageRaw : '';
   const lastRaw = pickLastAssistantContent(input.lastExecLog);
   const lastContent = lastRaw && !isMemoryDump(lastRaw) ? lastRaw : null;
+  const excerpt = (input.resultExcerpt ?? '').trim();
 
-  if (excerpt) {
-    sections.push('## 结果');
-    sections.push(stripExcerptPreamble(excerpt, REPORT_DELIVERABLE_EXCERPT_IM_MAX));
-  } else if (completeMessage) {
-    sections.push('## 结果');
-    const clip =
-      completeMessage.length > REPORT_DELIVERABLE_EXCERPT_IM_MAX
-        ? completeMessage.slice(0, REPORT_DELIVERABLE_EXCERPT_IM_MAX) + '\n\n…（全文见附件）'
-        : completeMessage;
-    sections.push(clip);
+  // 有产物附件时：优先 COMPLETE 短结论，绝不把整份报告摘要灌进聊天
+  let conclusion = '';
+  if (completeMessage) {
+    conclusion = clipPlainConclusion(completeMessage, REPORT_COMPLETE_MESSAGE_IM_MAX);
   } else if (lastContent) {
-    sections.push('## 结果');
-    const clip =
-      lastContent.length > REPORT_LAST_CONTENT_IM_MAX
-        ? lastContent.slice(0, REPORT_LAST_CONTENT_IM_MAX) + '…'
-        : lastContent;
-    sections.push(clip);
+    conclusion = clipPlainConclusion(lastContent, REPORT_LAST_CONTENT_IM_MAX);
+  } else if (!hasFiles && excerpt) {
+    conclusion = clipPlainConclusion(
+      stripExcerptPreamble(excerpt, REPORT_DELIVERABLE_EXCERPT_IM_MAX),
+      REPORT_DELIVERABLE_EXCERPT_IM_MAX,
+    );
+  } else if (hasFiles) {
+    conclusion = '做完了，详情看附件。';
   } else {
-    sections.push('内脑已完成全部里程碑，详见产出文件或工作区。');
+    conclusion = '做完了。';
   }
 
-  if (input.deliverables.length > 0) {
-    sections.push('');
-    sections.push('## 产出文件');
-    const shown = input.deliverables.slice(0, REPORT_IM_MAX_DELIVERABLE_LINES);
-    for (const p of shown) sections.push(`- \`${p}\``);
-    if (input.deliverables.length > shown.length) {
-      sections.push(`- …另有 ${input.deliverables.length - shown.length} 个文件`);
-    }
-  }
+  const parts: string[] = [conclusion];
 
   const hard = input.completionAssessment?.hardFailures.filter((s) => s.trim()) ?? [];
   if (hard.length > 0) {
-    sections.push('');
-    sections.push('## 需注意');
-    for (const h of hard.slice(0, 5)) sections.push(`- ${h.trim()}`);
-    if (hard.length > 5) sections.push(`- …另有 ${hard.length - 5} 条`);
+    const bits = hard.slice(0, 2).map((h) => h.trim());
+    parts.push(`另外：${bits.join('；')}${hard.length > 2 ? '…' : ''}`);
   }
 
-  let text = sections.join('\n').trim();
+  let text = parts.join('\n\n').trim();
   if (text.length > REPORT_IM_MAX_TOTAL) {
-    text = text.slice(0, REPORT_IM_MAX_TOTAL) + '\n\n…（内容已截断，完整报告见附件或工作区文件）';
+    text = text.slice(0, REPORT_IM_MAX_TOTAL) + '…';
   }
   return text;
+}
+
+/** 去掉 markdown 标题堆叠，压成适合聊天的一两段白话 */
+function clipPlainConclusion(raw: string, maxLen: number): string {
+  const lines = raw
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !isSummaryNoiseLine(l) && !/^#{1,6}\s/.test(l));
+  let body = lines.join('\n').trim() || raw.trim();
+  // 多段时只留前两段，避免过程流水账
+  const paras = body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  if (paras.length > 2) body = paras.slice(0, 2).join('\n\n');
+  if (body.length <= maxLen) return body;
+  return body.slice(0, maxLen).replace(/\s+\S*$/, '') + '…';
 }
 
 /** 去掉「（摘自 `path`）」行，IM 里附件已单独发送 */
