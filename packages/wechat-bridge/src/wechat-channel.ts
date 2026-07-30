@@ -8,6 +8,8 @@
  *
  * @see doc/structurizr/IDENTITY-CROSS-CHANNEL.md §6.6 P4b
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   MessageRecordSchema,
   mentionTargetSidsFromParts,
@@ -132,6 +134,22 @@ export interface WechatChannelOptions {
   /** 复用 connector 探测时建的 client；缺省自建 */
   apiClient?: IlinkApiClient;
   fetchImpl?: typeof fetch;
+  /**
+   * 持久化 context_token（thread → token）。重启后日历推送仍可出站。
+   * 缺省 = 仅内存（重启丢失 → 静默丢推送）。
+   */
+  contextTokenPath?: string;
+  /** 入站刷新 token 后回调（用于冲刷挂起的日历报告） */
+  onContextTokenReady?: (threadId: string) => void | Promise<void>;
+}
+
+/** 无会话锚点时抛出，便于上游勿假标记「已通知」 */
+export class WechatNoContextTokenError extends Error {
+  readonly code = 'wechat_no_context_token' as const;
+  constructor(threadId: string) {
+    super(`wechat_no_context_token:${threadId}`);
+    this.name = 'WechatNoContextTokenError';
+  }
 }
 
 export class WechatChannel implements ChatIRChannel {
@@ -151,6 +169,7 @@ export class WechatChannel implements ChatIRChannel {
         { botToken: opts.config.botToken, ...(opts.config.baseUrl ? { baseUrl: opts.config.baseUrl } : {}) },
         opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {},
       );
+    this.loadContextTokens();
   }
 
   start(): void {
@@ -188,8 +207,10 @@ export class WechatChannel implements ChatIRChannel {
     if (parts.length === 0) return;
     const contextToken = this.contextTokens.get(threadId);
     if (!contextToken) {
-      console.warn(`[wechat-channel:${this.opts.config.botId}] postMessage: no context_token for ${threadId}（等待用户先发言）`);
-      return;
+      console.warn(
+        `[wechat-channel:${this.opts.config.botId}] postMessage: no context_token for ${threadId}（等待用户先发言）`,
+      );
+      throw new WechatNoContextTokenError(threadId);
     }
 
     const attachments = parts.filter((p) => p.type === 'attachment');
@@ -215,6 +236,7 @@ export class WechatChannel implements ChatIRChannel {
       this.setTyping(threadId, false);
       console.log(`[wechat-channel:${this.opts.config.botId}] → wechat ${route.peerId} msg ${lastClientId}`);
     } catch (e) {
+      if (e instanceof WechatNoContextTokenError) throw e;
       console.error(`[wechat-channel:${this.opts.config.botId}] postMessage failed`, e);
     }
   }
@@ -301,6 +323,7 @@ export class WechatChannel implements ChatIRChannel {
   }
 
   private async ingest(msg: WeixinMessage): Promise<void> {
+    const before = new Map(this.contextTokens);
     await handleWechatInbound(
       {
         botId: this.opts.config.botId,
@@ -337,6 +360,51 @@ export class WechatChannel implements ChatIRChannel {
       },
       msg,
     );
+    // 入站可能刷新 context_token → 落盘 + 冲刷挂起推送
+    let tokenChanged = false;
+    for (const [tid, tok] of this.contextTokens) {
+      if (before.get(tid) !== tok) {
+        tokenChanged = true;
+        void Promise.resolve(this.opts.onContextTokenReady?.(tid)).catch((e) =>
+          console.warn(`[wechat-channel] onContextTokenReady failed`, String(e)),
+        );
+      }
+    }
+    if (tokenChanged) this.saveContextTokens();
+  }
+
+  private loadContextTokens(): void {
+    const p = this.opts.contextTokenPath;
+    if (!p) return;
+    try {
+      if (!fs.existsSync(p)) return;
+      const raw = JSON.parse(fs.readFileSync(p, 'utf8')) as { tokens?: Record<string, string> };
+      const tokens = raw.tokens ?? {};
+      for (const [tid, tok] of Object.entries(tokens)) {
+        if (typeof tid === 'string' && typeof tok === 'string' && tok.trim()) {
+          this.contextTokens.set(tid, tok);
+        }
+      }
+      if (this.contextTokens.size > 0) {
+        console.log(
+          `[wechat-channel:${this.opts.config.botId}] restored ${this.contextTokens.size} context_token(s)`,
+        );
+      }
+    } catch (e) {
+      console.warn(`[wechat-channel] context_token load failed`, String(e));
+    }
+  }
+
+  private saveContextTokens(): void {
+    const p = this.opts.contextTokenPath;
+    if (!p) return;
+    try {
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      const tokens = Object.fromEntries(this.contextTokens.entries());
+      fs.writeFileSync(p, JSON.stringify({ tokens, updatedAt: new Date().toISOString() }, null, 2), 'utf8');
+    } catch (e) {
+      console.warn(`[wechat-channel] context_token save failed`, String(e));
+    }
   }
 
   private resolveParts(body: ChatIROutboundBody): MessagePart[] {

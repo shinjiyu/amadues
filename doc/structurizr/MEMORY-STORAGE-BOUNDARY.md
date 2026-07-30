@@ -19,6 +19,7 @@
 | **方案参考（P0）** | **本地** | `memory.json` → `plan_references[]` | Designer `search_task_plans` | Designer 编排读；**不进** facts / drive9；见 [`TASK-PLAN-REFERENCE.md`](./TASK-PLAN-REFERENCE.md) |
 | **Memory Block** | **本地** | `DATA_ROOT/vault/blocks/`（索引 + entries） | 外脑 `memory_block_*` | 外脑 CRUD；**不**上 drive9/mem9 |
 | **Belief 修订索引** | 本地 JSON | `DATA_ROOT/belief/{agentSid}.json` | `memory-belief-reconcile`（用户取消/完成） | `read_memory` 折叠提示 |
+| **Belief Card（现行结论）** | mem9 metadata | `${sid}:chat` + `role=belief_current` | `upsertBeliefCard`（DONE/EW/用户修好） | `formatMemoryForLlm`「现行信念」；见 [`MEMORY-BELIEF-CARD.md`](./MEMORY-BELIEF-CARD.md) |
 | **身份映射索引** | 本地 JSON | `DATA_ROOT/identity/channel-bindings.json` | **仅** `identityBindingIndex`（经 `identityLinkService` commit 或首次 upsert） | 桥入站 `resolve`；见 [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **身份 link pending** | 本地 JSON | `DATA_ROOT/identity/link-pending/` | `identityLinkService` | confirm/reject/expire |
 | **IM 通道连接表** | 本地 JSON | `DATA_ROOT/channels/connections.json` | `channelConnectionRegistry` | boot + 热插；`secret_ref` → keychain |
@@ -69,6 +70,7 @@
 | 外脑装配 | `packages/server/src/index.ts` |
 | mem9 门面 | `outer/outer-memory.ts` |
 | **Belief 对账** | `outer/memory-belief-reconcile.ts` |
+| **Belief Card supersede** | `outer/memory-belief-card.ts` · `outer-memory.ts` |
 | K/S/P 检索 | `outer/knowledge-retrieval.ts` |
 | **按人跨会话召回** | `chat-ir/src/runtime/person-message-recall.ts`（`knowledge-retrieval.ts` 注入） |
 | **Memory Block** | `outer/memory-block-store.ts` · `outer/memory-block-tools.ts` |
@@ -87,6 +89,7 @@
 | **DyFlow Assembler（P1）** | `openkuroneko/inner-brain/node-assembler.ts` |
 | **DyFlow drive9 NodeDef 门面（P1）** | `drive9/node-def-drive9-store.ts` |
 | **DyFlow NodeDef 治理（P2）** | `outer/node-def-eviction.ts` |
+| **内脑 workspace 终态淘汰** | `outer/inner-workspace-retention.ts` · [`INNER-WORKSPACE-RETENTION.md`](./INNER-WORKSPACE-RETENTION.md) |
 | **Executable Workflow（⏳ P0）** | `outer/executable-workflow-store.ts` · `outer/workflow-promote.ts` · `outer/burst-mode-gate.ts` · `inner-brain/workflow-runner.ts` · [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) |
 
 ## 守门

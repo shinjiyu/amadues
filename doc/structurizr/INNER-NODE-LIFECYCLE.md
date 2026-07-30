@@ -100,9 +100,9 @@ NodeInst.params 解析顺序（runtime）:
 ```text
 input:
   query:         string                          # drive9 NodeDef catalog 检索
-  topK?:         number                          # 默认 20
+  topK?:         number                          # 默认 5（防共享库灌入）
   bindingHints?: Record<string, string>          # 可选：账号/路径线索（LLM Assembler 用）
-  filterTags?:   string[]                        # 限定标签（KPI 类型）
+  filterTags?:   string[]                        # 限定标签（KPI 类型）；强烈建议填写
 
 internal:
   defs ← nodeDefDrive9Store.search(query, { topK, filterTags })
@@ -116,8 +116,17 @@ output:
   failed?:    { defId, reason }[]                 # 用于 debug；Designer 通常忽略
 ```
 
+**检索语义（`nodeDefDrive9Store.search`，2026-07-25）**：
+
+| 规则 | 要求 |
+|------|------|
+| **命中才返回** | drive9 `grep` 有序命中 → 按命中序取 def；再可选 `filterTags`；再 `slice(0, topK)` |
+| **禁止全库回退** | grep **空 / 失败** → 返回 `[]`，**不得**把 `index.active` 整表当作候选（否则跨 agent 共享库污染本 burst，如 Twitter 任务装配 weibo_*） |
+| **默认 topK=5** | 降低单次 `search_and_instance` 批量装配噪声 |
+
 **幂等**：同一 defId@version 已装配则跳过（不重复占位）。  
-**失败包容**：装配失败不影响其他成功项；Designer 仅消费 `instanced[]`。
+**失败包容**：装配失败不影响其他成功项；Designer 仅消费 `instanced[]`。  
+**编排指引**：目标陌生时优先 `preset/base`；仅在明确需要复用共享战术时再 `search_and_instance`，query 具体 + 尽量带 `filterTags`；空 `instanced` 时勿反复模糊搜。
 
 ---
 
@@ -371,5 +380,6 @@ drive9 `/nodes/shared/` 在 [`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUN
 
 | 日期 | 说明 |
 |------|------|
+| 2026-07-25 | §4：`search` **禁止** grep 空时回退全量 active；默认 topK **5**。理由：kuroneko ib-ms07nqqi-d102 DESIGN 灌入无关 weibo/repair NodeDef |
 | 2026-06-08 | 节点绑定技能：Attributor record_skill、Runner 执行前加载、promote/Assembler 携带；见 [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) |
 | 2026-06-02 | 初版：LocalNode/NodeInst/NodeDef 三概念；Abstractor LLM placeholder + auto-export；Assembler LLM binding；search_and_instance 批量装配；dedupe + quota + cold tombstone；preset seeding |

@@ -84,6 +84,39 @@ describe('detectTerminal', () => {
   });
 });
 
+describe('buildUserMessage P-prompt deliverable', () => {
+  it('injects stdout_contains target so LLM sees exact token', () => {
+    const msg = __internal.buildUserMessage({
+      node: baseNode(),
+      inst: {
+        id: 'n1_prep',
+        ref: 'local/ew_prep_assets',
+        instruction: 'prep assets',
+        deliverable: {
+          summary: '3 files ready',
+          checks: [{ kind: 'stdout_contains', target: 'FILES_READY', describe: 'prep ok' }],
+        },
+      },
+      memory: { ...emptyMemory(), goal: 'html migrate' },
+      workDir: '/tmp/ws',
+    });
+    expect(msg).toContain('## 本节点交付物验票');
+    expect(msg).toContain('FILES_READY');
+    expect(msg).toContain('精确包含');
+    expect(msg).toContain('[stdout_contains]');
+  });
+
+  it('omits deliverable block when absent', () => {
+    const msg = __internal.buildUserMessage({
+      node: baseNode(),
+      inst: { id: 'n1', ref: 'preset/base', instruction: 'go' },
+      memory: emptyMemory(),
+      workDir: '/tmp/ws',
+    });
+    expect(msg).not.toContain('## 本节点交付物验票');
+  });
+});
+
 describe('runBaseNode', () => {
   it('injects runtime context into system prompt', async () => {
     let sawRuntime = false;

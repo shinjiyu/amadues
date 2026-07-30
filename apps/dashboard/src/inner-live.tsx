@@ -1,15 +1,27 @@
 /**
- * 内脑实况 UI（DyFlow）：mode / DAG / failure / node_results / 日志。
+ * 内脑实况 UI（DyFlow）：mode / 执行 graph / failure / 日志。
  */
 
 import { formatWallClockTime } from '@utlra/chat-ir/serialize';
+import { BurstExecGraph, type ExecGraphEdge, type ExecGraphNode } from './burst-exec-graph.js';
+
+export type DagNodeExecStatus = 'pending' | 'active' | 'ok' | 'fail';
 
 export type DyflowInspectorPayload = {
   engine: 'dyflow';
   state: { mode: string; burstId?: string } | null;
   dag: {
     nodeCount: number;
-    nodes: Array<{ id: string; ref: string; instructionPreview: string }>;
+    entry?: string;
+    impliedEdges?: boolean;
+    nodes: Array<{
+      id: string;
+      ref: string;
+      instructionPreview: string;
+      status?: DagNodeExecStatus;
+      milestone?: string;
+    }>;
+    edges?: Array<{ from: string; to: string }>;
   } | null;
   memory: {
     goal: string | null;
@@ -24,11 +36,25 @@ export type DyflowInspectorPayload = {
     nodeResults: Array<{ id: string; ref: string; ok: boolean }>;
   } | null;
   localNodes: Array<{ id: string; kind: string; description: string }>;
+  workflowRun?: {
+    workflowId: string;
+    version: string;
+    ok: boolean;
+    abortedAt?: string;
+    steps: Array<{
+      stepId: string;
+      ok: boolean;
+      attempts: number;
+      detailPreview?: string;
+    }>;
+  } | null;
 };
 
 export type BrainInspector = {
-  engine?: 'dyflow' | 'legacy';
+  engine?: 'dyflow' | 'legacy' | 'execute';
   dyflow?: DyflowInspectorPayload | null;
+  /** execute 模式（无 dyflow-state）也会挂在这里 */
+  workflowRun?: DyflowInspectorPayload['workflowRun'];
   goalText: string;
   paths: { brainDir: boolean };
   logHighlights?: {
@@ -92,6 +118,89 @@ function dyflowModeClass(mode: string): string {
   return ['DESIGN', 'RUN', 'AWAITING', 'DONE'].includes(mode) ? mode : 'unknown';
 }
 
+function dagToGraph(dag: NonNullable<DyflowInspectorPayload['dag']>): {
+  nodes: ExecGraphNode[];
+  edges: ExecGraphEdge[];
+  footnote?: string;
+} {
+  const nodes: ExecGraphNode[] = dag.nodes.map((n) => ({
+    id: n.id,
+    label: n.ref,
+    sublabel: n.instructionPreview || undefined,
+    status: n.status ?? 'pending',
+  }));
+  let edges: ExecGraphEdge[] =
+    dag.edges && dag.edges.length > 0
+      ? dag.edges.map((e) => ({ from: e.from, to: e.to }))
+      : [];
+  if (edges.length === 0 && nodes.length > 1) {
+    edges = nodes.slice(0, -1).map((n, i) => ({ from: n.id, to: nodes[i + 1]!.id }));
+  }
+  return {
+    nodes,
+    edges,
+    footnote: dag.impliedEdges
+      ? '边为 nodes[] 顺序隐含串行（磁盘未写 edges）'
+      : dag.entry
+        ? `entry=${dag.entry}`
+        : undefined,
+  };
+}
+
+function workflowToGraph(wr: NonNullable<DyflowInspectorPayload['workflowRun']>): {
+  nodes: ExecGraphNode[];
+  edges: ExecGraphEdge[];
+} {
+  const nodes: ExecGraphNode[] = wr.steps.map((s) => ({
+    id: s.stepId,
+    label: s.ok ? `ok · ${s.attempts}×` : `fail · ${s.attempts}×`,
+    sublabel: s.detailPreview,
+    status: s.ok ? 'ok' : 'fail',
+  }));
+  const edges: ExecGraphEdge[] = nodes
+    .slice(0, -1)
+    .map((n, i) => ({ from: n.id, to: nodes[i + 1]!.id }));
+  return { nodes, edges };
+}
+
+function ExecuteLiveSection({
+  workflowRun,
+  goalText,
+}: {
+  workflowRun: NonNullable<DyflowInspectorPayload['workflowRun']>;
+  goalText: string;
+}) {
+  const ewGraph = workflowToGraph(workflowRun);
+  return (
+    <>
+      <div className="inner-live-mode-strip">
+        <div className="pi-mode pi-mode-DONE">Execute · EW</div>
+        <span className={`inner-live-muted inline ${workflowRun.ok ? 'burst-ew-ok' : 'burst-ew-fail'}`}>
+          {workflowRun.workflowId}@{workflowRun.version} {workflowRun.ok ? '✓' : '✗'}
+        </span>
+      </div>
+      <BurstExecGraph
+        title={`Executable Workflow · ${workflowRun.workflowId}@${workflowRun.version}`}
+        nodes={ewGraph.nodes}
+        edges={ewGraph.edges}
+        footnote={
+          workflowRun.abortedAt
+            ? `abortedAt=${workflowRun.abortedAt}`
+            : workflowRun.ok
+              ? '全部 step expect 通过'
+              : '存在失败 step'
+        }
+      />
+      <div className="inner-live-section-title" style={{ marginTop: 14 }}>
+        Goal
+      </div>
+      <pre className="inner-live-goal inner-live-goal-prominent">
+        {goalText?.trim()?.slice(0, 1200) || '（空）'}
+      </pre>
+    </>
+  );
+}
+
 function DyflowLiveSection({
   dyflow,
   brain,
@@ -105,6 +214,11 @@ function DyflowLiveSection({
   const mem = dyflow.memory;
   const lh = brain.logHighlights;
   const explained = brain.dyflowTickExplained;
+  const dagGraph = dyflow.dag ? dagToGraph(dyflow.dag) : null;
+  const wr = dyflow.workflowRun ?? brain.workflowRun ?? null;
+  const ewGraph = wr ? workflowToGraph(wr) : null;
+  const done = dagGraph?.nodes.filter((n) => n.status === 'ok').length ?? 0;
+  const total = dagGraph?.nodes.length ?? 0;
 
   return (
     <>
@@ -113,32 +227,50 @@ function DyflowLiveSection({
         {dyflow.state?.burstId && (
           <span className="inner-live-muted inline">burst {dyflow.state.burstId}</span>
         )}
+        {total > 0 && (
+          <span className="inner-live-muted inline">
+            DAG {done}/{total}
+          </span>
+        )}
+        {wr && (
+          <span className={`inner-live-muted inline ${wr.ok ? 'burst-ew-ok' : 'burst-ew-fail'}`}>
+            EW {wr.workflowId}@{wr.version} {wr.ok ? '✓' : '✗'}
+          </span>
+        )}
       </div>
 
       <div className="inner-live-section-title">当前进度（日志）</div>
       <div className="inner-live-current-big">{lastHuman}</div>
 
-      <div className="inner-live-section-title" style={{ marginTop: 14 }}>
-        当前 DAG
-      </div>
-      {dyflow.dag && dyflow.dag.nodes.length > 0 ? (
-        <div className="inner-live-ms inner-live-ms-prominent">
-          {dyflow.dag.nodes.map((n) => (
-            <div key={n.id} className="inner-live-ms-row ms-Pending">
-              <div className="inner-live-ms-row-head">
-                <span className="inner-live-ms-id">{n.id}</span>
-                <code style={{ fontSize: 10, marginRight: 6 }}>{n.ref}</code>
-              </div>
-              {n.instructionPreview && (
-                <pre style={{ fontSize: 11, margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>
-                  {n.instructionPreview}
-                </pre>
-              )}
-            </div>
-          ))}
-        </div>
+      {ewGraph && wr && (
+        <BurstExecGraph
+          title={`Executable Workflow · ${wr.workflowId}@${wr.version}`}
+          nodes={ewGraph.nodes}
+          edges={ewGraph.edges}
+          footnote={
+            wr.abortedAt
+              ? `abortedAt=${wr.abortedAt}`
+              : wr.ok
+                ? '全部 step expect 通过'
+                : '存在失败 step'
+          }
+        />
+      )}
+
+      {dagGraph ? (
+        <BurstExecGraph
+          title="Burst 执行图（local_dag）"
+          nodes={dagGraph.nodes}
+          edges={dagGraph.edges}
+          footnote={dagGraph.footnote}
+        />
       ) : (
-        <div className="inner-live-muted">尚无 local_dag（DESIGN 阶段或未 commit）</div>
+        <>
+          <div className="inner-live-section-title" style={{ marginTop: 14 }}>
+            Burst 执行图
+          </div>
+          <div className="inner-live-muted">尚无 local_dag（DESIGN 阶段或未 commit）</div>
+        </>
       )}
 
       <div className="inner-live-section-title" style={{ marginTop: 14 }}>
@@ -147,6 +279,9 @@ function DyflowLiveSection({
       {mem?.lastFailure ? (
         <div className="inner-live-attr inner-live-attr-prominent">
           <code>{mem.lastFailure.localRef ?? '—'}</code>
+          {mem.lastFailure.nodeInstId && (
+            <span className="inner-live-muted inline"> @ {mem.lastFailure.nodeInstId}</span>
+          )}
           {mem.lastFailure.transient && <span className="inner-live-replan inline">transient</span>}
           <pre>{mem.lastFailure.summary}</pre>
         </div>
@@ -154,38 +289,38 @@ function DyflowLiveSection({
         <div className="inner-live-muted">（无）</div>
       )}
 
-      <div className="inner-live-section-title" style={{ marginTop: 14 }}>
-        node_results（{mem?.nodeResults.length ?? 0}）
-      </div>
-      <div className="inner-live-ms">
-        {(mem?.nodeResults ?? []).length === 0 ? (
-          <div className="inner-live-muted">尚无完成节点</div>
-        ) : (
-          mem!.nodeResults.map((r) => (
-            <div key={r.id} className={`inner-live-ms-row ms-${r.ok ? 'Completed' : 'Active'}`}>
-              <span className="inner-live-ms-id">{r.id}</span>
-              <code style={{ fontSize: 10 }}>{r.ref}</code>
-              <span style={{ marginLeft: 8 }}>{r.ok ? '✓ ok' : '✗'}</span>
-            </div>
-          ))
-        )}
-      </div>
+      <details className="inner-live-details" style={{ marginTop: 12 }}>
+        <summary>node_results（{mem?.nodeResults.length ?? 0}）</summary>
+        <div className="inner-live-ms">
+          {(mem?.nodeResults ?? []).length === 0 ? (
+            <div className="inner-live-muted">尚无完成节点</div>
+          ) : (
+            mem!.nodeResults.map((r) => (
+              <div key={r.id} className={`inner-live-ms-row ms-${r.ok ? 'Completed' : 'Active'}`}>
+                <span className="inner-live-ms-id">{r.id}</span>
+                <code style={{ fontSize: 10 }}>{r.ref}</code>
+                <span style={{ marginLeft: 8 }}>{r.ok ? '✓ ok' : '✗'}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </details>
 
-      <div className="inner-live-section-title" style={{ marginTop: 14 }}>
-        LocalNode 库（{dyflow.localNodes.length}）
-      </div>
-      <div className="inner-live-ms" style={{ maxHeight: 160, overflowY: 'auto' }}>
-        {dyflow.localNodes.length === 0 ? (
-          <div className="inner-live-muted">尚无 LocalNode（首次 spawn 会 seed preset）</div>
-        ) : (
-          dyflow.localNodes.map((n) => (
-            <div key={n.id} className="inner-live-ms-row ms-Pending">
-              <code style={{ fontSize: 10 }}>{n.id}</code>
-              <span className="inner-live-ms-title">{n.description || n.kind}</span>
-            </div>
-          ))
-        )}
-      </div>
+      <details className="inner-live-details" style={{ marginTop: 8 }}>
+        <summary>LocalNode 库（{dyflow.localNodes.length}）</summary>
+        <div className="inner-live-ms" style={{ maxHeight: 160, overflowY: 'auto' }}>
+          {dyflow.localNodes.length === 0 ? (
+            <div className="inner-live-muted">尚无 LocalNode（首次 spawn 会 seed preset）</div>
+          ) : (
+            dyflow.localNodes.map((n) => (
+              <div key={n.id} className="inner-live-ms-row ms-Pending">
+                <code style={{ fontSize: 10 }}>{n.id}</code>
+                <span className="inner-live-ms-title">{n.description || n.kind}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </details>
 
       <div className="inner-live-section-title" style={{ marginTop: 14 }}>
         Goal / memory
@@ -263,6 +398,8 @@ export function InnerLiveDeck({
 }) {
   const dyflow = brain?.dyflow;
   const hasDyflow = brain?.engine === 'dyflow' && dyflow;
+  const workflowRun = brain?.workflowRun ?? dyflow?.workflowRun ?? null;
+  const hasExecute = brain?.engine === 'execute' && workflowRun;
   const entries = (logs?.entries ?? []).filter((raw) => {
     const mod = String((raw as Record<string, unknown>)['module'] ?? '');
     return !mod || DYFLOW_LOG_MODULES.has(mod);
@@ -272,27 +409,29 @@ export function InnerLiveDeck({
   return (
     <div className="card inner-live">
       <div className="inner-live-title-row">
-        <strong className="inner-live-title">内脑实况</strong>
-        <span className="inner-live-title-tag">DyFlow</span>
+        <strong className="inner-live-title">内脑 Burst</strong>
+        <span className="inner-live-title-tag">执行图</span>
       </div>
       {insightLoading && <div className="inner-live-loading">正在拉取状态…</div>}
       <p className="inner-live-hint inner-live-hint-short">
-        DESIGN / RUN / AWAITING / DONE；DAG、失败与节点结果。底部可展开 DyFlow 日志。
+        主视图：DyFlow local_dag / EW steps 拓扑；节点色 = pending / active / ok / fail。
       </p>
 
       <div className="inner-live-toolbar">
         {piBusy && <span className="inner-live-pulse">Pi-mono 运行中</span>}
         {!brain?.paths.brainDir && <span className="inner-live-warn">尚无 .brain 数据</span>}
-        {brain && !hasDyflow && (
-          <span className="inner-live-warn">尚无 dyflow-state（先 spawn 内脑或点 Pi-mono 单步）</span>
+        {brain && !hasDyflow && !hasExecute && (
+          <span className="inner-live-warn">尚无 dyflow-state / workflow_run（先 spawn 或跑 EW）</span>
         )}
       </div>
 
       <div className="inner-live-core-flow">
         {hasDyflow ? (
           <DyflowLiveSection dyflow={dyflow!} brain={brain!} lastHuman={lastHuman} />
+        ) : hasExecute ? (
+          <ExecuteLiveSection workflowRun={workflowRun!} goalText={brain?.goalText ?? ''} />
         ) : (
-          <div className="inner-live-muted">等待 DyFlow 工作区状态…</div>
+          <div className="inner-live-muted">等待 DyFlow / Executable Workflow 状态…</div>
         )}
       </div>
 

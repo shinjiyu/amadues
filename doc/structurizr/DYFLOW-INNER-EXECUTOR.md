@@ -305,6 +305,8 @@ NodeInst.deliverable?: NodeDeliverable
 - `deliverable` **缺省时**：退化为原 §6.7 行为（仅 `interface.outputs`）——向后兼容（历史图 / 非 Designer 路径）。
 - 共享引擎：`inner-brain/deliverable-check.ts`（`runDeliverableChecks`），同时被 `node-acceptance.ts` 与 Designer `report_done` 闸门（§9a）复用。
 
+**P-prompt（2026-07-25 · kuroneko `ib-ms07nqqi-d102`）**：`baseNodeExecutor.buildUserMessage` **必须**注入 `NodeInst.deliverable`（summary + 每条 check 的 `kind`/`target`/`describe`），使 RUN 时 LLM 看见与机械验票相同的口令/路径。**禁止**用同义成功词（如 `ALL_CHECKS_PASSED` vs `FILES_READY`）软放过——验票牙齿不变，只补「执行侧知情」。编排偏好：能用 `file` / `json_key` 就不要只靠自创 `stdout_contains` token；若用 stdout token，须在 `instruction` 与 `checks.target` 写同一精确子串。
+
 **路径规范（2026-07-22 · 假阴性验证）**：
 
 > 生产验证见 [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) **Gap B**。现行实现多为字面 `path.join(workDir, target)`，易在「声明 `workspace/X`、落盘为根下 `X`」时误杀。
@@ -734,3 +736,4 @@ burst 结束 → registry DONE；子进程退出
 | 2026-06-06 | §7b：**移除「Tool 晋升」层（C）**——删 `register_workspace_script_tool` / `ws_*` / `workspace-script-tools.ts`；固化收成两层 facts(A)/LocalNode(B)；稳定脚本改 `record_fact` 记路径。理由：bot2 生产注册 0 次、调用 0 次，零收益却增维护成本。`doc/todo/dyflow-tool-promotion.md` 标 deprecated |
 | 2026-06-08 | **内脑失败处理**：Designer LLM/空转 giveup → `dyflow-state.mode=ERROR`（不再 DONE+onComplete）；`resolveInnerBurstFinalStatus` → registry ERROR + `notifyInnerBrainTaskFailed` 短消息（不 dump seed facts） |
 | 2026-07-22 | §6.7a：**路径规范** P-alias / P-rel / P-clear / P-evidence（交付物假阴性）；交叉验证 [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap B；测项 ⏳ |
+| 2026-07-25 | §6.7a：**P-prompt**——`buildUserMessage` 注入 deliverable checks（防「活干了但口令不对」假失败）；Designer 偏好 file/json_key。理由：kuroneko ib-ms07nqqi-d102 `FILES_READY` vs `ALL_CHECKS_PASSED` |

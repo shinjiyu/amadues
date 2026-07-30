@@ -79,6 +79,9 @@ describe('set_goal execute', () => {
       }),
       ctx,
     );
-    expect(r.output).toMatch(/执行完成/);
+    expect(r.output).toMatch(/后台启动/);
+    expect(ctx.innerBrainRegistry!.list().some((t) => t.status === 'RUNNING' || t.status === 'DONE')).toBe(
+      true,
+    );
   });
 });

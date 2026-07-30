@@ -138,7 +138,7 @@ interface CalendarCommitment {
 
 | 轨 | 谁触发 | 何时 |
 |----|--------|------|
-| **实时推进** | `digitalEmployeeLoop` → SelfWorkPolicy / repair / bootstrap / 对话 `advance_kpi` | 有容量、无健康在途、尚无未到期周期日历抢跑时；首轮基线、stall 修复、用户催办 |
+| **实时推进** | `digitalEmployeeLoop` → SelfWorkPolicy / repair / **ew_revision** / bootstrap / 对话 `advance_kpi` | 有容量、无健康在途；EW 质检失败的修订 explore **可穿透**未到期日历硬闸；日常 collect 仍只等日历 |
 | **定时增量** | `employeeCalendar`（cron 承诺）→ `calendar_due` → 窄 increment `set_goal` | 基线有产物后 `ensurePeriodicCommitment`；到期再派。到期前不占槽 |
 
 **禁止外脑 LLM 对用户说「系统没有 cron / 只有容量自动续派」**——`employeeCalendar` 就是 cron 式日程；容量续派是实时轨，不能代替日程。
@@ -433,4 +433,5 @@ Heartbeat 不再是连续推进的唯一主时钟，也不直接决定下一份�
 | 2026-07-22 | §3.4 **双轨推进**：外脑 prompt/工具说明必须教「实时 SelfWork + Calendar 定时」并存；禁止声称无 cron。 |
 | 2026-07-22 | 日历升格为一等工具（聊天预约等）：见 [`EMPLOYEE-CALENDAR.md`](./EMPLOYEE-CALENDAR.md)。 |
 | 2026-07-22 | 名词统一：执行轮次一律称 **burst**；见 [`TERMINOLOGY.md`](./TERMINOLOGY.md)。 |
+| 2026-07-25 | **W15**：EW 自优化——质检失败 → `ew_revision` explore（穿透日历硬闸）→ 同 id promote；日常 collect 仍只跟日历 |
 | 2026-07-21 | DE-4 彻底化：从 schema 删除概念而非归一化——`kpi_inner_goal` 仅剩 `enabled`，`hardGates` 删除 `minMsSinceLastAutonomousAction`；policy 工具不再暴露/打印这些旋钮；load 时删除旧字段并回写。 |

@@ -15,6 +15,7 @@ import {
   shortenMilestonesForReport,
 } from '../openkuroneko/burst/completion-report.js';
 import { ingestDeliverables } from './deliverables-ingest.js';
+import { ensureAllowlistedEwDeliverables } from './ew-deliverable-allowlist.js';
 import type { AttachmentPart } from './attach-expand.js';
 
 export interface CompleteOutputEvent {
@@ -30,9 +31,146 @@ export interface CompletionNotifyDeps {
   getEngine: (workspaceId: string) => InnerBrainEngine;
 }
 
-/** KPI 挂接 burst 不走 IM 完成通知（ADL KPI-BURST-OUTCOME-EVALUATOR §1） */
+/** KPI 挂接 burst 默认不走 IM 完成通知（ADL KPI-BURST-OUTCOME-EVALUATOR §1） */
 export function shouldNotifyUserOnBurstExit(record: { kpiId?: string }): boolean {
   return !record.kpiId?.trim();
+}
+
+/**
+ * 日历 / execute EW 完成后的「定时报告」通道（与默认 KPI 禁 IM 分流）。
+ * 有 originThread 时发摘要；优先附 tweets_summary.html（其次 .md）；无登记时按 allowlist 补登记再 ingest。
+ */
+export async function notifyKpiScheduledReport(
+  deps: Pick<CompletionNotifyDeps, 'imClient' | 'agentSid'> &
+    Partial<Pick<CompletionNotifyDeps, 'assetStore' | 'getEngine'>>,
+  opts: {
+    instanceId: string;
+    workspaceId?: string;
+    workDir: string;
+    originThread: string;
+    kpiId?: string;
+    workflowLabel: string;
+    ok: boolean;
+    detail?: string;
+  },
+): Promise<void> {
+  const thread = opts.originThread.trim();
+  if (!thread) return;
+  if (alreadyCompletionNotified(opts.workDir, opts.instanceId)) {
+    console.log(`[completion-notify] skip scheduled report dedup (${opts.instanceId})`);
+    return;
+  }
+
+  const registered = ensureAllowlistedEwDeliverables(opts.workDir);
+
+  let assets: DeliverableAsset[] = [];
+  if (deps.assetStore) {
+    const ingest = ingestDeliverables(opts.workDir, registered, deps.assetStore);
+    assets = ingest.assets;
+    if (opts.workspaceId && deps.getEngine) {
+      try {
+        deps.getEngine(opts.workspaceId).setDeliverables(assets);
+      } catch (e) {
+        console.error('[completion-notify] setDeliverables (scheduled) failed:', e);
+      }
+    }
+  }
+
+  const reportPath = [
+    path.join(opts.workDir, 'workspace', 'tweets_summary.html'),
+    path.join(opts.workDir, 'tweets_summary.html'),
+    path.join(opts.workDir, 'workspace', 'tweets_summary.md'),
+    path.join(opts.workDir, 'tweets_summary.md'),
+    path.join(opts.workDir, 'workspace', 'report.md'),
+    path.join(opts.workDir, 'report.md'),
+  ].find((p) => fs.existsSync(p));
+
+  const jsonPath = [
+    path.join(opts.workDir, 'workspace', 'tweets_summary.json'),
+    path.join(opts.workDir, 'tweets_summary.json'),
+  ].find((p) => fs.existsSync(p));
+
+  let extra = '';
+  let tweetCount: number | null = null;
+  if (jsonPath) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf8')) as unknown;
+      if (Array.isArray(parsed)) {
+        tweetCount = parsed.length;
+      } else if (parsed && typeof parsed === 'object') {
+        const obj = parsed as { kept_count?: unknown; tweets?: unknown };
+        if (typeof obj.kept_count === 'number') tweetCount = obj.kept_count;
+        else if (Array.isArray(obj.tweets)) tweetCount = obj.tweets.length;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (reportPath) {
+    try {
+      const raw = fs.readFileSync(reportPath, 'utf8');
+      const forPreview = reportPath.endsWith('.html')
+        ? raw
+            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+        : raw;
+      const preview = forPreview.slice(0, 1800);
+      extra =
+        `\n附件候选：${path.basename(reportPath)}` +
+        (tweetCount != null ? ` · ${tweetCount} 条` : '') +
+        `\n\n—— 报告预览 ——\n${preview}` +
+        (forPreview.length > 1800 ? '\n…' : '');
+    } catch {
+      extra = `\n产物：${path.basename(reportPath)}`;
+    }
+  } else if (tweetCount != null) {
+    extra = `\n摘要条目：${tweetCount}`;
+  } else if (jsonPath) {
+    extra = `\n产物：${path.basename(jsonPath)}`;
+  }
+
+  const head = opts.ok
+    ? `📬 定时采集完成 · ${opts.workflowLabel}`
+    : `⚠️ 定时采集失败 · ${opts.workflowLabel}`;
+  const text =
+    `${head}\n` +
+    (opts.kpiId ? `KPI：${opts.kpiId}\n` : '') +
+    `实例：${opts.instanceId}` +
+    (opts.detail ? `\n详情：${opts.detail.slice(0, 200)}` : '') +
+    (assets.length > 0 ? `\n（附 ${assets.length} 个文件）` : '') +
+    extra;
+
+  const attachmentParts: AttachmentPart[] = assets.map((d) => ({
+    type: 'attachment',
+    asset_ref: {
+      kind: d.kind,
+      uri: `asset:${d.asset_id}`,
+      mime: d.mime,
+      name: d.filename,
+    },
+  }));
+
+  const outboundBody =
+    attachmentParts.length > 0
+      ? {
+          sender_sid: deps.agentSid,
+          text,
+          parts: [{ type: 'text' as const, text }, ...attachmentParts],
+        }
+      : { sender_sid: deps.agentSid, text };
+
+  await deps.imClient.postMessage(thread, outboundBody);
+  markCompletionNotified(
+    opts.workDir,
+    opts.instanceId,
+    assets.length || (reportPath || jsonPath ? 1 : 0),
+  );
+  console.log(
+    `[completion-notify] scheduled report sent (${opts.instanceId}) ok=${opts.ok} assets=${assets.length}`,
+  );
 }
 
 /**

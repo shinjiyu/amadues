@@ -76,7 +76,7 @@
                         "horizon.out" "node_results[id] status ok|capped|failed + outputs | failure_summary"
                         "horizon.deps" "innerFileTools; shellExec; webSearch; nodeAcceptance; etc."
                         "horizon.test.unit" "base-node-executor.test.ts"
-                        "horizon.note" "见 DYFLOW-INNER-EXECUTOR.md §6 §6.7"
+                        "horizon.note" "见 DYFLOW-INNER-EXECUTOR.md §6 §6.7 §6.7a P-prompt（deliverable 注入 user message）"
                     }
                 }
 

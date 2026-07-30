@@ -36,6 +36,20 @@ export interface WorkflowStep {
   action: WorkflowStepAction;
   args?: Record<string, unknown>;
   expect: WorkflowStepExpect;
+  /**
+   * W11：execute 时从 keychain 注入的密钥。
+   * key = 注入名（shell → 环境变量；browser 常用 `COOKIES` → 写 `.run/ew/cookies.json`）
+   * value = keychain entry key（禁止明文写入契约）
+   */
+  secretRefs?: Record<string, string>;
+}
+
+/** W13：随契约打包的相对文件（execute 前物化到 workDir） */
+export interface WorkflowAsset {
+  /** 相对 workDir，如 `.run/ew/fetch_tweets.py` */
+  path: string;
+  /** utf8 正文 */
+  content: string;
 }
 
 export interface WorkflowFailurePolicy {
@@ -61,6 +75,8 @@ export interface ExecutableWorkflow {
   failurePolicy: WorkflowFailurePolicy;
   source: WorkflowSource;
   bodyRef?: string;
+  /** W13：辅助脚本等，execute 时写入 workDir */
+  assets?: WorkflowAsset[];
 }
 
 export interface WorkflowRef {
@@ -91,3 +107,14 @@ export const WORKFLOW_KINDS: readonly WorkflowKind[] = [
   'shell_pipeline',
   'kpi_sequence',
 ] as const;
+
+/** Runner 可执行的 action 白名单（W5） */
+export const WORKFLOW_STEP_ACTIONS: readonly WorkflowStepAction[] = [
+  'shell',
+  'browser_steps',
+  'run_node',
+  'assert',
+  'skill_step',
+  'kpi_charter',
+] as const;
+

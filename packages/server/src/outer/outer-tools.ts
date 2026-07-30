@@ -25,6 +25,7 @@ import { computeBurstLiveness } from './advance-perception.js';
 import { listStallAlertIndex } from '../openkuroneko/inner-brain/burst-stall-alert.js';
 import { isInnerBrainStoppable, stopInnerBrainInstance } from './stop-inner-brain.js';
 import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
+import { selectInnerStatusListRows } from './inner-workspace-retention.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import { checkRunningInnerBrainCapacity } from './inner-brain-capacity.js';
 import { resolveTaskOriginThread } from './default-im-thread.js';
@@ -52,8 +53,10 @@ import {
   notifyInnerBrainTaskComplete,
   notifyInnerBrainTaskFailed,
   notifyInnerBrainTaskPartial,
+  notifyKpiScheduledReport,
   shouldNotifyUserOnBurstExit,
 } from './completion-notify.js';
+import { enqueuePendingScheduledReport } from './pending-scheduled-report.js';
 import { expandAttachAssetIds, type AttachmentPart } from './attach-expand.js';
 import {
   mergeWorkDirSkillsToAgentPool,
@@ -68,11 +71,10 @@ import type { KnowledgeDrive9Store } from '../drive9/knowledge-drive9-store.js';
 import { gateBurstMode } from './burst-mode-gate.js';
 import { ExecutableWorkflowStore } from './executable-workflow-store.js';
 import { formatExecuteGoalPrefix } from './workflow-failure-circuit.js';
-import {
-  runExecutableWorkflow,
-  writeBurstModeMarker,
-} from '../openkuroneko/inner-brain/workflow-runner.js';
+import { writeBurstModeMarker } from '../openkuroneko/inner-brain/workflow-runner.js';
 import { defaultExecutableWorkflowRunnerDeps } from '../openkuroneko/inner-brain/default-workflow-runner-deps.js';
+import { startExecutableWorkflowBackground } from './workflow-run-background.js';
+import { considerWorkflowEvolution } from './workflow-evolution-policy.js';
 import { resolveWorkflowWithDrive9 } from '../drive9/workflow-drive9-seed.js';
 import {
   initSelfUpdateSession,
@@ -270,6 +272,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
       name: 'advance_kpi',
       description:
         '立即推进 KPI 一发内脑 burst（绑定 kpi_id、**新 workspace**）。' +
+        '若该 KPI 已挂 Executable Workflow（tag kpi:{id}），**自动 burst_mode=execute** 跑最新版，不再 explore。' +
         '用于首派、用户催办、换路线。日常周期增量优先靠 **employeeCalendar 到期**；' +
         '有容量时数字员工环也会实时找活——二者并存。健康 RUNNING 或未到期日历时勿盲目再 advance。',
       parameters: {
@@ -651,7 +654,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
       description:
         '查询内脑状态：阶段、产物、registry_status，以及 async（controller_mode、active_pendings、' +
         'next_wake_at、is_async_waiting、is_post_complete）。' +
-        '不填 instance_id 时默认只摘要 live（RUNNING/AWAITING/BLOCKED）；需要历史传 include_history=true。',
+        '不填 instance_id 时默认只摘要 live（RUNNING/AWAITING/BLOCKED）；需要历史传 include_history=true' +
+        '（仅最近 N 条，默认 50，见 history_cap；查单条请传 instance_id）。',
       parameters: {
         type: 'object',
         properties: {
@@ -665,7 +669,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           },
           include_history: {
             type: 'string',
-            description: 'true 时列出全部历史实例（可能很慢）；默认 false',
+            description:
+              'true 时列出最近历史实例（有上限，不会扫全表）；默认 false。精确查询请用 instance_id。',
           },
         },
         required: [],
@@ -955,32 +960,94 @@ async function execSetGoal(
         };
       }
       fs.writeFileSync(path.join(workDir, 'goal.md'), `# Execute\n\n${goal}\n`, 'utf8');
-      const run = await runExecutableWorkflow(wf, defaultExecutableWorkflowRunnerDeps(workDir));
       const stampedGoal = `${formatExecuteGoalPrefix(modeGate.workflowRef)} ${goal}`;
-      const taskRecord: TaskRecord = {
-        instanceId,
-        workspaceId: wsId,
+      const startedAt = new Date().toISOString();
+      startExecutableWorkflowBackground({
+        wf,
         workDir,
-        goal: stampedGoal,
-        originUser,
-        originThread,
-        status: run.ok ? 'DONE' : 'ERROR',
-        startedAt: new Date().toISOString(),
-        finishedAt: new Date().toISOString(),
-        ticks: run.steps.length,
-        deliverableCount: run.ok ? 1 : 0,
-        ...(run.ok ? {} : { errorMessage: `workflow failed at ${run.abortedAt ?? '?'}` }),
-        ...(resolvedKpiId ? { kpiId: resolvedKpiId } : {}),
-      };
-      registry.register(taskRecord);
+        deps: defaultExecutableWorkflowRunnerDeps(workDir),
+        registry,
+        task: {
+          instanceId,
+          workspaceId: wsId,
+          workDir,
+          goal: stampedGoal,
+          originUser,
+          originThread,
+          status: 'RUNNING',
+          startedAt,
+          ...(resolvedKpiId ? { kpiId: resolvedKpiId } : {}),
+        },
+        onSettled: (run) => {
+          considerWorkflowEvolution({
+            dataRoot: ctx.dataRoot,
+            workDir,
+            instanceId,
+            kpiId: resolvedKpiId,
+            workflowId: wf.id,
+            version: wf.version,
+          });
+          void ctx.memoryStore
+            ?.reconcileBeliefFromWorkspace(workDir, {
+              workspaceId: wsId,
+              kpiId: resolvedKpiId,
+              workflowId: wf.id,
+              polarity: run.ok ? 'ok' : 'blocked',
+              source: 'ew_settle',
+            })
+            .catch((e: unknown) =>
+              console.warn('[utlra][outer-tools] belief-card ew_settle failed:', (e as Error).message),
+            );
+          if (!originThread?.trim() || !resolvedKpiId) return;
+          void notifyKpiScheduledReport(
+            {
+              imClient: ctx.imClient,
+              agentSid: ctx.agentSid,
+              assetStore: ctx.assetStore,
+              getEngine: ctx.getEngine,
+            },
+            {
+              instanceId,
+              workspaceId: wsId,
+              workDir,
+              originThread,
+              kpiId: resolvedKpiId,
+              workflowLabel: `${wf.id}@${wf.version}`,
+              ok: run.ok,
+              detail: run.ok
+                ? undefined
+                : run.steps.find((s) => !s.ok)?.detail ?? run.abortedAt ?? 'failed',
+            },
+          ).catch((e) => {
+            console.error('[utlra][ew-bg] scheduled report notify failed:', e);
+            try {
+              enqueuePendingScheduledReport(ctx.dataRoot, {
+                instanceId,
+                workspaceId: wsId,
+                workDir,
+                originThread,
+                kpiId: resolvedKpiId,
+                workflowLabel: `${wf.id}@${wf.version}`,
+                ok: run.ok,
+                detail: run.ok
+                  ? undefined
+                  : run.steps.find((s) => !s.ok)?.detail ?? run.abortedAt ?? 'failed',
+              });
+              console.warn(`[utlra][ew-bg] queued pending scheduled report for ${instanceId}`);
+            } catch (qe) {
+              console.error('[utlra][ew-bg] enqueue pending scheduled report failed:', qe);
+            }
+          });
+        },
+      });
       if (resolvedKpiId && ctx.kpiRegistry) {
         ctx.kpiRegistry.attachBurst(resolvedKpiId, instanceId);
       }
       return {
         replied: false,
-        output: run.ok
-          ? `已按工作流 ${wf.id}@${wf.version} 执行完成（${run.steps.length} 步，instance=${instanceId}）`
-          : `工作流 ${wf.id}@${wf.version} 失败于步骤 ${run.abortedAt}：${run.steps.find((s) => !s.ok)?.detail ?? ''}（instance=${instanceId}）`,
+        output:
+          `已后台启动工作流 ${wf.id}@${wf.version}（instance=${instanceId}，ws=${wsId}）；` +
+          `不阻塞对话。完成后 list_inner_brains 或看 .run/workflow_run.json`,
       };
     }
 
@@ -1093,9 +1160,10 @@ async function execSetGoal(
                 mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
               }
               ingestInnerBrainDeliverablesOnExit(notifyDeps, { workspaceId: wsId, workDir });
-              if (notifyUser) {
-                ctx.memoryStore?.ingestInnerOutput(workDir, wsId);
-              }
+              ctx.memoryStore?.ingestInnerOutput(workDir, wsId, {
+                kpiId: resolvedKpiId,
+                burstOk: false,
+              });
             }
             if (record?.originThread && notifyUser && errorMessage) {
               if (partialWithDeliverables) {
@@ -1155,9 +1223,10 @@ async function execSetGoal(
 
           if (finalStatus === 'DONE') {
             ingestInnerBrainDeliverablesOnExit(notifyDeps, { workspaceId: wsId, workDir });
-            if (notifyUser) {
-              ctx.memoryStore?.ingestInnerOutput(workDir, wsId);
-            }
+            ctx.memoryStore?.ingestInnerOutput(workDir, wsId, {
+              kpiId: resolvedKpiId,
+              burstOk: true,
+            });
           }
 
           if (record?.originThread) {
@@ -1407,9 +1476,7 @@ async function execStartSelfUpdate(
 
         if (finalStatus === 'DONE') {
           ingestInnerBrainDeliverablesOnExit(notifyDeps, { workspaceId: wsId, workDir });
-          if (notifyUser) {
-            ctx.memoryStore?.ingestInnerOutput(workDir, wsId);
-          }
+          ctx.memoryStore?.ingestInnerOutput(workDir, wsId, { burstOk: true });
         }
 
         if (record?.originThread && finalStatus === 'DONE' && notifyUser) {
@@ -1891,16 +1958,16 @@ function execReadInnerStatus(
     const all = registry.list();
     if (!all.length) return { replied: false, output: '当前没有内脑任务实例。' };
     const includeHistory = parseOptionalBool(args.include_history) === true;
-    const liveStatuses = new Set(['RUNNING', 'AWAITING', 'BLOCKED']);
-    const rows = includeHistory ? all : all.filter((r) => liveStatuses.has(r.status));
+    const selected = selectInnerStatusListRows(all, { includeHistory });
+    const rows = selected.rows;
     if (!rows.length) {
       return {
         replied: false,
         output: JSON.stringify(
           {
             note: '当前无 live 内脑（RUNNING/AWAITING/BLOCKED）',
-            registry_total: all.length,
-            hint: '需要历史实例时传 include_history=true',
+            registry_total: selected.registryTotal,
+            hint: '需要历史实例时传 include_history=true（有上限）；查单条请传 instance_id',
             instances: [],
           },
           null,
@@ -1952,9 +2019,14 @@ function execReadInnerStatus(
       replied: false,
       output: JSON.stringify(
         {
-          scope: includeHistory ? 'all' : 'live',
+          scope: selected.scope,
           listed: summary.length,
-          registry_total: all.length,
+          registry_total: selected.registryTotal,
+          history_cap: selected.historyCap,
+          truncated: selected.truncated,
+          hint: selected.truncated
+            ? '历史已截断；查更早实例请传 instance_id，或等 retention 归档后用外部备份'
+            : undefined,
           instances: summary,
         },
         null,

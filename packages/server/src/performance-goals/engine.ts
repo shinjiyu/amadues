@@ -389,7 +389,7 @@ export class PerformanceGoalEngine {
     const query = [goal.title, goal.goalText, ...goal.targetSids].filter(Boolean).join(' ').slice(0, 200);
     const memory = memoryStore
       ? await memoryStore.readMemoryContext(query)
-      : { dailyLog: '', tasks: '', hasAny: false };
+      : { dailyLog: '', tasks: '', beliefCards: '', hasAny: false };
     const evidenceBlock = [
       '## 当前任务状态',
       memory.tasks,

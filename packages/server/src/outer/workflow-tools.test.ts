@@ -75,7 +75,7 @@ describe('workflow-tools', () => {
 
     const run = await dispatchWorkflowTool(
       'workflow_run',
-      { workflow_id: 'ew-pb', goal: 'run pb' },
+      { workflow_id: 'ew-pb', goal: 'run pb', wait: true },
       ctx,
     );
     expect(run?.output).toMatch(/完成/);
@@ -103,8 +103,36 @@ describe('workflow-tools', () => {
       ctx,
     );
     expect(promo?.output).toMatch(/ew-dag@1/);
-    const run = await dispatchWorkflowTool('workflow_run', { workflow_id: 'ew-dag' }, ctx);
+    const run = await dispatchWorkflowTool(
+      'workflow_run',
+      { workflow_id: 'ew-dag', wait: true },
+      ctx,
+    );
     expect(run?.output).toMatch(/完成/);
+  });
+
+  it('workflow_run 默认后台立即返回 (W14)', async () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'ew-tools-'));
+    const ctx = makeCtx(root);
+    await dispatchWorkflowTool(
+      'workflow_promote',
+      {
+        workflow_id: 'ew-bg',
+        kind: 'shell_pipeline',
+        title: 'Bg',
+        steps_json: JSON.stringify([
+          { id: 'a', action: 'assert', args: { touch: 'x.txt' }, expect: { fileExists: 'x.txt' } },
+        ]),
+      },
+      ctx,
+    );
+    const t0 = Date.now();
+    const run = await dispatchWorkflowTool('workflow_run', { workflow_id: 'ew-bg' }, ctx);
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(run?.output).toMatch(/后台启动/);
+    expect(ctx.innerBrainRegistry!.list().some((t) => t.status === 'RUNNING' || t.status === 'DONE')).toBe(
+      true,
+    );
   });
 
   it('pause blocks run', async () => {

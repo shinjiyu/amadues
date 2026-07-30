@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import {
   buildDyflowInspectorPayload,
+  buildWorkflowRunView,
   isDyflowWorkDir,
 } from '../openkuroneko/inner-brain/dyflow-inspector.js';
 import { tailFileLines, resolveLatestPiMonoLog } from './tail-file.js';
@@ -39,7 +40,7 @@ export const PI_MONO_TICK_EXPLAINED = {
     },
   ],
   note:
-    'RUN 这一「宏步」内部已包含多轮 LLM/工具。若要看规划与失败原因，见下方 DyFlow 区块（current mode / DAG / last_failure / node_results）或日志里 designer / base-node / runner。',
+    'RUN 这一「宏步」内部已包含多轮 LLM/工具。若要看规划与失败原因，见下方 DyFlow 区块（mode / 执行 graph / last_failure）或日志里 designer / base-node / runner。',
 } as const;
 
 /**
@@ -159,10 +160,13 @@ export function buildBrainInspectorPayload(
   const lastDesigner = findLastLogEntry(logLines, (e) => e['module'] === 'designer');
 
   const dyflow = isDyflowWorkDir(workDir) ? buildDyflowInspectorPayload(workDir) : null;
+  const workflowRun = dyflow?.workflowRun ?? buildWorkflowRunView(workDir);
+  const engine = dyflow ? ('dyflow' as const) : workflowRun ? ('execute' as const) : ('legacy' as const);
 
   return {
-    engine: dyflow ? ('dyflow' as const) : ('legacy' as const),
+    engine,
     dyflow,
+    workflowRun,
     controllerState,
     goalText: (goalBrain ?? goalRun ?? '').slice(0, 8000),
     milestonesText: milestones.slice(0, 12000),

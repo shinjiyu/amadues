@@ -12,6 +12,8 @@ import { evaluateKpiAdvanceEligibility } from './kpi-burst-state.js';
 import type { AutonomyPolicy } from '../autonomy-types.js';
 import type { EnvironmentSnapshot } from '../environment/environment-types.js';
 import { evaluateKpiSpawnCapacity } from '../environment/kpi-spawn-capacity.js';
+import { ExecutableWorkflowStore } from '../executable-workflow-store.js';
+import { findWorkflowRefForKpi } from '../workflow-for-kpi.js';
 
 export { recordBurstRunOnExit } from './burst-run-history.js';
 
@@ -88,6 +90,12 @@ async function dispatchKpiSprint(
 
   const goal = buildKpiSprintGoal(kpi, deps.kpiRegistry);
 
+  // 与日历 due 对齐：KPI 已挂 EW → execute，禁止默认 explore（EXECUTABLE-WORKFLOW §6.2）
+  const ewStore =
+    deps.toolCtx.executableWorkflowStore ??
+    new ExecutableWorkflowStore({ dataRoot: deps.toolCtx.dataRoot });
+  const wfRef = findWorkflowRefForKpi(ewStore, kpi.kpiId);
+
   const toolOut = await executeOuterTool(
     'set_goal',
     JSON.stringify({
@@ -95,6 +103,13 @@ async function dispatchKpiSprint(
       workspace_id: deps.workspaceId,
       kpi_id: kpi.kpiId,
       origin_thread: deps.defaultThreadId.trim() || undefined,
+      ...(wfRef
+        ? {
+            burst_mode: 'execute',
+            workflow_id: wfRef.id,
+            workflow_version: wfRef.version,
+          }
+        : {}),
     }),
     { ...deps.toolCtx, allowKpiSetGoal: true },
   );
@@ -114,11 +129,12 @@ async function dispatchKpiSprint(
     lastBurstAt: now,
   });
 
+  const baseReason = elig.mode === 'parallel' ? 'kpi_parallel_sprint' : 'kpi_sprint_dispatched';
   return {
     ok: true,
     kpiId: kpi.kpiId,
     instanceId,
-    reason: elig.mode === 'parallel' ? 'kpi_parallel_sprint' : 'kpi_sprint_dispatched',
+    reason: wfRef ? `${baseReason}_execute` : baseReason,
     detail: toolOut.output.slice(0, 200),
   };
 }
@@ -141,7 +157,13 @@ export async function tickKpiAdvancer(deps: KpiAdvancerDeps): Promise<KpiAdvance
   for (const kpi of orderActiveKpis(deps.kpiRegistry)) {
     const r = await advanceKpi(deps, kpi.kpiId);
     results.push(r);
-    if (r.ok && (r.reason === 'kpi_sprint_dispatched' || r.reason === 'kpi_parallel_sprint')) {
+    if (
+      r.ok &&
+      (r.reason === 'kpi_sprint_dispatched' ||
+        r.reason === 'kpi_parallel_sprint' ||
+        r.reason === 'kpi_sprint_dispatched_execute' ||
+        r.reason === 'kpi_parallel_sprint_execute')
+    ) {
       return { advanced: true, results };
     }
   }

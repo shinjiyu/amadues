@@ -2,7 +2,7 @@
  * Execute-mode workflow runner — stepwise expect, no redesign.
  * @see doc/structurizr/EXECUTABLE-WORKFLOW.md
  */
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type {
@@ -19,6 +19,12 @@ import {
   type RunBrowserStepsFn,
   type RunLocalDagFn,
 } from './workflow-adapters.js';
+import {
+  resolveStepSecrets,
+  type ResolveSecretFn,
+} from '../../outer/workflow-secret-resolve.js';
+import { materializeWorkflowAssets } from '../../outer/workflow-assets.js';
+import { hoistSecretRefs } from '../../outer/workflow-promote.js';
 
 export interface WorkflowStepResult {
   stepId: string;
@@ -36,30 +42,57 @@ export interface WorkflowRunResult {
   fallbackExplore?: boolean;
 }
 
+export type ShellRunResult = { exitCode: number; stdout: string; stderr: string };
+
 export interface WorkflowRunnerDeps {
   workDir: string;
-  /** 注入 shell 执行（单测可 stub） */
-  runShell?: (command: string, cwd: string) => { exitCode: number; stdout: string; stderr: string };
+  /**
+   * 注入 shell 执行（单测可 stub）。
+   * 必须异步：默认同步 spawnSync 会卡住 Node 事件循环，导致外脑无法回消息。
+   */
+  runShell?: (
+    command: string,
+    cwd: string,
+    env?: Record<string, string>,
+  ) => ShellRunResult | Promise<ShellRunResult>;
   /** 注入真实 browser 执行（缺省 dry-run；有注入且未 dryRun=true 则真跑） */
   runBrowserSteps?: RunBrowserStepsFn;
   /** 注入 frozen_dag 真跑（缺省只物化） */
   runLocalDag?: RunLocalDagFn;
+  /** W11：keychain 解析（缺省则有 secretRefs 时步骤失败） */
+  resolveSecret?: ResolveSecretFn;
   now?: () => string;
 }
 
-function defaultShell(command: string, cwd: string): { exitCode: number; stdout: string; stderr: string } {
-  const r = spawnSync(command, {
-    cwd,
-    shell: true,
-    encoding: 'utf8',
-    windowsHide: true,
-    maxBuffer: 2 * 1024 * 1024,
+/** 异步 shell，避免阻塞外脑 / health */
+function defaultShell(
+  command: string,
+  cwd: string,
+  env?: Record<string, string>,
+): Promise<ShellRunResult> {
+  return new Promise((resolve) => {
+    const child = spawn(command, {
+      cwd,
+      shell: true,
+      windowsHide: true,
+      env: env && Object.keys(env).length > 0 ? { ...process.env, ...env } : process.env,
+    });
+    let stdout = '';
+    let stderr = '';
+    const max = 2 * 1024 * 1024;
+    child.stdout?.on('data', (buf: Buffer) => {
+      if (stdout.length < max) stdout += buf.toString('utf8').slice(0, max - stdout.length);
+    });
+    child.stderr?.on('data', (buf: Buffer) => {
+      if (stderr.length < max) stderr += buf.toString('utf8').slice(0, max - stderr.length);
+    });
+    child.on('error', (err) => {
+      resolve({ exitCode: 1, stdout, stderr: stderr || String(err) });
+    });
+    child.on('close', (code) => {
+      resolve({ exitCode: code ?? 1, stdout, stderr });
+    });
   });
-  return {
-    exitCode: r.status ?? 1,
-    stdout: r.stdout ?? '',
-    stderr: r.stderr ?? '',
-  };
 }
 
 export function checkExpect(
@@ -98,6 +131,25 @@ async function runOneStep(
   deps: WorkflowRunnerDeps,
 ): Promise<{ ok: boolean; detail: string; exitCode?: number; stdout?: string }> {
   const runShell = deps.runShell ?? defaultShell;
+
+  let secretEnv: Record<string, string> = {};
+  let cookiesFileRel: string | undefined;
+  if (step.secretRefs && Object.keys(step.secretRefs).length > 0) {
+    if (!deps.resolveSecret) {
+      return {
+        ok: false,
+        detail: 'secretRefs set but resolveSecret not configured (W11)',
+      };
+    }
+    try {
+      const resolved = await resolveStepSecrets(step, deps.workDir, deps.resolveSecret);
+      secretEnv = resolved.env;
+      cookiesFileRel = resolved.cookiesFileRel;
+    } catch (e) {
+      return { ok: false, detail: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   switch (step.action) {
     case 'assert':
     case 'skill_step': {
@@ -115,7 +167,7 @@ async function runOneStep(
     case 'shell': {
       const cmd = String(step.args?.['command'] ?? '').trim();
       if (!cmd) return { ok: false, detail: 'shell: args.command required' };
-      const r = runShell(cmd, deps.workDir);
+      const r = await Promise.resolve(runShell(cmd, deps.workDir, secretEnv));
       return {
         ok: true,
         detail: r.stderr || `exit ${r.exitCode}`,
@@ -124,7 +176,11 @@ async function runOneStep(
       };
     }
     case 'browser_steps': {
-      const r = await runBrowserStepsAdapter(deps.workDir, step.args, {
+      const args = { ...(step.args ?? {}) };
+      if (cookiesFileRel && args['cookies_file'] == null && args['cookiesFile'] == null) {
+        args['cookies_file'] = cookiesFileRel;
+      }
+      const r = await runBrowserStepsAdapter(deps.workDir, args, {
         runBrowserSteps: deps.runBrowserSteps,
       });
       return {
@@ -177,10 +233,26 @@ export async function runExecutableWorkflow(
   deps: WorkflowRunnerDeps,
 ): Promise<WorkflowRunResult> {
   fs.mkdirSync(deps.workDir, { recursive: true });
+  try {
+    materializeWorkflowAssets(wf.assets, deps.workDir);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    const result: WorkflowRunResult = {
+      workflowId: wf.id,
+      version: wf.version,
+      ok: false,
+      steps: [{ stepId: '__assets__', ok: false, attempts: 1, detail }],
+      abortedAt: '__assets__',
+    };
+    writeRunTrace(deps.workDir, result);
+    return result;
+  }
+
   const policy: WorkflowFailurePolicy = wf.failurePolicy;
   const stepResults: WorkflowStepResult[] = [];
 
-  for (const step of wf.steps) {
+  for (const rawStep of wf.steps) {
+    const step = hoistSecretRefs(rawStep);
     let attempts = 0;
     let lastOk = false;
     let lastDetail = '';

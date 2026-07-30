@@ -436,6 +436,9 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.llmGateway "多轮 messages+tools" "HTTPS" {
             tags "http"
         }
+        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.emptyPromiseReconcile "shouldReconcileEmptyPromise / recovery prompt" "in-process" {
+            tags "Relation"
+        }
         kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.outerToolExecutor "executeOuterTool" "in-process" {
             tags "import"
         }
@@ -592,6 +595,12 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
         kuroneko.innerWorker.presetSeeder -> kuroneko.innerWorker.localNodeStore "write preset LocalNode" "file" {
             tags "file"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.innerWorkspaceRetention "tick runInnerWorkspaceRetention" "in-process" {
+            tags "Inner-Lifecycle" "Heartbeat"
+        }
+        kuroneko.agentServer.innerWorkspaceRetention -> kuroneko.agentServer.innerBrainRegistry "remove terminal + rm workDir" "in-process" {
+            tags "Inner-Lifecycle"
         }
         kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.nodeDefEviction "tick sweep（P2）" "in-process" {
             tags "import"

@@ -3,21 +3,33 @@
  *
  * 双后端：
  *   - drive9  — 任务状态（精确原文，重启后可还原）
- *   - mem9    — 对话日志 + 内脑发现（语义检索，LLM 整理）
+ *   - mem9    — 对话日志 + 内脑发现（语义检索，LLM 整理）+ Belief Card
  *
  * 记忆命名空间（mem9 agentId）：
- *   - `${agentSid}:chat`  — 对话日志 + 内脑 ingest
+ *   - `${agentSid}:chat`  — 对话日志 + 内脑 ingest + belief_current
  *
  * 设计要点：
  *   - appendChatLog / writeTasks 均 fire-and-forget，不阻塞主流程
  *   - readTasks 同步返回内存缓存（cache-first），保证工具调用不引入等待
  *   - readChatLog / readMemoryContext 为 async（需要 mem9 search）
+ *   - Belief Card：同 topic supersede（store/update），见 MEMORY-BELIEF-CARD.md
  *   - 未配置 MEM9_API_KEY 时，对话读操作返回空；未配置 DRIVE9_API_KEY 时，tasks 仅驻留内存
  */
 
 import { Mem9Client } from '../mem9/mem9-client.js';
 import { getDrive9Client } from '../drive9/drive9-client.js';
 import { formatAgentTimestampShort } from '../agent-time.js';
+import {
+  deriveBeliefTopic,
+  extractRepairTopic,
+  formatCurrentBeliefCards,
+  parseUserBeliefRepairIntent,
+  partitionMemoriesForPrompt,
+  readWorkspaceBeliefEvidence,
+  upsertBeliefCard,
+  type BeliefPolarity,
+  type UpsertBeliefCardResult,
+} from './memory-belief-card.js';
 import {
   BeliefRevisionStore,
   filterMemoriesByValidity,
@@ -41,7 +53,26 @@ export interface DailyLogEntry {
 export interface MemoryContext {
   dailyLog: string;
   tasks: string;
+  /** 现行 Belief Card 专段（可空） */
+  beliefCards: string;
   hasAny: boolean;
+}
+
+export interface IngestInnerOutputOpts {
+  kpiId?: string;
+  workflowId?: string;
+  /** 内脑终态是否成功（无 EW 时用） */
+  burstOk?: boolean;
+}
+
+export interface ReconcileWorkspaceBeliefOpts {
+  workspaceId?: string;
+  kpiId?: string;
+  workflowId?: string;
+  burstOk?: boolean;
+  /** 显式 polarity 覆盖（如 EW onSettled 已知 run.ok） */
+  polarity?: BeliefPolarity;
+  source?: string;
 }
 
 // ── OuterMemoryStore ─────────────────────────────────────────────────────────
@@ -102,18 +133,20 @@ export class OuterMemoryStore {
   /**
    * 读取对话日志（支持语义过滤）。
    * query 为空时列出最近记录，有值时做语义搜索。
+   * 返回值仅为情节层（不含 belief_current）。
    */
   async readChatLog(limit = 30, query?: string): Promise<string> {
     if (!this.mem9) return '（未配置 MEM9_API_KEY）';
     try {
       const mems = await this.mem9.search({ agentId: this.chatAgentId, query, limit });
       if (mems.length === 0) return '（暂无对话日志）';
-      const active = filterMemoriesByValidity(mems);
-      if (active.length === 0) return '（暂无有效对话日志；作废记忆已降权过滤）';
-      // 优先用服务端原生字段 created_at（不经 LLM 修改，最可靠），
-      // 回退到我们在 metadata.ts 写入的 ISO 字符串。
-      // 升序（旧→新），LLM 阅读更自然。
-      const sorted = [...active].sort((a, b) => {
+      const { episodic } = partitionMemoriesForPrompt(mems);
+      if (episodic.length === 0) {
+        const active = filterMemoriesByValidity(mems);
+        if (active.length === 0) return '（暂无有效对话日志；作废记忆已降权过滤）';
+        return '（暂无情节日志；现行结论见「现行信念」）';
+      }
+      const sorted = [...episodic].sort((a, b) => {
         const ta = a.created_at ?? (a.metadata?.['ts'] as string | undefined) ?? '';
         const tb = b.created_at ?? (b.metadata?.['ts'] as string | undefined) ?? '';
         return ta < tb ? -1 : ta > tb ? 1 : 0;
@@ -121,6 +154,22 @@ export class OuterMemoryStore {
       return sorted.map((m) => `- ${m.content}`).join('\n');
     } catch (e) {
       return `（mem9 搜索失败：${(e as Error).message}）`;
+    }
+  }
+
+  async readBeliefCardsSection(limit = 40): Promise<string> {
+    if (!this.mem9) return '';
+    try {
+      const mems = await this.mem9.search({
+        agentId: this.chatAgentId,
+        query: 'belief_current',
+        limit,
+      });
+      const { beliefCards } = partitionMemoriesForPrompt(mems);
+      return formatCurrentBeliefCards(beliefCards);
+    } catch (e) {
+      console.warn('[outer-memory] readBeliefCardsSection failed:', (e as Error).message);
+      return '';
     }
   }
 
@@ -146,26 +195,35 @@ export class OuterMemoryStore {
   // ── 组合上下文（供 LLM 注入） ────────────────────────────────────────────────
 
   async readMemoryContext(chatQuery?: string): Promise<MemoryContext> {
-    const dailyLog = await this.readChatLog(50, chatQuery);
-    const tasks    = this.readTasks();
-    const hasAny   = !!this.mem9 && (
-      dailyLog !== '（暂无对话日志）' && dailyLog !== '（未配置 MEM9_API_KEY）' ||
-      !!this.tasksCache
-    );
-    return { dailyLog, tasks, hasAny };
+    const [dailyLog, beliefCards] = await Promise.all([
+      this.readChatLog(50, chatQuery),
+      this.readBeliefCardsSection(),
+    ]);
+    const tasks = this.readTasks();
+    const hasAny =
+      !!beliefCards ||
+      (!!this.mem9 &&
+        ((dailyLog !== '（暂无对话日志）' &&
+          dailyLog !== '（未配置 MEM9_API_KEY）' &&
+          !dailyLog.startsWith('（暂无')) ||
+          !!this.tasksCache));
+    return { dailyLog, tasks, beliefCards, hasAny };
   }
 
   formatMemoryForLlm(ctx: MemoryContext): string {
-    if (!ctx.hasAny && this.beliefRevisions.length === 0) return '';
+    if (!ctx.hasAny && this.beliefRevisions.length === 0 && !ctx.beliefCards) return '';
     const archived = formatArchivedBeliefHints(this.beliefRevisions);
     const parts = ['## 记忆', ''];
+    if (ctx.beliefCards) {
+      parts.push(ctx.beliefCards, '');
+    }
     if (ctx.hasAny || this.tasksCache) {
       parts.push('### 当前任务状态', ctx.tasks, '');
     }
     if (archived) {
       parts.push(archived, '');
     }
-    if (ctx.hasAny) {
+    if (ctx.dailyLog && !ctx.dailyLog.startsWith('（未配置') && ctx.dailyLog !== '（暂无对话日志）') {
       parts.push('### 最近对话日志', ctx.dailyLog);
     }
     return parts.join('\n');
@@ -173,8 +231,30 @@ export class OuterMemoryStore {
 
   /**
    * 用户 IM 取消/完成 → 强制对账 tasks + 本地 belief 修订（MVP）。
+   * 用户「修好了/可用了」→ mem9 Belief Card polarity=ok。
    */
   reconcileFromUserMessage(text: string, userSid: string): BeliefReconcileResult {
+    const repair = parseUserBeliefRepairIntent(text);
+    if (repair) {
+      const topicRaw = extractRepairTopic(text, repair.matched);
+      const kpiMatch = topicRaw.match(/\bkpi-[\w-]+\b/i);
+      const topic = kpiMatch
+        ? deriveBeliefTopic({ kpiId: kpiMatch[0]! })
+        : `user:${topicRaw.slice(0, 100).toLowerCase()}`;
+      void this.upsertBeliefCard({
+        topic,
+        summary: `用户确认已修复：${topicRaw.slice(0, 120)}`,
+        polarity: 'ok',
+        priorSummary: topicRaw.slice(0, 80),
+        source: `user_repair:${userSid}`,
+      }).then((r) => {
+        if (r.applied) {
+          console.log(`[utlra][belief-card] user_repair topic=${r.topic} superseded=${r.supersededIds.length}`);
+        }
+      });
+      return { applied: true, intent: 'completed', topic: topicRaw, reason: 'user_repair' };
+    }
+
     const { result, tasks, revisions } = reconcileBeliefFromUserMessage(
       text,
       userSid,
@@ -185,6 +265,64 @@ export class OuterMemoryStore {
       this.beliefRevisions = revisions;
       this.writeTasks(tasks);
       void this.downrankMem9ByTopic(result.topic!, result.intent!);
+    }
+    return result;
+  }
+
+  /** 同 topic Belief Card upsert（门面） */
+  async upsertBeliefCard(input: {
+    topic: string;
+    summary: string;
+    polarity: BeliefPolarity;
+    priorSummary?: string;
+    source: string;
+    evidenceAt?: string;
+  }): Promise<UpsertBeliefCardResult> {
+    if (!this.mem9) {
+      return { applied: false, topic: input.topic, supersededIds: [], reason: 'no_mem9' };
+    }
+    return upsertBeliefCard(this.mem9, this.chatAgentId, input);
+  }
+
+  /**
+   * 工作区本地证据 → Belief Card（DONE / EW settle）。
+   * 无足够证据（unknown）时不写卡，避免用猜测覆盖。
+   */
+  async reconcileBeliefFromWorkspace(
+    workDir: string,
+    opts: ReconcileWorkspaceBeliefOpts = {},
+  ): Promise<UpsertBeliefCardResult> {
+    const evidence = readWorkspaceBeliefEvidence(workDir, {
+      burstOk: opts.burstOk,
+      workflowId: opts.workflowId,
+    });
+    const polarity = opts.polarity ?? evidence.polarity;
+    if (polarity === 'unknown') {
+      return {
+        applied: false,
+        topic: '',
+        supersededIds: [],
+        reason: 'insufficient_evidence',
+      };
+    }
+
+    const topic = deriveBeliefTopic({
+      kpiId: opts.kpiId,
+      workflowId: opts.workflowId ?? evidence.workflowId,
+      workspaceId: opts.workspaceId,
+    });
+
+    const result = await this.upsertBeliefCard({
+      topic,
+      summary: evidence.summary,
+      polarity,
+      priorSummary: evidence.priorHint,
+      source: opts.source ?? (opts.workflowId || evidence.workflowId ? 'ew_settle' : 'inner_complete'),
+    });
+    if (result.applied) {
+      console.log(
+        `[utlra][belief-card] workspace topic=${result.topic} polarity=${polarity} superseded=${result.supersededIds.length}`,
+      );
     }
     return result;
   }
@@ -215,18 +353,28 @@ export class OuterMemoryStore {
   // ── 内脑输出 → mem9 自动提取 ───────────────────────────────────────────────
 
   /**
-   * 内脑完成后调用：读取 output 文件 + 日志，ingest 到外脑 mem9（fire-and-forget）。
-   * mem9 以 mode:"smart" 从对话内容中自动提取多条洞见，供外脑语义检索。
+   * 内脑完成后调用：先按工作区证据 upsert Belief Card，再 smart ingest 情节（fire-and-forget）。
    */
-  ingestInnerOutput(workDir: string, workspaceId: string): void {
+  ingestInnerOutput(workDir: string, workspaceId: string, opts?: IngestInnerOutputOpts): void {
     if (!this.mem9) return;
     const mem9 = this.mem9;
     const agentId = this.chatAgentId;
 
     void (async () => {
+      try {
+        await this.reconcileBeliefFromWorkspace(workDir, {
+          workspaceId,
+          kpiId: opts?.kpiId,
+          workflowId: opts?.workflowId,
+          burstOk: opts?.burstOk,
+          source: 'inner_complete',
+        });
+      } catch (e) {
+        console.warn('[outer-memory] reconcileBeliefFromWorkspace 失败:', (e as Error).message);
+      }
+
       const messages: Array<{ role: string; content: string }> = [];
 
-      // 1. 完成报告正文（结果优先，避免把整份 output/日志过程灌进 mem9）
       const { buildCompletionMessageFromWorkspace } = await import('./completion-notify.js');
       const { message: completionBody } = buildCompletionMessageFromWorkspace(workDir, {
         audience: 'verbose',

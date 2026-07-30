@@ -117,4 +117,49 @@ describe('kpi-advancer', () => {
     expect(occurrences).toBe(1);
     expect(goals[1]).toContain('台湾情报常态收集');
   });
+
+  it('KPI 已挂 EW tag → set_goal(burst_mode=execute)', async () => {
+    const deps = baseDeps();
+    const { ExecutableWorkflowStore } = await import('../executable-workflow-store.js');
+    const { promoteWorkflow } = await import('../workflow-promote.js');
+    const store = new ExecutableWorkflowStore({ dataRoot: tmp });
+    const kpi = deps.kpiRegistry.create({
+      description: 'X 采集',
+      createdBy: 'u',
+      kind: 'ongoing',
+    });
+    promoteWorkflow(store, {
+      id: 'ew-twitter-collect-17-bloggers',
+      kind: 'shell_pipeline',
+      title: 'X collect',
+      tags: [`kpi:${kpi.kpiId}`, 'role:primary'],
+      steps: [
+        {
+          id: 'a',
+          action: 'assert',
+          args: { touch: 'ok.txt' },
+          expect: { fileExists: 'ok.txt' },
+        },
+      ],
+    });
+    deps.toolCtx.executableWorkflowStore = store;
+
+    let args: Record<string, unknown> = {};
+    vi.spyOn(outerTools, 'executeOuterTool').mockImplementation(async (_name, argJson) => {
+      args = JSON.parse(argJson as string) as Record<string, unknown>;
+      return {
+        replied: false,
+        output: '已后台启动工作流 ew-twitter-collect-17-bloggers@5（instance=ib-ew-1，ws=task-ib-ew-1）',
+      };
+    });
+
+    const tick = await tickKpiAdvancer(deps);
+    expect(tick.results[0]?.ok, JSON.stringify(tick.results)).toBe(true);
+    expect(tick.advanced).toBe(true);
+    expect(tick.results[0]?.reason).toBe('kpi_sprint_dispatched_execute');
+    expect(args.burst_mode).toBe('execute');
+    expect(args.workflow_id).toBe('ew-twitter-collect-17-bloggers');
+    expect(String(args.workflow_version)).toBe('1');
+    expect(args.kpi_id).toBe(kpi.kpiId);
+  });
 });

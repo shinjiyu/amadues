@@ -21,21 +21,25 @@ export const OUTER_EXECUTABLE_WORKFLOW_GUIDE = `
 ### 谁可以 promote（两条合法入口）
 | 入口 | 何时 | 你怎么做 |
 |------|------|----------|
-| **DyFlow ATTRIBUTE** | explore burst RUN 成功、路径已稳定 | 内脑自己调 \`promote_executable_workflow\`（无需你插手） |
-| **聊天显式指定** | 用户说「固化/晋升/冻结成工作流」「把这次流程存下来」「promote …」或点名 workspace/dag/playbook | **你必须** \`workflow_suggest_promote\`（可选）→ \`workflow_promote\`；可带 \`workspace_id\` / \`playbook_path\` / \`dag_path\` / \`steps_json\`；勿只口头答应 |
+| **DyFlow ATTRIBUTE** | explore burst RUN 成功、路径已稳定 | 内脑 \`promote_executable_workflow(**from=auto**)\`；系统从 dag/playbook 生成合法 steps |
+| **聊天显式指定** | 用户说「固化/晋升…」或点名产物 | \`workflow_promote\` 优先 \`playbook_path\`/\`dag_path\`；手写 \`steps_json\` 须过 action/args 校验 |
 
-用户在聊天里**点名** workflow_id、版本、或「按这个再跑」时：以用户指定为准（list/get 核对后 promote 或 execute）。
+用户在聊天里**点名** workflow_id、版本、或「按这个再跑」时：以用户指定为准（list/get 核对后 promote 或 execute）。**禁止**晋升空壳（无 args / 非法 action）、写死 workspace 绝对路径、靠跨步环境变量传状态、或把 Cookie/Token 明文写进 steps。
 
 ### 工具速查
 - **内脑 ATTRIBUTE**：\`promote_executable_workflow\`（探索成功后自动晋升）
 - \`workflow_list\` / \`workflow_get\`：查看已晋升契约
 - \`workflow_suggest_promote\`：扫描 workspace 给建议（不写）
 - \`workflow_promote\`：**聊天指定晋升/补录/改版**（写入版本化 EW）
-- \`workflow_run\` / \`set_goal(execute…)\`：确定性执行（可按用户指定 id@version）
+- \`workflow_run\` / \`set_goal(execute…)\`：确定性执行（默认**后台**立即返回，不堵对话；短测可 \`wait=true\`）（W14）
 - \`workflow_pause\`：停用某 EW
 
 ### 硬规则
 - 禁止对「已知可机跑流程」反复 explore
 - 禁止用户已点名固化/再跑时只回复「好的」而不调工具
 - KPI 仍走 \`set_kpi\` / \`advance_kpi\`；execute 是 burst 自由度，不是 KPI 替代物
+- promote 契约须可移植：相对路径 + 步间落盘（W8/W9）+ 凭据走 keychain/secretRefs（W11）
+- 同 KPI 多 EW：主路径 \`role:primary|collect\`，repair/verify 勿抢日常 SelfWork（W12）
+- shell 依赖的 \`.run/ew/*.py\` 等须随 promote 打进 \`assets\`（W13；有 workDir 时自动收集）
+- 长 EW **禁止**在对话环里同步死等；结果用 \`list_inner_brains\` / \`.run/workflow_run.json\`（W14）
 `.trim();

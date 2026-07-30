@@ -244,14 +244,17 @@ export function collectAdvancePerception(opts: {
 }
 
 /**
- * SelfWork 是否应对该 KPI 闭嘴。
- * needingRepair 可突破「基线完成 / 未到期日历」静默（规则 8）。
+ * SelfWork 是否应对该 KPI 闭嘴：
+ * - 健康/在途 → 闭嘴
+ * - **未到期周期日历 → 闭嘴**（只等 calendar_due；禁止心跳刷 collect）
+ * - needingRepair 仅在**没有**未到期日历时开闸（窄 repair，不抢日历节奏）
+ * - 基线已完成 → 闭嘴（等日历 ensure / due）
  */
 export function shouldSkipSelfWorkForKpi(perception: AdvancePerception, kpiId: string): boolean {
   if (perception.kpiIdsWithHealthyRunning.includes(kpiId)) return true;
   if (perception.kpiIdsWithInFlight.includes(kpiId)) return true;
-  if (perception.kpiIdsNeedingRepair.includes(kpiId)) return false;
   if (perception.kpiIdsWithFuturePeriodicCalendar.includes(kpiId)) return true;
+  if (perception.kpiIdsNeedingRepair.includes(kpiId)) return false;
   if (perception.kpiIdsBootstrapDone.includes(kpiId)) return true;
   return false;
 }

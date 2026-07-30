@@ -153,6 +153,53 @@ describe('completion-notify', () => {
     expect(shouldNotifyUserOnBurstExit({})).toBe(true);
     expect(shouldNotifyUserOnBurstExit({ kpiId: '' })).toBe(true);
   });
+
+  it('notifyKpiScheduledReport：allowlist 补登记 + html 优先预览 + 附件', async () => {
+    const { ChatAssetStore } = await import('@utlra/chat-ir');
+    const { notifyKpiScheduledReport } = await import('./completion-notify.js');
+    const { FakeImChannel } = await import('../testing/index.js');
+
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'comp-sched-'));
+    const ws = path.join(tmp, 'workspace');
+    fs.mkdirSync(ws, { recursive: true });
+    fs.writeFileSync(
+      path.join(ws, 'tweets_summary.html'),
+      '<!DOCTYPE html><html><body><h1>推文汇总</h1><div class="meta">时间窗: 过去 4 小时 · 总推文数: 2</div></body></html>\n',
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(ws, 'tweets_summary.json'),
+      JSON.stringify({ kept_count: 2, tweets: [{ id: 1 }, { id: 2 }] }),
+      'utf8',
+    );
+
+    const im = new FakeImChannel();
+    const assetStore = new ChatAssetStore(path.join(tmp, 'uploads'));
+    await notifyKpiScheduledReport(
+      { imClient: im, agentSid: 'agent:k', assetStore },
+      {
+        instanceId: 'ib-sched-1',
+        workDir: tmp,
+        originThread: 'wechat:dm:1',
+        kpiId: 'kpi-mrulwvci-2896',
+        workflowLabel: 'ew-twitter-collect-17-bloggers@4',
+        ok: true,
+      },
+    );
+
+    const text = im.lastText('wechat:dm:1');
+    expect(text).toContain('定时采集完成');
+    expect(text).toContain('tweets_summary.html');
+    expect(text).toContain('过去 4 小时');
+    expect(text).toContain('2 条');
+    expect(text).toMatch(/附 2 个文件|附件/);
+    const del = JSON.parse(
+      fs.readFileSync(path.join(tmp, '.run', 'pi-mono', 'deliverables.json'), 'utf8'),
+    );
+    expect(del).toEqual(
+      expect.arrayContaining(['workspace/tweets_summary.html', 'workspace/tweets_summary.json']),
+    );
+  });
 });
 
 describe('ingestInnerBrainDeliverablesOnExit (R4.7 Gap A)', () => {

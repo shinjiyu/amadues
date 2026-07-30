@@ -8,7 +8,32 @@ import { UsagePanel } from './usage-panel.js';
 import { StallAlertsPanel } from './stall-alerts-panel.js';
 import { WorkflowsPanel } from './workflows-panel.js';
 
-type Tab = 'data' | 'inner' | 'outer' | 'memory' | 'participation' | 'logs' | 'usage' | 'stalls' | 'workflows';
+/** 主 Tab = 当前运维关键面；高级 Tab = 旧设计/调试面 */
+type Tab =
+  | 'inner'
+  | 'workflows'
+  | 'usage'
+  | 'stalls'
+  | 'logs'
+  | 'memory'
+  | 'data'
+  | 'outer'
+  | 'participation';
+
+const PRIMARY_TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'inner', label: '内脑 Burst' },
+  { id: 'workflows', label: 'Workflows' },
+  { id: 'usage', label: '用量' },
+  { id: 'stalls', label: '空转' },
+  { id: 'logs', label: '日志' },
+  { id: 'memory', label: '记忆块' },
+];
+
+const ADVANCED_TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'data', label: '数据层（文件）' },
+  { id: 'outer', label: '外脑快照' },
+  { id: 'participation', label: '参与 Lab' },
+];
 
 const TENANT = 'default';
 
@@ -88,13 +113,15 @@ function coreBrainSortKey(p: string): number {
 }
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('data');
+  const [tab, setTab] = useState<Tab>('inner');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [agentIdx, setAgentIdx] = useState(0);
   const [ws, setWs] = useState('default');
   const [wsList, setWsList] = useState<string[]>(['default']);
 
   const agent: AgentConfig = AGENTS[agentIdx]!;
   const apiPrefix = agent.apiPrefix;
+  const needsWorkspace = tab === 'data' || tab === 'outer';
 
   // 切换 agent 时重新拉 workspace 列表
   useEffect(() => {
@@ -111,6 +138,10 @@ export function App() {
         setWs('default');
       });
   }, [agentIdx, apiPrefix]);
+
+  useEffect(() => {
+    if (ADVANCED_TABS.some((t) => t.id === tab)) setShowAdvanced(true);
+  }, [tab]);
 
   return (
     <div>
@@ -142,7 +173,7 @@ export function App() {
               {a.label}
             </button>
           ))}
-          {tab !== 'inner' && tab !== 'memory' && (
+          {needsWorkspace && (
             <>
               <span style={{ fontSize: 13, color: '#8b92a8', marginLeft: 8 }}>Workspace：</span>
               <select
@@ -158,48 +189,51 @@ export function App() {
           )}
         </div>
         <p style={{ margin: '0.35rem 0 0', fontSize: 12, color: '#5a6180' }}>
-          只读监控 · 数据自动刷新
+          Burst / EW / 用量 / 空转 · 只读监控
         </p>
       </header>
       <div className="panel">
         <div className="tabs">
-          <button type="button" className={tab === 'data' ? 'active' : ''} onClick={() => setTab('data')}>
-            数据层
+          {PRIMARY_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={tab === t.id ? 'active' : ''}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className={showAdvanced || ADVANCED_TABS.some((t) => t.id === tab) ? 'active' : ''}
+            onClick={() => setShowAdvanced((v) => !v)}
+            title="旧设计面：文件树 / 外脑快照 / 参与 Lab"
+          >
+            高级{showAdvanced ? ' ▾' : ' ▸'}
           </button>
-          <button type="button" className={tab === 'inner' ? 'active' : ''} onClick={() => setTab('inner')}>
-            内脑
-          </button>
-          <button type="button" className={tab === 'outer' ? 'active' : ''} onClick={() => setTab('outer')}>
-            外脑
-          </button>
-          <button type="button" className={tab === 'memory' ? 'active' : ''} onClick={() => setTab('memory')}>
-            记忆
-          </button>
-          <button type="button" className={tab === 'participation' ? 'active' : ''} onClick={() => setTab('participation')}>
-            参与策略
-          </button>
-          <button type="button" className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>
-            日志
-          </button>
-          <button type="button" className={tab === 'usage' ? 'active' : ''} onClick={() => setTab('usage')}>
-            用量
-          </button>
-          <button type="button" className={tab === 'stalls' ? 'active' : ''} onClick={() => setTab('stalls')}>
-            节点触顶
-          </button>
-          <button type="button" className={tab === 'workflows' ? 'active' : ''} onClick={() => setTab('workflows')}>
-            Workflows
-          </button>
+          {showAdvanced &&
+            ADVANCED_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={tab === t.id ? 'active' : ''}
+                onClick={() => setTab(t.id)}
+                style={{ opacity: 0.85, fontSize: 12 }}
+              >
+                {t.label}
+              </button>
+            ))}
         </div>
-        {tab === 'data' && <DataPanel workspaceId={ws} apiPrefix={apiPrefix} />}
         {tab === 'inner' && <InnerBrainPoolPanel apiPrefix={apiPrefix} />}
-        {tab === 'outer' && <OuterPanel workspaceId={ws} apiPrefix={apiPrefix} />}
-        {tab === 'memory' && <MemoryPanel apiPrefix={apiPrefix} />}
-        {tab === 'participation' && <ParticipationLabPanel apiPrefix={apiPrefix} />}
-        {tab === 'logs' && <LogExplorerPanel apiPrefix={apiPrefix} />}
+        {tab === 'workflows' && <WorkflowsPanel apiPrefix={apiPrefix} />}
         {tab === 'usage' && <UsagePanel apiPrefix={apiPrefix} />}
         {tab === 'stalls' && <StallAlertsPanel apiPrefix={apiPrefix} />}
-        {tab === 'workflows' && <WorkflowsPanel apiPrefix={apiPrefix} />}
+        {tab === 'logs' && <LogExplorerPanel apiPrefix={apiPrefix} />}
+        {tab === 'memory' && <MemoryPanel apiPrefix={apiPrefix} />}
+        {tab === 'data' && <DataPanel workspaceId={ws} apiPrefix={apiPrefix} />}
+        {tab === 'outer' && <OuterPanel workspaceId={ws} apiPrefix={apiPrefix} />}
+        {tab === 'participation' && <ParticipationLabPanel apiPrefix={apiPrefix} />}
       </div>
     </div>
   );
@@ -208,156 +242,11 @@ export function App() {
 // ── Memory Panel ─────────────────────────────────────────────────────────────
 
 function MemoryPanel({ apiPrefix }: { apiPrefix: string }) {
-  const [dailyLog, setDailyLog] = useState<string>('');
-  const [tasks, setTasks] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [tasksEdit, setTasksEdit] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await fetch(`${apiPrefix}/outer/memory`);
-      if (!r.ok) return;
-      const j = (await r.json()) as { dailyLog?: string; tasks?: string };
-      setDailyLog(j.dailyLog ?? '');
-      setTasks(j.tasks ?? '');
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  }, [apiPrefix]);
-
-  const handleSaveTasks = useCallback(async () => {
-    setSaving(true);
-    setSaveMsg(null);
-    try {
-      const r = await fetch(`${apiPrefix}/outer/memory/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tasks_markdown: tasksEdit }),
-      });
-      if (!r.ok) throw new Error(await r.text());
-      setTasks(tasksEdit);
-      setEditing(false);
-      setSaveMsg('已保存');
-    } catch (e) {
-      setSaveMsg(`保存失败：${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSaving(false);
-    }
-  }, [apiPrefix, tasksEdit]);
-
-  useEffect(() => {
-    void refresh();
-    const t = setInterval(() => { void refresh(); }, 10_000);
-    return () => clearInterval(t);
-  }, [refresh]);
-
-  const pre: React.CSSProperties = {
-    background: '#0d1117',
-    border: '1px solid #2a3142',
-    borderRadius: 6,
-    padding: '0.75rem',
-    fontSize: 12,
-    lineHeight: 1.6,
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    color: '#c8d8ff',
-    minHeight: 80,
-    maxHeight: 400,
-    overflowY: 'auto',
-  };
-
   return (
-    <div style={{ padding: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      {/* Daily Log */}
-      <div style={{ flex: '1 1 340px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <h3 style={{ margin: 0, fontSize: 14, color: '#8b92a8' }}>📋 每日对话日志</h3>
-          <button
-            type="button"
-            onClick={() => { void refresh(); }}
-            disabled={loading}
-            style={{ fontSize: 11, padding: '2px 8px', background: '#1d2333', border: '1px solid #2a3142', borderRadius: 4, color: '#8b92a8', cursor: 'pointer' }}
-          >
-            {loading ? '加载中…' : '刷新'}
-          </button>
-        </div>
-        <pre style={pre}>
-          {dailyLog || '（暂无日志）'}
-        </pre>
-        <p style={{ margin: '4px 0 0', fontSize: 11, color: '#5a6180' }}>
-          外脑每次成功回复后自动追加。路径：outer/memory/daily-log.md
-        </p>
-      </div>
-
-      {/* Tasks */}
-      <div style={{ flex: '1 1 340px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <h3 style={{ margin: 0, fontSize: 14, color: '#8b92a8' }}>📌 当前任务状态</h3>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {saveMsg && <span style={{ fontSize: 11, color: saveMsg.startsWith('保存失败') ? '#e06c75' : '#98c379' }}>{saveMsg}</span>}
-            {!editing ? (
-              <button
-                type="button"
-                onClick={() => { setTasksEdit(tasks); setEditing(true); }}
-                style={{ fontSize: 11, padding: '2px 8px', background: '#1d2333', border: '1px solid #2a3142', borderRadius: 4, color: '#8b92a8', cursor: 'pointer' }}
-              >
-                编辑
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => { void handleSaveTasks(); }}
-                  disabled={saving}
-                  style={{ fontSize: 11, padding: '2px 8px', background: '#2a4a2a', border: '1px solid #4a7a4a', borderRadius: 4, color: '#98c379', cursor: 'pointer' }}
-                >
-                  {saving ? '保存中…' : '保存'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEditing(false); setTasksEdit(tasks); }}
-                  style={{ fontSize: 11, padding: '2px 8px', background: '#1d2333', border: '1px solid #2a3142', borderRadius: 4, color: '#8b92a8', cursor: 'pointer' }}
-                >
-                  取消
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-        {editing ? (
-          <textarea
-            value={tasksEdit}
-            onChange={(e) => setTasksEdit(e.target.value)}
-            style={{
-              width: '100%',
-              minHeight: 240,
-              background: '#0d1117',
-              border: '1px solid #5b7ac5',
-              borderRadius: 6,
-              padding: '0.75rem',
-              fontSize: 12,
-              lineHeight: 1.6,
-              color: '#c8d8ff',
-              resize: 'vertical',
-              boxSizing: 'border-box',
-            }}
-          />
-        ) : (
-          <pre style={pre}>
-            {tasks || '（暂无任务状态。可点击编辑初始化，或由外脑通过 update_tasks 工具写入。）'}
-          </pre>
-        )}
-        <p style={{ margin: '4px 0 0', fontSize: 11, color: '#5a6180' }}>
-          LLM 可通过 update_tasks 工具更新。路径：outer/memory/tasks.md
-        </p>
-      </div>
-
+    <div style={{ padding: '0.5rem 0' }}>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#8b92a8' }}>
+        当前关键：Memory Blocks（keychain / facts 等）。旧 daily-log / tasks.md 编辑器已移除。
+      </p>
       <MemoryBlocksPanel apiPrefix={apiPrefix} />
     </div>
   );
@@ -736,7 +625,8 @@ function DataPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix:
 type InstanceRow = {
   instance_id: string;
   workspace_id: string;
-  registry_status: 'RUNNING' | 'BLOCKED' | 'DONE' | 'STOPPED' | 'ERROR';
+  registry_status: 'RUNNING' | 'BLOCKED' | 'DONE' | 'STOPPED' | 'ERROR' | 'AWAITING' | 'ABORTED';
+  kpi_id?: string | null;
   liveness: 'active' | 'stuck' | 'dead' | null;
   pid: number | null;
   pid_alive: boolean | null;
@@ -749,10 +639,11 @@ type InstanceRow = {
   finished_at: string | null;
   ticks: number | null;
   error: string | null;
-  engine?: 'dyflow' | 'legacy' | null;
+  engine?: 'dyflow' | 'legacy' | 'execute' | null;
   dyflow_mode?: string | null;
   dyflow_dag_nodes?: number | null;
   dyflow_failure?: string | null;
+  dyflow_progress?: string | null;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -787,17 +678,19 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<'live' | 'all'>('live');
+  const [statusFilter, setStatusFilter] = useState<'live' | 'all'>('all');
   const [registryTotal, setRegistryTotal] = useState(0);
 
   const refresh = useCallback(async () => {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 12_000);
     try {
       const qs = new URLSearchParams({
         page: String(page),
         pageSize: String(INNER_BRAIN_PAGE_SIZE),
         status: statusFilter,
       });
-      const r = await fetch(`${apiPrefix}/inner-brains?${qs}`);
+      const r = await fetch(`${apiPrefix}/inner-brains?${qs}`, { signal: ac.signal });
       if (!r.ok) {
         const hint = r.status === 502 || r.status === 503
           ? '（Agent 可能未启动：对应端口无进程）'
@@ -833,12 +726,16 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
       }
       setErr(null);
     } catch (e) {
-      setErr(String(e));
+      const msg =
+        e instanceof DOMException && e.name === 'AbortError'
+          ? '请求超时（12s）：Agent 可能卡住或未启动'
+          : String(e);
+      setErr(msg);
     } finally {
+      clearTimeout(timer);
       setLoading(false);
     }
   }, [apiPrefix, page, statusFilter]);
-
   useEffect(() => {
     void refresh();
     const id = setInterval(() => void refresh(), INNER_BRAIN_POLL_MS);
@@ -870,9 +767,9 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
       <div>
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.6rem 1rem' }}>
           <button type="button" onClick={() => setSelected(null)} style={{ fontSize: 12 }}>
-            ← 返回内脑池
+            ← 返回 Burst 列表
           </button>
-          <span style={{ fontSize: 13, color: '#8b92a8' }}>当前内脑 workspace：<code>{selected}</code></span>
+          <span style={{ fontSize: 13, color: '#8b92a8' }}>workspace：<code>{selected}</code></span>
         </div>
         <InnerPanel workspaceId={selected} apiPrefix={apiPrefix} />
       </div>
@@ -883,15 +780,13 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
     <div>
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-          <strong style={{ fontSize: 15 }}>内脑池</strong>
+          <strong style={{ fontSize: 15 }}>内脑 Burst</strong>
           <span style={{ fontSize: 12, color: '#8b92a8' }}>
             {loading
               ? '加载中…'
               : statusFilter === 'live'
-                ? `live ${total} · 注册表共 ${registryTotal}`
-                : total <= INNER_BRAIN_PAGE_SIZE
-                  ? `共 ${total} 个实例`
-                  : `共 ${total} 个实例 · 第 ${page}/${totalPages} 页`}
+                ? `进行中 ${total} · 注册表 ${registryTotal}`
+                : `共 ${total} · 第 ${page}/${totalPages} 页`}
           </span>
           <label style={{ fontSize: 12, color: '#8b92a8', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             范围
@@ -903,8 +798,8 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
               }}
               style={{ fontSize: 12 }}
             >
-              <option value="live">进行中 (live)</option>
-              <option value="all">全部历史</option>
+              <option value="all">最近历史</option>
+              <option value="live">仅进行中</option>
             </select>
           </label>
           <button type="button" style={{ marginLeft: 'auto', fontSize: 12 }} onClick={() => void refresh()}>
@@ -915,8 +810,8 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
         {!loading && instances.length === 0 && (
           <p style={{ color: '#8b92a8', fontSize: 13 }}>
             {statusFilter === 'live'
-              ? `当前无进行中的内脑（注册表共 ${registryTotal} 条历史）。可切换「全部历史」查看。`
-              : '暂无内脑实例。外脑调用 set_goal 工具后会在这里出现。'}
+              ? `当前无进行中的 burst（注册表共 ${registryTotal}）。可切「最近历史」。`
+              : '暂无 burst。外脑 set_goal / workflow_run 后会出现。'}
           </p>
         )}
         {instances.length > 0 && (
@@ -924,14 +819,10 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
             <table className="viz-advanced-table" style={{ width: '100%', fontSize: 13 }}>
               <thead>
                 <tr>
-                  <th>状态</th>
-                  <th>实例 ID</th>
-                  <th>目标（Goal）</th>
-                  <th>发起方</th>
-                  <th>Ticks</th>
-                  <th>启动</th>
-                  <th>最后 tick</th>
-                  <th>耗时</th>
+                  <th>状态 / 引擎</th>
+                  <th>KPI</th>
+                  <th>目标</th>
+                  <th>时间</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -940,32 +831,35 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
                   const color = STATUS_COLOR[inst.registry_status] ?? '#8b92a8';
                   const dur = inst.finished_at
                     ? Math.round((new Date(inst.finished_at).getTime() - new Date(inst.started_at).getTime()) / 1000) + 's'
-                    : inst.registry_status === 'RUNNING' ? '运行中…' : '—';
+                    : inst.registry_status === 'RUNNING' ? '…' : '—';
+                  const engineLine =
+                    inst.engine === 'execute'
+                      ? `EW · ${inst.dyflow_progress ?? inst.dyflow_mode ?? 'execute'}`
+                      : inst.engine === 'dyflow'
+                        ? `DyFlow · ${inst.dyflow_mode ?? '?'}${inst.dyflow_progress ? ` · ${inst.dyflow_progress}` : ''}`
+                        : null;
                   return (
                     <tr key={inst.instance_id}>
-                      <td>
+                      <td style={{ minWidth: 140 }}>
                         <span style={{ color, fontWeight: 600, fontSize: 12 }}>
                           {inst.registry_status}
                         </span>
                         {inst.liveness === 'dead' && (
-                          <span title="子进程已消失但注册表仍为 RUNNING（异常状态）" style={{ color: '#f87171', fontSize: 11, display: 'block', fontWeight: 600 }}>
-                            ✕ 进程已死
-                          </span>
+                          <span style={{ color: '#f87171', fontSize: 11, display: 'block', fontWeight: 600 }}>✕ 进程已死</span>
                         )}
                         {inst.liveness === 'stuck' && (
-                          <span title="距上次 tick 超过 5 分钟，可能卡死或 LLM 超长等待" style={{ color: '#fb923c', fontSize: 11, display: 'block', fontWeight: 600 }}>
-                            ⚠ 可能卡住
-                          </span>
+                          <span style={{ color: '#fb923c', fontSize: 11, display: 'block', fontWeight: 600 }}>⚠ 卡住</span>
                         )}
-                        {inst.liveness === 'active' && (
-                          <span title={inst.worker_phase ?? ''} style={{ color: '#4ade80', fontSize: 11, display: 'block' }}>
-                            ● 执行中{inst.pid ? ` (pid ${inst.pid})` : ''}
-                          </span>
-                        )}
-                        {inst.engine === 'dyflow' && inst.dyflow_mode && (
-                          <span style={{ color: '#a78bfa', fontSize: 11, display: 'block', fontWeight: 600 }}>
-                            DyFlow · {inst.dyflow_mode}
-                            {inst.dyflow_dag_nodes != null ? ` · DAG×${inst.dyflow_dag_nodes}` : ''}
+                        {engineLine && (
+                          <span
+                            style={{
+                              color: inst.engine === 'execute' ? '#38bdf8' : '#a78bfa',
+                              fontSize: 11,
+                              display: 'block',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {engineLine}
                           </span>
                         )}
                         {inst.dyflow_failure && (
@@ -973,34 +867,35 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
                             ⚠ {inst.dyflow_failure}
                           </span>
                         )}
+                        <code style={{ fontSize: 10, color: '#5a6180' }}>{inst.instance_id}</code>
                       </td>
-                      <td>
-                        <code style={{ fontSize: 11 }}>{inst.instance_id}</code>
+                      <td style={{ fontSize: 11, color: '#8b92a8', maxWidth: 140, wordBreak: 'break-all' }}>
+                        {inst.kpi_id ? <code>{inst.kpi_id}</code> : '—'}
                       </td>
-                      <td style={{ maxWidth: 280, wordBreak: 'break-word' }}>
-                        {inst.goal.slice(0, 120)}{inst.goal.length > 120 ? '…' : ''}
+                      <td style={{ maxWidth: 360, wordBreak: 'break-word' }}>
+                        {inst.goal.slice(0, 140)}{inst.goal.length > 140 ? '…' : ''}
                         {inst.error && (
                           <span style={{ color: '#f87171', display: 'block', fontSize: 11 }}>
                             {inst.error.slice(0, 80)}
                           </span>
                         )}
                       </td>
-                      <td style={{ fontSize: 11, color: '#8b92a8' }}>{inst.origin_user}</td>
-                      <td style={{ textAlign: 'center' }}>{inst.ticks ?? '—'}</td>
                       <td style={{ fontSize: 11, color: '#8b92a8', whiteSpace: 'nowrap' }}>
                         {timeAgo(inst.started_at)}
+                        <span style={{ display: 'block' }}>{dur}</span>
+                        {inst.last_tick_at && inst.registry_status === 'RUNNING' && (
+                          <span style={{ display: 'block', color: inst.liveness === 'stuck' ? '#fb923c' : undefined }}>
+                            tick {timeAgo(inst.last_tick_at)}
+                          </span>
+                        )}
                       </td>
-                      <td style={{ fontSize: 11, whiteSpace: 'nowrap', color: inst.liveness === 'stuck' ? '#fb923c' : '#8b92a8' }}>
-                        {inst.last_tick_at ? timeAgo(inst.last_tick_at) : inst.registry_status === 'RUNNING' ? '等待首次 tick…' : '—'}
-                      </td>
-                      <td style={{ fontSize: 11, color: '#8b92a8', whiteSpace: 'nowrap' }}>{dur}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button
                           type="button"
                           style={{ fontSize: 11, marginRight: 6 }}
                           onClick={() => setSelected(inst.workspace_id)}
                         >
-                          查看
+                          执行图
                         </button>
                         {inst.registry_status === 'RUNNING' && (
                           <button
@@ -1020,10 +915,10 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
                             type="button"
                             style={{ fontSize: 11, background: '#1e3a5f', borderColor: '#3b6ea5' }}
                             disabled={restarting === inst.instance_id}
-                            title="从磁盘续跑（dyflow-state + memory.json）"
+                            title="从磁盘续跑"
                             onClick={() => void restartInstance(inst.instance_id)}
                           >
-                            {restarting === inst.instance_id ? '续跑中…' : inst.liveness === 'dead' ? '续跑' : '继续'}
+                            {restarting === inst.instance_id ? '续跑中…' : '续跑'}
                           </button>
                         )}
                       </td>
@@ -1078,314 +973,61 @@ function InnerBrainPoolPanel({ apiPrefix }: { apiPrefix: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function InnerPanel({ workspaceId, apiPrefix }: { workspaceId: string; apiPrefix: string }) {
-  const [goal, setGoal] = useState('');
-  const [telemetry, setTelemetry] = useState<string[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-  const [piMono, setPiMono] = useState<{ ready: boolean; dist?: string; hint?: string | null } | null>(null);
-  const [piBusy, setPiBusy] = useState(false);
-  const [piAutoBusy, setPiAutoBusy] = useState(false);
-  const [piAutoMaxTicks, setPiAutoMaxTicks] = useState('500');
-  const piLocked = piBusy || piAutoBusy;
   const [brainInsp, setBrainInsp] = useState<BrainInspector | null>(null);
   const [piLogs, setPiLogs] = useState<PiLogsResponse | null>(null);
   const [insightLoaded, setInsightLoaded] = useState(false);
   const [insightErr, setInsightErr] = useState<string | null>(null);
-  const [suggestPromoteShutdown, setSuggestPromoteShutdown] = useState(false);
-  const [promoteBusy, setPromoteBusy] = useState(false);
-
-  const pullTelemetry = useCallback(async () => {
-    const t = await fetch(`${apiPrefix}/inner/${workspaceId}/telemetry`).then((r) => r.json());
-    setTelemetry((t.lines as string[]) ?? []);
-  }, [workspaceId]);
 
   const pullInsight = useCallback(async () => {
     try {
       setInsightErr(null);
       const [rb, rl] = await Promise.all([
         fetch(`${apiPrefix}/inner/${workspaceId}/brain-inspector`),
-        fetch(`${apiPrefix}/inner/${workspaceId}/pi-logs?limit=150`),
+        fetch(`${apiPrefix}/inner/${workspaceId}/pi-logs?limit=80`),
       ]);
       if (!rb.ok) throw new Error(`brain-inspector HTTP ${rb.status}`);
       if (!rl.ok) throw new Error(`pi-logs HTTP ${rl.status}`);
       const [b, l] = await Promise.all([rb.json(), rl.json()]);
-      const brain = b as BrainInspector;
-      setBrainInsp(brain);
+      setBrainInsp(b as BrainInspector);
       setPiLogs(l as PiLogsResponse);
-      const g = brain.dyflow?.memory?.goal ?? brain.goalText;
-      if (g?.trim()) setGoal(g.trim());
     } catch (e) {
       setInsightErr(e instanceof Error ? e.message : String(e));
     } finally {
       setInsightLoaded(true);
     }
-  }, [workspaceId]);
+  }, [apiPrefix, workspaceId]);
 
   useEffect(() => {
-    const id = setInterval(() => void pullTelemetry(), 5000);
-    void pullTelemetry();
-    return () => clearInterval(id);
-  }, [pullTelemetry]);
-
-  useEffect(() => {
-    const ms = piBusy ? 450 : 2200;
-    const id = setInterval(() => void pullInsight(), ms);
+    const id = setInterval(() => void pullInsight(), 2500);
     void pullInsight();
     return () => clearInterval(id);
-  }, [piBusy, pullInsight]);
-
-  useEffect(() => {
-    void fetch(`${apiPrefix}/inner/${workspaceId}/pi-mono`)
-      .then((r) => r.json())
-      .then(setPiMono)
-      .catch(() => setPiMono({ ready: false, hint: '无法连接 API' }));
-  }, [apiPrefix, workspaceId]);
+  }, [pullInsight]);
 
   return (
     <div>
-      {err && <div className="card" style={{ color: '#f0a8a8' }}>{err}</div>}
       {insightErr && (
         <div className="card" style={{ color: '#f0a8a8', borderColor: '#6b3030' }}>
-          内脑实况接口失败：{insightErr}（请确认 Agent 已启动、且 vite 代理端口与当前 Agent 一致）
+          执行图接口失败：{insightErr}
         </div>
       )}
       <InnerLiveDeck
         brain={brainInsp}
         logs={piLogs}
-        piBusy={piLocked}
+        piBusy={false}
         insightLoading={!insightLoaded}
       />
-      {suggestPromoteShutdown && (
-        <div className="card inner-nudge" style={{ borderColor: '#3d5a80' }}>
-          <strong>[调试] 建议：manifest 晋升并关闭内脑</strong>
-          <p style={{ marginBottom: 10 }}>
-            正式流程请用外脑：<code>POST /api/outer/inbound</code>（IM 同路径）或{' '}
-            <code>POST /api/outer/workspace/{workspaceId}/shutdown</code>（<code>promote_manifest: true</code>）。
-            此处按钮等价于内脑侧 <code>promote-and-shutdown</code>，便于本地验证。
-          </p>
-          <button
-            type="button"
-            disabled={promoteBusy}
-            onClick={async () => {
-              if (
-                !confirm(
-                  '将 manifest 内容晋升到 Repository，然后关闭内脑（SLEEPING）？\n\n' +
-                    '可在数据层刷新查看执行轨记录。',
-                )
-              ) {
-                return;
-              }
-              setErr(null);
-              setPromoteBusy(true);
-              try {
-                const r = await fetch(`${apiPrefix}/inner/${workspaceId}/promote-and-shutdown`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ tenant_id: TENANT }),
-                });
-                const j = (await r.json()) as { ok?: boolean; error?: string };
-                if (!r.ok) setErr(j.error ?? (await r.text()));
-                else {
-                  setSuggestPromoteShutdown(false);
-                  void pullInsight();
-                  void pullTelemetry();
-                }
-              } finally {
-                setPromoteBusy(false);
-              }
-            }}
-          >
-            {promoteBusy ? '晋升并关闭中…' : '晋升 manifest 并关闭内脑'}
-          </button>
-        </div>
-      )}
-      <div className="card">
-        <strong>Goal（.brain/goal.md，与 openKuroneko 一致）</strong>
-        <textarea rows={5} value={goal} onChange={(e) => setGoal(e.target.value)} style={{ marginTop: 8 }} />
-        <div className="row" style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            onClick={async () => {
-              setErr(null);
-              const r = await fetch(`${apiPrefix}/inner/${workspaceId}/goal`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ goal }),
-              });
-              if (!r.ok) setErr(await r.text());
-              else {
-                void pullInsight();
-                void pullTelemetry();
-              }
-            }}
-          >
-            设置 Goal
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void pullInsight();
-              void pullTelemetry();
-            }}
-          >
-            刷新实况
-          </button>
-          <button
-            type="button"
-            disabled={!piMono?.ready || piLocked}
-            title={piMono?.hint ?? ''}
-            onClick={async () => {
-              setErr(null);
-              setPiBusy(true);
-              try {
-                const r = await fetch(`${apiPrefix}/inner/${workspaceId}/pi-tick`, { method: 'POST' });
-                const j = (await r.json()) as {
-                  ok?: boolean;
-                  error?: string;
-                  suggestPromoteShutdown?: boolean;
-                };
-                if (!r.ok) setErr(j.error ?? await r.text());
-                else {
-                  setSuggestPromoteShutdown(!!j.suggestPromoteShutdown);
-                  void pullInsight();
-                  void pullTelemetry();
-                }
-              } finally {
-                setPiBusy(false);
-              }
-            }}
-          >
-            {piBusy ? 'Pi-mono 单步…' : 'Pi-mono 单步 tick'}
-          </button>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            Auto 上限
-            <input
-              type="number"
-              min={1}
-              max={10000}
-              value={piAutoMaxTicks}
-              onChange={(e) => setPiAutoMaxTicks(e.target.value)}
-              style={{ width: 88, margin: 0 }}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={!piMono?.ready || piLocked}
-            title={piMono?.hint ?? ''}
-            onClick={async () => {
-              const maxTicks = Math.min(10000, Math.max(1, parseInt(piAutoMaxTicks, 10) || 500));
-              if (
-                !confirm(
-                  `Pi-mono Auto：同一请求内最多连续执行 ${maxTicks} 次控制器 tick，直到本轮「无活」或达到上限。可能耗时很长，确定？`,
-                )
-              ) {
-                return;
-              }
-              setErr(null);
-              setPiAutoBusy(true);
-              try {
-                const r = await fetch(`${apiPrefix}/inner/${workspaceId}/pi-auto`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ maxTicks }),
-                });
-                const j = (await r.json()) as {
-                  ok?: boolean;
-                  error?: string;
-                  ticks?: number;
-                  stoppedBy?: string;
-                  suggestPromoteShutdown?: boolean;
-                };
-                if (!r.ok) setErr(j.error ?? await r.text());
-                else {
-                  setSuggestPromoteShutdown(!!j.suggestPromoteShutdown);
-                  void pullInsight();
-                  void pullTelemetry();
-                }
-              } finally {
-                setPiAutoBusy(false);
-              }
-            }}
-          >
-            {piAutoBusy ? 'Pi-mono Auto 运行中…' : 'Pi-mono Auto（跑到空闲）'}
-          </button>
-          <button
-            type="button"
-            className="danger"
-            title="清空 .brain 与 .run 下 Pi/遥测/manifest 等，便于从零重测"
-            onClick={async () => {
-              if (
-                !confirm(
-                  '完全清空内脑状态并重新测试？\n\n' +
-                    '将删除 Goal；清空 memory / local_dag / LocalNode 等 DyFlow 状态；\n' +
-                    '删除 .run/pi-mono（含日志与 deliverables）、遥测 trace、LLM 缓存；\n' +
-                    '重置 manifest。\n\n' +
-                    '不会删除 workspace 根目录的报告文件与 .tool-outputs。',
-                )
-              ) {
-                return;
-              }
-              setErr(null);
-              const r = await fetch(`${apiPrefix}/inner/${workspaceId}/reset`, { method: 'POST' });
-              const j = (await r.json()) as { ok?: boolean; error?: string };
-              if (!r.ok) setErr(j.error ?? (await r.text()));
-              else {
-                void pullInsight();
-                void pullTelemetry();
-              }
-            }}
-          >
-            完全清空（重新测试）
-          </button>
-          <button
-            type="button"
-            className="danger"
-            title="停止当前 DyFlow burst（写入 DONE），不删 Goal"
-            onClick={async () => {
-              if (
-                !confirm(
-                  '关闭内脑？\n\n将把 DyFlow 置为 DONE 并停止 worker；Goal 与 memory 文件保留，可续跑新 burst。',
-                )
-              ) {
-                return;
-              }
-              setErr(null);
-              const r = await fetch(`${apiPrefix}/inner/${workspaceId}/brain-shutdown`, { method: 'POST' });
-              const j = (await r.json()) as { ok?: boolean; error?: string };
-              if (!r.ok) setErr(j.error ?? (await r.text()));
-              else {
-                void pullInsight();
-                void pullTelemetry();
-              }
-            }}
-          >
-            关闭内脑
-          </button>
-        </div>
-        <p style={{ fontSize: 12, color: '#8b92a8', marginTop: 12, lineHeight: 1.5 }}>
-          <strong>单步粒度</strong>：一次 <code>Pi-mono 单步</code> = DyFlow <code>Controller.tick()</code> 一次宏步。
-          <strong>DESIGN</strong> 由 Designer 规划 <code>local_dag</code>；<strong>RUN</strong> 由 Runner 顺序执行节点（baseNode
-          内可多轮 LLM+工具）。连续无进展或达轮次上限会以 transient failure 交还 Designer。
-          <strong>Auto</strong> 在同一连接内连续 tick，直到 <code>hadWork=false</code> 或达到 Auto 上限。
-        </p>
-        {piMono && !piMono.ready && (
-          <p style={{ fontSize: 12, color: '#c9a227', marginTop: 8 }}>
-            Pi-mono 未就绪：{piMono.hint ?? '请检查 API 服务'}
-            {piMono.dist ? ` · runtime=${piMono.dist}` : ''}
-          </p>
-        )}
+      <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="button" style={{ fontSize: 12 }} onClick={() => void pullInsight()}>
+          刷新执行图
+        </button>
+        <span style={{ fontSize: 12, color: '#8b92a8' }}>
+          主视图 = DyFlow DAG / EW steps。Pi-mono 单步 / Auto / reset 已移出运维面。
+        </span>
       </div>
-
-      <details className="card inner-live-details">
-        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>调试 · 遥测 trace 尾部</summary>
-        <pre style={{ overflow: 'auto', maxHeight: 240, fontSize: 11, marginTop: 8 }}>
-          {telemetry.length ? telemetry.join('\n') : '（空）'}
-        </pre>
-      </details>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // ModelBenchPanel — 模型 API 测速界面
 // ─────────────────────────────────────────────────────────────────────────────
 

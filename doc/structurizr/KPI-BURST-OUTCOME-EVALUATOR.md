@@ -13,6 +13,7 @@
 | 类型 | burst 结束 | 外脑行为 |
 |------|------------|----------|
 | **KPI**（有 `kpi_id`） | onExit | **必须** `ingestDeliverables` → `status.deliverables[]`；落盘状态 + 可选 outcome/momentum → **发出** `burst_finished`；**禁止**直接 spawn；**禁止**默认 `completionNotify`（IM） |
+| **KPI · 日历到期 execute** | EW 后台 settle | **例外**：`ensureAllowlistedEwDeliverables` → ingest → `notifyKpiScheduledReport`（摘要 + 附件）到 originThread。**投递确认**：IM `postMessage` 失败（如微信缺 `context_token`）**不得**写 `completion-notified.json`；入队 `pending-scheduled-reports.json`，入站刷新 token 后冲刷。微信 `context_token` 须持久化（`DATA_ROOT/channels/wechat/*.context-tokens.json`），防重启丢锚点假「已通知」。 |
 | **Ad-hoc**（无 `kpi_id`） | onExit | **必须** ingest；**直接** `completionNotify` → 用户；`ingestInnerOutput` → mem9；不评估、不写 KPI 续派 |
 | **AWAITING + ask_user** | onExit | 不评估；`notifyInnerBrainAwaitingHuman`；等待只阻塞依赖项，释放员工容量 |
 
@@ -109,3 +110,12 @@ interface BurstOutcomeEvaluation {
 | burstProcessReport | `burst-process-report.test.ts` | — |
 | kpiBurstOutcomeEvaluator | `kpi-burst-outcome-evaluator.test.ts` | ⏳ `kpiBurstHooks` + fixture |
 | KPI onExit ingest（无 IM） | ✅ `ingestInnerBrainDeliverablesOnExit` | — |
+| EW 定时报告 allowlist | ✅ `ew-deliverable-allowlist.test.ts` | — |
+
+---
+
+## 7. 变更
+
+| 日期 | 说明 |
+|------|------|
+| 2026-07-25 | 日历 execute：allowlist 补登记产物 + 定时报告附件；X 采集 EW@3 对齐 4h 窗 |

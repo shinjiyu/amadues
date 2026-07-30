@@ -83,9 +83,9 @@ RunContext {
 | 项 | 值 |
 |----|-----|
 | 谁调 | **Mandatory Attributor**（主）；外脑 `workflow_promote` 为人工补录/改版 |
-| 何时 | 本轮 RUN **成功**且路径可机检（`from=auto` 扫 `local_dag` / playbook，或 `steps_json`） |
+| 何时 | 本轮 RUN **成功**且路径可机检；**优先 `from=auto`**（扫 `local_dag` / playbook）；自由 `steps_json` 受 W5/W6 拒收空壳 |
 | 写入 | `ExecutableWorkflowStore` → `DATA_ROOT/workflows/{id}/`；可选 tag `kpi:{INNER_KPI_ID}` |
-| 不变量 | 仍遵守 W3（每步机械 expect）；禁止无 expect 晋升 |
+| 不变量 | W3 expect + **W5–W12**（action/args、可移植、落盘、shadow、secretRefs、KPI role）；见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) §6.1 |
 
 实现：`promote-executable-workflow-tool.ts` · Attributor registry · 测试：`promote-executable-workflow-tool.test.ts`。
 

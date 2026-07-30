@@ -3,7 +3,7 @@
     "id": "kuroneko",
     "label": "依莉雅 Kuroneko",
     "order": 8,
-    "description": "utlra Kuroneko 本地开发：Dashboard + Drive9 Explorer"
+    "description": "utlra Kuroneko 本地开发：Dashboard + Drive9 Explorer + Chronicle/Geo Engine"
   },
   "services": [
     {
@@ -43,6 +43,44 @@
       },
       "startTimeoutMs": 120000,
       "healthTimeoutMs": 15000
+    },
+    {
+      "id": "kuroneko-chronicle-engine",
+      "label": "编年史 Chronicle Engine (3002)",
+      "page": "kuroneko",
+      "kind": "h5",
+      "openUrl": "http://127.0.0.1:3002/",
+      "ports": [3002],
+      "logs": {
+        "enabled": true,
+        "path": "{{KURONEKO_ROOT}}/scripts/local-dashboard/.logs/chronicle-engine.log"
+      },
+      "commands": {
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/health.ps1\" -Service chronicle-engine",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/start.ps1\" -Service chronicle-engine",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/stop.ps1\" -Service chronicle-engine"
+      },
+      "startTimeoutMs": 90000,
+      "healthTimeoutMs": 10000
+    },
+    {
+      "id": "kuroneko-geo-engine",
+      "label": "Geo Engine 地图工具 (3003)",
+      "page": "kuroneko",
+      "kind": "h5",
+      "openUrl": "http://127.0.0.1:3003/",
+      "ports": [3003],
+      "logs": {
+        "enabled": true,
+        "path": "{{KURONEKO_ROOT}}/scripts/local-dashboard/.logs/geo-engine.log"
+      },
+      "commands": {
+        "health": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/health.ps1\" -Service geo-engine",
+        "start": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/start.ps1\" -Service geo-engine",
+        "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File \"{{KURONEKO_ROOT}}/scripts/local-dashboard/stop.ps1\" -Service geo-engine"
+      },
+      "startTimeoutMs": 90000,
+      "healthTimeoutMs": 10000
     }
   ]
 }

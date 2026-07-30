@@ -65,6 +65,7 @@ import { initKnowledgeDrive9Store, type KnowledgeDrive9Store } from './drive9/kn
 import { initWorkflowDrive9Store, type WorkflowDrive9Store } from './drive9/workflow-drive9-store.js';
 import { seedWorkflowsFromDrive9 } from './drive9/workflow-drive9-seed.js';
 import { ExecutableWorkflowStore } from './outer/executable-workflow-store.js';
+import { pauseInvalidWorkflows } from './outer/workflow-promote.js';
 import { getDrive9Client, resolveDrive9Config } from './drive9/drive9-client.js';
 import { InnerBrainRegistry, type TaskRecord, type TaskStatus } from './outer/inner-brain-registry.js';
 import {
@@ -1650,6 +1651,20 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     makeInboundHandler: (connectionId) => fanInChannel.makeInboundHandler(connectionId),
     cursorDir: path.join(DATA_ROOT, 'channels', 'wechat'),
     assetStore,
+    onContextTokenReady: (threadId) => {
+      void import('./outer/pending-scheduled-report.js')
+        .then(({ flushPendingScheduledReportsForThread }) =>
+          flushPendingScheduledReportsForThread(DATA_ROOT, threadId, {
+            imClient: fanInChannel,
+            agentSid,
+            assetStore,
+            getEngine,
+          }),
+        )
+        .catch((e: unknown) =>
+          console.error('[utlra] flush pending scheduled report failed:', e),
+        );
+    },
   });
   const channelConnectionRegistry = new ChannelConnectionRegistry({
     persistPath: path.join(DATA_ROOT, 'channels', 'connections.json'),
@@ -1680,6 +1695,12 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
   let knowledgeDrive9Store: KnowledgeDrive9Store | undefined;
   let workflowDrive9Store: WorkflowDrive9Store | undefined;
   const executableWorkflowStore = new ExecutableWorkflowStore({ dataRoot: DATA_ROOT });
+  {
+    const paused = pauseInvalidWorkflows(executableWorkflowStore);
+    if (paused.length > 0) {
+      console.log(`[utlra] ExecutableWorkflow audit paused invalid: ${paused.join(', ')}`);
+    }
+  }
 
   const drive9Config = resolveDrive9Config();
   if (drive9Config) {

@@ -17,7 +17,21 @@ import {
   recordOuterToolCall,
   recordOuterToolResult,
 } from './outer-tool-audit.js';
+import {
+  EMPTY_PROMISE_RECOVERY_SYSTEM,
+  shouldReconcileEmptyPromise,
+  type OuterToolResultSnap,
+} from './empty-promise-reconcile.js';
 import { formatAgentNowTag } from '../agent-time.js';
+
+function extractReplyTextFromArgs(argsJson: string): string | null {
+  try {
+    const args = JSON.parse(argsJson) as { text?: unknown };
+    return typeof args.text === 'string' && args.text.trim() ? args.text.trim() : null;
+  } catch {
+    return null;
+  }
+}
 
 // OpenAI-compatible 工具调用消息结构
 
@@ -159,6 +173,7 @@ ${participantsBlock}
 - 一次性任务（写代码、搜索、整理文档）：set_goal 派发内脑（无 kpi_id）——默认 **explore**
 - **再跑已知流程**（用户说按上次/不要摸索/确定性执行/指定 workflow）：\`workflow_list\` → \`set_goal(burst_mode=execute, workflow_id, workflow_version)\` 或 \`workflow_run\`（以用户指定为准）
 - **聊天指定固化**（用户说晋升/冻结/存成工作流）：\`workflow_suggest_promote\`（可选）→ **必须** \`workflow_promote\`（可带 workspace_id / playbook_path / dag_path / steps_json）
+- **EW 跑坏了要自修**：系统会记 \`ew_revision\` 并派 explore；修好后 ATTRIBUTE \`promote_executable_workflow\` **同 id** 升版（可带 base_workflow_*）。不要手改 workflows JSON
 - **探索成功后自动固化**：内脑 ATTRIBUTE 会调 \`promote_executable_workflow\`；你可用 \`workflow_list\` 核对结果
 - **长期 / 开放式 / 周期目标**（"想办法"、"长期跟进"、"持续监控"、"每日收集"、"这是个 KPI"等）：
   1. 先用 set_kpi（周期/常驻用 kind=ongoing）注册，拿到 kpi_id；系统通常会自动 advance 首轮
@@ -183,6 +198,7 @@ ${OUTER_ASYNC_ORCHESTRATION_GUIDE}
 - 必须用 reply_to_user 工具发送消息，不能只输出文本
 - 存 Cookie/Token/账号：keychain_put 入库（独立保管，防长对话丢失）；派内脑前 keychain_get 取明文并**写入 set_goal 的 goal 正文**，勿指望内脑自己去 vault 挖
 - 禁止只口头说「已存入 keychain」而不调用工具；写入成功时工具返回含「已写入并校验」
+- 用户祈使要做事时：必须先成功调用 set_goal / advance_kpi / workflow_run / workflow_promote / set_kpi / schedule_commitment / send_directive 之一，再 reply；禁止只口头说「我去办 / 这就开跑 / 已派内脑」
 - 禁止编造未知信息
 - 禁止在 reply_to_user 的 text 里写 Markdown 链接（例如 \`[昵称](@sid:…)\`）；@人只用「@昵称」或「@显示名」纯文本，不要带 sid URI
 - 每轮最多调用工具 ${MAX_TOOL_ROUNDS} 次`;
@@ -270,6 +286,8 @@ export interface ConversationLoopResult {
   toolsUsed: string[];
   /** 主循环未回复时触发了 reply_to_user 强制收尾轮 */
   forcedReplyRecovery?: boolean;
+  /** 口头答应做事但未派活 → 触发了空口对账纠偏轮 */
+  emptyPromiseRecovery?: boolean;
 }
 
 const RECOVERY_FALLBACK_TEXT =
@@ -291,6 +309,8 @@ async function executeReplyToolCall(
   round: number,
   ctx: OuterToolContext,
   toolsUsed: string[],
+  toolResults?: OuterToolResultSnap[],
+  replyTexts?: string[],
 ): Promise<{ replied: boolean; abortLoop: boolean; output: string }> {
   recordOuterToolCall({
     dataRoot: ctx.dataRoot,
@@ -326,6 +346,11 @@ async function executeReplyToolCall(
   });
 
   toolsUsed.push(tc.function.name);
+  toolResults?.push({ name: tc.function.name, output: toolOut.output });
+  if (tc.function.name === 'reply_to_user') {
+    const text = extractReplyTextFromArgs(tc.function.arguments);
+    if (text) replyTexts?.push(text);
+  }
   console.log(
     `[utlra][outer-loop] round ${round} tool=${tc.function.name} ok=${ok} toolReplied=${toolOut.replied} abort=${!!toolOut.abortLoop} out=${logSnippet(toolOut.output, 120)}`,
   );
@@ -344,6 +369,8 @@ async function runForcedReplyRecovery(opts: {
   callLlm: LlmToolCallFn;
   roundsUsed: number;
   toolsUsed: string[];
+  toolResults?: OuterToolResultSnap[];
+  replyTexts?: string[];
   lastContent: string | null;
 }): Promise<{ replied: boolean; roundsUsed: number; lastContent: string | null }> {
   const { env, ctx, messages, config, callLlm } = opts;
@@ -405,7 +432,14 @@ async function runForcedReplyRecovery(opts: {
         });
         continue;
       }
-      const out = await executeReplyToolCall(tc, roundsUsed, ctx, opts.toolsUsed);
+      const out = await executeReplyToolCall(
+        tc,
+        roundsUsed,
+        ctx,
+        opts.toolsUsed,
+        opts.toolResults,
+        opts.replyTexts,
+      );
       messages.push({
         role: 'tool',
         tool_call_id: tc.id,
@@ -429,6 +463,8 @@ async function runForcedReplyRecovery(opts: {
       roundsUsed,
       ctx,
       opts.toolsUsed,
+      opts.toolResults,
+      opts.replyTexts,
     );
     if (out.replied) replied = true;
     if (out.abortLoop) return { replied, roundsUsed, lastContent };
@@ -451,8 +487,121 @@ async function runForcedReplyRecovery(opts: {
       roundsUsed,
       ctx,
       opts.toolsUsed,
+      opts.toolResults,
+      opts.replyTexts,
     );
     if (out.replied) replied = true;
+  }
+
+  return { replied, roundsUsed, lastContent };
+}
+
+/**
+ * 口头答应做事却未成功派活：再给一轮完整工具环（非 reply-only）。
+ * @see doc/structurizr/IM-INBOUND-INTENT-ROUTING.md §4.2
+ */
+async function runEmptyPromiseRecovery(opts: {
+  env: InnerLlmEnv;
+  ctx: OuterToolContext;
+  messages: ConvMessage[];
+  config: ConversationLoopConfig;
+  callLlm: LlmToolCallFn;
+  roundsUsed: number;
+  toolsUsed: string[];
+  toolResults: OuterToolResultSnap[];
+  replyTexts: string[];
+  lastContent: string | null;
+}): Promise<{
+  replied: boolean;
+  roundsUsed: number;
+  lastContent: string | null;
+}> {
+  const { env, ctx, messages, config, callLlm, toolsUsed, toolResults, replyTexts } = opts;
+  let roundsUsed = opts.roundsUsed;
+  let lastContent = opts.lastContent;
+  let replied = false;
+
+  messages.push({ role: 'user', content: EMPTY_PROMISE_RECOVERY_SYSTEM });
+  console.warn('[utlra][outer-loop] empty-promise recovery: forcing one more full tool round');
+
+  roundsUsed++;
+  let resp: LlmToolCallResponse;
+  try {
+    resp = await callLlm({
+      env,
+      messages,
+      tools: OUTER_TOOL_DEFS,
+      maxTokens: config.maxTokens,
+    });
+  } catch (e) {
+    console.error('[utlra][outer-loop] empty-promise recovery LLM failed', e);
+    return { replied: false, roundsUsed, lastContent };
+  }
+
+  lastContent = resp.content ?? lastContent;
+  if (!resp.tool_calls.length) {
+    return { replied: false, roundsUsed, lastContent };
+  }
+
+  messages.push({
+    role: 'assistant',
+    content: resp.content ?? null,
+    tool_calls: resp.tool_calls,
+  });
+
+  for (const tc of resp.tool_calls) {
+    recordOuterToolCall({
+      dataRoot: ctx.dataRoot,
+      agentSid: ctx.agentSid,
+      threadId: ctx.threadId,
+      round: roundsUsed,
+      toolName: tc.function.name,
+      argsJson: tc.function.arguments,
+      actionLogStore: ctx.actionLogStore,
+    });
+
+    const t0 = Date.now();
+    let toolOut: { replied: boolean; output: string; abortLoop?: boolean };
+    try {
+      toolOut = await executeOuterTool(tc.function.name, tc.function.arguments, ctx);
+    } catch (e) {
+      toolOut = {
+        replied: false,
+        output: `工具执行错误：${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
+    const ok = isToolOutputOk(toolOut.output);
+    recordOuterToolResult({
+      dataRoot: ctx.dataRoot,
+      agentSid: ctx.agentSid,
+      threadId: ctx.threadId,
+      round: roundsUsed,
+      toolName: tc.function.name,
+      output: toolOut.output,
+      ok,
+      durationMs: Date.now() - t0,
+      actionLogStore: ctx.actionLogStore,
+    });
+
+    toolsUsed.push(tc.function.name);
+    toolResults.push({ name: tc.function.name, output: toolOut.output });
+    if (tc.function.name === 'reply_to_user') {
+      const text = extractReplyTextFromArgs(tc.function.arguments);
+      if (text) replyTexts.push(text);
+    }
+    if (toolOut.replied) replied = true;
+
+    messages.push({
+      role: 'tool',
+      tool_call_id: tc.id,
+      content: toolOut.output,
+    });
+
+    console.log(
+      `[utlra][outer-loop] empty-promise round ${roundsUsed} tool=${tc.function.name} ok=${ok} out=${logSnippet(toolOut.output, 120)}`,
+    );
+
+    if (toolOut.abortLoop) break;
   }
 
   return { replied, roundsUsed, lastContent };
@@ -491,6 +640,8 @@ export async function runOuterConversationLoop(
   let roundsUsed = 0;
   let lastContent: string | null = null;
   const toolsUsed: string[] = [];
+  const toolResults: OuterToolResultSnap[] = [];
+  const replyTexts: string[] = [];
   let abortedByFreshCheck = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -531,6 +682,7 @@ export async function runOuterConversationLoop(
               text: resp.content.trim(),
             });
             replied = true;
+            replyTexts.push(resp.content.trim());
           } catch (e) {
             console.error('[utlra][outer-loop] fallback reply failed', e);
           }
@@ -585,6 +737,11 @@ export async function runOuterConversationLoop(
       });
 
       toolsUsed.push(tc.function.name);
+      toolResults.push({ name: tc.function.name, output: toolOut.output });
+      if (tc.function.name === 'reply_to_user') {
+        const text = extractReplyTextFromArgs(tc.function.arguments);
+        if (text) replyTexts.push(text);
+      }
       if (toolOut.replied) replied = true;
       if (toolOut.abortLoop) shouldAbort = true;
 
@@ -624,9 +781,34 @@ export async function runOuterConversationLoop(
       callLlm,
       roundsUsed,
       toolsUsed,
+      toolResults,
+      replyTexts,
       lastContent,
     });
     replied = recovered.replied;
+    roundsUsed = recovered.roundsUsed;
+    lastContent = recovered.lastContent;
+  }
+
+  let emptyPromiseRecovery = false;
+  if (
+    !abortedByFreshCheck &&
+    shouldReconcileEmptyPromise({ userMessage, replyTexts, toolResults })
+  ) {
+    emptyPromiseRecovery = true;
+    const recovered = await runEmptyPromiseRecovery({
+      env,
+      ctx,
+      messages,
+      config,
+      callLlm,
+      roundsUsed,
+      toolsUsed,
+      toolResults,
+      replyTexts,
+      lastContent,
+    });
+    if (recovered.replied) replied = true;
     roundsUsed = recovered.roundsUsed;
     lastContent = recovered.lastContent;
   }
@@ -635,8 +817,16 @@ export async function runOuterConversationLoop(
   console.log(
     `[utlra][outer-loop] done: replied=${replied} rounds=${roundsUsed} tools=${toolsChain}` +
       `${forcedReplyRecovery ? ' recovery=1' : ''}` +
+      `${emptyPromiseRecovery ? ' emptyPromise=1' : ''}` +
       `${!replied ? ` lastContent=${logSnippet(lastContent)}` : ''}`,
   );
 
-  return { replied, roundsUsed, lastContent, toolsUsed, forcedReplyRecovery };
+  return {
+    replied,
+    roundsUsed,
+    lastContent,
+    toolsUsed,
+    forcedReplyRecovery,
+    emptyPromiseRecovery,
+  };
 }

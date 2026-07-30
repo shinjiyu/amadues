@@ -8,7 +8,7 @@ import {
 } from './node-def-drive9-store.js';
 import type { NodeDef } from '../openkuroneko/inner-brain/types.js';
 
-/** 内存版 Drive9Fs 替身 */
+/** 内存版 Drive9Fs 替身；grep 按 token 匹配路径/正文（空命中 → []，测「不回退全库」） */
 function createMemFs(): Drive9Fs & { dump(): Record<string, string> } {
   const files = new Map<string, string>();
   return {
@@ -22,7 +22,20 @@ function createMemFs(): Drive9Fs & { dump(): Record<string, string> } {
         .filter(k => k.startsWith(prefix))
         .map(k => ({ name: k.slice(prefix.length), size: 0, isDir: false }));
     },
-    async grep() { return []; },
+    async grep(query, dir, topK = 5) {
+      const prefix = dir.endsWith('/') ? dir : dir + '/';
+      const tokens = String(query).toLowerCase().split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) return [];
+      const hits: { name: string; score: number }[] = [];
+      for (const [k, content] of files) {
+        if (!k.startsWith(prefix) || !k.endsWith('.json')) continue;
+        const hay = `${k}\n${content}`.toLowerCase();
+        if (tokens.some(t => hay.includes(t))) {
+          hits.push({ name: k.slice(prefix.length), score: 1 });
+        }
+      }
+      return hits.slice(0, topK);
+    },
     async copy(src, dst) { const v = files.get(src); if (v !== undefined) files.set(dst, v); },
     dump() { return Object.fromEntries(files); },
   };
@@ -102,18 +115,29 @@ describe('nodeDefDrive9Store', () => {
     expect(list[0]?.status).toBe('tombstone');
   });
 
-  it('search falls back to index when grep empty and filters by tag', async () => {
+  it('search returns [] when grep empty — no full-catalog dump', async () => {
     const store = createNodeDefDrive9Store(fs);
     await store.put(makeDef('a', { tags: ['battle'] }));
     await store.put(makeDef('b', { tags: ['research'] }));
-    const battles = await store.search('anything', { filterTags: ['battle'] });
+    // query 与正文均无交集 → 不得回退成 active 全表
+    expect(await store.search('zzzz_no_such_token')).toHaveLength(0);
+  });
+
+  it('search returns grep hits and applies filterTags', async () => {
+    const store = createNodeDefDrive9Store(fs);
+    await store.put(makeDef('a', { tags: ['battle'] }));
+    await store.put(makeDef('b', { tags: ['research'] }));
+    // token "battle" 命中 a 的 tags；再 filterTags 收窄
+    const battles = await store.search('battle', { filterTags: ['battle'] });
     expect(battles.map(d => d.id)).toEqual(['a']);
+    const none = await store.search('battle', { filterTags: ['research'] });
+    expect(none).toHaveLength(0);
   });
 
   it('search excludes tombstoned defs', async () => {
     const store = createNodeDefDrive9Store(fs);
     await store.put(makeDef('a'));
     await store.tombstone('a', '1.0.0');
-    expect(await store.search('x')).toHaveLength(0);
+    expect(await store.search('def a')).toHaveLength(0);
   });
 });

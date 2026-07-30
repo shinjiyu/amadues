@@ -29,15 +29,18 @@ describe('dyflow-inspector', () => {
     expect(isDyflowWorkDir(root)).toBe(true);
   });
 
-  it('builds payload from disk', () => {
+    it('builds payload from disk', () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'dyflow-insp-'));
     const brain = path.join(root, '.brain');
     fs.mkdirSync(path.join(brain, 'local_nodes', 'preset'), { recursive: true });
-    fs.writeFileSync(path.join(brain, 'dyflow-state.json'), JSON.stringify({ mode: 'DESIGN', burstId: 'b2' }));
+    fs.writeFileSync(path.join(brain, 'dyflow-state.json'), JSON.stringify({ mode: 'RUN', burstId: 'b2' }));
     fs.writeFileSync(
       path.join(brain, 'local_dag.json'),
       JSON.stringify({
-        nodes: [{ id: 'n1', ref: 'preset/base', instruction: 'do x' }],
+        nodes: [
+          { id: 'n1', ref: 'preset/base', instruction: 'do x' },
+          { id: 'n2', ref: 'local/y', instruction: 'do y' },
+        ],
       }),
     );
     fs.writeFileSync(
@@ -45,7 +48,7 @@ describe('dyflow-inspector', () => {
       JSON.stringify({
         facts: ['a'],
         constraints: [],
-        node_results: { n0: { ok: true, ref: 'preset/base' } },
+        node_results: { n1: { ok: true, ref: 'preset/base' } },
         last_failure: {
           nodeInstId: 'n9',
           localRef: 'preset/base',
@@ -57,13 +60,29 @@ describe('dyflow-inspector', () => {
         },
       }),
     );
+    fs.mkdirSync(path.join(root, '.run'), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, '.run', 'workflow_run.json'),
+      JSON.stringify({
+        workflowId: 'ew-x',
+        version: '1',
+        ok: true,
+        steps: [{ stepId: 'a', ok: true, attempts: 1, detail: 'exit 0' }],
+      }),
+    );
 
     const p = buildDyflowInspectorPayload(root);
     expect(p.engine).toBe('dyflow');
-    expect(p.state?.mode).toBe('DESIGN');
-    expect(p.dag?.nodeCount).toBe(1);
+    expect(p.state?.mode).toBe('RUN');
+    expect(p.dag?.nodeCount).toBe(2);
+    expect(p.dag?.impliedEdges).toBe(true);
+    expect(p.dag?.edges).toEqual([{ from: 'n1', to: 'n2' }]);
+    expect(p.dag?.nodes.find((n) => n.id === 'n1')?.status).toBe('ok');
+    expect(p.dag?.nodes.find((n) => n.id === 'n2')?.status).toBe('active');
     expect(p.memory?.lastFailure?.summary).toContain('proxy');
     expect(p.memory?.nodeResults).toHaveLength(1);
+    expect(p.workflowRun?.workflowId).toBe('ew-x');
+    expect(p.workflowRun?.steps).toHaveLength(1);
   });
 
   describe('summarizeDyflowForList', () => {
@@ -73,6 +92,7 @@ describe('dyflow-inspector', () => {
         dyflow_mode: null,
         dyflow_dag_nodes: null,
         dyflow_failure: null,
+        dyflow_progress: null,
       });
     });
 
@@ -87,13 +107,17 @@ describe('dyflow-inspector', () => {
       );
       fs.writeFileSync(
         path.join(brain, 'memory.json'),
-        JSON.stringify({ last_failure: { summary: 'x'.repeat(200), transient: false } }),
+        JSON.stringify({
+          node_results: { n1: { ok: true, ref: 'preset/base' } },
+          last_failure: { summary: 'x'.repeat(200), transient: false },
+        }),
       );
 
       const s = summarizeDyflowForList(root);
       expect(s.dyflow_mode).toBe('RUN');
       expect(s.dyflow_dag_nodes).toBe(2);
       expect(s.dyflow_failure).toHaveLength(80); // 截断到 80 字符
+      expect(s.dyflow_progress).toBe('1/2');
     });
 
     it('skips oversized memory.json instead of parsing it for list', () => {

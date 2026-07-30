@@ -23,7 +23,20 @@ function createMemFs(): Drive9Fs {
     async delete(p) { files.delete(p); },
     async exists(p) { return files.has(p); },
     async list() { return []; },
-    async grep() { return []; },
+    async grep(query, dir, topK = 5) {
+      const prefix = dir.endsWith('/') ? dir : dir + '/';
+      const tokens = String(query).toLowerCase().split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) return [];
+      const hits: { name: string; score: number }[] = [];
+      for (const [k, content] of files) {
+        if (!k.startsWith(prefix) || !k.endsWith('.json')) continue;
+        const hay = `${k}\n${content}`.toLowerCase();
+        if (tokens.some(t => hay.includes(t))) {
+          hits.push({ name: k.slice(prefix.length), score: 1 });
+        }
+      }
+      return hits.slice(0, topK);
+    },
     async copy(s, d) { const v = files.get(s); if (v !== undefined) files.set(d, v); },
   };
 }
@@ -84,8 +97,24 @@ describe('search_and_instance designer tool', () => {
       sharing: { defStore, llm, logger: silentLogger() },
     });
     const tool = registry.get('search_and_instance')!;
-    await tool.call({ query: 'x' });
-    await tool.call({ query: 'x' });
+    await tool.call({ query: 'good_one' });
+    await tool.call({ query: 'good_one' });
     expect((await defStore.list())[0]?.importCount).toBe(1);
+  });
+
+  it('returns empty instanced when grep misses (no catalog dump)', async () => {
+    const defStore = createNodeDefDrive9Store(fs2);
+    await defStore.put(makeDef('weibo_like'));
+    const localStore = createLocalNodeStore(root);
+    const llm = createFakeLLM([{ match: () => true, reply: { content: JSON.stringify({ binding: { WORK_DIR: '/w' } }) } }]);
+    const { registry } = createDesignerTools({
+      store: localStore, memory: createMemoryStore(root), workDir: root, burstId: 'b1',
+      sharing: { defStore, llm, logger: silentLogger() },
+    });
+    const tool = registry.get('search_and_instance')!;
+    const out = await tool.call({ query: 'twitter_html_gen_table_zzzz' });
+    const parsed = JSON.parse(out.output) as { instanced: unknown[] };
+    expect(parsed.instanced).toEqual([]);
+    expect(localStore.has('imported/weibo_like@1.0.0')).toBe(false);
   });
 });

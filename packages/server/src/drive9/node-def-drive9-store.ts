@@ -173,25 +173,25 @@ export function createNodeDefDrive9Store(fs: Drive9Fs): NodeDefDrive9Store {
     },
 
     async search(query: string, opts?: NodeDefSearchOpts): Promise<NodeDef[]> {
-      const topK = opts?.topK ?? 20;
+      // ADL INNER-NODE-LIFECYCLE §4：默认 topK=5；grep 空/失败 → []，禁止回退全量 active
+      const topK = opts?.topK ?? 5;
       const filterTags = opts?.filterTags;
       const index = await readIndex();
       const active = index.entries.filter(e => e.status === 'active');
 
-      // 优先用 drive9 语义搜索定位 def 文件；失败/空则回退到 index 全量
       let orderedKeys: string[] = [];
       try {
         const hits = await fs.grep(query, `${ROOT}/defs/`, topK);
         orderedKeys = hits.map(h => h.name.replace(/\.json$/, ''));
-      } catch { /* fallback below */ }
-
-      let candidates: NodeDefIndexEntry[];
-      if (orderedKeys.length > 0) {
-        const byKey = new Map(active.map(e => [defKey(e.id, e.version), e]));
-        candidates = orderedKeys.map(k => byKey.get(k)).filter((e): e is NodeDefIndexEntry => !!e);
-      } else {
-        candidates = active;
+      } catch {
+        return [];
       }
+      if (orderedKeys.length === 0) return [];
+
+      const byKey = new Map(active.map(e => [defKey(e.id, e.version), e]));
+      let candidates = orderedKeys
+        .map(k => byKey.get(k))
+        .filter((e): e is NodeDefIndexEntry => !!e);
 
       if (filterTags && filterTags.length > 0) {
         candidates = candidates.filter(e => filterTags.some(t => e.tags.includes(t)));

@@ -8,6 +8,7 @@ export const SET_GOAL_DISPATCHED_MARKERS = [
   '已创建新内脑实例并启动任务',
   '已在既有内脑实例上续跑',
   '已向内脑派发任务',
+  '已后台启动工作流',
 ] as const;
 
 export function isSetGoalDispatched(output: string): boolean {

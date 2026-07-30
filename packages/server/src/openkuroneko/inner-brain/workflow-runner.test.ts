@@ -177,4 +177,52 @@ describe('workflow-runner', () => {
     expect(r.ok).toBe(true);
     expect(called).toBe(1);
   });
+
+  it('W11 secretRefs 注入 shell env', async () => {
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ew-sec-'));
+    let seenEnv: Record<string, string> | undefined;
+    const r = await runExecutableWorkflow(
+      wf({
+        steps: [
+          {
+            id: 's',
+            action: 'shell',
+            args: { command: 'echo ok' },
+            secretRefs: { AUTH_TOKEN: 'x_auth' },
+            expect: { exitCode: 0, stdoutContains: 'ok' },
+          },
+        ],
+      }),
+      {
+        workDir,
+        resolveSecret: async (key) => (key === 'x_auth' ? 'tok-secret' : null),
+        runShell: (_cmd, _cwd, env) => {
+          seenEnv = env;
+          return { exitCode: 0, stdout: 'ok', stderr: '' };
+        },
+      },
+    );
+    expect(r.ok).toBe(true);
+    expect(seenEnv?.['AUTH_TOKEN']).toBe('tok-secret');
+  });
+
+  it('W13 assets 物化后再跑 shell', async () => {
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ew-asset-run-'));
+    const r = await runExecutableWorkflow(
+      wf({
+        assets: [{ path: '.run/ew/hello.py', content: 'print("hi-asset")\n' }],
+        steps: [
+          {
+            id: 's',
+            action: 'shell',
+            args: { command: 'python .run/ew/hello.py' },
+            expect: { exitCode: 0, stdoutContains: 'hi-asset' },
+          },
+        ],
+      }),
+      { workDir },
+    );
+    expect(r.ok).toBe(true);
+    expect(fs.existsSync(path.join(workDir, '.run/ew/hello.py'))).toBe(true);
+  });
 });

@@ -14,6 +14,9 @@ export interface SelfWorkProposal {
   /** 确定性再跑：带上则 loop 应 set_goal(burstMode=execute) */
   burstMode?: 'explore' | 'execute';
   workflowRef?: { id: string; version: string };
+  /** W15：EW 自优化修订；穿透未到期日历硬闸 */
+  purpose?: 'ew_revision';
+  evolutionId?: string;
 }
 
 export type SelfWorkKpi = Pick<
@@ -120,12 +123,15 @@ export function validateSelfWorkProposal(
     if (perception.kpiIdsWithInFlight.includes(proposal.kpiId)) {
       return { ok: false, reason: 'kpi_has_inflight' };
     }
-    if (perception.kpiIdsWithFuturePeriodicCalendar.includes(proposal.kpiId)) {
-      if (!perception.kpiIdsNeedingRepair.includes(proposal.kpiId)) {
-        return { ok: false, reason: 'kpi_has_scheduled_calendar' };
-      }
+    const isEwRevision = proposal.purpose === 'ew_revision';
+    // 未到期日历硬闸：禁止 SelfWork 再派日常 collect；W15 ew_revision 可穿透
+    if (
+      !isEwRevision &&
+      perception.kpiIdsWithFuturePeriodicCalendar.includes(proposal.kpiId)
+    ) {
+      return { ok: false, reason: 'kpi_has_scheduled_calendar' };
     }
-    if (perception.kpiIdsBootstrapDone.includes(proposal.kpiId)) {
+    if (!isEwRevision && perception.kpiIdsBootstrapDone.includes(proposal.kpiId)) {
       if (!perception.kpiIdsNeedingRepair.includes(proposal.kpiId)) {
         return { ok: false, reason: 'kpi_bootstrap_done_await_calendar' };
       }

@@ -192,6 +192,17 @@ export class InnerBrainRegistry {
   }
 
   /**
+   * 从注册表移除实例（不删磁盘；磁盘由 innerWorkspaceRetention 负责）。
+   * @returns 是否曾存在
+   */
+  remove(instanceId: string): boolean {
+    if (!this.tasks.delete(instanceId)) return false;
+    this._sortedCache = null;
+    this._save();
+    return true;
+  }
+
+  /**
    * Server 启动时调用：将所有遗留的 RUNNING 任务标为 STOPPED 并返回它们。
    * 原因：内脑子进程是 agent 进程的子进程，agent 重启后这些子进程已被一起杀掉。
    * 不自动 respawn；续跑见 changeWatcher / kpiAdvancer / POST …/restart。

@@ -142,6 +142,9 @@ function buildUserMessage(ctx: BaseNodeRunContext): string {
       ? node.interface.outputs.map(o => `- ${o.key} (${o.type})`).join('\n')
       : '- （无强制 outputs；以子目标达成为准）';
 
+  // P-prompt（DYFLOW §6.7a）：机械验票口令须进 prompt，避免 ALL_CHECKS_PASSED≠FILES_READY 假失败
+  const deliverableBlock = formatDeliverableForPrompt(inst.deliverable);
+
   return [
     `## 你的子目标\n${objective}`,
     `## 全局目标\n${memory.goal ?? '（未指定）'}`,
@@ -149,12 +152,37 @@ function buildUserMessage(ctx: BaseNodeRunContext): string {
     selectFactsForPrompt(memory.fact_records ?? []).section,
     lastFailureBlock,
     `## 本节点需产出的 outputs（必须真实落地）\n${outputsContract}`,
+    deliverableBlock,
     extraCtx.length ? `## 额外上下文\n${extraCtx.join('\n')}` : '',
     `## 工作目录\n${workDir}`,
     `在资源预算内达成子目标并产出 outputs。重复失败或卡住时应尽早 CANNOT_CONTINUE（永久）或 CANNOT_CONTINUE(transient) 上交 Designer，勿空转；接近上限时收束或上报。`,
   ]
     .filter(Boolean)
     .join('\n\n---\n\n');
+}
+
+/** §6.7a P-prompt：把 Designer 声明的交付物检查原样披露给 baseNode */
+export function formatDeliverableForPrompt(
+  deliverable: NodeInst['deliverable'] | undefined,
+): string {
+  if (!deliverable || deliverable.checks.length === 0) return '';
+  const lines = deliverable.checks.map(c => {
+    const desc = c.describe?.trim() ? ` — ${c.describe.trim()}` : '';
+    return `- [${c.kind}] target=\`${c.target}\`${desc}`;
+  });
+  const stdoutHints = deliverable.checks
+    .filter(c => c.kind === 'stdout_contains' || c.kind === 'stdout_absent')
+    .map(c =>
+      c.kind === 'stdout_contains'
+        ? `必须在 stdout/最终回复中**精确包含**子串「${c.target}」（勿用同义成功词）`
+        : `stdout/最终回复中**不得包含**子串「${c.target}」`,
+    );
+  return [
+    `## 本节点交付物验票（机械；与 Runner 一致）`,
+    `摘要：${deliverable.summary}`,
+    ...lines,
+    ...(stdoutHints.length ? ['', ...stdoutHints] : []),
+  ].join('\n');
 }
 
 function getPath(obj: Record<string, unknown>, dotPath: string): unknown {
@@ -538,6 +566,7 @@ export function roundHadToolProgress(roundToolOk: boolean[]): boolean {
 export const __internal = {
   detectTerminal,
   buildUserMessage,
+  formatDeliverableForPrompt,
   collectOutputs,
   roundHadToolProgress,
   buildRuntimeContextSection,

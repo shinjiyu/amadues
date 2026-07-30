@@ -162,6 +162,34 @@ inboundHint = renderAdvisoryBlock(ctx)        # 注入 fullContext 给对话环
 5. 执行密度 = 24h 内任务执行时长之和 ÷ (`windowMs × maxRunningInnerBrains`)；上限 100%；
 6. 快指令只回复当前 channel/thread，不改变 KPI、pending、Calendar 或数字员工循环状态。
 
+### 4.2 空口承诺对账（post-loop empty-promise reconcile）
+
+方案一故意把派发留给对话环 LLM，已知失败模式是：**用户高置信祈使要做事 → LLM 只 `reply_to_user` 口头答应（「我去办 / 这就开跑 / 已派内脑」）→ 未成功调用派活工具就提前结束循环**。
+
+**不恢复前置短路派发**（仍遵守 P7）。补一层与 belief-reconcile 同类的**系统层 post-loop 对账**：
+
+```text
+loop 结束后（含 forced reply recovery 之后）：
+  if isUserWorkRequest(userMessage)
+     AND isAgentWorkCommitment(本轮 reply 文本)
+     AND !hasSuccessfulWorkAction(本轮 toolResults)
+  then
+     注入一条 system 纠偏提示 → 再跑至多 1 轮完整工具环（非 reply-only）
+     纠偏目标：成功 set_goal / advance_kpi / workflow_run / workflow_promote /
+               set_kpi / schedule_commitment / send_directive 之一，
+               或改口说明尚未派发并请用户确认
+```
+
+| 规则 | 说明 |
+|------|------|
+| **触发要双侧** | 仅「用户祈使 + 回复承诺语 + 无成功派活」；闲聊 / 只回答不承诺 → 不触发 |
+| **成功派活** | 工具返回须 `isToolOutputOk` 且命中成功标记（`isSetGoalDispatched` / `KPI 推进成功` / `KPI 已创建` / 日历承诺已写入 / `已晋升` / `指令已写入` 等）；软跳过（「跳过」「另一 agent」「禁止…」）不算成功 |
+| **审计纠偏** | `isToolOutputOk` 对软跳过输出标 `ok=false`，避免模型把 skip 当已开跑 |
+| **上限** | 每条入站消息最多 1 次空口纠偏轮；不自动盲派 `set_goal`（仍由 LLM 选工具，避免反方案一） |
+| **提示词辅助** | 硬约束补「禁止只口头答应做事而不调派活工具」；不可单独依赖 prompt |
+
+模块：`emptyPromiseReconcile` → `outer/empty-promise-reconcile.ts`；由 `outerConversationLoop` 在主循环结束后调用。
+
 ---
 
 ## 5. 上下文感知（消除重复 KPI）
@@ -216,6 +244,7 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | `imIntentClassifier` | `outer/inbound/im-intent-classifier.ts` | 退出派发关键路径；可选作 `inboundHint` 弱提示（`isKpiQueryIntent` 等），不决定动作 |
 | 对话环工具 | `outer/outer-tools.ts` `OUTER_TOOL_DEFS` | `set_goal`/`set_kpi`/`advance_kpi`/`send_directive` — **唯一派发入口** |
 | `adHocBurstAllocator` | `outer/ad-hoc-burst-allocator.ts` | 一次性 burst（无 kpi_id），由 `set_goal` 工具调用 |
+| `emptyPromiseReconcile` | `outer/empty-promise-reconcile.ts` | post-loop：用户祈使 + 口头承诺 + 无成功派活 → 强制再跑一轮工具环（§4.2） |
 
 ---
 
@@ -226,6 +255,7 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | `imIntentClassifier` | ✅ `im-intent-classifier.test.ts`（默认 chat / 跟进 / 收窄正则 / 去重降级 / D8）—退出关键路径后仅作模块/弱提示 | — |
 | `inboundContextAssembler` | — | ✅ `inbound-kpi-router.component.integration.test.ts`（只读上下文 + hint + **零副作用**）+ `outer-brain-inbound-kpi-router.integration.test.ts`（前置不派发 → 流入对话环，无 key 降级） |
 | `agentStatusChatCommand` | ✅ `agent-activity-snapshot.test.ts` + `agent-status-chat-command.test.ts`（整句匹配、进度、24h 密度、AWAITING 不计执行密度）+ `inner-brain-registry.test.ts`（statusHistory） | ✅ `outer-brain-inbound.integration.test.ts`（无 LLM 也能命令短路；普通聊天不拦截） |
+| `emptyPromiseReconcile` | ✅ `empty-promise-reconcile.test.ts`（祈使+承诺触发；闲聊/已派活不触发；软跳过不算成功） | ✅ `outer-conversation-loop.test.ts`（空口答应 → 纠偏轮调 `set_goal`） |
 
 **关键回归用例**（复现样本）：
 
@@ -258,3 +288,4 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | 2026-06-23 | 修 D8：`ADHOC_SIGNAL_RE` 剔除裸 `一下`（误把「介绍一下自己」派成 ad-hoc 任务）；ad-hoc 须高置信祈使（`帮我/帮忙/麻烦你/替我`+动作）或产物指代 |
 | 2026-06-24 | **方案一（P4）**：取消前置层短路派发，派发决策下沉对话环 LLM 工具；`inboundKpiRouter` 降为只读上下文装配 + `inboundHint`；分类器退出关键路径（§4 为权威契约，§0–§3 留作演进/回归来源） |
 | 2026-07-21 | 新增只读状态快指令：`状态/进度` 查询当前快照，`密度/今天` 查询 24h 执行槽位利用率；无 LLM、无副作用、禁止走 brain-inspector。 |
+| 2026-07-25 | §4.2 空口承诺对账：post-loop 强制再跑一轮工具环 + `isToolOutputOk` 软跳过纠偏；不恢复前置短路派发（仍 P7）。 |

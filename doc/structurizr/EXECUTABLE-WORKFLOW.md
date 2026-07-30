@@ -106,8 +106,46 @@
 |----|--------|
 | **W1** | promote **必须**产生 `version`；同 id 新内容 = 新 version |
 | **W2** | execute **禁止**静默改 EW 正文 |
-| **W3** | 每个 step 须机械 `expect` |
+| **W3** | 每个 step 须机械 `expect`（`exitCode` \| `fileExists` \| `stdoutContains`） |
 | **W4** | `skill_md` 晋升后：explore 仍可当提示；execute 以 EW steps 为准 |
+| **W5** | `action` **仅**允许 runner 词表：`shell` \| `browser_steps` \| `run_node` \| `assert` \| `skill_step` \| `kpi_charter`（禁止把内脑工具名如 `shell_exec`/`browser_open`/`write_file` 当 action） |
+| **W6** | 按 action **必填 args**：`shell`→`command`；`browser_steps`→`steps`\|`playbook`\|`playbookPath`；`run_node`→`dag`\|`dagPath`；`kpi_charter`→`charter`；缺省拒收、不写盘 |
+| **W7** | ATTRIBUTE **优先 `from=auto`**（扫 local_dag/playbook 由系统填合法 steps）；自由 `steps_json` 仅补录且仍受 W3/W5/W6 约束 |
+| **W8** | **路径可移植**：禁止写死 `…/workspaces/task-…` 或其它 agent workspace 绝对路径；`expect.fileExists` / `playbookPath` / `dagPath` / shell 内路径须相对 **当前 workDir**（execute 的 cwd） |
+| **W9** | **步间状态落盘**：每步 shell 是独立进程，禁止依赖上一步的 `$VAR`/`${VAR}`；跨步中间态写 workspace 相对文件（推荐 `.run/ew/`），同一步内赋值再用可以 |
+| **W10** | promote **结构预检**（shadow）：校验通过后方可 `put`；已入库违 W8/W9 的契约由 `pauseInvalidWorkflows` 停用 |
+| **W11** | **凭据不进契约**：禁止在 steps/args 写入 Cookie/Token/密码明文；须顶层 `secretRefs`（env 名 → keychain entry）；若误写在 `args.secretRefs` **promote 时自动 hoist**；execute 由 runner 注入 |
+| **W12** | **KPI→EW 角色**：同 `kpi:{id}` 可挂多 EW；SelfWork 默认优先 `role:primary` → `role:collect` → 无 `role:repair|verify` 的条目；repair/verify 不抢日常 execute |
+| **W13** | **辅助脚本随契约**：shell 引用的相对脚本（如 `.run/ew/*.py`）必须打进 `assets[]`（path+content）；promote 有 workDir 时自动收集；execute **先物化 assets 再跑步骤** |
+| **W14** | **外脑不阻塞**：EW shell **禁止 spawnSync**；`workflow_run` / `set_goal(execute)` 在 agent 进程内 **后台**跑（立即返回 RUNNING），禁止 await 整段采集堵死对话环 / health |
+| **W15** | **Agent 自优化**：execute settle 后 `workflowOutcomeEvaluator` 判质；不合格 → `workflowEvolutionPolicy` **只提案** explore 修订（`purpose=ew_revision`）；成功 explore 后 ATTRIBUTE `promote_executable_workflow` **同 id bump version**。**禁止** SelfWork/execute 静默改 EW 正文；日历硬闸**不阻挡** `ew_revision`（仍挡日常 collect） |
+
+非法契约 **不得**进入 `DATA_ROOT/workflows/`；已入库的空壳/不可移植/明文凭证/缺脚本契约由治理 pause，须重升合法 version。
+
+### 6.2 自优化闭环（W15）
+
+```text
+execute settle
+  → workflowOutcomeEvaluator（机械 ok + 产物登记/非空）
+  → 不合格 → workflowEvolutionStore 记 pending（按 id@version+signature 去重）
+  → SelfWork 优先消费 pending → set_goal(explore, purpose=ew_revision)
+  → 探索修好脚本/步骤 → promote_executable_workflow(同 id, base_workflow_*)
+  → latestVersion 自动被 findWorkflowRefForKpi / 日历 due / **advance_kpi** 命中
+```
+
+**派发对齐（2026-07-27）：** 凡 KPI 本地已有匹配 EW（`kpi:{kpiId}` + W12 role），下列入口须 `set_goal(burst_mode=execute, workflow_id, workflow_version)`，**禁止**再默认 explore：
+
+| 入口 | 行为 |
+|------|------|
+| 日历 due `executePromptAction` | ✅ 已按 `findWorkflowRefForKpi` execute |
+| **`advance_kpi` / `kpiAdvancer`** | ✅ 同日历：有 EW → execute；无 EW → explore |
+| 聊天显式 `workflow_run` | 始终 execute |
+
+| 模块 | 职责 |
+|------|------|
+| **workflowOutcomeEvaluator** | 读 `workflow_run.json` + allowlist 产物，产出 `needsEvolution` + reasons |
+| **workflowEvolutionStore** | `DATA_ROOT/autonomy/workflow-evolution.json` pending/dispatched |
+| **workflowEvolutionPolicy** | settle 记提案；SelfWork 包装器优先提案 explore 修订 |
 
 ---
 
@@ -118,17 +156,21 @@
 | **executableWorkflowStore** | EW CRUD | `outer/executable-workflow-store.ts` | ✅ |
 | **workflowPromote** | 组装校验写入 | `outer/workflow-promote.ts` | ✅ |
 | **promoteExecutableWorkflow** | **ATTRIBUTE 层 C 工具（主晋升）** | `inner-brain/promote-executable-workflow-tool.ts` | ✅ |
-| **workflowRunner** | execute 逐步执行 | `inner-brain/workflow-runner.ts` | ✅ |
+| **workflowRunner** | execute 逐步执行（**async shell**） | `inner-brain/workflow-runner.ts` | ✅ |
+| **workflowRunBackground** | **✅ 外脑 EW 后台跑（W14）** | `outer/workflow-run-background.ts` | `workflow_run` / `set_goal(execute)` 立即返回 |
 | **workflowKindAdapters** | playbook / frozen_dag / kpi_charter | `inner-brain/workflow-adapters.ts` | ✅ |
 | **burstModeGate** | explore\|execute 收权 | `outer/burst-mode-gate.ts` | ✅ |
 | **workflowTools** | 外脑 list/get/promote/run/pause/suggest | `outer/workflow-tools.ts` | ✅ |
 | **workflowDrive9Store** | drive9 `/workflows/shared/` | `drive9/workflow-drive9-store.ts` | ✅ |
 | **workflowDrive9Seed** | boot / miss 时 pull → 本地 put | `drive9/workflow-drive9-seed.ts` | ✅ P3 |
 | **workflowKindAdapters** | playbook / frozen_dag / kpi_charter | `inner-brain/workflow-adapters.ts` | ✅ P3 真跑可注入 |
-| **workflowForKpi** | KPI tag → EW | `outer/workflow-for-kpi.ts` | ✅ |
+| **workflowForKpi** | **✅ KPI tag → EW（W12 role 优先）** | `outer/workflow-for-kpi.ts` | `kpi:{id}` + `role:primary\|collect\|…` |
 | **workflowsRoute** | Dashboard 只读 | `api/workflows-route.ts` | ✅ |
 | **workflowFailureCircuit** | execute 连败 pause EW | `outer/workflow-failure-circuit.ts` | ✅ |
 | **workflowPromoteSuggest** | 外脑只读建议 | `outer/workflow-promote-suggest.ts` | ✅ |
+| **workflowOutcomeEvaluator** | **✅ execute 质检（W15）** | `outer/workflow-outcome-evaluator.ts` | ✅ |
+| **workflowEvolutionStore** | **✅ 修订提案持久化** | `outer/workflow-evolution-store.ts` | ✅ |
+| **workflowEvolutionPolicy** | **✅ settle 记提案 + SelfWork 优先 explore** | `outer/workflow-evolution-policy.ts` | ✅ |
 
 **禁止**：silent 写 EW（无 Attributor/外脑工具调用）；`workspace-kit` 直访 drive9 workflow API。
 
@@ -155,6 +197,7 @@
 |----|------|------|
 | EW 本地 | `DATA_ROOT/workflows/{id}/` | Attributor / `workflow_promote` |
 | EW 共享 | drive9 `/workflows/shared/{id}@{ver}.json` | promote 可选 sync |
+| EW assets | 同 version JSON 内 `assets[]`（相对 path + utf8 content） | promote 收集；runner 物化 |
 | 执行迹 | `<workDir>/.run/workflow_run.json` | workflowRunner |
 
 ---
@@ -204,3 +247,11 @@
 | 2026-07-23 | **主晋升改挂 DyFlow ATTRIBUTE `promote_executable_workflow`**；聊天显式指定并列 |
 | 2026-07-23 | P3：async `runExecutableWorkflow`；browser 真跑注入；frozen_dag `runLocalDag` 注入；drive9 seed/pull |
 | 2026-07-23 | P4：execute 默认 frozen 真跑（`UTLRA_EW_FROZEN_LIVE`）；补 set_goal/designer/circuit 测 |
+| 2026-07-24 | **W5–W7**：action 白名单 + args 必填；ATTRIBUTE 优先 auto；拒收空壳晋升 |
+| 2026-07-24 | **W8–W10**：路径可移植 + 步间状态落盘 + promote 结构预检；微博粉丝快照场景驱动 |
+| 2026-07-24 | **W11–W12**：secretRefs + promote 拒收明文凭证；KPI→EW `role:*` 挑选（X 监控为主验证场景） |
+| 2026-07-24 | **W13**：`assets` 打包相对脚本 + `args.secretRefs` hoist；execute 先物化 |
+| 2026-07-24 | **W14**：async shell + 外脑 EW 后台执行，禁止堵死事件循环/对话 |
+| 2026-07-25 | X 监控 EW@3：4h 窗 + deliverables 登记；日历 settle 走 allowlist ingest + 定时报告附件 |
+| 2026-07-25 | **W15**：Agent 自优化闭环（outcome evaluator → evolution proposal → explore → 同 id promote） |
+| 2026-07-27 | **派发对齐**：`advance_kpi` / kpiAdvancer 与日历 due 一致——有 `findWorkflowRefForKpi` 命中则 execute，禁止默认 explore |

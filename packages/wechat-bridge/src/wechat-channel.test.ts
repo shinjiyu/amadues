@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   ChatIRSeenTracker,
   IdentityRegistry,
@@ -143,11 +146,70 @@ describe('WechatChannel', () => {
     expect(msg['context_token']).toBe('ctx1');
   });
 
-  it('无 context_token（用户没先发言）→ 拒发不炸', async () => {
+  it('无 context_token（用户没先发言）→ 抛 WechatNoContextTokenError', async () => {
     const { channel, apiCalls } = makeChannel();
     channel.start();
-    await channel.postMessage(THREAD_ID, { sender_sid: AGENT_SID, text: 'x' });
+    await expect(
+      channel.postMessage(THREAD_ID, { sender_sid: AGENT_SID, text: 'x' }),
+    ).rejects.toThrow(/wechat_no_context_token/);
     expect(apiCalls.filter((c) => c.url.includes('sendmessage'))).toHaveLength(0);
+  });
+
+  it('context_token 持久化：重启后仍可出站', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wx-ctx-'));
+    const tokenPath = path.join(dir, 'tokens.json');
+    try {
+      const store: LooseThreadStore = { threads: [], messages: {} };
+      const apiCalls: Array<{ url: string; body: Record<string, unknown> }> = [];
+      const fetchImpl = (async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        const isJsonBody = typeof init?.body === 'string';
+        apiCalls.push({
+          url,
+          body: isJsonBody ? (JSON.parse(String(init!.body)) as Record<string, unknown>) : {},
+        });
+        return jsonResponse({});
+      }) as typeof fetch;
+      const api = new IlinkApiClient({ botToken: 'tok' }, { fetchImpl });
+      const src = fakeSource();
+      const c1 = new WechatChannel({
+        config: { botId: BOT_ID, botToken: 'tok' },
+        agentSid: AGENT_SID,
+        registry: new IdentityRegistry(null),
+        loadThreads: () => store,
+        saveThreads: () => {},
+        seenTracker: new ChatIRSeenTracker({ selfAgentSid: AGENT_SID }),
+        onAgentMessage: async () => {},
+        updateSource: src.source,
+        apiClient: api,
+        contextTokenPath: tokenPath,
+      });
+      c1.start();
+      await src.emit([userMsg()]);
+      expect(fs.existsSync(tokenPath)).toBe(true);
+
+      const src2 = fakeSource();
+      const api2 = new IlinkApiClient({ botToken: 'tok' }, { fetchImpl });
+      const c2 = new WechatChannel({
+        config: { botId: BOT_ID, botToken: 'tok' },
+        agentSid: AGENT_SID,
+        registry: new IdentityRegistry(null),
+        loadThreads: () => store,
+        saveThreads: () => {},
+        seenTracker: new ChatIRSeenTracker({ selfAgentSid: AGENT_SID }),
+        onAgentMessage: async () => {},
+        updateSource: src2.source,
+        apiClient: api2,
+        contextTokenPath: tokenPath,
+      });
+      c2.start();
+      await c2.postMessage(THREAD_ID, { sender_sid: AGENT_SID, text: 'after-restart' });
+      const send = apiCalls.find((c) => c.url.includes('sendmessage'));
+      expect(send).toBeTruthy();
+      expect((send!.body['msg'] as Record<string, unknown>)['context_token']).toBe('ctx1');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('非本 bot 的 thread → skip', async () => {

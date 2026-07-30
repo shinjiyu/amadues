@@ -82,8 +82,10 @@ score = sim(query, memory) × validity × recency_decay × source_trust
 
 ### M1
 
-- [ ] 内脑 DONE、`stop_inner_brain`、KPI abandoned 与记忆状态联动
-- [ ] `set_goal` 同主题 supersede
+- [x] mem9 Belief Card：同 topic supersede-on-write（[`MEMORY-BELIEF-CARD.md`](../structurizr/MEMORY-BELIEF-CARD.md)）
+- [x] 内脑 DONE / EW settle → 工作区证据 upsert；用户「修好了」→ polarity=ok
+- [ ] `stop_inner_brain`、KPI abandoned 与记忆状态联动
+- [ ] `set_goal` 同主题 supersede（探索派发）
 - [ ] 修复 `write_memo`（`:tasks`）与 `read_memory`（`:chat`）一致
 
 ### M2

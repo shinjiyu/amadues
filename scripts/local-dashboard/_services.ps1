@@ -83,6 +83,24 @@ $script:KuronekoServices = @{
     OpenUrl          = 'http://127.0.0.1:7782/'
     StartupWaitSec   = 90
   }
+  'chronicle-engine' = @{
+    Label            = '编年史 Chronicle Engine'
+    NpmScript        = 'dev:chronicle'
+    Port             = 3002
+    HealthUrl        = 'http://127.0.0.1:3002/api/health'
+    HealthJsonField  = 'success'
+    OpenUrl          = 'http://127.0.0.1:3002/'
+    StartupWaitSec   = 90
+  }
+  'geo-engine' = @{
+    Label            = 'Geo Engine 地图工具'
+    NpmScript        = 'dev:geo'
+    Port             = 3003
+    HealthUrl        = 'http://127.0.0.1:3003/health'
+    HealthJsonField  = 'ok'
+    OpenUrl          = 'http://127.0.0.1:3003/'
+    StartupWaitSec   = 90
+  }
   'ops-console' = @{
     Label            = 'Ops Console'
     NpmScript        = 'dev:ops'

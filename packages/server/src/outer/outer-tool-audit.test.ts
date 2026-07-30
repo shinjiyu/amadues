@@ -61,4 +61,11 @@ describe('outer-tool-audit', () => {
     expect(isToolOutputOk('已写入 keychain/x')).toBe(true);
     expect(isToolOutputOk('（错误：boom）')).toBe(false);
   });
+
+  it('isToolOutputOk 软跳过（容量/抢单/禁止）标 ok=false', () => {
+    expect(isToolOutputOk('（另一 agent 已先接单，跳过内脑派发）')).toBe(false);
+    expect(isToolOutputOk('（槽位已满，本次 set_goal 跳过）')).toBe(false);
+    expect(isToolOutputOk('（禁止 set_goal(kpi_id)；长期 KPI 请用 advance_kpi(kpi_id)。）')).toBe(false);
+    expect(isToolOutputOk('已创建新内脑实例并启动任务。instance_id=ib-1')).toBe(true);
+  });
 });

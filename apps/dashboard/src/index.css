@@ -623,6 +623,131 @@ textarea {
   line-height: 1.45;
 }
 
+/* ── Burst 执行图 ─────────────────────────────────────────── */
+.burst-graph {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #30363d;
+  background: #0d1117;
+}
+
+.burst-graph-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.burst-graph-legend {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: #8b92a8;
+}
+
+.burst-leg {
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid #30363d;
+}
+
+.burst-leg-ok {
+  border-color: #4ade80;
+  color: #4ade80;
+}
+.burst-leg-active {
+  border-color: #fbbf24;
+  color: #fbbf24;
+}
+.burst-leg-fail {
+  border-color: #f87171;
+  color: #f87171;
+}
+.burst-leg-pending {
+  border-color: #64748b;
+  color: #94a3b8;
+}
+
+.burst-graph-scroll {
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.burst-graph-svg {
+  display: block;
+  min-width: 280px;
+}
+
+.burst-graph-foot {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #8b92a8;
+}
+
+.burst-graph-list {
+  margin-top: 10px;
+  border-top: 1px solid #21262d;
+  padding-top: 8px;
+}
+
+.burst-graph-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  padding: 4px 0;
+  border-bottom: 1px solid #161b22;
+}
+
+.burst-graph-row code {
+  font-size: 11px;
+  color: #e2e8f0;
+}
+
+.burst-graph-row-ref {
+  color: #94a3b8;
+}
+
+.burst-graph-row-st {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.burst-graph-row-sub {
+  width: 100%;
+  color: #64748b;
+  white-space: pre-wrap;
+}
+
+.burst-st-ok .burst-graph-row-st {
+  color: #4ade80;
+}
+.burst-st-active .burst-graph-row-st {
+  color: #fbbf24;
+}
+.burst-st-fail .burst-graph-row-st {
+  color: #f87171;
+}
+.burst-st-pending .burst-graph-row-st {
+  color: #94a3b8;
+}
+
+.burst-ew-ok {
+  color: #4ade80 !important;
+}
+.burst-ew-fail {
+  color: #f87171 !important;
+}
+
+.burst-graph-empty {
+  margin-top: 14px;
+}
+
 .inner-live-tech {
   margin-top: 14px;
 }

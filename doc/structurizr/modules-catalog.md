@@ -28,11 +28,13 @@
 | knowledgeRetrieval | 知识检索（含按人跨会话记忆注入） | `outer/knowledge-retrieval.ts` | query+senderSid → K/S/P + 本线程 + 跨线程 + 关于此人 片段 |
 | **personMessageRecall** | **按人跨会话召回（chat-ir）**：sid 别名集（bindingIndex 派生）→ 其它 thread 近期发言 | `chat-ir/src/runtime/person-message-recall.ts` | store+sid → PersonMessageHit[]；见 IDENTITY-CROSS-CHANNEL §6.5 |
 | threadOrchestrator | 线程串行 + mention 感知 freshCheck + FIFO 排队 | `outer/thread-orchestrator.ts`; `chat-ir/seen-tracker.ts` | thread ops |
-| outerConversationLoop | 外脑多轮 LLM | `outer/outer-conversation-loop.ts` | context → tool_calls |
+| outerConversationLoop | 外脑多轮 LLM | `outer/outer-conversation-loop.ts` | context → tool_calls；结束后可跑 emptyPromiseReconcile |
+| **emptyPromiseReconcile** | **空口承诺对账（post-loop）** | `outer/empty-promise-reconcile.ts` | 用户祈使 + 口头承诺 + 无成功派活 → 纠偏轮；见 IM-INBOUND-INTENT-ROUTING.md §4.2 |
 | outerToolExecutor | 外脑工具执行 | `outer/outer-tools.ts` | tool_call → reply/spawn |
 | **workspaceInbox** | **同 KPI peer 互读 + `.inbox/` 目录** | `outer/workspace-inbox.ts` | peer ids → catalog（名字/摘要） |
 | innerBrainKpiReuse | set_goal 派发判定 | `outer/inner-brain-kpi-reuse.ts` | `isSetGoalDispatched`（canonical 复用已删，见 KPI-MANAGER-LAYER.md） |
-| innerBrainRegistry | 内脑任务表 | `outer/inner-brain-registry.ts` | spawn/stop → TaskRecord；boot `markStaleRunningAsStopped`（**不** auto-resume，见 [`INNER-BRAIN-STARTUP-RESUME-REMOVED.md`](./INNER-BRAIN-STARTUP-RESUME-REMOVED.md)） |
+| innerBrainRegistry | 内脑任务表 | `outer/inner-brain-registry.ts` | spawn/stop → TaskRecord；boot `markStaleRunningAsStopped`（**不** auto-resume，见 [`INNER-BRAIN-STARTUP-RESUME-REMOVED.md`](./INNER-BRAIN-STARTUP-RESUME-REMOVED.md)）；`remove` 供 retention |
+| **innerWorkspaceRetention** | **终态 workspace 淘汰（心跳级）** | `outer/inner-workspace-retention.ts` | cold + quota → registry remove + rm workDir；见 [`INNER-WORKSPACE-RETENTION.md`](./INNER-WORKSPACE-RETENTION.md) |
 | brainAsyncSnapshot | workDir 异步快照 | `outer/brain-async-snapshot.ts` | workDir → `is_post_complete` 等 |
 | **innerBurstExit** | **burst onExit 最小辅助** | `outer/inner-burst-exit.ts` | workDir → `countDeliverables`；**已移除** hook/reconcile 见 [`KPI-BURST-LIFECYCLE-REMOVED.md`](./KPI-BURST-LIFECYCLE-REMOVED.md) |
 | awaitingInboundResolver | **IM 回复解 pending** | `outer/awaiting-inbound-resolver.ts` | human IM → resolve → changeWatcher spawn；拒 agent-mirror/通知 echo |
@@ -42,9 +44,9 @@
 | kpiRegistry | KPI 与 burst 元数据 | `outer/kpi-registry.ts` | set_kpi → bursts / charter |
 | **burstProcessReport** | **过程报告组装** | `outer/kpi/burst-process-report.ts` | tool-logs + memory.json + deliverables |
 | **kpiCompletionJudge** | **KPI 完成判定（心跳 sweep）** | `outer/kpi-completion-judge.ts` | active KPI → achieved / digest |
-| **nodeDefDrive9Store** | **drive9 `/nodes/shared/` 客户端（P1）** | `drive9/node-def-drive9-store.ts` | put/search/tombstone NodeDef + index |
+| **nodeDefDrive9Store** | **drive9 `/nodes/shared/` 客户端（P1）** | `drive9/node-def-drive9-store.ts` | put/search/tombstone NodeDef + index；**search grep 空不回退全库**（INNER-NODE §4） |
 | **nodeDefEviction** | **NodeDef 治理 sweep（P2，外脑心跳级）** | `outer/node-def-eviction.ts` | dedupe + quota + cold tombstone |
-| outerMemory | mem9 记忆 | `outer/outer-memory.ts` | chat/task → mem9 |
+| outerMemory | mem9 记忆 | `outer/outer-memory.ts` | chat/task → mem9；Belief Card supersede 见 [`MEMORY-BELIEF-CARD.md`](./MEMORY-BELIEF-CARD.md) |
 | **memoryBlockStore** | **结构化 Block CRUD** | `outer/memory-block-store.ts` + `memory-block-tools.ts` | `memory_block_*`；bind → `.brain/secrets/` |
 | completionNotify | 完成通知（IM 精简） | `outer/completion-notify.ts` + `completion-report.ts` | DONE → ingest（`ingestInnerBrainDeliverablesOnExit`）+ 可选 IM；KPI 默认不 IM；`completion-notified.json` 去重 |
 | pushLoop | 消费 worker 输出 | `outer/push-loop.ts` | PROGRESS 可选推渠道；**BLOCK 不推 IM**（见 IM-NOTIFY-BOUNDARY） |
@@ -145,7 +147,7 @@
 | dyflowAttributor | **RUN 后强制归因** | `inner-brain/attributor.ts` | run-context → memory.facts/constraints |
 | **designer** | **DyFlow DESIGN** 阶段（P0） | `inner-brain/designer.ts` | memory + last_failure + LocalNode index → local_dag.json |
 | **runner** | **DyFlow RUN** 阶段（P0） | `inner-brain/runner.ts` | local_dag.json → 派发 baseNode/Creator |
-| **baseNodeExecutor** | **baseNode（猛猛干 ReAct）**（P0） | `inner-brain/base-node-executor.ts` | LocalNode + instruction? + memory → outputs / failure_summary；**runtime context** §6.1b；**§6.7 验票** |
+| **baseNodeExecutor** | **baseNode（猛猛干 ReAct）**（P0） | `inner-brain/base-node-executor.ts` | LocalNode + instruction? + memory → outputs / failure_summary；**runtime context** §6.1b；**§6.7 验票**；**§6.7a P-prompt** 注入 deliverable |
 | **nodeAcceptance** | **完成验票 + shell-evidence**（P0b） | `inner-brain/node-acceptance.ts` | executionLog + outputs → ok/failed；shell 404 假成功；P-evidence；集成 NodeInst.deliverable |
 | **deliverableCheck** | **节点级交付物机械验票引擎**（DYFLOW §6.7a/§9a） | `inner-brain/deliverable-check.ts` | file/json_key/stdout_*；P-alias 路径别名；被 nodeAcceptance + report_done 复用 |
 | **failureDistill** | **RUN 失败→constraints**（P0b） | `inner-brain/failure-distill.ts` | controller RUN 后 mandatory 红线蒸馏 |
@@ -180,6 +182,9 @@
 | **workflowsRoute** | **✅ Dashboard 只读 list/get** | `api/workflows-route.ts` | `GET /api/workflows` |
 | **workflowFailureCircuit** | **✅ execute 连败 pause EW** | `outer/workflow-failure-circuit.ts` | 心跳 tick；不 pause KPI |
 | **workflowPromoteSuggest** | **✅ promote 建议（外脑只读）** | `outer/workflow-promote-suggest.ts` | `workflow_suggest_promote` |
+| **workflowOutcomeEvaluator** | **✅ EW execute 质检（W15）** | `outer/workflow-outcome-evaluator.ts` | settle → needsEvolution |
+| **workflowEvolutionStore** | **✅ EW 修订提案** | `outer/workflow-evolution-store.ts` | `autonomy/workflow-evolution.json` |
+| **workflowEvolutionPolicy** | **✅ 自优化提案 + SelfWork 优先** | `outer/workflow-evolution-policy.ts` | `purpose=ew_revision` 穿透日历闸 |
 | **promoteExecutableWorkflow** | **✅ ATTRIBUTE 层 C 晋升（主路径）** | `inner-brain/promote-executable-workflow-tool.ts` | Attributor 工具 |
 | **nodeAssembler** | **NodeDef + binding → LocalNode**（P1） | `inner-brain/node-assembler.ts` | NodeDef + workDir + hints → imported LocalNode |
 | brainFs | File-as-State（DyFlow 主用 memory/local_nodes；brainFs 余通用文件读写） | `brain/brain-fs.ts` | 读写 `.brain/*` |
@@ -255,3 +260,10 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-07-23 | EW P0+P0.1 落地：store/promote/gate/runner/adapters + 外脑 `workflow_*` 工具（25 单测） |
 | 2026-07-23 | EW P1：drive9 `/workflows/shared/` + SelfWork `workflowRef` → execute（46 相关单测） |
 | 2026-07-23 | EW P2：failure circuit + promote suggest + kpi_sequence |
+| 2026-07-24 | EW promote W5–W10：action/args 闸门 + 路径可移植 + 步间落盘 + pause 非法契约 |
+| 2026-07-24 | EW W11–W12：secretRefs/keychain 注入 + KPI `role:*` 挑选（X 监控为主验证场景） |
+| 2026-07-24 | EW W13：assets 脚本打包 + args.secretRefs hoist |
+| 2026-07-24 | EW W14：async shell + 外脑 EW 后台执行（防堵死对话） |
+| 2026-07-24 | Dashboard 内脑 burst 执行 graph：inspector edges/status + EW workflow_run |
+| 2026-07-25 | Dashboard 主 Tab 精简：Burst/EW/用量/空转/日志/记忆块；旧面进高级 |
+| 2026-07-28 | 内脑 workspace 保留：[`INNER-WORKSPACE-RETENTION.md`](./INNER-WORKSPACE-RETENTION.md)；`innerWorkspaceRetention` + `read_inner_status` historyCap |

@@ -49,6 +49,10 @@ import {
   formatKpiCompletionBlock,
   sweepKpiCompletions,
 } from './kpi-completion-judge.js';
+import {
+  loadRetentionOptionsFromEnv,
+  runInnerWorkspaceRetention,
+} from './inner-workspace-retention.js';
 import { formatRecentThreadMessagesForLlm } from './thread-history.js';
 import type { IdentityRegistry, LooseThreadStore } from '@utlra/chat-ir';
 import {
@@ -476,7 +480,7 @@ async function runHeartbeat(
 
   // 读取记忆层（daily-log + tasks）注入心跳上下文
   const memStore = ctx.memoryStore;
-  const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', hasAny: false };
+  const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', beliefCards: '', hasAny: false };
   const memSection = memStore ? memStore.formatMemoryForLlm(memory) : '';
 
   const threadSection =
@@ -809,6 +813,31 @@ export class OuterHeartbeat {
         console.log(
           `[utlra][heartbeat][kpi-complete] pending ${p.kpiId}: ${p.reason}`,
         );
+      }
+    }
+
+    // 终态 workspace 淘汰（防 registry 爆炸 / include_history 卡死事件循环）
+    if (this.deps.innerBrainRegistry) {
+      const retOpts = loadRetentionOptionsFromEnv();
+      if (retOpts.enabled) {
+        const retention = runInnerWorkspaceRetention(this.deps.innerBrainRegistry, {
+          dataRoot: this.deps.dataRoot,
+          maxTerminal: retOpts.maxTerminal,
+          coldDays: retOpts.coldDays,
+          headroomRatio: retOpts.headroomRatio,
+          maxRemovePerRun: retOpts.maxRemovePerRun,
+          deleteWorkDir: retOpts.deleteWorkDir,
+        });
+        if (retention.removed.length > 0) {
+          console.log(
+            `[utlra][heartbeat][workspace-retention] removed=${retention.removed.length} ` +
+              `terminal_left=${retention.remainingTerminal} ` +
+              `(${retention.removed
+                .slice(0, 5)
+                .map((r) => `${r.instanceId}:${r.reason}`)
+                .join(', ')}${retention.removed.length > 5 ? '…' : ''})`,
+          );
+        }
       }
     }
 

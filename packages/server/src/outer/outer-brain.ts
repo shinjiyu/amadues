@@ -686,7 +686,7 @@ export class OuterBrain {
     const longTermGoal = loadOuterGoal(dataRoot);
 
     // 记忆注入：将 daily-log 和 tasks 状态附加到知识上下文前面
-    const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', hasAny: false };
+    const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', beliefCards: '', hasAny: false };
     const memBlock = memStore ? memStore.formatMemoryForLlm(memory) : '';
     const baseContext = memBlock
       ? memBlock + (knowledgeContext ? '\n\n---\n\n' + knowledgeContext : '')

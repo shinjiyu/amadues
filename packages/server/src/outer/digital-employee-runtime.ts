@@ -42,6 +42,10 @@ import type { SelfWorkProposal } from './self-work-policy.js';
 import { createSelfWorkPolicy } from './self-work-strategies.js';
 import { ExecutableWorkflowStore } from './executable-workflow-store.js';
 import { findWorkflowRefForKpi } from './workflow-for-kpi.js';
+import {
+  markEvolutionDispatched,
+  WorkflowEvolutionSelfWorkPolicy,
+} from './workflow-evolution-policy.js';
 
 export interface DigitalEmployeeRuntimeDeps {
   dataRoot: string;
@@ -88,9 +92,24 @@ export class DigitalEmployeeRuntime {
           typeof task?.metadata['originThreadId'] === 'string'
             ? task.metadata['originThreadId']
             : deps.defaultThreadId;
+        const ewStore =
+          deps.toolCtx.executableWorkflowStore ??
+          new ExecutableWorkflowStore({ dataRoot: deps.dataRoot });
+        const wfRef = kpiId ? findWorkflowRefForKpi(ewStore, kpiId) : null;
         const result = await executeOuterTool(
           'set_goal',
-          JSON.stringify({ goal: prompt, kpi_id: kpiId, origin_thread: originThread }),
+          JSON.stringify({
+            goal: prompt,
+            kpi_id: kpiId,
+            origin_thread: originThread,
+            ...(wfRef
+              ? {
+                  burst_mode: 'execute',
+                  workflow_id: wfRef.id,
+                  workflow_version: wfRef.version,
+                }
+              : {}),
+          }),
           { ...deps.toolCtx, allowKpiSetGoal: Boolean(kpiId) },
         );
         if (!isSetGoalDispatched(result.output)) throw new Error(result.output);
@@ -101,7 +120,7 @@ export class DigitalEmployeeRuntime {
             kpiId,
             packageKind: detectAdvancePackageKind(prompt),
             hadPerception: true,
-            reason: 'calendar_due',
+            reason: wfRef ? 'calendar_due_execute' : 'calendar_due',
           });
           upsertAdvanceCursor(deps.dataRoot, kpiId, {
             bootstrapDone: true,
@@ -279,7 +298,7 @@ export class DigitalEmployeeRuntime {
       reason: 'digital_employee:self_work_strategy',
       detail: spec,
     });
-    return policy;
+    return new WorkflowEvolutionSelfWorkPolicy(this.deps.dataRoot, policy);
   }
 
   private recordMetric(entry: {
@@ -375,6 +394,10 @@ export class DigitalEmployeeRuntime {
       { ...this.deps.toolCtx, allowKpiSetGoal: true },
     );
     if (!isSetGoalDispatched(result.output)) throw new Error(result.output);
+
+    if (proposal.purpose === 'ew_revision' && proposal.evolutionId) {
+      markEvolutionDispatched(this.deps.dataRoot, proposal.evolutionId);
+    }
 
     const packageKind = detectAdvancePackageKind(proposal.action);
     this.advanceMetrics.record({

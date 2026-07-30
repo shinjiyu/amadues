@@ -38,6 +38,8 @@
     "dev:dashboard": "npm run dev -w @utlra/dashboard",
     "dev:ops": "npm run dev -w @utlra/ops-console",
     "dev:drive9": "npm run dev -w @utlra/drive9-explorer",
+    "dev:chronicle": "npm start --prefix experiments/chronicle-engine",
+    "dev:geo": "npm start --prefix experiments/geo-engine",
     "dev:chat-server": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/chat-server",
     "dev:web-chat": "npm run build -w @utlra/webchat-protocol && npm run dev -w @utlra/web-chat",
     "dev:webchat-all": "npm run build -w @utlra/webchat-protocol && concurrently -n chat-server,web-chat -c cyan,green \"npm run dev -w @utlra/chat-server\" \"npm run dev -w @utlra/web-chat\"",

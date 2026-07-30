@@ -22,7 +22,8 @@
 | outerBrainFacade | 🟡 片段 | ✅ `outerBrainFacade.component.integration.test.ts` | — | + `integration/outer-brain-inbound` 全链 |
 | knowledgeRetrieval | ❌ | ✅ `knowledgeRetrieval.component.integration.test.ts`（含 P3 按人跨会话块） | — | |
 | threadOrchestrator | ✅ `chat-ir/seen-tracker.test.ts`（freshCheck @ 语义） | ✅ `threadOrchestrator.component.integration.test.ts`（串行 + FIFO 排队） | — | freshCheck 实现于 `@utlra/chat-ir` |
-| outerConversationLoop | ❌ | ✅ `outerConversationLoop.component.integration.test.ts` | — | + `integration/outer-conversation-loop-assembly` |
+| outerConversationLoop | ✅ `outer-conversation-loop.test.ts`（forced reply + empty-promise 纠偏轮） | ✅ `outerConversationLoop.component.integration.test.ts` | — | + `integration/outer-conversation-loop-assembly`；ADL [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.2 |
+| **emptyPromiseReconcile** | ✅ `empty-promise-reconcile.test.ts` | —（经 outerConversationLoop 接线测） | — | 空口答应不派活；软跳过不算成功派活 |
 | outerToolExecutor | 🟡 tools 单测散落 | ✅ `outerToolExecutor.component.integration.test.ts` | — | `normalizeAgentReplyMentionText` |
 | **workspaceInbox** | ✅ `workspace-inbox.test.ts` | ⏳ | — | ADL [`INNER-WORKSPACE-INBOX.md`](./INNER-WORKSPACE-INBOX.md) |
 | **innerFileTools** | ✅ `read-file-lines.test.ts` | — | — | ADL [`INNER-FILE-ACCESS.md`](./INNER-FILE-ACCESS.md) |
@@ -40,7 +41,9 @@
 | **factDrive9Eviction** | ⏳ | ⏳ | — | P2 drive9 sweep |
 | structuredReplyParts | 🟡 parse | ✅ `structuredReplyParts.component.integration.test.ts` | — | `structured-reply-parts.test.ts` |
 | innerBrainKpiReuse | ✅ `inner-brain-kpi-reuse.test.ts` | — | — | 仅 `isSetGoalDispatched` |
-| innerBrainRegistry | 🟡 `inner-brain-registry.test.ts` | ✅ `innerBrainRegistry.component.integration.test.ts` | — | boot markStale；见 [`INNER-BRAIN-STARTUP-RESUME-REMOVED.md`](./INNER-BRAIN-STARTUP-RESUME-REMOVED.md) |
+| innerBrainRegistry | 🟡 `inner-brain-registry.test.ts` | ✅ `innerBrainRegistry.component.integration.test.ts` | — | boot markStale + `remove`；见 [`INNER-BRAIN-STARTUP-RESUME-REMOVED.md`](./INNER-BRAIN-STARTUP-RESUME-REMOVED.md) |
+| **innerWorkspaceRetention** | ✅ `inner-workspace-retention.test.ts` | — | — | cold/quota；不碰 live；见 [`INNER-WORKSPACE-RETENTION.md`](./INNER-WORKSPACE-RETENTION.md) |
+| **readInnerStatusHistoryCap** | ✅ `read-inner-status-history-cap.test.ts` | — | — | `include_history` 截断；同篇 §2A |
 | innerSpawner | ❌ | ✅ `innerSpawner.component.integration.test.ts` | — | + 可选 `spawn-inner-worker-live`（`UTLRA_TEST_SPAWN_INNER=1`） |
 | kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | |
 | innerBurstExit | ✅ via `kpi-scenario.harness.test.ts` + spawn onExit | — | — | 见 [`KPI-BURST-LIFECYCLE-REMOVED.md`](./KPI-BURST-LIFECYCLE-REMOVED.md) |
@@ -55,7 +58,7 @@
 | burstReuse | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md §2.2 |
 | burstRunHistory | 🟡 `burst-run-history.test.ts` | — | — | §6 执行史；✅ index.ts burst onExit 统一写入（SelfWork 去重 + R7 路线分析数据源） |
 | kpiManager | ✅ `kpi-manager.test.ts` + `kpi-spawn-capacity.test.ts` | ⏳ `kpiManager.component.integration.test.ts` | — | KPI 治理 R3–R7；心跳 R1 advance 仅兼容 fallback |
-| kpiAdvancer | ✅ `kpi-advancer.test.ts` | ✅ `autonomy-heartbeat` | — | IM/Ops advance；心跳经 kpiManager |
+| kpiAdvancer | ✅ `kpi-advancer.test.ts`（含 **有 EW tag → set_goal execute**） | ✅ `autonomy-heartbeat` | — | IM/Ops advance；有 EW 时与日历 due 同走 execute |
 | adHocBurstAllocator | ✅ `ad-hoc-burst-allocator.test.ts` | — | — | §8 一次性任务 |
 | inboundContextAssembler | — | ✅ `inbound-kpi-router.component.integration.test.ts`（只读上下文 + hint + 零副作用）+ `outer-brain-inbound-kpi-router.integration.test.ts`（前置不派发→流入对话环） | — | [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4（方案一） |
 | outerToolsKpiAdvancement | ✅ `outer-tools-kpi-advancement.test.ts` | — | — | `set_goal(kpi_id)` 封禁 |
@@ -66,8 +69,8 @@
 | **employeeCalendar** | ✅ `employee-calendar.test.ts` + `calendar-tools.test.ts`（list/schedule/cancel/remind 幂等、白名单、cap） | ✅ loop due 链；remind→send_message / spawn→set_goal | — | ADL [`EMPLOYEE-CALENDAR.md`](./EMPLOYEE-CALENDAR.md)；对话一等工具 C1–C4 ✅ |
 | **selfWorkPolicy** | ✅ `self-work-policy.test.ts`（expectedOutcome、依赖、去重、冲突、route_blocked、null 休眠）+ `self-work-strategies.test.ts`（4 策略同 fixture 可比较、角度轮换、A/B 探索/利用/回退、spec 解析）+ `self-work-metrics.test.ts`（acceptance/duplicate/no-progress/byStrategy）+ `self-work-llm-policy.test.ts`（JSON 契约、sleep、非法/异常 fallback） | ✅ 由 `digitalEmployeeLoop.component.integration.test.ts` 覆盖提案→派发 | — | 只有提案权；✅ P2 多策略 + 指标 JSONL；✅ P3 llm_reflective + AbTest 灰度（`UTLRA_SELF_WORK_STRATEGY`）；⏳ Duty 整单重放拒收见 advance WP |
 | **advanceWorkPackageBuilder** | ✅ 感知 facet（日历+内脑+stall+cursor）+ 简单调配规则 | ✅ RUNNING/日历闸门；bootstrap+ensure；stall→repair；盲派/重复日历指标 | — | [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
-| outerMemory | ✅ `memory-belief-reconcile.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP |
-| completionNotify | ✅ `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) + ingest R4.7 | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1）；ingest≠notify |
+| outerMemory | ✅ `memory-belief-reconcile.test.ts` + `memory-belief-card.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP + mem9 Belief Card supersede（[`MEMORY-BELIEF-CARD.md`](./MEMORY-BELIEF-CARD.md)） |
+| completionNotify | ✅ `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) + ingest R4.7 + scheduled report allowlist + **pending-scheduled-report** | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1）；ingest≠notify；日历 EW 报告附件；微信缺 token 挂起冲刷 |
 | **deliverableIngestOnExit** | ✅ KPI DONE：ingest 且无 IM（`ingestInnerBrainDeliverablesOnExit`） | — | — | [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap A · 协议 R4.7 |
 | innerBurstExit | 🟡 `inner-burst-exit.test.ts` | — | — | `detectBurstGoalGaps` → partial ERROR |
 | imNotifyDedup | ✅ `im-notify-dedup.test.ts` | — | — | ADL [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md) §2 |
@@ -93,7 +96,7 @@
 | strategyLiveAdapter | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
 | kpiAwaitingReviewLlm | ✅ `kpi-awaiting-review-llm.test.ts` | — | — | P3 LLM JSON 解析 |
 | **frameworkBenchmarkHarness** | ✅ `token-estimate.test.ts` | ✅ `framework-benchmark.component.integration.test.ts` | — | ADL [`FRAMEWORK-BENCHMARK.md`](./FRAMEWORK-BENCHMARK.md) · S1/S2 + `baseline.json` |
-| **nodeDefDrive9Store** | ✅ `node-def-drive9-store.test.ts`（put/get/index/dedupe/search/tombstone） | — | — | ADL [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §5.4（P1，注入 Drive9Fs） |
+| **nodeDefDrive9Store** | ✅ `node-def-drive9-store.test.ts`（put/get/index/dedupe/search/tombstone + **grep 空不回退全库**） | — | — | ADL [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §4/§5.4（P1，注入 Drive9Fs） |
 | **nodeDefEviction** | ✅ `node-def-eviction.test.ts`（score + cold + quota） | — | — | dedupe + quota + cold tombstone（P2） |
 | **identityLinkService** | ✅ `identity-link-tools.test.ts` + `identity-link-inbound.test.ts`（P1 工具与确认口令） | ✅ `identityLinkService.component.integration.test.ts` | — | ADL [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §3；双边确认；Agent 不裁决 |
 | **channelConnectionRegistry** | ✅ `channel-connection-registry.test.ts` + `channel-connection-tools.test.ts` | — | — | ADL §5；飞书 N 连接热插；connector 注入式（kind=feishu 已注册） |
@@ -154,7 +157,7 @@
 | completionReport | ✅ `completion-report.test.ts`（im/verbose） | — | — | burst DONE 完成报告正文 |
 | **designer** | ✅ `designer.test.ts`（run/done/empty + ref 校验） | ✅ `controller.component.integration.test.ts`（DESIGN↔RUN↔DONE 全链） | ⏳ `designer.prompt.test.ts` | P0；DESIGN ↔ RUN 切换 + last_failure 决策表 |
 | **runner** | ✅ `runner.test.ts`（顺序图 + terminal stop + 缺 ref + compound 展开） | ✅ `controller.component.integration.test.ts` | — | P0；顺序图 + dispatch + memory 写入 |
-| **baseNodeExecutor** | ✅ `base-node-executor.test.ts`（render/terminal/allowlist/fail-fast + acceptance + shell-evidence + runtime） | — | — | P0；ReAct + §6.7 验票 |
+| **baseNodeExecutor** | ✅ `base-node-executor.test.ts`（render/terminal/allowlist/fail-fast + acceptance + shell-evidence + runtime + **P-prompt deliverable 注入**） | — | — | P0；ReAct + §6.7 验票；DYFLOW §6.7a P-prompt |
 | **nodeAcceptance** | ✅ `node-acceptance.test.ts`（json/file/string + shell 404 + deliverable AND + P-evidence） | — | — | P0b；DYFLOW §6.7 / §6.7a |
 | **deliverableCheck** | ✅ `deliverable-check.test.ts`（file/json_key/stdout_* + P-alias + 绝对路径拒收） | — | — | DYFLOW §6.7a 路径规范；[`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap B |
 | **failureDistill** | ✅ `failure-distill.test.ts`（distill + dedupe append） | — | — | P0b；DYFLOW §7c |
@@ -175,16 +178,19 @@
 | **nodeSkillStore** | ✅ `node-skill-store.test.ts` | — | — | ADL [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) |
 | **nodeSkillLoader** | ✅ `node-skill-loader.test.ts` | — | — | 执行前加载绑定+全局技能 |
 | **executableWorkflowStore** | ✅ `executable-workflow-store.test.ts` | — | — | ADL [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) P0 |
-| **workflowPromote** | ✅ `workflow-promote.test.ts` | — | — | 无 expect 拒收；version bump |
-| **workflowRunner** | ✅ `workflow-runner.test.ts`（含 browser/frozen 注入） | ✅ `designer-execute-gate.test.ts` | — | async 逐步 expect + failurePolicy |
+| **workflowPromote** | ✅ `workflow-promote.test.ts`（W3/W5–W13 + pauseInvalid） | — | — | 拒收空壳/路径/跨步$VAR/明文凭证；hoist secretRefs；打包 `.run/ew` 脚本 |
+| **workflowForKpi** | ✅ `workflow-for-kpi.test.ts`（tag + role 优先 + SelfWork execute） | — | — | `role:primary`/`collect` 优先于 repair |
+| **workflowRunner** | ✅ `workflow-runner.test.ts`（含 browser/frozen 注入 + async shell） | ✅ `designer-execute-gate.test.ts` | — | async 逐步 expect；禁 spawnSync |
+| **workflowRunBackground** | ✅ `workflow-tools.test.ts`（后台立即返回） | — | — | W14：不等待整段采集 |
 | **workflowKindAdapters** | ✅ `workflow-adapters.test.ts` | — | — | dry-run + browser/frozen 注入真跑 |
 | **workflowTools** | ✅ `workflow-tools.test.ts` | — | — | list/get/promote/run/pause |
 | **workflowDrive9Store** | ✅ `workflow-drive9-store.test.ts` | — | — | `/workflows/shared/{id}@{ver}.json` |
 | **workflowDrive9Seed** | ✅ `workflow-drive9-seed.test.ts` | — | — | boot seed + miss pull |
-| **workflowForKpi** | ✅ `workflow-for-kpi.test.ts` | — | — | SelfWork execute 优先 |
 | **workflowsRoute** | ✅ `workflows-route.test.ts` | — | — | Dashboard `GET /api/workflows` |
 | **workflowFailureCircuit** | ✅ `workflow-failure-circuit.test.ts` | ✅ `kpi-manager.test.ts`（tick pause EW） | — | execute 连败 → pause EW |
 | **workflowPromoteSuggest** | ✅ `workflow-promote-suggest.test.ts` | — | — | 建议不写 store |
+| **workflowOutcomeEvaluator** | ✅ `workflow-outcome-evaluator.test.ts` | — | — | W15 质检 |
+| **workflowEvolutionPolicy** | ✅ `workflow-evolution-policy.test.ts` | — | — | pending + SelfWork 优先 + 日历穿透 |
 | **burstModeGate** | ✅ `burst-mode-gate.test.ts` + `set-goal-execute.test.ts` | — | — | explore\|execute 收权 |
 | **dyflowAttributor** | ✅ `attributor.test.ts`（record_fact + record_skill） | ✅ `controller.component.integration.test.ts` | — | RUN→ATTRIBUTE |
 | **nodeAssembler** | ✅ `node-assembler.test.ts`（applyBinding 无残留/幂等/缺 required） | — | ⏳ `node-assembler.prompt.test.ts` | P1；binding 推断 + 失败包容 |

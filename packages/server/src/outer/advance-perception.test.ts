@@ -100,6 +100,42 @@ describe('advance perception', () => {
     expect(shouldSkipSelfWorkForKpi(perception, 'kpi-1')).toBe(false);
   });
 
+  it('future calendar 硬闸：即使 needingRepair 也不让 SelfWork 抢跑', () => {
+    const perception = collectAdvancePerception({
+      tasks: [
+        task({
+          instanceId: 'ib-stall',
+          status: 'DONE',
+          kpiId: 'kpi-1',
+          finishedAt: new Date().toISOString(),
+        }),
+      ],
+      calendarTasks: [
+        {
+          id: 'cal-1',
+          name: 'daily',
+          status: 'active',
+          nextRunAt: new Date(Date.now() + 3600_000).toISOString(),
+          metadata: { kpiId: 'kpi-1', calendarKey: 'kpi-1:increment' },
+        },
+      ],
+      stallAlerts: [
+        {
+          alertId: 'a1',
+          instanceId: 'ib-stall',
+          severity: 'critical',
+          signals: ['multi_cap_no_facts'],
+          summary: 'stall',
+          ts: new Date().toISOString(),
+        },
+      ],
+      kpiBootstrapFlags: [{ kpiId: 'kpi-1', bootstrapDone: true }],
+    });
+    expect(perception.kpiIdsNeedingRepair).toContain('kpi-1');
+    expect(perception.kpiIdsWithFuturePeriodicCalendar).toContain('kpi-1');
+    expect(shouldSkipSelfWorkForKpi(perception, 'kpi-1')).toBe(true);
+  });
+
   it('does not mark needingRepair while still in flight (supervision path)', () => {
     const perception = collectAdvancePerception({
       tasks: [task({ instanceId: 'ib-run', status: 'RUNNING', kpiId: 'kpi-1' })],

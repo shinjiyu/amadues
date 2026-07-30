@@ -188,3 +188,102 @@ describe('runOuterConversationLoop forced reply recovery', () => {
     expect(im.messagesMatching(/抱歉，刚才处理久了点/, threadId).length).toBeGreaterThan(0);
   });
 });
+
+describe('runOuterConversationLoop empty-promise recovery', () => {
+  let cleanup: () => void;
+
+  afterEach(() => {
+    cleanup?.();
+  });
+
+  it('祈使 + 口头答应 + 未派活 → 纠偏轮；改口确认', async () => {
+    const im = new FakeImChannel();
+    const agentSid = 'agent:empty-promise';
+    const threadId = 'thread:empty-promise';
+    const root = createTestDataRoot('loop-empty-promise-');
+    cleanup = root.cleanup;
+
+    const registry = new IdentityRegistry(path.join(root.dataRoot, 'identities.json'));
+    registry.upsert({
+      schema: 'identity.v1',
+      sid: agentSid,
+      kind: 'agent',
+      display_name: 'Kuroneko',
+      aliases: [],
+      roles_in_tenant: ['agent'],
+      bindings: [],
+      updated_at: new Date().toISOString(),
+    });
+
+    const workspaceStore = new FilesystemWorkspaceStore(root.workspacesDir);
+    const repoStore = new FilesystemRepositoryStore(root.dataRoot);
+    const assetStore = new ChatAssetStore(path.join(root.dataRoot, 'uploads'));
+    workspaceStore.ensureWorkspace('ws-ep');
+
+    let callCount = 0;
+    let sawEmptyPromisePrompt = false;
+    const result = await runOuterConversationLoop({
+      env: fakeEnv,
+      ctx: {
+        threadId,
+        agentSid,
+        workspaceId: 'ws-ep',
+        imClient: im,
+        assetStore,
+        getEngine: () => createNoopEngine(),
+        workspaceStore,
+        repoStore,
+        dataRoot: root.dataRoot,
+        loadThreads: () => ({ messages: {}, threads: [] }),
+      },
+      registry,
+      threadSids: [agentSid, 'human:bob'],
+      userMessage: '帮我查一下今天天气',
+      knowledgeContext: '',
+      soul: '你是测试外脑。',
+      longTermGoal: '',
+      config: { agentName: 'Kuroneko', maxTokens: 512 },
+      callLlm: async ({ messages }) => {
+        callCount++;
+        const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+        const content = typeof lastUser?.content === 'string' ? lastUser.content : '';
+        if (content.includes('系统空口对账')) {
+          sawEmptyPromisePrompt = true;
+          return {
+            content: null,
+            tool_calls: [
+              {
+                id: 'tc-retract',
+                type: 'function',
+                function: {
+                  name: 'reply_to_user',
+                  arguments: JSON.stringify({ text: '还没派，要我现在开跑吗？' }),
+                },
+              },
+            ],
+            raw: {},
+          };
+        }
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: 'tc-promise',
+              type: 'function',
+              function: {
+                name: 'reply_to_user',
+                arguments: JSON.stringify({ text: '好的，我去办' }),
+              },
+            },
+          ],
+          raw: {},
+        };
+      },
+    });
+
+    expect(result.emptyPromiseRecovery).toBe(true);
+    expect(sawEmptyPromisePrompt).toBe(true);
+    expect(callCount).toBe(2);
+    expect(im.messagesMatching(/还没派/, threadId).length).toBeGreaterThan(0);
+  });
+});

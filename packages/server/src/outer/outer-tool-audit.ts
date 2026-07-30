@@ -58,6 +58,10 @@ export function redactToolArgs(
   return out;
 }
 
+/** 软跳过 / 拒收：模型不得当成「已开跑」成功 */
+const SOFT_SKIP_OK_FALSE_RE =
+  /跳过|禁止|另一 agent|已先接单|已先回复|为空|未启用|不存在|推进未执行|set_goal_failed|失败：|已暂停/;
+
 export function isToolOutputOk(output: string): boolean {
   const t = output.trim();
   if (!t) return false;
@@ -66,6 +70,8 @@ export function isToolOutputOk(output: string): boolean {
   }
   if (t.startsWith('（body/value 为空') || t.startsWith('（未知工具')) return false;
   if (t.includes('verify failed')) return false;
+  // 全角括号软失败（容量满 / 禁 kpi_id / peer 抢单等）
+  if (t.startsWith('（') && SOFT_SKIP_OK_FALSE_RE.test(t)) return false;
   return true;
 }
 

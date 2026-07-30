@@ -50,6 +50,8 @@ export interface WechatConnectorDeps {
   cursorDir?: string;
   /** 媒体镜像/发送用资产仓库（生产 = ChatAssetStore）；缺省降级文本 */
   assetStore?: WechatAssetStore | null;
+  /** 入站刷新 context_token 后（用于冲刷挂起的日历报告） */
+  onContextTokenReady?: (threadId: string) => void | Promise<void>;
   /** 事件源工厂（单测注入）；缺省 = getupdates 长轮询 */
   updateSourceFactory?: (
     api: IlinkApiClient,
@@ -126,6 +128,15 @@ export function createWechatConnector(deps: WechatConnectorDeps): {
         updateSource,
         apiClient: api,
         ...(deps.assetStore ? { assetStore: deps.assetStore } : {}),
+        ...(deps.cursorDir
+          ? {
+              contextTokenPath: path.join(
+                deps.cursorDir,
+                `${config.botId.replace(/[^a-zA-Z0-9@._-]/g, '_')}.context-tokens.json`,
+              ),
+            }
+          : {}),
+        ...(deps.onContextTokenReady ? { onContextTokenReady: deps.onContextTokenReady } : {}),
       });
       return { channel, botNativeId: config.botId };
     },

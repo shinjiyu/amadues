@@ -60,17 +60,17 @@
                     }
                 }
 
-                outerMemory = component "Outer Memory" "【外脑记忆】daily-log / tasks → mem9；拼到 knowledge 前" "TypeScript" {
+                outerMemory = component "Outer Memory" "【外脑记忆】daily-log / tasks → mem9；Belief Card 现行结论覆盖；拼到 knowledge 前" "TypeScript" {
                     tags "Outer-Module" "Inbound"
                     properties {
-                        "path" "packages/server/src/outer/outer-memory.ts"
-                        "horizon.intention" "长期任务与日志上下文"
-                        "horizon.in" "mem9 read"
-                        "horizon.out" "formatMemoryForLlm 文本块"
+                        "path" "packages/server/src/outer/outer-memory.ts; memory-belief-card.ts; memory-belief-reconcile.ts"
+                        "horizon.intention" "长期任务与日志上下文；同 topic 现行结论 supersede"
+                        "horizon.in" "mem9 read; workspace 证据; 用户修好/取消/完成"
+                        "horizon.out" "formatMemoryForLlm（现行信念 + episodic）"
                         "horizon.deps" "mem9-client + drive9-client（本模块为唯一外脑门面）"
-                        "horizon.test.unit" "memory-belief-reconcile.test.ts"
+                        "horizon.test.unit" "memory-belief-reconcile.test.ts; memory-belief-card.test.ts"
                         "horizon.test.integration" "outerMemory.component.integration.test.ts"
-                        "horizon.note" "MVP：用户取消/完成 → belief 对账 + tasks 降权"
+                        "horizon.note" "MVP 对账 + M1 Belief Card：MEMORY-BELIEF-CARD.md"
                     }
                 }
 
@@ -89,14 +89,29 @@
                 }
 
                 // ── 对话 / 工具 ─────────────────────────────────────────
-                outerConversationLoop = component "Outer Conversation Loop" "【外脑多轮】LLM ↔ tools 循环直到 reply_to_user 或达上限" "TypeScript" {
+                outerConversationLoop = component "Outer Conversation Loop" "【外脑多轮】LLM ↔ tools 循环直到 reply_to_user 或达上限；空口承诺 post-loop 对账" "TypeScript" {
                     tags "Outer-Module" "Conversation"
                     properties {
                         "path" "packages/server/src/outer/outer-conversation-loop.ts"
-                        "horizon.intention" "外脑 ReAct 环"
+                        "horizon.intention" "外脑 ReAct 环 + emptyPromiseReconcile"
                         "horizon.in" "userMessage + knowledgeContext + soul"
                         "horizon.out" "tool_calls 或最终回复"
+                        "horizon.deps" "emptyPromiseReconcile"
+                        "horizon.test.unit" "outer-conversation-loop.test.ts; empty-promise-reconcile.test.ts"
                         "horizon.test.integration" "outerConversationLoop.component.integration.test.ts; outer-conversation-loop-assembly.integration.test.ts"
+                        "horizon.note" "方案一不盲派；§4.2 口头承诺须成功派活或改口"
+                    }
+                }
+
+                emptyPromiseReconcile = component "Empty Promise Reconcile" "【空口对账】用户祈使+口头承诺+无成功派活 → 强制再跑一轮工具环" "TypeScript" {
+                    tags "Outer-Module" "Conversation"
+                    properties {
+                        "path" "packages/server/src/outer/empty-promise-reconcile.ts"
+                        "horizon.intention" "post-loop 承诺↔派发对账（不恢复前置短路）"
+                        "horizon.in" "userMessage + replyTexts + toolResults"
+                        "horizon.out" "shouldReconcile boolean + recovery system prompt"
+                        "horizon.test.unit" "empty-promise-reconcile.test.ts"
+                        "horizon.note" "见 IM-INBOUND-INTENT-ROUTING.md §4.2"
                     }
                 }
 
@@ -131,11 +146,24 @@
                     properties {
                         "path" "packages/server/src/outer/inner-brain-registry.ts"
                         "horizon.intention" "burst 实例状态机（磁盘 JSON）；外脑重启 markStaleRunningAsStopped"
-                        "horizon.in" "register / update / list"
-                        "horizon.out" "TaskRecord; markStaleRunningAsStopped()"
+                        "horizon.in" "register / update / list / remove"
+                        "horizon.out" "TaskRecord; markStaleRunningAsStopped(); remove(instanceId)"
                         "horizon.test.unit" "inner-brain-registry.test.ts"
                         "horizon.test.integration" "innerBrainRegistry.component.integration.test.ts"
-                        "horizon.note" "auto-resume 已删见 INNER-BRAIN-STARTUP-RESUME-REMOVED.md；续跑 changeWatcher/kpiAdvancer/POST restart"
+                        "horizon.note" "auto-resume 已删见 INNER-BRAIN-STARTUP-RESUME-REMOVED.md；续跑 changeWatcher/kpiAdvancer/POST restart；remove 供 innerWorkspaceRetention"
+                    }
+                }
+
+                innerWorkspaceRetention = component "Inner Workspace Retention" "【终态淘汰】心跳 cold+quota：删 registry 行与 workspaces/task-*；永不碰 live" "TypeScript" {
+                    tags "Outer-Module" "Inner-Lifecycle" "Heartbeat"
+                    properties {
+                        "path" "packages/server/src/outer/inner-workspace-retention.ts"
+                        "horizon.intention" "防 registry/workspace 爆炸与 include_history 扫全表卡死事件循环"
+                        "horizon.in" "innerBrainRegistry + dataRoot + maxTerminal/coldDays"
+                        "horizon.out" "removed[]；磁盘 rm 仅限 dataRoot/workspaces/"
+                        "horizon.deps" "innerBrainRegistry"
+                        "horizon.test.unit" "inner-workspace-retention.test.ts"
+                        "horizon.note" "见 INNER-WORKSPACE-RETENTION.md；read_inner_status historyCap 在 outer-tools"
                     }
                 }
 
@@ -575,7 +603,7 @@
                         "horizon.deps" "drive9-client（同 skillDrive9Store/knowledgeDrive9Store 同级别）"
                         "horizon.test.unit" "node-def-drive9-store.test.ts"
                         "horizon.test.integration" "nodeDefDrive9Store.component.integration.test.ts"
-                        "horizon.note" "schema 见 INNER-NODE-LIFECYCLE.md §5.4"
+                        "horizon.note" "schema 见 INNER-NODE-LIFECYCLE.md §4/§5.4；search grep 空不回退全库"
                     }
                 }
 
@@ -616,6 +644,32 @@
                         "horizon.deps" "executableWorkflowStore"
                         "horizon.test.unit" "workflow-promote.test.ts"
                         "horizon.note" "不变量 W1–W4；见 EXECUTABLE-WORKFLOW.md §6"
+                    }
+                }
+
+                workflowOutcomeEvaluator = component "Workflow Outcome Evaluator" "【✅】execute settle 质检；机械 ok + 产物登记" "TypeScript" {
+                    tags "Outer-Module" "Executable-Workflow"
+                    properties {
+                        "path" "packages/server/src/outer/workflow-outcome-evaluator.ts"
+                        "horizon.intention" "判定 EW 是否需要 Agent 自优化修订"
+                        "horizon.in" "workDir · workflow_run.json · allowlist deliverables"
+                        "horizon.out" "WorkflowOutcomeEvaluation"
+                        "horizon.deps" "ew-deliverable-allowlist"
+                        "horizon.test.unit" "workflow-outcome-evaluator.test.ts"
+                        "horizon.note" "W15；见 EXECUTABLE-WORKFLOW.md §6.2"
+                    }
+                }
+
+                workflowEvolutionPolicy = component "Workflow Evolution Policy" "【✅】质检失败 → ew_revision 提案；SelfWork 优先 explore" "TypeScript" {
+                    tags "Outer-Module" "Executable-Workflow" "Digital-Employee"
+                    properties {
+                        "path" "packages/server/src/outer/workflow-evolution-policy.ts"
+                        "horizon.intention" "Agent 自优化 EW：只提案不写契约"
+                        "horizon.in" "outcome · kpiId · workflowRef"
+                        "horizon.out" "pending evolution → SelfWork explore set_goal"
+                        "horizon.deps" "workflowEvolutionStore；selfWorkPolicy；set_goal"
+                        "horizon.test.unit" "workflow-evolution-policy.test.ts"
+                        "horizon.note" "日历硬闸不挡 ew_revision；见 DIGITAL-EMPLOYEE-AUTONOMY.md"
                     }
                 }
 

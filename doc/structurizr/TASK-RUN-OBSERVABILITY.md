@@ -36,7 +36,7 @@ FakeLLM 场景基准（[`FRAMEWORK-BENCHMARK.md`](./FRAMEWORK-BENCHMARK.md)）�
 | 路径 | 内容 | 观测用途 |
 |------|------|----------|
 | `usage/llm-usage.jsonl` | 每次 LLM 调用 token、source、model、**instanceId** | **成本主表** |
-| `inner-brain-registry.json` | burst 状态、ticks、deliverableCount、kpiId | **并行度、失败率、产出** |
+| `inner-brain-registry.json` | burst 状态、ticks、deliverableCount、kpiId | **并行度、失败率、产出**（终态可被 [`INNER-WORKSPACE-RETENTION.md`](./INNER-WORKSPACE-RETENTION.md) 淘汰，勿假设永久） |
 | `kpi-registry.json` | bursts[]、burstRunHistory、status | **战略漂移、outcome 是否重复失败** |
 | `autonomy/action-log.jsonl` | 心跳 dispatch / skip 原因 | **外脑是否在空转派活** |
 | `performance/journal.jsonl` | 绩效目标（若有） | 长期目标对齐 |
@@ -214,12 +214,26 @@ CLI 说明：[`scripts/observe/README.md`](../../scripts/observe/README.md)
 
 ## 8. 与 Dashboard 的关系
 
-| 面板 | 现状 | 目标 |
-|------|------|------|
-| 用量 | ✅ UsagePanel | 加 **run 过滤器**（按 runId 窗） |
-| 内脑 | ✅ 实例列表 | 加 **按 run 高亮** |
-| **Runs** | ❌ | 列表 run、一键 export、展示 RunReport 摘要 |
-| 日志 | ✅ log-explorer timeline | 按 run 的 thread/instance 过滤 |
+**信息架构（2026-07-25）**：主 Tab 只保留当前运维关键面；旧调试面收进「高级」。
+
+| 主 Tab | 内容 |
+|--------|------|
+| **内脑 Burst**（默认） | 列表（状态/引擎/KPI/目标）+ 钻取 **执行 graph** |
+| Workflows | 已晋升 EW 只读 |
+| 用量 | token / LLM usage |
+| 空转 | stall-alerts |
+| 日志 | timeline |
+| 记忆块 | Memory Blocks（keychain 等） |
+
+| 高级（折叠） | 说明 |
+|--------------|------|
+| 数据层（文件） | workspace 文件树 / artifacts（旧） |
+| 外脑快照 | workspace 级 outer 状态（旧） |
+| 参与 Lab | participation 调试（旧） |
+
+已移除出主面：daily-log/tasks.md 编辑、Pi-mono 单步/Auto/reset、节点触顶旧命名、「数据层」默认首页。
+
+**Burst 执行 graph（P0 UI）**：`GET /api/inner/:ws/brain-inspector` → `dyflow.dag.{nodes,edges,impliedEdges}` + 每节点 `status` + 可选 `workflowRun`。
 
 ---
 
@@ -242,3 +256,5 @@ CLI 说明：[`scripts/observe/README.md`](../../scripts/observe/README.md)
 |------|------|
 | 2026-06-02 | 初版：真实大任务观测；novel + pokemon 标定；RunReport 指标；Exporter/Analyzer 规划 |
 | 2026-06-02 | P0：`scripts/observe/` analyzer + compare；观测落盘默认仓库外 `kuroneko-observations` |
+| 2026-07-24 | Dashboard 内脑：burst 执行 graph（DAG edges + node status + EW workflow_run） |
+| 2026-07-25 | Dashboard 信息架构：主 Tab 只留 Burst/EW/用量/空转/日志/记忆块；旧面进高级 |

@@ -424,11 +424,13 @@ export function createDesignerTools(deps: DesignerToolDeps): DesignerTools {
     const searchTool: Tool = {
       name: 'search_and_instance',
       description:
-        '在共享节点库（drive9）按语义检索 NodeDef，并批量装配成本地可用 LocalNode。返回成功装配的 localId，可直接作为 commit_local_dag 里 NodeInst.ref 使用。',
+        '在共享节点库（drive9）按语义检索 NodeDef，并批量装配成本地可用 LocalNode。' +
+        '仅在明确需要复用共享战术时调用；grep 无命中返回空（不会灌入全库）。' +
+        '返回成功装配的 localId，可直接作为 commit_local_dag 里 NodeInst.ref 使用。优先 preset/base。',
       parameters: {
-        query: { type: 'string', description: '检索语义（描述你需要的能力）' },
-        topK: { type: 'number', description: '返回上限（默认 20）' },
-        filterTags: { type: 'array', description: '限定标签（字符串数组）' },
+        query: { type: 'string', description: '检索语义（具体能力关键词，勿过于模糊）' },
+        topK: { type: 'number', description: '返回上限（默认 5）' },
+        filterTags: { type: 'array', description: '强烈建议：限定标签（字符串数组），减少跨域污染' },
         bindingHints: { type: 'object', description: '账号/路径等绑定线索（可选）' },
       },
       required: ['query'],

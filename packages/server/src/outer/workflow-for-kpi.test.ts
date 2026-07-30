@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ExecutableWorkflowStore } from './executable-workflow-store.js';
 import { promoteWorkflow } from './workflow-promote.js';
-import { findWorkflowRefForKpi, kpiWorkflowTag } from './workflow-for-kpi.js';
+import { findWorkflowRefForKpi, kpiWorkflowTag, kpiWorkflowRoleTag } from './workflow-for-kpi.js';
 import { ConservativeSelfWorkPolicy, validateSelfWorkProposal } from './self-work-policy.js';
 import { createSelfWorkStrategy } from './self-work-strategies.js';
 import type { SelfWorkContext } from './self-work-policy.js';
@@ -28,6 +28,32 @@ describe('workflow-for-kpi + SelfWork execute', () => {
     });
     expect(findWorkflowRefForKpi(store, 'kpi-1')).toEqual({ id: 'ew-fanqie', version: '1' });
     expect(findWorkflowRefForKpi(store, 'other')).toBeNull();
+  });
+
+  it('W12：prefer role:primary/collect over repair', () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'ew-kpi-role-'));
+    const store = new ExecutableWorkflowStore({ dataRoot: root });
+    const step = {
+      id: 'a',
+      action: 'assert' as const,
+      args: { touch: 'x' },
+      expect: { fileExists: 'x' },
+    };
+    promoteWorkflow(store, {
+      id: 'ew-aaa-repair',
+      kind: 'shell_pipeline',
+      title: 'repair',
+      tags: [kpiWorkflowTag('kpi-x'), kpiWorkflowRoleTag('repair')],
+      steps: [step],
+    });
+    promoteWorkflow(store, {
+      id: 'ew-zzz-collect',
+      kind: 'shell_pipeline',
+      title: 'collect',
+      tags: [kpiWorkflowTag('kpi-x'), kpiWorkflowRoleTag('collect')],
+      steps: [step],
+    });
+    expect(findWorkflowRefForKpi(store, 'kpi-x')?.id).toBe('ew-zzz-collect');
   });
 
   it('validate execute_missing_workflow_ref', () => {
