@@ -19,6 +19,7 @@ import {
   nextIntegerVersion,
 } from './executable-workflow-store.js';
 import type { WorkflowDrive9Store } from '../drive9/workflow-drive9-store.js';
+import { maySyncWorkflowToDrive9 } from '../openkuroneko/inner-brain/harness-drive9-sync.js';
 import {
   assertScriptsBundled,
   collectWorkflowAssetsFromWorkDir,
@@ -505,7 +506,12 @@ export function promoteWorkflow(
     ...(assets && assets.length > 0 ? { assets } : {}),
   };
   store.put(wf);
-  opts?.drive9?.storeShared(wf);
+  if (opts?.drive9) {
+    const gate = maySyncWorkflowToDrive9(opts.workDir, wf.id, wf.version);
+    if (gate.ok) {
+      opts.drive9.storeShared(wf);
+    }
+  }
   return wf;
 }
 

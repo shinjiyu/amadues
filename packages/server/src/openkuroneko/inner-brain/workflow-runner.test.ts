@@ -6,9 +6,12 @@ import type { ExecutableWorkflow } from '../../outer/executable-workflow-types.j
 import {
   assertDesignerMayRedesign,
   checkExpect,
+  readBurstModeMarker,
   runExecutableWorkflow,
   writeBurstModeMarker,
 } from './workflow-runner.js';
+import { createHarnessSpecStore } from './harness-spec-store.js';
+import { createHarnessPointer } from './harness-pointer.js';
 
 describe('workflow-runner', () => {
   let workDir: string;
@@ -124,6 +127,22 @@ describe('workflow-runner', () => {
     expect(() => assertDesignerMayRedesign(workDir)).not.toThrow();
   });
 
+  it('execute 优先 active HarnessSpec.workflowRef', () => {
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ew-run-'));
+    writeBurstModeMarker(workDir, {
+      burstMode: 'execute',
+      workflowRef: { id: 'ew-marker', version: '1' },
+    });
+    const store = createHarnessSpecStore(workDir);
+    store.put({
+      id: 'hs-wf',
+      refs: { workflowRef: { id: 'ew-active', version: '9' } },
+      status: 'gated_ok',
+    });
+    createHarnessPointer(workDir, store).upgrade('hs-wf');
+    expect(readBurstModeMarker(workDir).workflowRef).toEqual({ id: 'ew-active', version: '9' });
+  });
+
   it('browser_steps 注入真跑 stub', async () => {
     workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ew-run-'));
     let called = 0;
@@ -215,7 +234,7 @@ describe('workflow-runner', () => {
           {
             id: 's',
             action: 'shell',
-            args: { command: 'python .run/ew/hello.py' },
+            args: { command: 'python3 .run/ew/hello.py' },
             expect: { exitCode: 0, stdoutContains: 'hi-asset' },
           },
         ],

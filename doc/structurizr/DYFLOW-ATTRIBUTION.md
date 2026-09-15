@@ -2,7 +2,8 @@
 
 > **English:** Restore a **Mandatory Attributor** between RUN and DESIGN (legacy `ATTRIBUTE` mode, DyFlow-adapted). Distills execution logs into `memory.facts` / `memory.constraints` before Designer replans.
 
-> **状态**：2026-06-06 定稿 · 实现于 `inner-brain/attributor.ts` + `run-context-store.ts`
+> **状态**：2026-06-06 定稿 · 实现于 `inner-brain/attributor.ts` + `run-context-store.ts`  
+> **关联**：[`HARNESS-RSI.md`](./HARNESS-RSI.md) — ATTRIBUTE 产出是 revise 原料；**无 gate 不得**直接 upgrade active H
 
 ---
 

@@ -3,7 +3,7 @@
 > **English:** **Executable Workflow** is the frozen, stepwise-checkable contract for *running known playbooks*. It is a **superset** of Skills (markdown SOPs are one kind). Explore mode may invent; **execute mode must not redesign**.
 
 > **状态**：2026-07-23 ADL 定稿 · **P0–P4 ✅**（含 browser/frozen 真跑 · drive9 seed · ATTRIBUTE promote）  
-> **关联**：[`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) · [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §7b · [`DYFLOW-ATTRIBUTION.md`](./DYFLOW-ATTRIBUTION.md) · [`BROWSER-SESSION-TOOL.md`](./BROWSER-SESSION-TOOL.md) · [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) · [`DRIVE9-KNOWLEDGE-SHARED.md`](./DRIVE9-KNOWLEDGE-SHARED.md) · [`TERMINOLOGY.md`](./TERMINOLOGY.md) · [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) R7
+> **关联**：[`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) · [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §7b · [`DYFLOW-ATTRIBUTION.md`](./DYFLOW-ATTRIBUTION.md) · [`BROWSER-SESSION-TOOL.md`](./BROWSER-SESSION-TOOL.md) · [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) · [`DRIVE9-KNOWLEDGE-SHARED.md`](./DRIVE9-KNOWLEDGE-SHARED.md) · [`TERMINOLOGY.md`](./TERMINOLOGY.md) · [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) R7 · [`HARNESS-RSI.md`](./HARNESS-RSI.md)（内脑 active H ≠ 本篇 W15 外脑提案）
 
 ---
 
@@ -118,7 +118,7 @@
 | **W12** | **KPI→EW 角色**：同 `kpi:{id}` 可挂多 EW；SelfWork 默认优先 `role:primary` → `role:collect` → 无 `role:repair|verify` 的条目；repair/verify 不抢日常 execute |
 | **W13** | **辅助脚本随契约**：shell 引用的相对脚本（如 `.run/ew/*.py`）必须打进 `assets[]`（path+content）；promote 有 workDir 时自动收集；execute **先物化 assets 再跑步骤** |
 | **W14** | **外脑不阻塞**：EW shell **禁止 spawnSync**；`workflow_run` / `set_goal(execute)` 在 agent 进程内 **后台**跑（立即返回 RUNNING），禁止 await 整段采集堵死对话环 / health |
-| **W15** | **Agent 自优化**：execute settle 后 `workflowOutcomeEvaluator` 判质；不合格 → `workflowEvolutionPolicy` **只提案** explore 修订（`purpose=ew_revision`）；成功 explore 后 ATTRIBUTE `promote_executable_workflow` **同 id bump version**。**禁止** SelfWork/execute 静默改 EW 正文；日历硬闸**不阻挡** `ew_revision`（仍挡日常 collect） |
+| **W15** | **Agent 自优化**：execute settle 后 `workflowOutcomeEvaluator` 判质；不合格 → `workflowEvolutionPolicy` **只提案** explore 修订（`purpose=ew_revision`）；成功 explore 后 ATTRIBUTE `promote_executable_workflow` **同 id bump version**。**禁止** SelfWork/execute 静默改 EW 正文；日历硬闸**不阻挡** `ew_revision`（仍挡日常 collect）。**与内脑 Harness-RSI 划界**：W15 是外脑提案再开 explore；workspace `.brain/harness/active` 的 upgrade/rollback 见 [`HARNESS-RSI.md`](./HARNESS-RSI.md)。**P3**：若 `isHarnessRsiCoveringWorkflow` 为真，**不**再记 pending `ew_revision`；promote→drive9 在 active H 拥有该 EW 时须 `held-out` 通过 |
 
 非法契约 **不得**进入 `DATA_ROOT/workflows/`；已入库的空壳/不可移植/明文凭证/缺脚本契约由治理 pause，须重升合法 version。
 

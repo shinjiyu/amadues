@@ -12,6 +12,9 @@ import {
 } from './workflow-promote.js';
 import type { PromoteWorkflowInput } from './workflow-promote.js';
 import type { ExecutableWorkflow } from './executable-workflow-types.js';
+import { createHarnessSpecStore } from '../openkuroneko/inner-brain/harness-spec-store.js';
+import { createHarnessPointer } from '../openkuroneko/inner-brain/harness-pointer.js';
+import { runHeldOutGate } from '../openkuroneko/inner-brain/harness-held-out.js';
 
 describe('workflow-promote', () => {
   let root: string;
@@ -288,6 +291,35 @@ describe('workflow-promote', () => {
       },
     } as import('../drive9/workflow-drive9-store.js').WorkflowDrive9Store;
     promoteWorkflow(store, base(), { drive9 });
+    expect(shared).toHaveLength(1);
+  });
+
+  it('P3：active harness 拥有 EW 时无 held-out 则跳过 drive9', () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'ew-promote-ho-'));
+    const workDir = path.join(root, 'ws');
+    fs.mkdirSync(workDir, { recursive: true });
+    const harnessStore = createHarnessSpecStore(workDir);
+    harnessStore.put({
+      id: 'hs-1',
+      refs: { workflowRef: { id: 'ew-pub', version: '1' } },
+      status: 'gated_ok',
+    });
+    createHarnessPointer(workDir, harnessStore).upgrade('hs-1');
+
+    const store = new ExecutableWorkflowStore({ dataRoot: root });
+    const shared: unknown[] = [];
+    const drive9 = {
+      storeShared: (wf: unknown) => {
+        shared.push(wf);
+      },
+    } as import('../drive9/workflow-drive9-store.js').WorkflowDrive9Store;
+    const wf = promoteWorkflow(store, base(), { drive9, workDir });
+    expect(wf.version).toBe('1');
+    expect(store.getLatest('ew-pub')).toBeTruthy();
+    expect(shared).toHaveLength(0);
+
+    runHeldOutGate(workDir, 'hs-1');
+    promoteWorkflow(store, { ...base(), title: 'Publish2' }, { drive9, workDir });
     expect(shared).toHaveLength(1);
   });
 

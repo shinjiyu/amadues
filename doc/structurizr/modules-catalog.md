@@ -173,7 +173,17 @@
 | **nodeSkillStore** | **节点绑定技能读写**（P1） | `inner-brain/node-skill-store.ts` | `.brain/local_nodes/skills/` |
 | **nodeSkillLoader** | **baseNode 执行前加载技能**（P1） | `inner-brain/node-skill-loader.ts` | 绑定技能 + 全局检索 → prompt |
 | **nodeSkillTools** | **Attributor record_skill**（P1） | `inner-brain/node-skill-tools.ts` | RUN 后蒸馏操作步骤；可晋升为 EW kind=`skill_md` |
-| **workflowRunner** | **✅ execute 模式逐步执行 EW（async；可注入 browser/frozen）** | `inner-brain/workflow-runner.ts` | assert/shell/skill_step/browser_steps/run_node |
+| **workflowRunner** | **✅ execute 模式逐步执行 EW（async；可注入 browser/frozen）** | `inner-brain/workflow-runner.ts` | assert/shell/skill_step/browser_steps/run_node；⏳ 读 harnessPointer.active |
+| **harnessSpecStore** | **✅ HarnessSpec 不可变快照** | `inner-brain/harness-spec-store.ts` | `.brain/harness/specs/`；见 [`HARNESS-RSI.md`](./HARNESS-RSI.md) |
+| **harnessPointer** | **✅ active + upgrade/rollback** | `inner-brain/harness-pointer.ts` | `active.json` + `history.jsonl` |
+| **harnessRevise** | **✅ 分析→提案 H′（skillRefs）** | `inner-brain/harness-revise.ts` | 失败节点 skill 优先；H6 拒 rubric |
+| **harnessGate** | **✅ 机械门控** | `inner-brain/harness-gate.ts` | fail → active 不变 |
+| **harnessRestart** | **✅ restart-with-H** | `inner-brain/harness-restart.ts` | controller tick 消费；≠ 进程 resume |
+| **harnessRsiCycle** | **✅ ATTRIBUTE 失败后 revise→gate→upgrade** | `inner-brain/harness-rsi-cycle.ts` | 封顶 2 轮；成功 RUN 跳过 |
+| **harnessHeldOut** | **✅ held-out 门控** | `inner-brain/harness-held-out.ts` | `.brain/harness/held-out/` |
+| **harnessAutoHeldOut** | **✅ 成功 RUN 自动 held-out** | `inner-brain/harness-auto-held-out.ts` | controller ATTRIBUTE；已有 pass 跳过 |
+| **harnessDrive9Sync** | **✅ drive9 sync 闸** | `inner-brain/harness-drive9-sync.ts` | promote 本地仍写；共享需 held-out |
+| **harnessW15Dedup** | **✅ 抑制外脑 ew_revision** | `inner-brain/harness-w15-dedup.ts` | active H 已覆盖同 workflowId |
 | **workflowKindAdapters** | **✅ browser_playbook / frozen_dag 适配（P3–P4 真跑）** | `inner-brain/workflow-adapters.ts` + `workflow-frozen-live.ts` | dry-run 落盘；execute 默认真跑 |
 | **workflowTools** | **✅ 外脑 workflow_list/get/promote/run/pause** | `outer/workflow-tools.ts` | 见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) §10 |
 | **workflowDrive9Store** | **✅ drive9 `/workflows/shared/`** | `drive9/workflow-drive9-store.ts` | promote 同步；跨 agent 共享 |
@@ -201,7 +211,9 @@
 | archiveStore | 归档 | `archive/fs-store.ts` | archive → session |
 | **planReferenceSearch** | Designer 方案参考检索 | `outer/plan-reference-search.ts` · `inner-brain/plan-reference-port.ts` | `search_task_plans` → archive/repo/peer |
 
-**视图**：`09-L3-Inner-Phases`（DyFlow Phases）；`09b-L3-Inner-DyFlow`（DyFlow 全模块图）；`14-L2-DyFlow-Node-Lifecycle`（NodeDef 共享/治理）。
+**视图**：`09-L3-Inner-Phases`（DyFlow Phases）；`09b-L3-Inner-DyFlow`（DyFlow 全模块图）；`09c-L3-Inner-Harness-RSI`（内脑自改/升级/回退）；`14-L2-DyFlow-Node-Lifecycle`（NodeDef 共享/治理）。
+
+专篇：[`HARNESS-RSI.md`](./HARNESS-RSI.md) — **仅内脑** RSI；外脑 spawn-only。
 
 阶段循环（与 [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §3 一致）：
 

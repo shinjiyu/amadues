@@ -536,6 +536,63 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.runner "mode=RUN" "in-process" {
             tags "import"
         }
+
+        // ── Inner Harness-RSI（自改 → 门控 → 升级/回退 → restart-with-H）────────
+        kuroneko.innerWorker.harnessRevise -> kuroneko.innerWorker.harnessSpecStore "put draft H′" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessGate -> kuroneko.innerWorker.harnessSpecStore "read H′ / parent" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessPointer -> kuroneko.innerWorker.harnessSpecStore "resolve active id" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessGate -> kuroneko.innerWorker.harnessPointer "upgrade only if gated_ok" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessRestart -> kuroneko.innerWorker.harnessPointer "read active after upgrade/rollback" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessRestart -> kuroneko.innerWorker.controllerFsm "re-enter DESIGN|RUN under H" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.harnessRevise "ATTRIBUTE/显式触发 revise（⏳）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.runner -> kuroneko.innerWorker.harnessPointer "load active H refs（⏳）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.workflowRunner -> kuroneko.innerWorker.harnessPointer "prefer active workflowRef（⏳）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.harnessRsiCycle "ATTRIBUTE 失败后 RSI（P2）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessRsiCycle -> kuroneko.innerWorker.harnessRevise "revise" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessRsiCycle -> kuroneko.innerWorker.harnessGate "gate" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessRsiCycle -> kuroneko.innerWorker.harnessPointer "upgrade" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessRsiCycle -> kuroneko.innerWorker.harnessRestart "request restart-with-H" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.harnessAutoHeldOut "ATTRIBUTE 成功后自动 held-out" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessAutoHeldOut -> kuroneko.innerWorker.harnessHeldOut "runHeldOutGate if no pass" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessDrive9Sync -> kuroneko.innerWorker.harnessHeldOut "require held-out pass" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessW15Dedup -> kuroneko.innerWorker.harnessPointer "active covering workflow?" "in-process" {
+            tags "import"
+        }
+
         kuroneko.innerWorker.designer -> kuroneko.innerWorker.designerToolRegistry "tools allowlist" "in-process" {
             tags "import"
         }
@@ -875,6 +932,12 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         component kuroneko.innerWorker "09b-L3-Inner-DyFlow" {
             title "L3 内脑 — DyFlow（designer/runner/baseNode + promote_local_node + LocalNode/Memory + Abstractor/Assembler）"
             include kuroneko.innerWorker.controllerFsm kuroneko.innerWorker.designer kuroneko.innerWorker.runner kuroneko.innerWorker.baseNodeExecutor kuroneko.innerWorker.localNodeStore kuroneko.innerWorker.memoryStore kuroneko.innerWorker.designerToolRegistry kuroneko.innerWorker.presetSeeder kuroneko.innerWorker.nodeAbstractor kuroneko.innerWorker.nodeAssembler kuroneko.innerWorker.innerFileTools kuroneko.innerWorker.workerHost kuroneko.innerWorker.piMonoScheduler kuroneko.agentServer.llmGateway kuroneko.agentServer.nodeDefDrive9Store
+            autolayout tb
+        }
+
+        component kuroneko.innerWorker "09c-L3-Inner-Harness-RSI" {
+            title "L3 内脑 — Harness-RSI（revise → gate → upgrade/rollback → restart-with-H）"
+            include kuroneko.innerWorker.harnessSpecStore kuroneko.innerWorker.harnessPointer kuroneko.innerWorker.harnessRevise kuroneko.innerWorker.harnessGate kuroneko.innerWorker.harnessRestart kuroneko.innerWorker.harnessRsiCycle kuroneko.innerWorker.harnessHeldOut kuroneko.innerWorker.harnessAutoHeldOut kuroneko.innerWorker.harnessDrive9Sync kuroneko.innerWorker.harnessW15Dedup kuroneko.innerWorker.controllerFsm kuroneko.innerWorker.runner kuroneko.innerWorker.workflowRunner kuroneko.innerWorker.workerHost
             autolayout tb
         }
 

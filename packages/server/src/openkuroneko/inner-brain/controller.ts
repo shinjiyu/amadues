@@ -37,6 +37,9 @@ import type { EnvSnapshot } from './node-abstractor.js';
 import type { PlanReferenceDeps } from './designer-tools.js';
 import type { SkillProvider } from '../skills/provider.js';
 import { projectDyflowStatus, readWorkerTickProgress } from './status-projection.js';
+import { consumeHarnessRestartRequest } from './harness-restart.js';
+import { maybeApplyHarnessRsiCycle } from './harness-rsi-cycle.js';
+import { maybeAutoHeldOutAfterSuccess } from './harness-auto-held-out.js';
 import type { DagHistoryEntry, DyflowState, LocalDag } from './types.js';
 
 /** DESIGN 连续空转上限：超过则判定无法推进，进入 DONE（reason 标记） */
@@ -162,6 +165,22 @@ export function createDyflowController(
 
   return {
     async tick(): Promise<DyflowTickResult> {
+      const restart = consumeHarnessRestartRequest(workDir);
+      if (restart) {
+        const prev = readState();
+        writeState({
+          mode: 'DESIGN',
+          designStreak: 0,
+          harnessRsiRound: prev.harnessRsiRound ?? 0,
+          reason: `restart-with-H:${restart.harnessId}`,
+        });
+        logger.info('dyflow-controller', {
+          event: 'harness.restart',
+          data: { burstId, harnessId: restart.harnessId },
+        });
+        return { hadWork: true };
+      }
+
       const state = readState();
       logger.info('dyflow-controller', { event: 'tick.start', data: { mode: state.mode, burstId } });
 
@@ -285,24 +304,63 @@ export function createDyflowController(
             checkStallAndAlert(`failure.distill:${runCtx.failedAt ?? 'unknown'}`);
           }
 
-          clearRunContext(workDir);
-
           const brainDir = path.join(workDir, '.brain');
           const activePendings = fs.existsSync(path.join(brainDir, 'pendings.json'))
             ? listActivePendings(brainDir)
             : [];
           if (activePendings.length > 0) {
+            clearRunContext(workDir);
             writeState({
               mode: 'AWAITING',
               designStreak: 0,
               reason: runCtx.ok ? null : `RUN failed at ${runCtx.failedAt}`,
+              harnessRsiRound: state.harnessRsiRound ?? 0,
             });
             return { hadWork: false };
           }
+
+          // P2：失败 RUN 后 revise→gate→upgrade→restart-with-H（须在清 run-context 前）
+          const rsi = maybeApplyHarnessRsiCycle(workDir, {
+            runOk: runCtx.ok,
+            rsiRound: state.harnessRsiRound ?? 0,
+          });
+          if (rsi.applied) {
+            logger.info('dyflow-controller', {
+              event: 'harness.rsi',
+              data: { burstId, ...rsi },
+            });
+          }
+
+          // P3 follow-up：成功 RUN 且有 active H → 自动 held-out（供 drive9）
+          if (runCtx.ok) {
+            const held = maybeAutoHeldOutAfterSuccess(workDir);
+            if (held) {
+              logger.info('dyflow-controller', {
+                event: 'harness.held_out',
+                data: {
+                  burstId,
+                  harnessId: held.harnessId,
+                  passed: held.passed,
+                  reasons: held.reasons.slice(0, 3),
+                },
+              });
+            }
+          }
+          clearRunContext(workDir);
+
+          const nextRound =
+            rsi.applied && rsi.upgraded
+              ? (state.harnessRsiRound ?? 0) + 1
+              : (state.harnessRsiRound ?? 0);
           writeState({
             mode: 'DESIGN',
             designStreak: 0,
-            reason: runCtx.ok ? null : `RUN failed at ${runCtx.failedAt}`,
+            harnessRsiRound: nextRound,
+            reason: rsi.applied
+              ? `harness-rsi:${rsi.reason}`
+              : runCtx.ok
+                ? null
+                : `RUN failed at ${runCtx.failedAt}`,
           });
           return { hadWork: true };
         }

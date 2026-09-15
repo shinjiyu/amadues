@@ -20,6 +20,9 @@
 | **SelfWork** | 无 due 时，围绕 KPI 的自主提案 | 与 burst 本身混淆 | `SelfWorkPolicy` |
 | **digitalEmployeeLoop** | 容量主循环：due 优先 → SelfWork → 唯一 `set_goal` | 「心跳派活」作主时钟 | `digital-employee-loop.ts` |
 | **Executable Workflow（EW）** | 已冻结、可逐步验收的**确定性工作流**契约；Skills 是其一种载体 | 把 EW 叫成「又一个 skill」 | [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) |
+| **HarnessSpec（H）** | 内脑一次可寻址的 harness 快照（nodes/skills/EW/assets） | 把单条 skill 或进程状态叫 H | [`HARNESS-RSI.md`](./HARNESS-RSI.md) |
+| **harness upgrade / rollback** | 改 `.brain/harness/active.json` 指针（须先 gate） | 无门控写 skill；外脑改 KPI 策略 | 同上 |
+| **restart-with-H** | 同 charter 在新 active H 下再进 DESIGN→RUN | `POST …/restart` 进程恢复 | 同上 |
 | **BurstMode** | 本发 burst 自由度：`explore`（默认可 redesign）\| `execute`（绑 EW，禁 redesign） | 与 KPI / SelfWork 混称 | `set_goal.burstMode`（⏳） |
 | **WorkflowKind** | EW 载体：`skill_md` / `browser_playbook` / `frozen_dag` / `shell_pipeline` / … | 与 BurstMode 混用 | 同上 |
 | **promote（工作流）** | 探索产物 → 带版本的 EW | 仅 `record_fact` / 写 skill 提示而不冻结执行契约 | `workflowPromote`（⏳） |
@@ -45,6 +48,7 @@ KPI（长期）
 | advance / 推进 | 是调配（派 burst / ensure 日历 / sleep），不是一种新对象 |
 | repair / bootstrap | 是本轮 work package **种类**，仍落成一次 burst |
 | Skill / skill_md | **不是** Executable Workflow 的同义词；只是 EW 的一种 `WorkflowKind` |
+| HarnessSpec / upgrade | **不是** Outer W15 `ew_revision` 提案；**不是** 进程 resume |
 | explore burst | 可 DESIGN / 换路线；产出候选，**不保证**可重复执行 |
 | execute burst | 必须 `workflowRef`；逐步 `expect`；默认禁止 redesign |
 

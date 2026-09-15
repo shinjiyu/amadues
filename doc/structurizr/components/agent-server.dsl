@@ -669,7 +669,7 @@
                         "horizon.out" "pending evolution → SelfWork explore set_goal"
                         "horizon.deps" "workflowEvolutionStore；selfWorkPolicy；set_goal"
                         "horizon.test.unit" "workflow-evolution-policy.test.ts"
-                        "horizon.note" "日历硬闸不挡 ew_revision；见 DIGITAL-EMPLOYEE-AUTONOMY.md"
+                        "horizon.note" "日历硬闸不挡 ew_revision；见 DIGITAL-EMPLOYEE-AUTONOMY.md；禁止写 .brain/harness/active（HARNESS-RSI.md H1）"
                     }
                 }
 

@@ -11,6 +11,8 @@ import {
 } from './workflow-evolution-policy.js';
 import { listEvolutionProposals } from './workflow-evolution-store.js';
 import { validateSelfWorkProposal, type SelfWorkPolicy } from './self-work-policy.js';
+import { createHarnessSpecStore } from '../openkuroneko/inner-brain/harness-spec-store.js';
+import { createHarnessPointer } from '../openkuroneko/inner-brain/harness-pointer.js';
 
 function emptyPerception(overrides: Partial<AdvancePerception> = {}): AdvancePerception {
   return {
@@ -73,6 +75,45 @@ describe('workflow evolution (W15)', () => {
     });
     expect(p2?.id).toBe(p?.id);
     expect(listEvolutionProposals(tmp, 'pending')).toHaveLength(1);
+  });
+
+  it('P3：Harness-RSI covering suppresses ew_revision', () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ew-evo-hs-'));
+    const workDir = path.join(tmp, 'ws');
+    fs.mkdirSync(path.join(workDir, '.run'), { recursive: true });
+    fs.writeFileSync(
+      path.join(workDir, '.run', 'workflow_run.json'),
+      JSON.stringify({
+        workflowId: 'ew-twitter-collect-17-bloggers',
+        version: '2',
+        ok: false,
+        steps: [{ stepId: 'collect_all', ok: false, detail: 'exit 2' }],
+      }),
+      'utf8',
+    );
+    const harnessStore = createHarnessSpecStore(workDir);
+    harnessStore.put({
+      id: 'hs-p',
+      refs: { workflowRef: { id: 'ew-twitter-collect-17-bloggers', version: '2' } },
+      status: 'gated_ok',
+    });
+    harnessStore.put({
+      id: 'hs-c',
+      parentId: 'hs-p',
+      refs: { workflowRef: { id: 'ew-twitter-collect-17-bloggers', version: '2' } },
+      status: 'gated_ok',
+    });
+    createHarnessPointer(workDir, harnessStore).upgrade('hs-c');
+
+    const p = considerWorkflowEvolution({
+      dataRoot: tmp,
+      workDir,
+      kpiId: 'kpi-1',
+      workflowId: 'ew-twitter-collect-17-bloggers',
+      version: '2',
+    });
+    expect(p).toBeNull();
+    expect(listEvolutionProposals(tmp, 'pending')).toHaveLength(0);
   });
 
   it('ew_revision proposal bypasses future calendar gate', () => {

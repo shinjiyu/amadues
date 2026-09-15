@@ -1,12 +1,14 @@
 /**
  * Node Skill Loader — baseNode 执行前加载节点绑定技能 + 可选全局检索。
  *
- * ADL：doc/structurizr/INNER-NODE-SKILLS.md §5
+ * ADL：doc/structurizr/INNER-NODE-SKILLS.md §5 · HARNESS-RSI.md P2（优先 active H skillRefs）
  */
 
 import type { SkillProvider } from '../skills/provider.js';
 import type { LocalNode, NodeInst, NodeSkillRef } from './types.js';
 import { createNodeSkillStore } from './node-skill-store.js';
+import { createHarnessPointer } from './harness-pointer.js';
+import { createHarnessSpecStore } from './harness-spec-store.js';
 
 const CONTENT_MAX = 3000;
 const DEFAULT_GLOBAL_TOP_K = 3;
@@ -24,6 +26,22 @@ export interface LoadedNodeSkills {
   section: string;
 }
 
+/** Prefer skill ids bound on active HarnessSpec for this node (P2). */
+export function preferredSkillIdsFromActiveHarness(workDir: string, nodeRef: string): string[] {
+  try {
+    const store = createHarnessSpecStore(workDir);
+    const active = createHarnessPointer(workDir, store).readActive();
+    if (!active) return [];
+    const spec = store.get(active.harnessId);
+    if (!spec?.refs.skillRefs?.length) return [];
+    return spec.refs.skillRefs
+      .filter((s) => s.nodeRef === nodeRef)
+      .map((s) => s.skillId);
+  } catch {
+    return [];
+  }
+}
+
 export async function loadNodeSkills(opts: LoadNodeSkillsOpts): Promise<LoadedNodeSkills> {
   const { node, inst, workDir, skillProvider, globalTopK = DEFAULT_GLOBAL_TOP_K } = opts;
   const store = createNodeSkillStore(workDir);
@@ -31,7 +49,11 @@ export async function loadNodeSkills(opts: LoadNodeSkillsOpts): Promise<LoadedNo
   const parts: string[] = [];
   const refs: NodeSkillRef[] = [];
 
-  const addSkill = (ref: NodeSkillRef, content: string, source: 'bound' | 'global'): void => {
+  const addSkill = (
+    ref: NodeSkillRef,
+    content: string,
+    source: 'bound' | 'harness' | 'global',
+  ): void => {
     if (seen.has(ref.id)) return;
     seen.add(ref.id);
     refs.push(ref);
@@ -42,7 +64,17 @@ export async function loadNodeSkills(opts: LoadNodeSkillsOpts): Promise<LoadedNo
     );
   };
 
-  const boundRefs = node.skills?.length ? node.skills : store.readIndex(node.id);
+  const index = store.readIndex(node.id);
+  const byId = new Map(index.map((r) => [r.id, r]));
+
+  for (const skillId of preferredSkillIdsFromActiveHarness(workDir, node.id)) {
+    const ref = byId.get(skillId);
+    if (!ref) continue;
+    const content = store.readContent(node.id, ref.id);
+    if (content) addSkill(ref, content, 'harness');
+  }
+
+  const boundRefs = node.skills?.length ? node.skills : index;
   for (const ref of boundRefs) {
     const content = store.readContent(node.id, ref.id);
     if (content) addSkill(ref, content, 'bound');

@@ -332,6 +332,8 @@ export interface DyflowState {
   reason?: string | null;
   /** DESIGN 连续空图 / 异常计数，用于兜底 */
   designStreak?: number;
+  /** 本 burst Harness-RSI 已 upgrade 轮次（P2 封顶） */
+  harnessRsiRound?: number;
   updatedAt: string;
 }
 

@@ -1,7 +1,8 @@
 # PSTune Loop — 宝可梦对战边打边调优
 
 > **English:** Closed loop for Gen9 OU rated auto-battle: **live trace → replay export → offline injector → profile gate → hot reload**.  
-> 与 [`TASK-RUN-OBSERVABILITY.md`](./TASK-RUN-OBSERVABILITY.md) `runKind=pokemon` 互补；元宝 workspace `task-ib-mpvf5dh8-6070` 为参考实现。
+> 与 [`TASK-RUN-OBSERVABILITY.md`](./TASK-RUN-OBSERVABILITY.md) `runKind=pokemon` 互补；元宝 workspace `task-ib-mpvf5dh8-6070` 为参考实现。  
+> **范型提升**：`active.json` + gate + 回滚 → 内脑通用 harness 见 [`HARNESS-RSI.md`](./HARNESS-RSI.md)。
 
 ---
 

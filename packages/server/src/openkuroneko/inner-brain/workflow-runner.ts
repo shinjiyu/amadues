@@ -25,6 +25,8 @@ import {
 } from '../../outer/workflow-secret-resolve.js';
 import { materializeWorkflowAssets } from '../../outer/workflow-assets.js';
 import { hoistSecretRefs } from '../../outer/workflow-promote.js';
+import { createHarnessPointer } from './harness-pointer.js';
+import { createHarnessSpecStore } from './harness-spec-store.js';
 
 export interface WorkflowStepResult {
   stepId: string;
@@ -336,16 +338,32 @@ export function writeBurstModeMarker(workDir: string, marker: BurstModeMarker): 
 
 export function readBurstModeMarker(workDir: string): BurstModeMarker {
   const p = path.join(workDir, '.brain', 'burst-mode.json');
-  if (!fs.existsSync(p)) return { burstMode: 'explore' };
-  try {
-    const j = JSON.parse(fs.readFileSync(p, 'utf8')) as BurstModeMarker;
-    return {
-      burstMode: j.burstMode === 'execute' ? 'execute' : 'explore',
-      workflowRef: j.workflowRef,
-    };
-  } catch {
-    return { burstMode: 'explore' };
+  let base: BurstModeMarker = { burstMode: 'explore' };
+  if (fs.existsSync(p)) {
+    try {
+      const j = JSON.parse(fs.readFileSync(p, 'utf8')) as BurstModeMarker;
+      base = {
+        burstMode: j.burstMode === 'execute' ? 'execute' : 'explore',
+        ...(j.workflowRef ? { workflowRef: j.workflowRef } : {}),
+      };
+    } catch {
+      base = { burstMode: 'explore' };
+    }
   }
+  // P2：execute 时优先 active HarnessSpec.workflowRef
+  if (base.burstMode === 'execute') {
+    try {
+      const store = createHarnessSpecStore(workDir);
+      const active = createHarnessPointer(workDir, store).readActive();
+      const spec = active ? store.get(active.harnessId) : null;
+      if (spec?.refs.workflowRef?.id && spec.refs.workflowRef.version) {
+        return { ...base, workflowRef: spec.refs.workflowRef };
+      }
+    } catch {
+      /* ignore harness read errors */
+    }
+  }
+  return base;
 }
 
 export function assertDesignerMayRedesign(workDir: string): void {

@@ -61,9 +61,138 @@
                         "horizon.intention" "绑定 workflowRef；禁 redesign；逐步 expect；写 workflow_run.json"
                         "horizon.in" "ExecutableWorkflow@version + workDir"
                         "horizon.out" "step results · DONE|ERROR per failurePolicy"
-                        "horizon.deps" "workflowKindAdapters; browserPlaybook; baseNodeExecutor(受限); memoryStore"
+                        "horizon.deps" "workflowKindAdapters; browserPlaybook; baseNodeExecutor(受限); memoryStore; harnessPointer"
                         "horizon.test.unit" "workflow-runner.test.ts"
-                        "horizon.note" "见 EXECUTABLE-WORKFLOW.md §5–§7；Skill 仅为 kind 之一"
+                        "horizon.note" "见 EXECUTABLE-WORKFLOW.md §5–§7；Skill 仅为 kind 之一；优先读 active HarnessSpec.workflowRef"
+                    }
+                }
+
+                // ── Inner Harness-RSI（自改 · 升级 · 回退；外脑不做 RSI）────────────────
+                harnessSpecStore = component "Harness Spec Store" "【✅ P0】版本化 HarnessSpec：LocalNode/skill/EW/assets 快照；不可变 blob" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-spec-store.ts"
+                        "horizon.intention" "H 可寻址；upgrade 只改指针不改历史 blob"
+                        "horizon.in" "put draft · get by id · list"
+                        "horizon.out" ".brain/harness/specs/<id>.json"
+                        "horizon.deps" "filesystem workDir"
+                        "horizon.test.unit" "harness-spec-store.test.ts"
+                        "horizon.note" "见 HARNESS-RSI.md §5–§7；H1–H2"
+                    }
+                }
+
+                harnessPointer = component "Harness Pointer" "【✅ P0】active.json + history；upgrade / rollback" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-pointer.ts"
+                        "horizon.intention" "当前生效 H；失败保持旧版；审计 JSONL"
+                        "horizon.in" "upgrade(H′) · rollback(prev) · readActive"
+                        "horizon.out" ".brain/harness/active.json · history.jsonl"
+                        "horizon.deps" "harnessSpecStore"
+                        "horizon.test.unit" "harness-pointer.test.ts"
+                        "horizon.note" "范型 BATTLE-TUNE-LOOP active.json；H3–H4"
+                    }
+                }
+
+                harnessRevise = component "Harness Revise" "【✅】分析 run-context → 提案 H′；失败节点 skillRefs 优先（不可见评测 rubric）" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-revise.ts"
+                        "horizon.intention" "局部自改：单 parent→单 H′；非蒙特卡罗种群"
+                        "horizon.in" "active H + run-context + node-skill index"
+                        "horizon.out" "HarnessSpec draft (parentId=active; skillRefs)"
+                        "horizon.deps" "harnessSpecStore; harnessPointer; nodeSkillStore"
+                        "horizon.test.unit" "harness-revise.test.ts"
+                        "horizon.note" "H6：禁止 KPI judge / x_eval 进 prompt；见 HARNESS-RSI.md §4"
+                    }
+                }
+
+                harnessGate = component "Harness Gate" "【✅ P1】机械 expect/回放；相对 parent 不回归才允许 upgrade" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-gate.ts"
+                        "horizon.intention" "先回归再上线；fail → active 不变"
+                        "horizon.in" "H′ vs parent · fixtures/expect"
+                        "horizon.out" "gated_ok | gated_fail"
+                        "horizon.deps" "harnessSpecStore; workflowRunner(expect 复用)"
+                        "horizon.test.unit" "harness-gate.test.ts"
+                        "horizon.note" "H3；范型 PSTune regression_gate"
+                    }
+                }
+
+                harnessRestart = component "Harness Restart" "【✅ P1】切 active 后同 charter 再进 DESIGN→RUN（≠ 进程 resume）" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-restart.ts"
+                        "horizon.intention" "restart-with-H：加载新 active 再跑；非 POST inner-brains restart"
+                        "horizon.in" "harnessId after upgrade/rollback"
+                        "horizon.out" "controller 重回 DESIGN|RUN under H"
+                        "horizon.deps" "harnessPointer; controllerFsm"
+                        "horizon.test.integration" "harnessRsi.component.integration.test.ts"
+                        "horizon.note" "H7；见 HARNESS-RSI.md §3 restart-with-H"
+                    }
+                }
+
+                harnessRsiCycle = component "Harness RSI Cycle" "【✅ P2】ATTRIBUTE 失败后 revise→gate→upgrade→restart；封顶 2 轮" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-rsi-cycle.ts"
+                        "horizon.intention" "局部自修复闭环；成功 RUN 不自动 RSI"
+                        "horizon.in" "runOk + rsiRound + run-context"
+                        "horizon.out" "active 指针 / restart-requested"
+                        "horizon.deps" "harnessRevise; harnessGate; harnessPointer; harnessRestart"
+                        "horizon.test.unit" "harness-rsi-cycle.test.ts"
+                        "horizon.test.integration" "harnessRsi.component.integration.test.ts"
+                        "horizon.note" "见 HARNESS-RSI.md §8 P2"
+                    }
+                }
+
+                harnessHeldOut = component "Harness Held-Out" "【✅ P3】同类型 held-out charter 机械门控；写 .brain/harness/held-out/" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-held-out.ts"
+                        "horizon.intention" "防过拟合：共享前须 held-out pass"
+                        "horizon.in" "harnessId + expects/charter"
+                        "horizon.out" "HeldOutVerdict"
+                        "horizon.deps" "harnessSpecStore; checkExpect"
+                        "horizon.test.unit" "harness-p3.test.ts"
+                    }
+                }
+
+                harnessAutoHeldOut = component "Harness Auto Held-Out" "【✅】成功 RUN 后对 active H 自动跑 held-out（无 pass 时）" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-auto-held-out.ts"
+                        "horizon.intention" "免手动 gate：成功轨迹即可解锁 drive9 闸"
+                        "horizon.in" "workDir · active H"
+                        "horizon.out" "HeldOutVerdict | null"
+                        "horizon.deps" "harnessHeldOut; harnessPointer"
+                        "horizon.test.unit" "harness-p3.test.ts"
+                        "horizon.note" "controller ATTRIBUTE success 路径；已有 pass 则跳过"
+                    }
+                }
+
+                harnessDrive9Sync = component "Harness Drive9 Sync Gate" "【✅ P3】active H 拥有 EW 时 promote→drive9 须 held-out" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-drive9-sync.ts"
+                        "horizon.intention" "本地 put 不挡；共享池可拒"
+                        "horizon.in" "workDir + workflowId@version"
+                        "horizon.out" "maySync ok/reason"
+                        "horizon.deps" "harnessHeldOut; harnessPointer"
+                        "horizon.test.unit" "harness-p3.test.ts; workflow-promote.test.ts"
+                    }
+                }
+
+                harnessW15Dedup = component "Harness W15 Dedup" "【✅ P3】内脑 RSI 已覆盖 EW 时抑制外脑 ew_revision" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-w15-dedup.ts"
+                        "horizon.intention" "避免双修：SelfWork explore vs 内脑 restart-with-H"
+                        "horizon.in" "workDir + workflowId"
+                        "horizon.out" "covering bool → considerWorkflowEvolution skip"
+                        "horizon.deps" "harnessPointer; harnessSpecStore"
+                        "horizon.test.unit" "harness-p3.test.ts; workflow-evolution-policy.test.ts"
                     }
                 }
 

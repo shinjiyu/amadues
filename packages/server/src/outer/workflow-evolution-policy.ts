@@ -12,6 +12,7 @@ import {
 import { evaluateWorkflowOutcome } from './workflow-outcome-evaluator.js';
 import type { SelfWorkContext, SelfWorkPolicy, SelfWorkProposal } from './self-work-policy.js';
 import { validateSelfWorkProposal } from './self-work-policy.js';
+import { isHarnessRsiCoveringWorkflow } from '../openkuroneko/inner-brain/harness-w15-dedup.js';
 
 export function buildEwRevisionCharter(input: {
   workflowId: string;
@@ -63,6 +64,17 @@ export function considerWorkflowEvolution(opts: {
   const workflowId = opts.workflowId?.trim() || outcome.workflowId?.trim();
   const version = opts.version?.trim() || outcome.version?.trim();
   if (!workflowId || !version) return null;
+
+  // P3：内脑 Harness-RSI 已覆盖该 EW → 不另开外脑 ew_revision
+  if (isHarnessRsiCoveringWorkflow(opts.workDir, workflowId)) {
+    appendAutonomyActionLog(opts.dataRoot, {
+      at: new Date().toISOString(),
+      dispatched: false,
+      reason: 'workflow_evolution:suppressed_harness_rsi',
+      detail: `${workflowId}@${version} workDir=${opts.workDir}`,
+    });
+    return null;
+  }
 
   const charter = buildEwRevisionCharter({
     workflowId,

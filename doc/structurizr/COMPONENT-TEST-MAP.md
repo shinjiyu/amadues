@@ -181,6 +181,16 @@
 | **workflowPromote** | ✅ `workflow-promote.test.ts`（W3/W5–W13 + pauseInvalid） | — | — | 拒收空壳/路径/跨步$VAR/明文凭证；hoist secretRefs；打包 `.run/ew` 脚本 |
 | **workflowForKpi** | ✅ `workflow-for-kpi.test.ts`（tag + role 优先 + SelfWork execute） | — | — | `role:primary`/`collect` 优先于 repair |
 | **workflowRunner** | ✅ `workflow-runner.test.ts`（含 browser/frozen 注入 + async shell） | ✅ `designer-execute-gate.test.ts` | — | async 逐步 expect；禁 spawnSync |
+| **harnessSpecStore** | ✅ `harness-spec-store.test.ts` | — | — | ADL [`HARNESS-RSI.md`](./HARNESS-RSI.md) P0 |
+| **harnessPointer** | ✅ `harness-pointer.test.ts` | — | — | upgrade/rollback/history |
+| **harnessRevise** | ✅ `harness-revise.test.ts` | — | — | skillRefs（失败优先）；H6 |
+| **harnessGate** | ✅ `harness-gate.test.ts` | — | — | P1；fail 不改 active |
+| **harnessRestart** | ✅ `harness-restart.test.ts` | ✅ `harnessRsi.component.integration.test.ts` | — | restart-with-H ≠ 进程 resume |
+| **harnessRsiCycle** | ✅ `harness-rsi-cycle.test.ts` | ✅ `harnessRsi.component.integration.test.ts`（ATTRIBUTE 全链路） | — | P2 |
+| **harnessHeldOut** | ✅ `harness-p3.test.ts` | — | — | P3 |
+| **harnessAutoHeldOut** | ✅ `harness-p3.test.ts` | — | — | 成功 RUN 自动 held-out |
+| **harnessDrive9Sync** | ✅ `harness-p3.test.ts` · ✅ `workflow-promote.test.ts` | — | — | P3；无 held-out 跳过 storeShared |
+| **harnessW15Dedup** | ✅ `harness-p3.test.ts` · ✅ `workflow-evolution-policy.test.ts` | — | — | P3 |
 | **workflowRunBackground** | ✅ `workflow-tools.test.ts`（后台立即返回） | — | — | W14：不等待整段采集 |
 | **workflowKindAdapters** | ✅ `workflow-adapters.test.ts` | — | — | dry-run + browser/frozen 注入真跑 |
 | **workflowTools** | ✅ `workflow-tools.test.ts` | — | — | list/get/promote/run/pause |
