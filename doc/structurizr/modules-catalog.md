@@ -176,10 +176,11 @@
 | **workflowRunner** | **✅ execute 模式逐步执行 EW（async；可注入 browser/frozen）** | `inner-brain/workflow-runner.ts` | assert/shell/skill_step/browser_steps/run_node；⏳ 读 harnessPointer.active |
 | **harnessSpecStore** | **✅ HarnessSpec 不可变快照** | `inner-brain/harness-spec-store.ts` | `.brain/harness/specs/`；见 [`HARNESS-RSI.md`](./HARNESS-RSI.md) |
 | **harnessPointer** | **✅ active + upgrade/rollback** | `inner-brain/harness-pointer.ts` | `active.json` + `history.jsonl` |
-| **harnessRevise** | **✅ 分析→提案 H′（skillRefs）** | `inner-brain/harness-revise.ts` | 失败节点 skill 优先；H6 拒 rubric |
+| **harnessAnalyze** | **✅ P4 周期复盘 findings** | `inner-brain/harness-analyze.ts` | cadence；类 pstune analyze；H9 |
+| **harnessRevise** | **✅ findings/run-context→提案 H′** | `inner-brain/harness-revise.ts` | skillRefs；H6 拒 rubric |
 | **harnessGate** | **✅ 机械门控** | `inner-brain/harness-gate.ts` | fail → active 不变 |
 | **harnessRestart** | **✅ restart-with-H** | `inner-brain/harness-restart.ts` | controller tick 消费；≠ 进程 resume |
-| **harnessRsiCycle** | **✅ ATTRIBUTE 失败后 revise→gate→upgrade** | `inner-brain/harness-rsi-cycle.ts` | 封顶 2 轮；成功 RUN 跳过 |
+| **harnessRsiCycle** | **✅ P4 周期 analyze→revise→gate→upgrade** | `inner-brain/harness-rsi-cycle.ts` | 主=cadence；辅=hard fail；封顶 2 轮/burst |
 | **harnessHeldOut** | **✅ held-out 门控** | `inner-brain/harness-held-out.ts` | `.brain/harness/held-out/` |
 | **harnessAutoHeldOut** | **✅ 成功 RUN 自动 held-out** | `inner-brain/harness-auto-held-out.ts` | controller ATTRIBUTE；已有 pass 跳过 |
 | **harnessDrive9Sync** | **✅ drive9 sync 闸** | `inner-brain/harness-drive9-sync.ts` | promote 本地仍写；共享需 held-out |
@@ -213,7 +214,8 @@
 
 **视图**：`09-L3-Inner-Phases`（DyFlow Phases）；`09b-L3-Inner-DyFlow`（DyFlow 全模块图）；`09c-L3-Inner-Harness-RSI`（内脑自改/升级/回退）；`14-L2-DyFlow-Node-Lifecycle`（NodeDef 共享/治理）。
 
-专篇：[`HARNESS-RSI.md`](./HARNESS-RSI.md) — **仅内脑** RSI；外脑 spawn-only。
+专篇：[`HARNESS-RSI.md`](./HARNESS-RSI.md) — **仅内脑** RSI；外脑 spawn-only。  
+试点：[`COLLATZ-LEAN-RSI.md`](./COLLATZ-LEAN-RSI.md) — Collatz + Lean 最小 loop（周期 analyze）。
 
 阶段循环（与 [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §3 一致）：
 

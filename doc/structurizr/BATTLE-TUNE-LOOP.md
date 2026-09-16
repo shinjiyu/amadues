@@ -2,7 +2,7 @@
 
 > **English:** Closed loop for Gen9 OU rated auto-battle: **live trace → replay export → offline injector → profile gate → hot reload**.  
 > 与 [`TASK-RUN-OBSERVABILITY.md`](./TASK-RUN-OBSERVABILITY.md) `runKind=pokemon` 互补；元宝 workspace `task-ib-mpvf5dh8-6070` 为参考实现。  
-> **范型提升**：`active.json` + gate + 回滚 → 内脑通用 harness 见 [`HARNESS-RSI.md`](./HARNESS-RSI.md)。
+> **范型提升**：`pstune analyze` → gate → `active.json` + 回滚 → 内脑通用 harness 见 [`HARNESS-RSI.md`](./HARNESS-RSI.md)（**周期复盘为主**，非仅失败触发）。
 
 ---
 

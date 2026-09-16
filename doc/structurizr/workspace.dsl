@@ -565,10 +565,16 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.innerWorker.workflowRunner -> kuroneko.innerWorker.harnessPointer "prefer active workflowRef（⏳）" "in-process" {
             tags "import"
         }
-        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.harnessRsiCycle "ATTRIBUTE 失败后 RSI（P2）" "in-process" {
+        kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.harnessRsiCycle "ATTRIBUTE 后 RSI（周期为主；失败辅）" "in-process" {
             tags "import"
         }
-        kuroneko.innerWorker.harnessRsiCycle -> kuroneko.innerWorker.harnessRevise "revise" "in-process" {
+        kuroneko.innerWorker.harnessRsiCycle -> kuroneko.innerWorker.harnessAnalyze "cadence / fail → analyze" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessAnalyze -> kuroneko.innerWorker.harnessPointer "read active for baseline" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.harnessRsiCycle -> kuroneko.innerWorker.harnessRevise "revise from findings" "in-process" {
             tags "import"
         }
         kuroneko.innerWorker.harnessRsiCycle -> kuroneko.innerWorker.harnessGate "gate" "in-process" {
@@ -937,7 +943,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.innerWorker "09c-L3-Inner-Harness-RSI" {
             title "L3 内脑 — Harness-RSI（revise → gate → upgrade/rollback → restart-with-H）"
-            include kuroneko.innerWorker.harnessSpecStore kuroneko.innerWorker.harnessPointer kuroneko.innerWorker.harnessRevise kuroneko.innerWorker.harnessGate kuroneko.innerWorker.harnessRestart kuroneko.innerWorker.harnessRsiCycle kuroneko.innerWorker.harnessHeldOut kuroneko.innerWorker.harnessAutoHeldOut kuroneko.innerWorker.harnessDrive9Sync kuroneko.innerWorker.harnessW15Dedup kuroneko.innerWorker.controllerFsm kuroneko.innerWorker.runner kuroneko.innerWorker.workflowRunner kuroneko.innerWorker.workerHost
+            include kuroneko.innerWorker.harnessSpecStore kuroneko.innerWorker.harnessPointer kuroneko.innerWorker.harnessAnalyze kuroneko.innerWorker.harnessRevise kuroneko.innerWorker.harnessGate kuroneko.innerWorker.harnessRestart kuroneko.innerWorker.harnessRsiCycle kuroneko.innerWorker.harnessHeldOut kuroneko.innerWorker.harnessAutoHeldOut kuroneko.innerWorker.harnessDrive9Sync kuroneko.innerWorker.harnessW15Dedup kuroneko.innerWorker.controllerFsm kuroneko.innerWorker.runner kuroneko.innerWorker.workflowRunner kuroneko.innerWorker.workerHost
             autolayout tb
         }
 

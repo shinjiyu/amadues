@@ -17,7 +17,7 @@ function silentLogger(): Logger {
   return { info: noop, warn: noop, error: noop, debug: noop } as unknown as Logger;
 }
 
-describe('harness RSI P2 + controller', () => {
+describe('harness RSI P4 + controller', () => {
   let root = '';
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-rsi-c-'));
@@ -54,7 +54,7 @@ describe('harness RSI P2 + controller', () => {
     expect(fs.existsSync(path.join(root, '.brain', 'harness', 'restart-requested.json'))).toBe(false);
   });
 
-  it('ATTRIBUTE failed RUN: revise→gate→upgrade→restart-with-H', async () => {
+  it('ATTRIBUTE failed RUN (aux): revise→gate→upgrade→restart-with-H', async () => {
     const store = createHarnessSpecStore(root);
     store.put({
       id: 'hs-old',

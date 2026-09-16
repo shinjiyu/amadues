@@ -133,17 +133,30 @@
                     }
                 }
 
-                harnessRsiCycle = component "Harness RSI Cycle" "【✅ P2】ATTRIBUTE 失败后 revise→gate→upgrade→restart；封顶 2 轮" "TypeScript" {
+                harnessAnalyze = component "Harness Analyze" "【✅ P4】读 run-context/日志 → soft findings；管 cadence（类 pstune analyze）" "TypeScript" {
+                    tags "Inner-Module" "Harness-RSI"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/harness-analyze.ts"
+                        "horizon.intention" "周期复盘：发现能跑但不合理的优化点；不直接改 active"
+                        "horizon.in" "workDir · run-context · analyze-cadence.json"
+                        "horizon.out" "findings[] · shouldRevise"
+                        "horizon.deps" "harnessPointer"
+                        "horizon.test.unit" "harness-analyze.test.ts"
+                        "horizon.note" "H6/H9；见 HARNESS-RSI.md §4.1 · BATTLE-TUNE-LOOP pstune analyze"
+                    }
+                }
+
+                harnessRsiCycle = component "Harness RSI Cycle" "【✅ P4】周期 analyze→revise→gate→upgrade；失败辅触发；封顶 2 轮/burst" "TypeScript" {
                     tags "Inner-Module" "Harness-RSI"
                     properties {
                         "path" "packages/server/src/openkuroneko/inner-brain/harness-rsi-cycle.ts"
-                        "horizon.intention" "局部自修复闭环；成功 RUN 不自动 RSI"
-                        "horizon.in" "runOk + rsiRound + run-context"
+                        "horizon.intention" "局部上升闭环；主=cadence 复盘，辅=hard fail"
+                        "horizon.in" "runOk + rsiRound + cadence + run-context"
                         "horizon.out" "active 指针 / restart-requested"
-                        "horizon.deps" "harnessRevise; harnessGate; harnessPointer; harnessRestart"
+                        "horizon.deps" "harnessAnalyze; harnessRevise; harnessGate; harnessPointer; harnessRestart"
                         "horizon.test.unit" "harness-rsi-cycle.test.ts"
                         "horizon.test.integration" "harnessRsi.component.integration.test.ts"
-                        "horizon.note" "见 HARNESS-RSI.md §8 P2"
+                        "horizon.note" "见 HARNESS-RSI.md §4 / §8 P4 / H9"
                     }
                 }
 

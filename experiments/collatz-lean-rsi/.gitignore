@@ -1,0 +1,5 @@
+# Keep Lake/Lean build artifacts and runtime harness state local
+.lake/
+build/
+.brain/
+*.olean

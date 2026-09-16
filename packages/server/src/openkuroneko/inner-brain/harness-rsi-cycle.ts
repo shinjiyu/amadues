@@ -1,8 +1,9 @@
 /**
- * Post-ATTRIBUTE Harness-RSI cycle (P2).
- * revise → gate → upgrade → restart-with-H. Cap rounds. Auto only on failed RUN.
+ * Post-ATTRIBUTE Harness-RSI cycle (P4).
+ * Primary: cadence analyze → revise → gate → upgrade.
+ * Auxiliary: hard fail may enter immediately.
  *
- * ADL: doc/structurizr/HARNESS-RSI.md §8 P2 / H3 / H8
+ * ADL: doc/structurizr/HARNESS-RSI.md §4 / §8 P4 / H3 / H8 / H9
  */
 
 import type { HarnessSpecStore } from './harness-spec-store.js';
@@ -11,14 +12,18 @@ import { createHarnessPointer } from './harness-pointer.js';
 import { reviseHarness } from './harness-revise.js';
 import { gateHarness } from './harness-gate.js';
 import { requestHarnessRestart } from './harness-restart.js';
+import { analyzeHarness } from './harness-analyze.js';
 
 export const HARNESS_RSI_MAX_ROUNDS = 2;
 
 export interface HarnessRsiCycleInput {
-  /** RUN 是否成功；P2 仅失败时自动 RSI */
+  /** RUN 是否成功；失败走辅触发，成功仍累计 cadence */
   runOk: boolean;
   /** 当前 burst 已做 RSI 轮次（写在 dyflow-state） */
   rsiRound?: number;
+  /** Override analyze interval (tests) */
+  analyzeInterval?: number;
+  forceAnalyze?: boolean;
   store?: HarnessSpecStore;
 }
 
@@ -31,18 +36,26 @@ export type HarnessRsiCycleResult =
       upgraded: boolean;
       restartRequested: boolean;
       reason: string;
+      trigger?: string;
     };
 
 export function maybeApplyHarnessRsiCycle(
   workDir: string,
   input: HarnessRsiCycleInput,
 ): HarnessRsiCycleResult {
-  if (input.runOk) {
-    return { applied: false, reason: 'run_ok_skip' };
-  }
   const round = input.rsiRound ?? 0;
   if (round >= HARNESS_RSI_MAX_ROUNDS) {
     return { applied: false, reason: 'rsi_cap' };
+  }
+
+  const analysis = analyzeHarness(workDir, {
+    runOk: input.runOk,
+    force: input.forceAnalyze,
+    interval: input.analyzeInterval,
+  });
+
+  if (!analysis.shouldRevise) {
+    return { applied: false, reason: analysis.reason };
   }
 
   const store = input.store ?? createHarnessSpecStore(workDir);
@@ -51,7 +64,11 @@ export function maybeApplyHarnessRsiCycle(
 
   let draft;
   try {
-    draft = reviseHarness(workDir, {}, { store });
+    draft = reviseHarness(
+      workDir,
+      { ...(analysis.diagnosis ? { diagnosis: analysis.diagnosis } : {}) },
+      { store },
+    );
   } catch (e) {
     return {
       applied: false,
@@ -74,6 +91,7 @@ export function maybeApplyHarnessRsiCycle(
       upgraded: false,
       restartRequested: false,
       reason: `gated_fail:${gate.reasons.slice(0, 3).join(';')}`,
+      trigger: analysis.trigger,
     };
   }
 
@@ -90,5 +108,6 @@ export function maybeApplyHarnessRsiCycle(
     upgraded: true,
     restartRequested: hadActive,
     reason: hadActive ? 'upgraded_restart' : 'seeded_active',
+    trigger: analysis.trigger,
   };
 }

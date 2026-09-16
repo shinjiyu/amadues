@@ -319,7 +319,7 @@ export function createDyflowController(
             return { hadWork: false };
           }
 
-          // P2：失败 RUN 后 revise→gate→upgrade→restart-with-H（须在清 run-context 前）
+          // P4：周期 analyze→revise→gate→upgrade（失败辅触发；须在清 run-context 前）
           const rsi = maybeApplyHarnessRsiCycle(workDir, {
             runOk: runCtx.ok,
             rsiRound: state.harnessRsiRound ?? 0,
@@ -328,6 +328,11 @@ export function createDyflowController(
             logger.info('dyflow-controller', {
               event: 'harness.rsi',
               data: { burstId, ...rsi },
+            });
+          } else if (rsi.reason !== 'cadence_wait') {
+            logger.info('dyflow-controller', {
+              event: 'harness.analyze_skip',
+              data: { burstId, reason: rsi.reason },
             });
           }
 

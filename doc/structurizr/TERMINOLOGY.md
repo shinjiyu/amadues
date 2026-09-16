@@ -21,6 +21,7 @@
 | **digitalEmployeeLoop** | 容量主循环：due 优先 → SelfWork → 唯一 `set_goal` | 「心跳派活」作主时钟 | `digital-employee-loop.ts` |
 | **Executable Workflow（EW）** | 已冻结、可逐步验收的**确定性工作流**契约；Skills 是其一种载体 | 把 EW 叫成「又一个 skill」 | [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) |
 | **HarnessSpec（H）** | 内脑一次可寻址的 harness 快照（nodes/skills/EW/assets） | 把单条 skill 或进程状态叫 H | [`HARNESS-RSI.md`](./HARNESS-RSI.md) |
+| **harness analyze** | 周期读轨迹出 soft findings（类 pstune analyze） | 仅失败才复盘；无 gate 直接改 active | 同上 §4.1 |
 | **harness upgrade / rollback** | 改 `.brain/harness/active.json` 指针（须先 gate） | 无门控写 skill；外脑改 KPI 策略 | 同上 |
 | **restart-with-H** | 同 charter 在新 active H 下再进 DESIGN→RUN | `POST …/restart` 进程恢复 | 同上 |
 | **BurstMode** | 本发 burst 自由度：`explore`（默认可 redesign）\| `execute`（绑 EW，禁 redesign） | 与 KPI / SelfWork 混称 | `set_goal.burstMode`（⏳） |

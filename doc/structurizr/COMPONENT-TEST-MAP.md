@@ -183,10 +183,11 @@
 | **workflowRunner** | ✅ `workflow-runner.test.ts`（含 browser/frozen 注入 + async shell） | ✅ `designer-execute-gate.test.ts` | — | async 逐步 expect；禁 spawnSync |
 | **harnessSpecStore** | ✅ `harness-spec-store.test.ts` | — | — | ADL [`HARNESS-RSI.md`](./HARNESS-RSI.md) P0 |
 | **harnessPointer** | ✅ `harness-pointer.test.ts` | — | — | upgrade/rollback/history |
+| **harnessAnalyze** | ✅ `harness-analyze.test.ts` | — | — | P4；cadence + soft findings；H6/H9 |
 | **harnessRevise** | ✅ `harness-revise.test.ts` | — | — | skillRefs（失败优先）；H6 |
 | **harnessGate** | ✅ `harness-gate.test.ts` | — | — | P1；fail 不改 active |
 | **harnessRestart** | ✅ `harness-restart.test.ts` | ✅ `harnessRsi.component.integration.test.ts` | — | restart-with-H ≠ 进程 resume |
-| **harnessRsiCycle** | ✅ `harness-rsi-cycle.test.ts` | ✅ `harnessRsi.component.integration.test.ts`（ATTRIBUTE 全链路） | — | P2 |
+| **harnessRsiCycle** | ✅ `harness-rsi-cycle.test.ts`（周期+失败辅） | ✅ `harnessRsi.component.integration.test.ts` | — | P4；非「仅失败」 |
 | **harnessHeldOut** | ✅ `harness-p3.test.ts` | — | — | P3 |
 | **harnessAutoHeldOut** | ✅ `harness-p3.test.ts` | — | — | 成功 RUN 自动 held-out |
 | **harnessDrive9Sync** | ✅ `harness-p3.test.ts` · ✅ `workflow-promote.test.ts` | — | — | P3；无 held-out 跳过 storeShared |
