@@ -144,11 +144,12 @@ function extractLeanBlock(text: string): string | null {
 /** Append-only: keep current Exploration body; insert new theorems before `end`. */
 function mergeAppend(current: string, addition: string): string {
   let add = addition.trim();
-  // strip wrappers if model returned a full file
+  // strip wrappers if model returned a full file / repeated assault markers
   add = add
     .replace(/^import\s+Collatz\.Conjecture\s*/m, '')
     .replace(/^namespace\s+Collatz\.Exploration\s*/m, '')
     .replace(/^end\s+Collatz\.Exploration\s*/m, '')
+    .replace(/\/--\s*assault append\s*--\/\s*/gi, '')
     .trim();
   if (!add) throw new Error('empty addition');
   // refuse dangerous tactics that usually don't close on Collatz here
@@ -156,10 +157,54 @@ function mergeAppend(current: string, addition: string): string {
     throw new Error('addition uses forbidden tactic (induction/omega/sorry/…)');
   }
   if (!/\btheorem\b/.test(add)) throw new Error('addition has no theorem');
+  // drop duplicate theorem names already present
+  const existing = new Set(
+    [...current.matchAll(/\btheorem\s+([A-Za-z0-9_']+)/g)].map((m) => m[1]!),
+  );
+  const kept: string[] = [];
+  for (const block of add.split(/(?=^\s*theorem\s+)/m)) {
+    const t = block.trim();
+    if (!t) continue;
+    const name = t.match(/^\s*theorem\s+([A-Za-z0-9_']+)/)?.[1];
+    if (name && existing.has(name)) continue;
+    if (name) existing.add(name);
+    kept.push(t);
+  }
+  if (kept.length === 0) throw new Error('all proposed theorems already exist');
   const marker = 'end Collatz.Exploration';
   const idx = current.lastIndexOf(marker);
   if (idx < 0) throw new Error('Exploration.lean missing end marker');
-  return `${current.slice(0, idx).trimEnd()}\n\n/-- assault append --/\n${add}\n\n${marker}\n`;
+  return `${current.slice(0, idx).trimEnd()}\n\n/-- assault append --/\n${kept.join('\n')}\n\n${marker}\n`;
+}
+
+function collatzStep(n: number): number {
+  return n % 2 === 0 ? Math.floor(n / 2) : 3 * n + 1;
+}
+
+function collatzStepsToOne(n: number): number {
+  let x = n;
+  let k = 0;
+  while (x !== 1) {
+    x = collatzStep(x);
+    k += 1;
+    if (k > 10_000) throw new Error(`Collatz runaway for n=${n}`);
+  }
+  return k;
+}
+
+/** Deterministic compile-safe append for next unused positive n (LLM fallback). */
+function computeNextLemmas(exploration: string): string {
+  const claimed = new Set<number>();
+  for (const m of exploration.matchAll(/\breaches_(\d+)\b/g)) claimed.add(Number(m[1]));
+  for (const m of exploration.matchAll(/\bone_reaches_one\b/g)) claimed.add(1);
+  let n = 1;
+  while (claimed.has(n)) n += 1;
+  const steps = collatzStepsToOne(n);
+  const next = collatzStep(n);
+  return [
+    `theorem step_${n} : Collatz.step ${n} = ${next} := by decide`,
+    `theorem reaches_${n} : Collatz.ReachesOne ${n} := ⟨${steps}, by decide⟩`,
+  ].join('\n');
 }
 
 async function zhipuPropose(exploration: string, conjecture: string, lastLog: string): Promise<string> {
@@ -179,7 +224,8 @@ async function zhipuPropose(exploration: string, conjecture: string, lastLog: st
     'Forbidden: induction, omega, linarith, ring, aesop, sorry, rewriting Conjecture.lean, claiming full proof.',
     'Prefer concrete Nat facts, e.g. `theorem reaches_8 : Collatz.ReachesOne 8 := ⟨3, by decide⟩`.',
     'Do not repeat existing theorem names.',
-    'Wrap the addition in a ```lean fence (theorems only, no import/namespace/end required).',
+    'Do NOT emit `/-- assault append --/` markers, import, namespace, or end.',
+    'Wrap the addition in a ```lean fence (theorems only).',
     'No KPI / x_eval / scoring rubrics.',
   ].join('\n');
 
@@ -262,6 +308,7 @@ async function main(): Promise<void> {
     const conj = fs.readFileSync(CONJ, 'utf8');
     let proposedRaw = '';
     let next = before;
+    let source: 'zhipu' | 'compute' = 'zhipu';
     try {
       proposedRaw = await zhipuPropose(before, conj, lastLog);
       const extracted = extractLeanBlock(proposedRaw);
@@ -269,16 +316,34 @@ async function main(): Promise<void> {
       next = mergeAppend(before, extracted);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('[assault] propose failed:', msg.slice(0, 200));
-      appendJournal({ round: i, ok: false, stage: 'propose', error: msg.slice(0, 500) });
-      continue;
+      console.warn('[assault] propose failed → compute fallback:', msg.slice(0, 160));
+      source = 'compute';
+      proposedRaw = computeNextLemmas(before);
+      next = mergeAppend(before, proposedRaw);
     }
 
     fs.writeFileSync(EXPL, next, 'utf8');
-    const build = lakeBuild();
+    let build = lakeBuild();
     lastLog = build.log;
     writeStamp(build.ok, build.log);
-    console.log(`[lake build] exit=${build.exitCode} ok=${build.ok} explHash ${beforeHash}→${hashFile(EXPL)}`);
+    console.log(
+      `[lake build] exit=${build.exitCode} ok=${build.ok} source=${source} explHash ${beforeHash}→${hashFile(EXPL)}`,
+    );
+
+    if (!build.ok && source === 'zhipu') {
+      console.warn('[assault] zhipu build failed — retry compute fallback');
+      fs.writeFileSync(EXPL, before, 'utf8');
+      source = 'compute';
+      proposedRaw = computeNextLemmas(before);
+      next = mergeAppend(before, proposedRaw);
+      fs.writeFileSync(EXPL, next, 'utf8');
+      build = lakeBuild();
+      lastLog = build.log;
+      writeStamp(build.ok, build.log);
+      console.log(
+        `[lake build] exit=${build.exitCode} ok=${build.ok} source=${source} explHash ${beforeHash}→${hashFile(EXPL)}`,
+      );
+    }
 
     if (!build.ok) {
       const failDir = path.join(workDir, '.brain', 'assault-failed');
@@ -292,8 +357,8 @@ async function main(): Promise<void> {
       createNodeSkillStore(workDir).writeSkill(LEAN_NODE, {
         category: 'lean',
         title: `Assault round ${i} exploration`,
-        tags: ['collatz', 'assault', `r${i}`],
-        content: `Round ${i} Exploration update (hash ${hashFile(EXPL)}). Keep lake green; conjecture may stay open.`,
+        tags: ['collatz', 'assault', `r${i}`, source],
+        content: `Round ${i} Exploration update via ${source} (hash ${hashFile(EXPL)}). Keep lake green; conjecture may stay open.`,
       });
     }
 
@@ -345,6 +410,7 @@ async function main(): Promise<void> {
       ok: build.ok,
       explHash: hashFile(EXPL),
       changed: next !== before,
+      source,
       rsi,
     });
   }

@@ -63,5 +63,12 @@ LLM（可选增强 analyze/写证明）：本机 `deploy/agent/env/collatz-lean.
 | A | ADL + Lean 骨架 + `lake build` 绿 | ✅ |
 | B | 最小 loop 接真 harness 模块 | ✅ `experiments/collatz-lean-rsi/run-loop.ts` |
 | B2 | cadence 上 actionable findings → upgrade（Lean craft skill 绑定） | ✅ |
-| C | 正式冲击：智谱提案 `Exploration.lean` → `lake build` 门控 → harness RSI | ⏳ |
+| C | 正式冲击：智谱提案 `Exploration.lean` → `lake build` 门控 → harness RSI | ✅ `assault-loop.ts`（append-only；Zhipu 失败则 compute fallback；gate≠真理） |
 | D | （可选）再挂完整 Amadues agent / KPI | — |
+
+### C 冲击纪要（2026-09-16）
+
+- 闭环：`ZHIPU` 提案 → `mergeAppend` → `lake build` → `maybeApplyHarnessRsiCycle`（cadence / hard_fail）。
+- 修复：`harness-spec-store` 同 hash 幂等 put（H2）；禁止双写 `/-- assault append --/`；每 round 新 burst（`rsiRound=0`）。
+- 结果：Exploration 持续增长具体 `ReachesOne n` / `step n`（`decide`）；主猜想仍 `sorry`；多次 `trigger=cadence` upgrade。
+- **不**声称证明 3n+1。
