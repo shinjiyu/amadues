@@ -83,6 +83,8 @@ export function createHarnessSpecStore(workDir: string): HarnessSpecStore {
       assertValidId(id);
       const existing = readFile(id);
       if (existing) {
+        // Idempotent re-put of identical content (H2); avoids revise crash when H′ ≡ active
+        if (existing.contentHash === contentHash) return existing;
         throw new Error(`[harness-spec-store] immutable: ${id} already exists (H2)`);
       }
       const spec: HarnessSpec = {

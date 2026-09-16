@@ -63,4 +63,5 @@ LLM（可选增强 analyze/写证明）：本机 `deploy/agent/env/collatz-lean.
 | A | ADL + Lean 骨架 + `lake build` 绿 | ✅ |
 | B | 最小 loop 接真 harness 模块 | ✅ `experiments/collatz-lean-rsi/run-loop.ts` |
 | B2 | cadence 上 actionable findings → upgrade（Lean craft skill 绑定） | ✅ |
-| C | （可选）LLM 辅助 Exploration；再挂完整 agent | — |
+| C | 正式冲击：智谱提案 `Exploration.lean` → `lake build` 门控 → harness RSI | ⏳ |
+| D | （可选）再挂完整 Amadues agent / KPI | — |
