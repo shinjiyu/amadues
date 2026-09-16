@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createHarnessSpecStore } from './harness-spec-store.js';
 import { createHarnessPointer } from './harness-pointer.js';
 import { gateHarness } from './harness-gate.js';
+import { createHarnessLoopTreeStore } from './harness-loop-tree.js';
 
 describe('harnessGate', () => {
   let root = '';
@@ -63,5 +64,35 @@ describe('harnessGate', () => {
     const result = gateHarness(root, 'hs-c', { store });
     expect(result.ok).toBe(false);
     expect(result.reasons.some((r) => /keep\.txt/.test(r))).toBe(true);
+  });
+
+  it('P5: runs gateChecks and verifies loopEntry in tree', () => {
+    fs.writeFileSync(path.join(root, 'loop.ts'), 'ok\n');
+    const trees = createHarnessLoopTreeStore(root);
+    const seeded = trees.seed({ files: [{ from: 'loop.ts', to: 'loop.ts' }] });
+    const store = createHarnessSpecStore(root);
+    store.put({
+      id: 'hs-ok',
+      refs: {
+        loopTreeId: seeded.treeId,
+        loopEntry: 'loop.ts',
+        gateChecks: [{ id: 'echo', command: 'node -e "process.exit(0)"' }],
+      },
+      status: 'draft',
+    });
+    expect(gateHarness(root, 'hs-ok', { store }).ok).toBe(true);
+
+    store.put({
+      id: 'hs-bad-check',
+      refs: {
+        loopTreeId: seeded.treeId,
+        loopEntry: 'loop.ts',
+        gateChecks: [{ id: 'fail', command: 'node -e "process.exit(2)"' }],
+      },
+      status: 'draft',
+    });
+    const bad = gateHarness(root, 'hs-bad-check', { store });
+    expect(bad.ok).toBe(false);
+    expect(bad.reasons.some((r) => /gateCheck:fail/.test(r))).toBe(true);
   });
 });

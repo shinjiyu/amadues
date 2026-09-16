@@ -22,6 +22,10 @@ import { createHarnessSpecStore } from '../../packages/server/src/openkuroneko/i
 import { createHarnessPointer } from '../../packages/server/src/openkuroneko/inner-brain/harness-pointer.ts';
 import { createNodeSkillStore } from '../../packages/server/src/openkuroneko/inner-brain/node-skill-store.ts';
 import { readAnalyzeCadence } from '../../packages/server/src/openkuroneko/inner-brain/harness-analyze.ts';
+import {
+  createHarnessLoopTreeStore,
+  resolveActiveLoopEntry,
+} from '../../packages/server/src/openkuroneko/inner-brain/harness-loop-tree.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const workDir = here;
@@ -30,6 +34,8 @@ const LEAN_NODE = 'local/lean-build';
 const EXPL = path.join(workDir, 'Collatz', 'Exploration.lean');
 const CONJ = path.join(workDir, 'Collatz', 'Conjecture.lean');
 const JOURNAL = path.join(workDir, '.brain', 'assault-journal.jsonl');
+const LOOP_META = 'loop-meta.ts';
+const LOOP_META_ABS = path.join(workDir, LOOP_META);
 
 const LEAN_TC_BIN = path.join(
   process.env.HOME ?? '',
@@ -106,6 +112,13 @@ function ensureSeed(): void {
       ),
     );
   }
+  if (!fs.existsSync(LOOP_META_ABS)) {
+    fs.writeFileSync(
+      LOOP_META_ABS,
+      `/** P5 loop-meta: RSI patches this file; gate ≠ Collatz truth. */\nexport const assaultEpoch = 0;\n`,
+      'utf8',
+    );
+  }
   const skills = createNodeSkillStore(workDir);
   if (skills.readIndex(LEAN_NODE).length === 0) {
     skills.writeSkill(LEAN_NODE, {
@@ -116,11 +129,23 @@ function ensureSeed(): void {
         'Keep lake build green. Prefer lemmas in Exploration.lean. Gate=compile not truth.',
     });
   }
+
+  const trees = createHarnessLoopTreeStore(workDir);
+  const seedFiles = [
+    { from: LOOP_META, to: LOOP_META },
+    { from: 'assault-loop.ts', to: 'assault-loop.ts' },
+    { from: 'run-loop.ts', to: 'run-loop.ts' },
+  ].filter((f) => fs.existsSync(path.join(workDir, f.from)));
+  const tree = trees.seed({ files: seedFiles });
+
   const store = createHarnessSpecStore(workDir);
   const ptr = createHarnessPointer(workDir, store);
-  if (!ptr.readActive()) {
+  const active = ptr.readActive();
+  const activeSpec = active ? store.get(active.harnessId) : null;
+  if (!activeSpec?.refs.loopTreeId) {
     const spec = store.put({
-      id: 'hs-collatz-seed',
+      id: activeSpec ? undefined : 'hs-collatz-seed',
+      parentId: activeSpec?.id,
       refs: {
         localNodeIds: [LEAN_NODE],
         assetPaths: [
@@ -128,11 +153,37 @@ function ensureSeed(): void {
           'Collatz/Exploration.lean',
           '.brain/lean-build.ok',
         ],
+        loopTreeId: tree.treeId,
+        loopRoots: [''],
+        loopEntry: LOOP_META,
+        gateChecks: [{ id: 'loop-meta-exists', command: `test -f "${LOOP_META}"` }],
       },
       status: 'gated_ok',
     });
     ptr.upgrade(spec.id);
   }
+}
+
+function buildLoopMetaPatch(epoch: number, extra?: string): { path: string; action: 'write'; content: string } {
+  const note = extra ? `\nexport const lastNote = ${JSON.stringify(extra)};\n` : '\n';
+  return {
+    path: LOOP_META,
+    action: 'write',
+    content: `/** P5 loop-meta: RSI patches this file; gate ≠ Collatz truth. */\nexport const assaultEpoch = ${epoch};${note}`,
+  };
+}
+
+function nextLoopMetaPatch(round: number, ok: boolean): { path: string; action: 'write'; content: string } {
+  const store = createHarnessSpecStore(workDir);
+  const activeId = createHarnessPointer(workDir, store).readActive()?.harnessId;
+  const refs = activeId ? store.get(activeId)?.refs : undefined;
+  let cur = 0;
+  const entry = resolveActiveLoopEntry(workDir, refs ?? null);
+  if (entry) {
+    const m = fs.readFileSync(entry, 'utf8').match(/assaultEpoch\s*=\s*(\d+)/);
+    if (m) cur = Number(m[1]);
+  }
+  return buildLoopMetaPatch(Math.max(cur + 1, round), ok ? `ok-r${round}` : `fail-r${round}`);
 }
 
 function extractLeanBlock(text: string): string | null {
@@ -390,18 +441,29 @@ async function main(): Promise<void> {
       results: [],
     });
 
-    // Each assault round uses a fresh burstId → per-burst rsiRound starts at 0.
-    // Cap (HARNESS_RSI_MAX_ROUNDS) still bounds upgrades *within* one cycle call.
+    // P5: every round patches loop-meta inside loopTree (tree diff required — H12).
+    const patches = [nextLoopMetaPatch(i, build.ok)];
     const rsi = maybeApplyHarnessRsiCycle(workDir, {
       runOk: build.ok,
       rsiRound: 0,
       analyzeInterval: interval,
+      patches,
     });
     if (rsi.applied && 'upgraded' in rsi && rsi.upgraded) rsiRound += 1;
     else if (rsi.applied && 'restartRequested' in rsi && rsi.restartRequested) rsiRound = 0;
+
+    const activeId = createHarnessPointer(workDir).readActive()?.harnessId;
+    const activeRefs = activeId ? createHarnessSpecStore(workDir).get(activeId)?.refs : undefined;
+    const entryAbs = resolveActiveLoopEntry(workDir, activeRefs ?? null);
+    if (entryAbs && activeRefs?.loopTreeId) {
+      const fromTree = fs.readFileSync(entryAbs, 'utf8');
+      fs.writeFileSync(LOOP_META_ABS, fromTree, 'utf8');
+    }
     console.log('[harness.rsi]', rsi);
     console.log('[state]', {
-      active: createHarnessPointer(workDir).readActive()?.harnessId,
+      active: activeId,
+      loopTreeId: activeRefs?.loopTreeId ?? null,
+      loopEntry: entryAbs ? fs.readFileSync(entryAbs, 'utf8').trim() : null,
       cadence: readAnalyzeCadence(workDir).attributeCount,
       rsiRound,
     });
@@ -411,6 +473,7 @@ async function main(): Promise<void> {
       explHash: hashFile(EXPL),
       changed: next !== before,
       source,
+      loopTreeId: activeRefs?.loopTreeId ?? null,
       rsi,
     });
   }

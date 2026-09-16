@@ -43,6 +43,12 @@ function specPath(workDir: string, id: string): string {
 
 export function hashHarnessRefs(refs: HarnessRefs): string {
   const canonical = JSON.stringify({
+    loopTreeId: refs.loopTreeId ?? null,
+    loopRoots: [...(refs.loopRoots ?? [])].sort(),
+    loopEntry: refs.loopEntry ?? null,
+    gateChecks: [...(refs.gateChecks ?? [])]
+      .map((c) => ({ id: c.id, command: c.command, cwd: c.cwd ?? null }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
     localNodeIds: [...(refs.localNodeIds ?? [])].sort(),
     skillRefs: [...(refs.skillRefs ?? [])]
       .map((s) => ({ nodeRef: s.nodeRef, skillId: s.skillId }))

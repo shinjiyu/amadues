@@ -10,6 +10,7 @@ import { createNodeSkillStore } from './node-skill-store.js';
 import { maybeApplyHarnessRsiCycle } from './harness-rsi-cycle.js';
 import { HEAVY_REACT_ENTRY_THRESHOLD } from './harness-analyze.js';
 import { writeAnalyzeCadence } from './harness-analyze.js';
+import { createHarnessLoopTreeStore } from './harness-loop-tree.js';
 
 function writeFailedCtx(root: string, refs: string[]): void {
   writeRunContext(root, {
@@ -156,5 +157,46 @@ describe('maybeApplyHarnessRsiCycle', () => {
     const r = maybeApplyHarnessRsiCycle(root, { runOk: false, rsiRound: 2 });
     expect(r.applied).toBe(false);
     if (!r.applied) expect(r.reason).toBe('rsi_cap');
+  });
+
+  it('P5: applies patches even when soft findings empty', () => {
+    fs.writeFileSync(path.join(root, 'entry.ts'), 'export const n = 0;\n');
+    const trees = createHarnessLoopTreeStore(root);
+    const t0 = trees.seed({ files: [{ from: 'entry.ts', to: 'entry.ts' }] });
+    const store = createHarnessSpecStore(root);
+    store.put({
+      id: 'hs-loop',
+      refs: {
+        loopTreeId: t0.treeId,
+        loopRoots: [''],
+        loopEntry: 'entry.ts',
+        localNodeIds: ['local/a'],
+      },
+      status: 'gated_ok',
+    });
+    createHarnessPointer(root, store).upgrade('hs-loop');
+    writeRunContext(root, {
+      burstId: 'b1',
+      designedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      ok: true,
+      nodes: [{ nodeInstId: 'n1', ref: 'local/a', ok: true, entries: [] }],
+      results: [],
+    });
+    writeAnalyzeCadence(root, { attributeCount: 0, interval: 99 });
+    const r = maybeApplyHarnessRsiCycle(root, {
+      runOk: true,
+      store,
+      analyzeInterval: 99,
+      patches: [{ path: 'entry.ts', action: 'write', content: 'export const n = 1;\n' }],
+    });
+    expect(r.applied).toBe(true);
+    if (r.applied) {
+      expect(r.upgraded).toBe(true);
+      expect(r.harnessId).not.toBe('hs-loop');
+    }
+    const active = store.get(createHarnessPointer(root, store).readActive()!.harnessId)!;
+    expect(active.refs.loopTreeId).not.toBe(t0.treeId);
+    expect(trees.readFile(active.refs.loopTreeId!, 'entry.ts')).toContain('n = 1');
   });
 });

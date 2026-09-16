@@ -2,8 +2,8 @@
 
 > **English:** Minimal loop to exercise **periodic harness analyze** on an **open** conjecture, using Lean 4 `lake build` as the mechanical craft gate — **not** a truth oracle.
 >
-> **状态**：2026-09-15 试点开搞  
-> **关联**：[`HARNESS-RSI.md`](./HARNESS-RSI.md) §4 / H9 · [`BATTLE-TUNE-LOOP.md`](./BATTLE-TUNE-LOOP.md)
+> **状态**：2026-09-16 · C ✅ · **E / P5 Loop-Source ✅**  
+> **关联**：[`HARNESS-RSI.md`](./HARNESS-RSI.md) §4 / §12 / H9–H12 · [`BATTLE-TUNE-LOOP.md`](./BATTLE-TUNE-LOOP.md)
 
 ---
 
@@ -18,9 +18,9 @@
 | 要 | 不要（本阶段） |
 |----|----------------|
 | 复用 `harnessAnalyze` / `revise` / `gate` / `pointer` | 新开完整外脑 + KPI + IM |
-| 本机 workDir `.brain/harness/` | 新申请 mem9 / drive9（可选以后） |
-| `lake build` 作工艺门控 | 用「猜想为真」当 gate |
-| 周期 cadence 复盘 | 仅失败才 RSI |
+| 本机 workDir `.brain/harness/`（含 **P5 `trees/`**） | 新申请 mem9 / drive9（可选以后） |
+| `lake build` + loop **自检**作工艺门控 | 用「猜想为真」当 gate |
+| 周期 cadence 复盘；**revise 改 loop 源码** | 仅失败才 RSI；仅涨 skillRefs |
 
 路径根：`experiments/collatz-lean-rsi/`（Lean 工程 + loop 脚本）。
 
@@ -28,15 +28,23 @@
 
 ## 3. 闭环
 
+### 3.1 C（已跑通但 harness 曾无行为增益）
+
 ```text
-exploration tick（写/改 .lean 或跑检查）
-  → lake build
-       ├─ fail → 写 run-context(ok=false) → RSI 辅触发
-       └─ ok  → stamp + run-context(ok=true) → cadence analyze
-  → findings? → revise → gate（源文件存在 + build stamp）→ upgrade
+exploration tick → lake build → RSI（曾：仅并 skillRefs）
 ```
 
-**可证伪**：成功 N 轮从未出现 `trigger=cadence`；或 build 挂仍 upgrade。
+### 3.2 E / HARNESS-RSI P5（现行）
+
+```text
+seed loopTree（assault-loop / run-loop / loop-meta ∈ tree）
+  → tick：resolveActiveLoopEntry（H10）
+  → lake / gateChecks
+  → revise：patches 改 tree（无 tree diff → H12 拒绝）
+  → gate → upgrade → 下一轮读新 loopTreeId
+```
+
+**可证伪**：upgrade 后 `loopTreeId` 不变仅 skillRefs 变长；或执行面不读 tree。
 
 ---
 
@@ -45,14 +53,15 @@ exploration tick（写/改 .lean 或跑检查）
 | 文件 | 角色 |
 |------|------|
 | `Collatz/Conjecture.lean` | 猜想陈述；主定理可长期 `sorry` |
-| `Collatz/Exploration.lean` | 尝试引理 / 计算辅助；须保持可编译 |
-| `lake build` | 门控命令（无 mathlib 依赖，启动快） |
+| `Collatz/Exploration.lean` | 工艺面引理；≠ harness 进化 |
+| `loop-meta.ts` | P5 `loopEntry`；RSI patches 递增 `assaultEpoch` |
+| `lake build` | 门控命令之一 |
 
 ---
 
 ## 5. 密钥
 
-LLM（可选增强 analyze/写证明）：本机 `deploy/agent/env/collatz-lean.env`（gitignore），从私人备份库导入 `ZHIPU_API_KEY`。**不**提交明文。
+LLM：本机 `deploy/agent/env/collatz-lean.env`（gitignore）。**不**提交明文。
 
 ---
 
@@ -60,15 +69,14 @@ LLM（可选增强 analyze/写证明）：本机 `deploy/agent/env/collatz-lean.
 
 | 步 | 内容 | 状态 |
 |----|------|------|
-| A | ADL + Lean 骨架 + `lake build` 绿 | ✅ |
-| B | 最小 loop 接真 harness 模块 | ✅ `experiments/collatz-lean-rsi/run-loop.ts` |
-| B2 | cadence 上 actionable findings → upgrade（Lean craft skill 绑定） | ✅ |
-| C | 正式冲击：智谱提案 `Exploration.lean` → `lake build` 门控 → harness RSI | ✅ `assault-loop.ts`（append-only；Zhipu 失败则 compute fallback；gate≠真理） |
-| D | （可选）再挂完整 Amadues agent / KPI | — |
+| A–C | 骨架 + loop + Exploration 冲击 | ✅ |
+| D | （可选）完整 Amadues agent / KPI | — |
+| **E** | P5：`loopTree` + patches；`loopTreeId` 随 upgrade 变化 | ✅ |
 
-### C 冲击纪要（2026-09-16）
+### E 纪要（2026-09-16）
 
-- 闭环：`ZHIPU` 提案 → `mergeAppend` → `lake build` → `maybeApplyHarnessRsiCycle`（cadence / hard_fail）。
-- 修复：`harness-spec-store` 同 hash 幂等 put（H2）；禁止双写 `/-- assault append --/`；每 round 新 burst（`rsiRound=0`）。
-- 结果：Exploration 持续增长具体 `ReachesOne n` / `step n`（`decide`）；主猜想仍 `sorry`；多次 `trigger=cadence` upgrade。
-- **不**声称证明 3n+1。
+| 项 | 结果 |
+|----|------|
+| seed | `loop-meta.ts` + assault/run-loop → tree |
+| 每 round | patches 写 `assaultEpoch` / `lastNote` |
+| 验证 | upgrade 后 `loopTreeId` 与 entry 内容变化；H12 拒 skillRefs-only |

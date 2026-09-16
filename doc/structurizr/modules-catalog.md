@@ -177,8 +177,9 @@
 | **harnessSpecStore** | **✅ HarnessSpec 不可变快照** | `inner-brain/harness-spec-store.ts` | `.brain/harness/specs/`；见 [`HARNESS-RSI.md`](./HARNESS-RSI.md) |
 | **harnessPointer** | **✅ active + upgrade/rollback** | `inner-brain/harness-pointer.ts` | `active.json` + `history.jsonl` |
 | **harnessAnalyze** | **✅ P4 周期复盘 findings** | `inner-brain/harness-analyze.ts` | cadence；类 pstune analyze；H9 |
-| **harnessRevise** | **✅ findings/run-context→提案 H′** | `inner-brain/harness-revise.ts` | skillRefs；H6 拒 rubric |
-| **harnessGate** | **✅ 机械门控** | `inner-brain/harness-gate.ts` | fail → active 不变 |
+| **harnessRevise** | **✅ P5 findings+tree→patches→H′** | `inner-brain/harness-revise.ts` | H6；H11；H12；见 [`HARNESS-RSI.md`](./HARNESS-RSI.md) §12 |
+| **harnessGate** | **✅ P5 fixtures + gateChecks** | `inner-brain/harness-gate.ts` | fail → active 不变 |
+| **harnessLoopTree** | **✅ P5 loop source tree COW** | `inner-brain/harness-loop-tree.ts` | `.brain/harness/trees/`；seed/patch/H11 |
 | **harnessRestart** | **✅ restart-with-H** | `inner-brain/harness-restart.ts` | controller tick 消费；≠ 进程 resume |
 | **harnessRsiCycle** | **✅ P4 周期 analyze→revise→gate→upgrade** | `inner-brain/harness-rsi-cycle.ts` | 主=cadence；辅=hard fail；封顶 2 轮/burst |
 | **harnessHeldOut** | **✅ held-out 门控** | `inner-brain/harness-held-out.ts` | `.brain/harness/held-out/` |

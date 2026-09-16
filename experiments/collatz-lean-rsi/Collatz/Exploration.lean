@@ -104,4 +104,36 @@ theorem step_15 : Collatz.step 15 = 46 := by decide
 theorem reaches_15 : Collatz.ReachesOne 15 := ⟨17, by decide⟩
 theorem reaches_46 : Collatz.ReachesOne 46 := ⟨16, by decide⟩
 
+/-- assault append --/
+theorem step_18 : Collatz.step 18 = 9 := by decide
+theorem reaches_18 : Collatz.ReachesOne 18 := ⟨20, by decide⟩
+theorem reaches_22 : Collatz.ReachesOne 22 := ⟨15, by decide⟩
+
+/-- assault append --/
+theorem step_23 : Collatz.step 23 = 70 := by decide
+theorem reaches_23 : Collatz.ReachesOne 23 := ⟨15, by decide⟩
+
+/-- assault append --/
+theorem step_27 : Collatz.step 27 = 82 := by decide
+theorem step_30 : Collatz.step 30 = 15 := by decide
+theorem reaches_30 : Collatz.ReachesOne 30 := ⟨18, by decide⟩
+
+/-- assault append --/
+theorem step_29 : Collatz.step 29 = 88 := by decide
+theorem reaches_29 : Collatz.ReachesOne 29 := ⟨18, by decide⟩
+theorem reaches_88 : Collatz.ReachesOne 88 := ⟨17, by decide⟩
+
+/-- assault append --/
+theorem reaches_25 : Collatz.ReachesOne 25 := ⟨23, by decide⟩
+
+/-- assault append --/
+theorem step_31 : Collatz.step 31 = 94 := by decide
+theorem reaches_64 : Collatz.ReachesOne 64 := ⟨6, by decide⟩
+theorem reaches_48 : Collatz.ReachesOne 48 := ⟨11, by decide⟩
+
+/-- assault append --/
+theorem step_35 : Collatz.step 35 = 106 := by decide
+theorem reaches_35 : Collatz.ReachesOne 35 := ⟨22, by decide⟩
+theorem reaches_106 : Collatz.ReachesOne 106 := ⟨21, by decide⟩
+
 end Collatz.Exploration

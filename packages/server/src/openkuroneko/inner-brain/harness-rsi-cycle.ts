@@ -13,6 +13,7 @@ import { reviseHarness } from './harness-revise.js';
 import { gateHarness } from './harness-gate.js';
 import { requestHarnessRestart } from './harness-restart.js';
 import { analyzeHarness } from './harness-analyze.js';
+import type { HarnessPatch } from './harness-types.js';
 
 export const HARNESS_RSI_MAX_ROUNDS = 2;
 
@@ -25,6 +26,8 @@ export interface HarnessRsiCycleInput {
   analyzeInterval?: number;
   forceAnalyze?: boolean;
   store?: HarnessSpecStore;
+  /** P5: optional patches for revise (loop source evolution) */
+  patches?: HarnessPatch[];
 }
 
 export type HarnessRsiCycleResult =
@@ -50,11 +53,12 @@ export function maybeApplyHarnessRsiCycle(
 
   const analysis = analyzeHarness(workDir, {
     runOk: input.runOk,
-    force: input.forceAnalyze,
+    force: input.forceAnalyze || Boolean(input.patches?.length),
     interval: input.analyzeInterval,
   });
 
-  if (!analysis.shouldRevise) {
+  // P5: patches themselves are substantive (H12); do not require soft findings to apply them.
+  if (!analysis.shouldRevise && !input.patches?.length) {
     return { applied: false, reason: analysis.reason };
   }
 
@@ -66,7 +70,14 @@ export function maybeApplyHarnessRsiCycle(
   try {
     draft = reviseHarness(
       workDir,
-      { ...(analysis.diagnosis ? { diagnosis: analysis.diagnosis } : {}) },
+      {
+        ...(analysis.diagnosis
+          ? { diagnosis: analysis.diagnosis }
+          : input.patches?.length
+            ? { diagnosis: 'loop_source_patches' }
+            : {}),
+        ...(input.patches?.length ? { patches: input.patches } : {}),
+      },
       { store },
     );
   } catch (e) {

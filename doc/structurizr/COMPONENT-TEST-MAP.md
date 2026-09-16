@@ -184,10 +184,11 @@
 | **harnessSpecStore** | ✅ `harness-spec-store.test.ts` | — | — | ADL [`HARNESS-RSI.md`](./HARNESS-RSI.md) P0 |
 | **harnessPointer** | ✅ `harness-pointer.test.ts` | — | — | upgrade/rollback/history |
 | **harnessAnalyze** | ✅ `harness-analyze.test.ts` | — | — | P4；cadence + soft findings；H6/H9 |
-| **harnessRevise** | ✅ `harness-revise.test.ts` | — | — | skillRefs（失败优先）；H6 |
-| **harnessGate** | ✅ `harness-gate.test.ts` | — | — | P1；fail 不改 active |
+| **harnessRevise** | ✅ `harness-revise.test.ts` | — | — | skillRefs；P5 patches+H12 |
+| **harnessGate** | ✅ `harness-gate.test.ts` | — | — | P1 fixtures；P5 gateChecks |
 | **harnessRestart** | ✅ `harness-restart.test.ts` | ✅ `harnessRsi.component.integration.test.ts` | — | restart-with-H ≠ 进程 resume |
-| **harnessRsiCycle** | ✅ `harness-rsi-cycle.test.ts`（周期+失败辅） | ✅ `harnessRsi.component.integration.test.ts` | — | P4；非「仅失败」 |
+| **harnessRsiCycle** | ✅ `harness-rsi-cycle.test.ts`（周期+失败辅+patches） | ✅ `harnessRsi.component.integration.test.ts` | — | P4；P5 patches 可无 soft findings |
+| **harnessLoopTree** | ✅ `harness-loop-tree.test.ts` | ✅ `harnessLoopSource.component.integration.test.ts` | — | P5；COW patches；H10–H12；ADL [`HARNESS-RSI.md`](./HARNESS-RSI.md) §12 |
 | **harnessHeldOut** | ✅ `harness-p3.test.ts` | — | — | P3 |
 | **harnessAutoHeldOut** | ✅ `harness-p3.test.ts` | — | — | 成功 RUN 自动 held-out |
 | **harnessDrive9Sync** | ✅ `harness-p3.test.ts` · ✅ `workflow-promote.test.ts` | — | — | P3；无 held-out 跳过 storeShared |

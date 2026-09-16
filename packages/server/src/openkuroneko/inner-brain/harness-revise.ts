@@ -1,7 +1,7 @@
 /**
- * Harness revise — single parent → single H′ from run-context + bound skills; no eval-rubric leak.
+ * Harness revise — single parent → single H′; P5 patches → new loopTree (H6 / H8 / H11 / H12).
  *
- * ADL: doc/structurizr/HARNESS-RSI.md §4 / H6 / H8
+ * ADL: doc/structurizr/HARNESS-RSI.md §4 / §12
  * Deterministic (no LLM). Optional diagnosis string is leak-checked only.
  */
 
@@ -10,7 +10,13 @@ import type { HarnessSpecStore } from './harness-spec-store.js';
 import { createHarnessSpecStore } from './harness-spec-store.js';
 import { createHarnessPointer } from './harness-pointer.js';
 import { createNodeSkillStore } from './node-skill-store.js';
-import type { HarnessRefs, HarnessSkillRef, HarnessSpec } from './harness-types.js';
+import { createHarnessLoopTreeStore } from './harness-loop-tree.js';
+import type {
+  HarnessPatch,
+  HarnessRefs,
+  HarnessSkillRef,
+  HarnessSpec,
+} from './harness-types.js';
 
 const LEAK = [
   /x_eval/i,
@@ -22,6 +28,11 @@ const LEAK = [
 
 export interface HarnessReviseInput {
   diagnosis?: string;
+  /** P5: patches applied to parent loopTree (required for effective upgrade when parent has loopTree) */
+  patches?: HarnessPatch[];
+  /** Optional override / seed of loopRoots on H′ */
+  loopRoots?: string[];
+  loopEntry?: string;
 }
 
 export interface HarnessReviseOpts {
@@ -52,6 +63,22 @@ function mergeSkillRefs(a: HarnessSkillRef[] = [], b: HarnessSkillRef[] = []): H
   return out;
 }
 
+function hasSubstantialNonSkillChange(
+  parent: HarnessRefs | undefined,
+  next: HarnessRefs,
+): boolean {
+  if ((parent?.loopTreeId ?? null) !== (next.loopTreeId ?? null)) return true;
+  if ((parent?.workflowRef?.id ?? null) !== (next.workflowRef?.id ?? null)) return true;
+  if ((parent?.workflowRef?.version ?? null) !== (next.workflowRef?.version ?? null)) return true;
+  const a = [...(parent?.localNodeIds ?? [])].sort().join(',');
+  const b = [...(next.localNodeIds ?? [])].sort().join(',');
+  if (a !== b) return true;
+  const pa = [...(parent?.assetPaths ?? [])].sort().join(',');
+  const na = [...(next.assetPaths ?? [])].sort().join(',');
+  if (pa !== na) return true;
+  return false;
+}
+
 export function reviseHarness(
   workDir: string,
   input: HarnessReviseInput = {},
@@ -71,7 +98,6 @@ export function reviseHarness(
 
   const skillStore = createNodeSkillStore(workDir);
   const fromRun: HarnessSkillRef[] = [];
-  // Failed nodes first so their skills land ahead in merge order
   const orderedNodes = [...(ctx?.nodes ?? [])].sort((a, b) => Number(a.ok) - Number(b.ok));
   for (const n of orderedNodes) {
     for (const sk of skillStore.readIndex(n.ref)) {
@@ -80,11 +106,37 @@ export function reviseHarness(
   }
   const skillRefs = mergeSkillRefs(parent?.refs.skillRefs, fromRun);
 
+  const loopRoots = input.loopRoots ?? parent?.refs.loopRoots ?? [];
+  const loopEntry = input.loopEntry ?? parent?.refs.loopEntry;
+  let loopTreeId = parent?.refs.loopTreeId;
+
+  const patches = input.patches ?? [];
+  if (patches.length > 0) {
+    if (!parent?.refs.loopTreeId) {
+      throw new Error('[harness-revise] patches require parent refs.loopTreeId (seed tree first)');
+    }
+    const trees = createHarnessLoopTreeStore(workDir);
+    const nextTree = trees.applyPatches(parent.refs.loopTreeId, patches, loopRoots.length ? loopRoots : ['']);
+    loopTreeId = nextTree.treeId;
+  } else if (parent?.refs.loopTreeId) {
+    // P5 mode: skillRefs-only revise is not an effective H′ (H12)
+    throw new Error(
+      '[harness-revise] H12: parent has loopTreeId; patches required (skillRefs-only revise rejected)',
+    );
+  }
+
   const refs: HarnessRefs = {
     ...(parent?.refs ?? {}),
     ...(localNodeIds.length ? { localNodeIds } : {}),
     ...(skillRefs.length ? { skillRefs } : {}),
+    ...(loopTreeId ? { loopTreeId } : {}),
+    ...(loopRoots.length ? { loopRoots } : {}),
+    ...(loopEntry ? { loopEntry } : {}),
   };
+
+  if (parent?.refs.loopTreeId && !hasSubstantialNonSkillChange(parent.refs, refs)) {
+    throw new Error('[harness-revise] H12: no substantial loop/refs change');
+  }
 
   return store.put({
     parentId: parent?.id,
