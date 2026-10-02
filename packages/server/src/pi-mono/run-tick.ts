@@ -276,6 +276,9 @@ export function clearStopSignal(workDir: string): void {
   }
 }
 
+// 模块级首次 idle 时间戳（连续 idle 宽限期判定，无需持久化）
+let moduleIdleSince: number | null = null;
+
 function isStopSignalSet(workDir: string): boolean {
   return fs.existsSync(path.join(workDir, '.stop-signal'));
 }
@@ -313,8 +316,16 @@ export async function runOpenKuronekoPiMonoAuto(params: {
         });
         params.onTick?.(ticks, tickAt);
         if (!hadWork) {
+          // idle 判定宽限期：连续 IDLE_GRACE_MS（默认 25 分钟）无新工作才判 idle 停止
+          const idleGraceMs = Number(process.env.IDLE_GRACE_MS ?? 25 * 60 * 1000);
+          if (moduleIdleSince == null) moduleIdleSince = Date.now();
+          if (Date.now() - moduleIdleSince < idleGraceMs) {
+            continue; // 宽限期内继续下一 tick，等待新工作
+          }
+          moduleIdleSince = null;
           return { ok: true, ticks, lastHadWork: false, stoppedBy: 'idle' as const, dist: PI_MONO_RUNTIME_LABEL };
         }
+        moduleIdleSince = null;
       }
 
       return { ok: true, ticks, lastHadWork: true, stoppedBy: 'max_ticks' as const, dist: PI_MONO_RUNTIME_LABEL };

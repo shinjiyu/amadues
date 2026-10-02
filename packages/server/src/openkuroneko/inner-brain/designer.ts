@@ -193,6 +193,17 @@ export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> 
 
   logger.info('designer', { event: 'design.start', data: { burstId } });
 
+  const llmTimeoutMs = Number(process.env.DESIGN_LLM_TIMEOUT_MS) > 0
+    ? Number(process.env.DESIGN_LLM_TIMEOUT_MS)
+    : 8 * 60 * 1000; // 默认 8 分钟超时
+  const withTimeoutMs = <T>(p: Promise<T>): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<never>((_, rej) =>
+        setTimeout(() => rej(new Error(`Designer LLM 调用超时（>${llmTimeoutMs}ms）`)), llmTimeoutMs)),
+    ]);
+  const chatWithTimeout = () => withTimeoutMs(llm.chat(systemPrompt, messages, registry.schema()));
+
   const budgetCfg = resolveDesignerBudget();
   const systemPrompt = buildDesignerSystemPrompt();
   let toolCalls = 0;
@@ -208,15 +219,23 @@ export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> 
     );
     let result;
     try {
-      result = await llm.chat(systemPrompt, messages, registry.schema());
+      result = await chatWithTimeout();
     } catch (e) {
       const errMsg = String(e);
-      logger.error('designer', { event: 'llm.error', data: { error: errMsg } });
-      const reason = `Designer LLM 调用失败：${errMsg}`;
-      if (isTransientLlmTransportError(errMsg)) {
-        return { kind: 'empty', reason };
+      logger.error('designer', { event: 'llm.error', data: { error: errMsg, attempt: 1, timeoutMs: llmTimeoutMs } });
+      // 失败重试一次（含超时）
+      try {
+        logger.info('designer', { event: 'llm.retry', data: { attempt: 2, timeoutMs: llmTimeoutMs } });
+        result = await chatWithTimeout();
+      } catch (e2) {
+        const errMsg2 = String(e2);
+        logger.error('designer', { event: 'llm.error', data: { error: errMsg2, attempt: 2, timeoutMs: llmTimeoutMs } });
+        const reason = `Designer LLM 调用失败（已重试 1 次）：${errMsg2}`;
+        if (isTransientLlmTransportError(errMsg2)) {
+          return { kind: 'empty', reason };
+        }
+        return { kind: 'failed', reason };
       }
-      return { kind: 'failed', reason };
     }
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
