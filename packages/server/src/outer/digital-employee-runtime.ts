@@ -24,7 +24,7 @@ import { listStallAlertIndex } from '../openkuroneko/inner-brain/burst-stall-ale
 import { isSubjectMode } from './agent-mode.js';
 import { appendAutonomyActionLog } from './autonomy-action-log.js';
 import { loadConstitution } from './constitution.js';
-import { proposeDriveSeeds } from './drive-engine.js';
+import { proposeDriveSeeds, selectGiveUps } from './drive-engine.js';
 import { DigitalEmployeeLoop, type DigitalEmployeeTriggerReason } from './digital-employee-loop.js';
 import {
   collectEnvironmentSnapshot,
@@ -190,16 +190,31 @@ export class DigitalEmployeeRuntime {
     });
   }
 
-  /** subject 模式：宪章长期目标尚未播种时生成 KPI，之后交给既有自驱循环。 */
+  /**
+   * subject 模式意志层：先执行放弃条款（空转超阈值的宪章目标自动放弃），再把尚未播种的
+   * 宪章目标生成 KPI。放弃后 slug 仍在（abandoned），不会被重新播种。
+   */
   private seedConstitutionGoals(): void {
     if (!isSubjectMode()) return;
     const constitution = loadConstitution(this.deps.dataRoot);
     if (!constitution || constitution.goals.length === 0) return;
+    const at = new Date().toISOString();
+
+    // 放弃条款（代码执行，非提示词）：连续空转的宪章目标自动放弃，打断死循环。
+    for (const giveUp of selectGiveUps(this.deps.kpiRegistry.list())) {
+      this.deps.kpiRegistry.abandon(giveUp.kpiId, giveUp.reason);
+      appendAutonomyActionLog(this.deps.dataRoot, {
+        at,
+        dispatched: false,
+        reason: 'digital_employee:drive_give_up',
+        detail: `${giveUp.kpiId} (${giveUp.slug}) ${giveUp.reason}`,
+      });
+    }
+
     const seeds = proposeDriveSeeds({
       constitution,
       existingKpis: this.deps.kpiRegistry.list(),
     });
-    const at = new Date().toISOString();
     for (const seed of seeds) {
       const kpi = this.deps.kpiRegistry.create(seed);
       appendAutonomyActionLog(this.deps.dataRoot, {

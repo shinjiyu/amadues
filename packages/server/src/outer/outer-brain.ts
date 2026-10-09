@@ -55,6 +55,7 @@ import { loadSoul, ensureSoulFile } from './soul.js';
 import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
 import { resolveAgentMode } from './agent-mode.js';
 import { loadConstitution } from './constitution.js';
+import { resolvePendingForSender } from './human-tools.js';
 import { OuterMemoryStore } from './outer-memory.js';
 import type { SkillMemoryStore } from '../mem9/skill-memory-store.js';
 import type { SkillDrive9Store } from '../drive9/skill-drive9-store.js';
@@ -708,19 +709,38 @@ export class OuterBrain {
       : 0;
     const statusLine = subjectMode ? `在途内脑 ${runningInner}` : undefined;
 
+    // subject 模式：原始线程历史（含人类祈使原话）不进决策输入，避免服从性从历史侧门漏回。
+    // 只保留 agent 自己写的记忆（belief/daily-log）与 KPI/burst 状态；当前这条消息已由 signal-appraiser 改写。
+    const subjectContext = inboundHint
+      ? inboundHint + (memBlock ? '\n\n---\n\n' + memBlock : '')
+      : memBlock;
+    const decisionContext = subjectMode ? subjectContext : fullContext;
+
+    const answered = subjectMode
+      ? resolvePendingForSender({ dataRoot, senderSid, threadId, replyText: content })
+      : null;
+    if (answered) {
+      console.log(
+        `[utlra][outer-brain] human-tool reply correlated: ${answered.id} (${answered.kind}) from ${senderSid}`,
+      );
+    }
+
     const result = await withTypingActivity(imClient, threadId, () => runOuterConversationLoop({
       env: llmEnv,
       ctx: toolCtxBase,
       registry,
       threadSids,
       userMessage: content,
-      knowledgeContext: fullContext,
+      knowledgeContext: decisionContext,
       soul,
       longTermGoal,
       agentMode: subjectMode ? 'subject' : 'servant',
       constitution,
       senderName,
       statusLine,
+      answeredRequest: answered
+        ? { id: answered.id, kind: answered.kind, content: answered.content }
+        : undefined,
     }));
 
     const toolsChain = result.toolsUsed.length ? result.toolsUsed.join('→') : '(none)';

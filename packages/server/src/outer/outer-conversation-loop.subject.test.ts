@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -89,6 +90,8 @@ describe('runOuterConversationLoop subject mode', () => {
     // 宪章进 system 位
     expect(system?.content).toContain('宪章');
     expect(system?.content).toContain('没有必须回复的义务');
+    // 人类工具表进 system 位（本例 thread 无登记人类 → 明确声明为空）
+    expect(system?.content).toContain('人类工具表');
     // user 位是内心独白 + 第三人称信号，不含原始祈使句
     expect(user?.content).toContain('内部独白');
     expect(user?.content).toContain('冯亮希望服务器被重启');
@@ -97,5 +100,77 @@ describe('runOuterConversationLoop subject mode', () => {
     expect(result.replied).toBe(false);
     expect(result.forcedReplyRecovery).toBeFalsy();
     expect(calls).toBe(1);
+  });
+
+  it('subject 模式暴露 human_* 工具，可对登记在册的人发起请求', async () => {
+    const agentSid = 'agent:subject2';
+    const threadId = 'thread:subject2';
+    const root = createTestDataRoot('loop-subject2-');
+    cleanup = root.cleanup;
+    const registry = new IdentityRegistry(path.join(root.dataRoot, 'identities.json'));
+    registry.upsert({
+      schema: 'identity.v1',
+      sid: 'wechat:user:feng',
+      kind: 'human',
+      display_name: '冯亮',
+      aliases: [],
+      roles_in_tenant: [],
+      bindings: [],
+      updated_at: new Date().toISOString(),
+    });
+
+    const ctx = buildCtx(root, agentSid, threadId);
+    let offeredHumanTools = false;
+    const result = await runOuterConversationLoop({
+      env: fakeEnv,
+      ctx,
+      registry,
+      threadSids: [agentSid, 'wechat:user:feng'],
+      userMessage: '（无关闲聊）',
+      knowledgeContext: '',
+      soul: '测试灵魂',
+      longTermGoal: '',
+      agentMode: 'subject',
+      constitution: CONSTITUTION,
+      senderName: '冯亮',
+      appraiseSignal: async () => '来源：冯亮\n诉求：闲聊\n关联：无关\n可提取：无',
+      config: { agentName: 'Aki', maxTokens: 512 },
+      callLlm: async ({ tools }) => {
+        offeredHumanTools = tools.some((t) => t.function.name === 'human_request');
+        return {
+          content: null,
+          tool_calls: [
+            {
+              id: 'c1',
+              type: 'function',
+              function: {
+                name: 'human_request',
+                arguments: JSON.stringify({ target: '冯亮', content: '帮我把板子上电' }),
+              },
+            },
+          ],
+          raw: {},
+        };
+      },
+    });
+
+    expect(offeredHumanTools).toBe(true);
+    expect(result.toolsUsed).toContain('human_request');
+    expect(ctx.humanTools?.some((p) => p.displayName === '冯亮')).toBe(true);
+    // 真的发出了：消息进了 IM 出站箱
+    expect(ctx.imClient.lastText(threadId)).toBe('@冯亮 【请求协助】帮我把板子上电');
+    // 真的登记了 pending 请求；假 LLM 每轮都重复请求，但防骚扰闸门只放行第一条
+    expect(ctx.imClient.outbox).toHaveLength(1);
+    const ledger = fs
+      .readFileSync(path.join(root.dataRoot, 'outer', 'human-requests.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({
+      kind: 'human_request',
+      targetSid: 'wechat:user:feng',
+      status: 'pending',
+    });
   });
 });

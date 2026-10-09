@@ -759,6 +759,11 @@ export interface OuterToolContext {
    * ADL EMPLOYEE-CALENDAR.md
    */
   employeeCalendar?: EmployeeCalendarPort;
+  /**
+   * subject 模式人类工具表（human_query/request/notify 的调用对象）。
+   * 由对话环在 subject 模式下构建注入；servant 模式为空。
+   */
+  humanTools?: import('./human-tools.js').HumanToolProfile[];
 }
 
 export interface ToolCallResult {
@@ -822,6 +827,70 @@ function resolveLogDir(ctx: OuterToolContext): string {
     if (active?.workDir) return active.workDir;
   }
   return path.join(ctx.dataRoot, 'workspaces', ctx.workspaceId);
+}
+
+async function execHumanTool(
+  kind: import('./human-tools.js').HumanToolKind,
+  args: { target?: string; content?: string },
+  ctx: OuterToolContext,
+): Promise<ToolCallResult> {
+  const {
+    resolveHumanTarget,
+    makeHumanRequestRecord,
+    recordHumanRequest,
+    renderHumanToolMessage,
+    loadHumanLedger,
+    checkHumanCallAllowed,
+  } = await import('./human-tools.js');
+  const content = args.content?.trim() ?? '';
+  const targetArg = args.target?.trim() ?? '';
+  if (!targetArg || !content) {
+    return { replied: false, output: '（target 或 content 为空，未调用）' };
+  }
+  const profiles = ctx.humanTools ?? [];
+  if (profiles.length === 0) {
+    return { replied: false, output: '（工具表为空：没有登记在册的人类可调用）' };
+  }
+  const target = resolveHumanTarget(profiles, targetArg);
+  if (!target) {
+    return {
+      replied: false,
+      output: `（找不到登记在册的人类「${targetArg}」。只能调用工具表里的人。）`,
+    };
+  }
+
+  const blocked = checkHumanCallAllowed(loadHumanLedger(ctx.dataRoot), kind, target.sid, Date.now());
+  if (blocked) {
+    return {
+      replied: false,
+      output: `（未发送：${blocked}。等对方回应或超时后再调用，或换一个人。）`,
+    };
+  }
+
+  const text = renderHumanToolMessage(kind, target, content);
+  try {
+    await ctx.imClient.postMessage(ctx.threadId, {
+      sender_sid: ctx.agentSid,
+      text,
+      parse_mentions: true,
+    });
+  } catch (e) {
+    return {
+      replied: false,
+      output: `（向 ${target.displayName} 发送失败：${e instanceof Error ? e.message : String(e)}）`,
+    };
+  }
+
+  const record = makeHumanRequestRecord({ kind, target, content, threadId: ctx.threadId });
+  recordHumanRequest(ctx.dataRoot, record);
+
+  // notify 是单向通知；query/request 异步等回复（回复经信号评估回流，不阻塞本轮）
+  const replied = true;
+  const tail =
+    kind === 'human_notify'
+      ? '已通知，不等回复。'
+      : `已发出（req ${record.id}），对方回复会作为后续信号回流。`;
+  return { replied, output: `已调用 ${target.displayName}（${kind}）：${tail}` };
 }
 
 async function execReplyToUser(
@@ -2487,6 +2556,10 @@ export async function executeOuterTool(
   switch (name) {
     case 'reply_to_user':
       return execReplyToUser(args as { text?: string; attach_asset_ids?: string }, ctx);
+    case 'human_query':
+    case 'human_request':
+    case 'human_notify':
+      return execHumanTool(name, args as { target?: string; content?: string }, ctx);
     case 'set_goal':
       return execSetGoal(
         args as {

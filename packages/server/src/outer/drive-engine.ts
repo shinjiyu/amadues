@@ -8,6 +8,9 @@
 import type { Constitution } from './constitution.js';
 import type { CreateKpiInput, KpiRecord } from './kpi-registry.js';
 
+/** 放弃条款默认阈值：宪章目标连续 N 轮无产出（consecutiveIdleBursts）即放弃。 */
+export const DEFAULT_GIVE_UP_IDLE_THRESHOLD = 3;
+
 export const DRIVE_GOAL_CREATED_BY = 'agent:self:constitution';
 const DRIVE_GOAL_MARKER_RE = /drive-goal:([a-z0-9][a-z0-9_-]*)/i;
 
@@ -26,6 +29,40 @@ export interface DriveSeedInput {
   existingKpis: Pick<KpiRecord, 'notes'>[];
   /** 单次最多播种几条；默认 1，避免一次铺开过多目标 */
   maxNewPerCycle?: number;
+}
+
+export interface GiveUpDecision {
+  kpiId: string;
+  slug: string;
+  idleBursts: number;
+  reason: string;
+}
+
+/**
+ * 放弃条款的代码执行：宪章播种的 active KPI 连续空转 ≥ 阈值轮就放弃。
+ * 只针对 drive-goal KPI（带 slug 标记），不碰人类下达的 KPI。失败类由 kpi-failure-circuit 管，
+ * 这里管的是"跑完但无产出"的空转死循环。
+ */
+export function selectGiveUps(
+  kpis: Pick<KpiRecord, 'kpiId' | 'status' | 'notes' | 'consecutiveIdleBursts'>[],
+  threshold: number = DEFAULT_GIVE_UP_IDLE_THRESHOLD,
+): GiveUpDecision[] {
+  if (!(threshold > 0)) return [];
+  const out: GiveUpDecision[] = [];
+  for (const kpi of kpis) {
+    if (kpi.status !== 'active') continue;
+    const slug = extractDriveGoalSlug(kpi);
+    if (!slug) continue;
+    const idle = kpi.consecutiveIdleBursts ?? 0;
+    if (idle < threshold) continue;
+    out.push({
+      kpiId: kpi.kpiId,
+      slug,
+      idleBursts: idle,
+      reason: `放弃条款：连续 ${idle} 轮无可验证产出，自动放弃该路线（不自动复活）`,
+    });
+  }
+  return out;
 }
 
 export function proposeDriveSeeds(input: DriveSeedInput): CreateKpiInput[] {

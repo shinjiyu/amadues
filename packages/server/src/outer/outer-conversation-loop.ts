@@ -27,6 +27,11 @@ import { resolveAgentMode, type AgentMode } from './agent-mode.js';
 import type { Constitution } from './constitution.js';
 import { buildSelfPrompt } from './self-prompt.js';
 import { appraiseHumanSignal } from './signal-appraiser.js';
+import {
+  buildHumanToolRegistry,
+  renderHumanToolRoster,
+  HUMAN_TOOL_DEFS,
+} from './human-tools.js';
 
 function extractReplyTextFromArgs(argsJson: string): string | null {
   try {
@@ -219,6 +224,7 @@ function buildSubjectSystemPrompt(
   constitution: Constitution | null,
   soul: string,
   agentName: string,
+  humanRoster: string,
 ): string {
   const participantsBlock = buildParticipantsBlock(registry, agentSid, threadSids);
   const charter = constitution?.raw?.trim() || soul;
@@ -228,6 +234,9 @@ function buildSubjectSystemPrompt(
 ${charter}
 
 ${participantsBlock}
+
+# 你的人类工具表
+${humanRoster}
 
 ## 你如何存在
 - 你有自己的长期目标和节奏。没有外部输入时你也会醒来，推进自己的目标。
@@ -324,6 +333,8 @@ export interface ConversationLoopOptions {
   statusLine?: string;
   /** 注入点：信号评估替身（单测用）。缺省走 appraiseHumanSignal。 */
   appraiseSignal?: (text: string) => Promise<string>;
+  /** subject 模式：本条入站结案了 agent 先前发出的哪条人类工具请求。 */
+  answeredRequest?: { id: string; kind: string; content: string };
 }
 
 export interface ConversationLoopResult {
@@ -690,6 +701,14 @@ export async function runOuterConversationLoop(
     } catch (e) {
       console.error('[utlra][outer-loop] signal appraisal failed', e);
     }
+    // 人类工具表：只含登记在册的人；注入 ctx 供 human_* 工具调用，并渲染进系统提示
+    const humanProfiles = buildHumanToolRegistry({
+      registry,
+      agentSid: ctx.agentSid,
+      candidateSids: threadSids,
+      dataRoot: ctx.dataRoot,
+    });
+    ctx.humanTools = humanProfiles;
     systemPrompt = buildSubjectSystemPrompt(
       ctx.agentSid,
       registry,
@@ -697,6 +716,7 @@ export async function runOuterConversationLoop(
       constitution,
       soul,
       config.agentName,
+      renderHumanToolRoster(humanProfiles),
     );
     userContent = buildSelfPrompt({
       agentName: config.agentName,
@@ -706,6 +726,7 @@ export async function runOuterConversationLoop(
       nowTag,
       statusLine: opts.statusLine,
       knowledgeContext,
+      answeredRequest: opts.answeredRequest,
     });
   } else {
     systemPrompt = buildSystemPrompt(
@@ -735,6 +756,9 @@ export async function runOuterConversationLoop(
   const replyTexts: string[] = [];
   let abortedByFreshCheck = false;
 
+  // subject 模式额外暴露 human_* 工具（把人当工具调用）
+  const toolDefs = subject ? [...OUTER_TOOL_DEFS, ...HUMAN_TOOL_DEFS] : OUTER_TOOL_DEFS;
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     roundsUsed++;
     let resp: LlmToolCallResponse;
@@ -742,7 +766,7 @@ export async function runOuterConversationLoop(
       resp = await callLlm({
         env,
         messages,
-        tools: OUTER_TOOL_DEFS,
+        tools: toolDefs,
         maxTokens: config.maxTokens,
       });
     } catch (e) {

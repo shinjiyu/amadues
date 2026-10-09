@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { parseConstitution } from './constitution.js';
-import { proposeDriveSeeds, extractDriveGoalSlug, DRIVE_GOAL_CREATED_BY } from './drive-engine.js';
+import {
+  proposeDriveSeeds,
+  extractDriveGoalSlug,
+  selectGiveUps,
+  DRIVE_GOAL_CREATED_BY,
+} from './drive-engine.js';
 
 const RAW = `# 宪章
 
@@ -57,5 +62,31 @@ describe('proposeDriveSeeds', () => {
       existingKpis: [{ notes: 'drive-goal:body' }, { notes: 'drive-goal:probe' }],
     });
     expect(seeds).toEqual([]);
+  });
+});
+
+describe('selectGiveUps (放弃条款)', () => {
+  const row = (over: Partial<Parameters<typeof selectGiveUps>[0][number]>) => ({
+    kpiId: 'k',
+    status: 'active' as const,
+    notes: 'drive-goal:body',
+    consecutiveIdleBursts: 0,
+    ...over,
+  });
+
+  it('abandons a drive-goal KPI that idled past the threshold', () => {
+    const out = selectGiveUps([row({ kpiId: 'k1', consecutiveIdleBursts: 3 })]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.kpiId).toBe('k1');
+    expect(out[0]!.slug).toBe('body');
+  });
+
+  it('leaves KPIs below threshold, non-active, or without a drive-goal marker alone', () => {
+    const out = selectGiveUps([
+      row({ kpiId: 'below', consecutiveIdleBursts: 2 }),
+      row({ kpiId: 'paused', status: 'paused', consecutiveIdleBursts: 9 }),
+      row({ kpiId: 'human', notes: '人类下达', consecutiveIdleBursts: 9 }),
+    ]);
+    expect(out).toEqual([]);
   });
 });
