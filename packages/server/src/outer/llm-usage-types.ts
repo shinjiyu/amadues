@@ -4,6 +4,7 @@ export type LlmUsageSource =
   | 'outer_heartbeat'
   | 'kpi_manager'
   | 'self_work_policy'
+  | 'signal_appraiser'
   | 'autonomy'
   | 'performance_goal'
   | 'inner_llm_step'

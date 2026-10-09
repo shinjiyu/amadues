@@ -21,7 +21,10 @@ import {
   detectAdvancePackageKind,
 } from './advance-metrics.js';
 import { listStallAlertIndex } from '../openkuroneko/inner-brain/burst-stall-alert.js';
+import { isSubjectMode } from './agent-mode.js';
 import { appendAutonomyActionLog } from './autonomy-action-log.js';
+import { loadConstitution } from './constitution.js';
+import { proposeDriveSeeds } from './drive-engine.js';
 import { DigitalEmployeeLoop, type DigitalEmployeeTriggerReason } from './digital-employee-loop.js';
 import {
   collectEnvironmentSnapshot,
@@ -187,7 +190,29 @@ export class DigitalEmployeeRuntime {
     });
   }
 
+  /** subject 模式：宪章长期目标尚未播种时生成 KPI，之后交给既有自驱循环。 */
+  private seedConstitutionGoals(): void {
+    if (!isSubjectMode()) return;
+    const constitution = loadConstitution(this.deps.dataRoot);
+    if (!constitution || constitution.goals.length === 0) return;
+    const seeds = proposeDriveSeeds({
+      constitution,
+      existingKpis: this.deps.kpiRegistry.list(),
+    });
+    const at = new Date().toISOString();
+    for (const seed of seeds) {
+      const kpi = this.deps.kpiRegistry.create(seed);
+      appendAutonomyActionLog(this.deps.dataRoot, {
+        at,
+        dispatched: false,
+        reason: 'digital_employee:drive_seeded',
+        detail: `${kpi.kpiId} ${seed.description}`,
+      });
+    }
+  }
+
   private async collectEnvironment(calendar: EmployeeCalendar) {
+    this.seedConstitutionGoals();
     const shared = getSharedEnvironment(this.deps.dataRoot);
     const { snapshot } = collectEnvironmentSnapshot(
       {

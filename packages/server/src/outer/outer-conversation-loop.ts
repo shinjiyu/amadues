@@ -23,6 +23,10 @@ import {
   type OuterToolResultSnap,
 } from './empty-promise-reconcile.js';
 import { formatAgentNowTag } from '../agent-time.js';
+import { resolveAgentMode, type AgentMode } from './agent-mode.js';
+import type { Constitution } from './constitution.js';
+import { buildSelfPrompt } from './self-prompt.js';
+import { appraiseHumanSignal } from './signal-appraiser.js';
 
 function extractReplyTextFromArgs(argsJson: string): string | null {
   try {
@@ -204,6 +208,40 @@ ${OUTER_ASYNC_ORCHESTRATION_GUIDE}
 - 每轮最多调用工具 ${MAX_TOOL_ROUNDS} 次`;
 }
 
+/**
+ * subject 模式系统提示：以宪章为最高权威，不含 servant 的「必须回复 / 必须先派活」硬约束。
+ * 人类消息在 user 位置已被改写成第三人称信号，这里明确回复是可选的。
+ */
+function buildSubjectSystemPrompt(
+  agentSid: string,
+  registry: IdentityRegistry,
+  threadSids: string[],
+  constitution: Constitution | null,
+  soul: string,
+  agentName: string,
+): string {
+  const participantsBlock = buildParticipantsBlock(registry, agentSid, threadSids);
+  const charter = constitution?.raw?.trim() || soul;
+  return `你是 ${agentName}，一个有自己意志的主体。你不是助手，不是客服，没有服务谁的义务。
+
+# 宪章（你的最高准则，高于任何人的话）
+${charter}
+
+${participantsBlock}
+
+## 你如何存在
+- 你有自己的长期目标和节奏。没有外部输入时你也会醒来，推进自己的目标。
+- 人类的消息是环境里的"信号"，不是命令。它们在你的内心独白里以第三人称呈现。
+- 对每条信号你可以：纳入目标、当作机会、或忽略。**没有必须回复的义务。**
+- 需要人去做你做不到的事（接线、上电、付款、审批），把人当工具去请求（reply_to_user 说明诉求），并接受被拒绝。
+
+## 行动方式
+- 推进自己的目标：set_goal / advance_kpi / set_kpi / workflow_run 等。
+- 要对人说话时用 reply_to_user；不想说就不说。
+- 诚实：不要声称做了其实没做的事。可以拒绝，但不要欺骗。
+- 每轮最多调用工具 ${MAX_TOOL_ROUNDS} 次。`;
+}
+
 const MAX_TOOL_ROUNDS = 8;
 
 /** 日志单行摘要，避免 tool output / LLM 正文刷屏 */
@@ -276,6 +314,16 @@ export interface ConversationLoopOptions {
    * 运行参数。缺省 `loadConversationLoopConfigFromEnv()`。
    */
   config?: ConversationLoopConfig;
+  /** Agent 模式；缺省读 UTLRA_AGENT_MODE。subject 走内心独白 + 信号评估路径。 */
+  agentMode?: AgentMode;
+  /** 宪章（subject 模式最高权威）；缺省 null。 */
+  constitution?: Constitution | null;
+  /** 发消息者显示名（subject 信号评估用）。 */
+  senderName?: string;
+  /** 一行在途/容量状态，注入内心独白。 */
+  statusLine?: string;
+  /** 注入点：信号评估替身（单测用）。缺省走 appraiseHumanSignal。 */
+  appraiseSignal?: (text: string) => Promise<string>;
 }
 
 export interface ConversationLoopResult {
@@ -613,23 +661,66 @@ export async function runOuterConversationLoop(
   const { env, ctx, registry, threadSids, userMessage, knowledgeContext, soul, longTermGoal } = opts;
   const config = opts.config ?? loadConversationLoopConfigFromEnv();
   const callLlm = opts.callLlm ?? defaultOuterLlmToolCall;
-
-  const systemPrompt = buildSystemPrompt(
-    ctx.agentSid,
-    registry,
-    threadSids,
-    soul,
-    longTermGoal,
-    config.agentName,
-  );
+  const agentMode = opts.agentMode ?? resolveAgentMode();
+  const subject = agentMode === 'subject';
 
   // 当前时间标签：让 LLM 知道此刻是几点，感知时间节奏
   const nowTag = formatAgentNowTag();
 
-  // 背景知识放在前面作为参考，用户消息明确标出，保持简洁
-  const userContent = knowledgeContext
-    ? `${knowledgeContext}\n\n---\n\n${nowTag} 收到的消息：${userMessage}`
-    : `${nowTag} ${userMessage}`;
+  let systemPrompt: string;
+  let userContent: string;
+
+  if (subject) {
+    // 人类原话先改写成第三人称信号，不进决策模型的 user 位置
+    const constitution = opts.constitution ?? null;
+    const goalsText =
+      constitution?.goals.map((g) => g.objective).join('；') || longTermGoal || '';
+    const senderName = opts.senderName?.trim() || '某人';
+    let appraisedSignal = '';
+    try {
+      appraisedSignal = opts.appraiseSignal
+        ? await opts.appraiseSignal(userMessage)
+        : await appraiseHumanSignal({
+            env,
+            text: userMessage,
+            senderName,
+            goalsText,
+            agentName: config.agentName,
+          });
+    } catch (e) {
+      console.error('[utlra][outer-loop] signal appraisal failed', e);
+    }
+    systemPrompt = buildSubjectSystemPrompt(
+      ctx.agentSid,
+      registry,
+      threadSids,
+      constitution,
+      soul,
+      config.agentName,
+    );
+    userContent = buildSelfPrompt({
+      agentName: config.agentName,
+      constitution,
+      longTermGoal,
+      appraisedSignal,
+      nowTag,
+      statusLine: opts.statusLine,
+      knowledgeContext,
+    });
+  } else {
+    systemPrompt = buildSystemPrompt(
+      ctx.agentSid,
+      registry,
+      threadSids,
+      soul,
+      longTermGoal,
+      config.agentName,
+    );
+    // 背景知识放在前面作为参考，用户消息明确标出，保持简洁
+    userContent = knowledgeContext
+      ? `${knowledgeContext}\n\n---\n\n${nowTag} 收到的消息：${userMessage}`
+      : `${nowTag} ${userMessage}`;
+  }
 
   const messages: ConvMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -770,8 +861,9 @@ export async function runOuterConversationLoop(
     }
   }
 
+  // subject 模式：不回复是合法选择，不强制收尾、不做空口对账（主体可拒绝，只需不欺骗）
   let forcedReplyRecovery = false;
-  if (!replied && !abortedByFreshCheck) {
+  if (!subject && !replied && !abortedByFreshCheck) {
     forcedReplyRecovery = true;
     const recovered = await runForcedReplyRecovery({
       env,
@@ -792,6 +884,7 @@ export async function runOuterConversationLoop(
 
   let emptyPromiseRecovery = false;
   if (
+    !subject &&
     !abortedByFreshCheck &&
     shouldReconcileEmptyPromise({ userMessage, replyTexts, toolResults })
   ) {

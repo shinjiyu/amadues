@@ -53,6 +53,8 @@ import { MessageRecordSchema } from '@utlra/chat-ir';
 import { ThreadOrchestrator, makeFreshCheck } from './thread-orchestrator.js';
 import { loadSoul, ensureSoulFile } from './soul.js';
 import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
+import { resolveAgentMode } from './agent-mode.js';
+import { loadConstitution } from './constitution.js';
 import { OuterMemoryStore } from './outer-memory.js';
 import type { SkillMemoryStore } from '../mem9/skill-memory-store.js';
 import type { SkillDrive9Store } from '../drive9/skill-drive9-store.js';
@@ -586,7 +588,10 @@ export class OuterBrain {
     });
 
     console.log(`[utlra][outer-brain] SPEAK decision: ${shouldReply} (${reason})`);
-    if (!shouldReply) return;
+    // subject 模式：即使判定 SILENT 也要跑一轮循环——主体要自行决定是纳入信号、派活还是忽略，
+    // 不由 servant 的 SPEAK/SILENT 规则替它封口。
+    const subjectMode = resolveAgentMode() === 'subject';
+    if (!shouldReply && !subjectMode) return;
 
     workspaceStore.ensureWorkspace(workspaceId);
     const triggerMessageId = ev.message.message_id;
@@ -696,6 +701,13 @@ export class OuterBrain {
       ? inboundHint + (baseContext ? '\n\n---\n\n' + baseContext : '')
       : baseContext;
 
+    const constitution = subjectMode ? loadConstitution(dataRoot) : null;
+    const senderName = registry.get(senderSid)?.display_name;
+    const runningInner = toolCtxBase.innerBrainRegistry
+      ? toolCtxBase.innerBrainRegistry.list().filter((t) => t.status === 'RUNNING').length
+      : 0;
+    const statusLine = subjectMode ? `在途内脑 ${runningInner}` : undefined;
+
     const result = await withTypingActivity(imClient, threadId, () => runOuterConversationLoop({
       env: llmEnv,
       ctx: toolCtxBase,
@@ -705,6 +717,10 @@ export class OuterBrain {
       knowledgeContext: fullContext,
       soul,
       longTermGoal,
+      agentMode: subjectMode ? 'subject' : 'servant',
+      constitution,
+      senderName,
+      statusLine,
     }));
 
     const toolsChain = result.toolsUsed.length ? result.toolsUsed.join('→') : '(none)';

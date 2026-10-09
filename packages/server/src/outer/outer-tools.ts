@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runOpenKuronekoPiMonoAuto, writeStopSignal, clearStopSignal } from '../pi-mono/run-tick.js';
 import { spawnInnerBrainWorker, readWorkerStatus } from '../pi-mono/inner-brain-spawner.js';
+import { resolveMaxTicks } from './goal-max-ticks.js';
 import { computeBurstLiveness } from './advance-perception.js';
 import { listStallAlertIndex } from '../openkuroneko/inner-brain/burst-stall-alert.js';
 import { isInnerBrainStoppable, stopInnerBrainInstance } from './stop-inner-brain.js';
@@ -192,7 +193,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           },
           origin_thread: {
             type: 'string',
-            description: '下达任务时所在的 thread_id，群聊时必须填写',
+            description:
+              '仅当手里有本轮入站的完整 thread_id 时才填（微信形如 wechat:<bot>@im.bot:dm:<user>@im.wechat）。不要自造 wechat:user:…；不确定就留空，系统用当前会话。',
           },
           kpi_id: {
             type: 'string',
@@ -247,7 +249,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           },
           created_by: {
             type: 'string',
-            description: '（可选）创建者 SID，默认 agent 自身',
+            description:
+              '（可选）创建者 SID。未填时：本轮有人类入站则记该人类 sid，否则记 agent 自身。不要把人类交代的目标记成自己的。',
           },
           notes: {
             type: 'string',
@@ -1064,7 +1067,8 @@ async function execSetGoal(
     const eng = ctx.getEngine(wsId);
     eng.setGoal(goal);
 
-    const maxTicks = Math.min(10_000, Math.max(1, Number(process.env['UTLRA_PI_AUTO_MAX_TICKS'] ?? 500)));
+    // maxTicks: goal 文本显式声明（如 maxTicks: 3000）优先，否则默认 500。
+    const maxTicks = resolveMaxTicks(goal, 500);
 
     const workspacesRoot = path.join(ctx.dataRoot, 'workspaces');
     const explicitPeers = args.peer_workspace_ids
@@ -1286,7 +1290,8 @@ async function execSetGoal(
   const eng = ctx.getEngine(wsId);
   eng.setGoal(goal);
 
-  const maxTicks = Math.min(10_000, Math.max(1, Number(process.env['UTLRA_PI_AUTO_MAX_TICKS'] ?? 500)));
+  // maxTicks: goal 文本显式声明（如 maxTicks: 3000）优先，否则默认 500。
+  const maxTicks = resolveMaxTicks(goal, 500);
   runOpenKuronekoPiMonoAuto({ workspaceId: wsId, workDir, maxTicks }).then((result) => {
     if (!result.ok) {
       console.error(`[utlra][outer-tools] inner burst error: ${result.error}`);
@@ -1363,7 +1368,8 @@ async function execStartSelfUpdate(
   const eng = ctx.getEngine(wsId);
   eng.setGoal(updateGoal);
 
-  const maxTicks = Math.min(10_000, Math.max(1, Number(process.env['UTLRA_PI_AUTO_MAX_TICKS'] ?? 500)));
+  // maxTicks: goal 文本显式声明（如 maxTicks: 3000）优先，否则默认 500。
+  const maxTicks = resolveMaxTicks(updateGoal, 500);
 
   registry.register({
     instanceId,
@@ -1522,7 +1528,7 @@ async function execSetKpi(
   if (!ctx.kpiRegistry) return { replied: false, output: '（KPI 注册表未启用）' };
   const description = args.description?.trim() ?? '';
   if (!description) return { replied: false, output: '（description 为空，已跳过）' };
-  const createdBy = args.created_by?.trim() || ctx.agentSid;
+  const createdBy = args.created_by?.trim() || ctx.inboundHumanSid || ctx.agentSid;
   const kind = args.kind === 'ongoing' ? 'ongoing' : 'delivery';
   const kpi = ctx.kpiRegistry.create({
     description,
