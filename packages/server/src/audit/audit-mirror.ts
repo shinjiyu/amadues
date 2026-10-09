@@ -154,6 +154,9 @@ export function scrubAuditEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return rest;
 }
 
+// 进程一加载就建连并开始心跳：空闲的 agent 也要能被发现"已失联"
+getAuditMirror()?.emit('audit.process_start', { argv: process.argv.slice(1, 3) });
+
 /** 单测用 */
 export function resetAuditMirrorForTest(): void {
   singleton?.close();
