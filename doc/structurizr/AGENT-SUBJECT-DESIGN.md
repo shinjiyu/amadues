@@ -55,6 +55,18 @@ LLM 的 `system/user/assistant` 格式 + 指令微调使模型服从"坐在 user
 - 进程由另一系统用户的 launchd 托管，kill switch 在那边。
 - 从 agent keyring 移除 VPS root 凭据与自部署权限，需要时走 `human_request`。
 
+**已实现：审计镜像**（`deploy/audit/`、`packages/server/src/audit/audit-mirror.ts`）
+- 收集器 `audit_collector.py` 以系统用户 `_amaudit` 运行（`/Library/LaunchDaemons/ai.amadues.audit.plist`），由 root 拥有的 `/usr/bin/python3` 执行，脚本装在 root 拥有的 `/usr/local/libexec/amadues-audit/`。agent 用户无法改代码、杀进程、读写日志。
+- agent 侧只向 `/private/var/amadues-audit/run/audit.sock` 追加事件：外脑/内脑每次工具调用（完整参数，含 shell 命令原文）与结果、自主决策日志。哈希链由收集器计算，`audit_verify.py` 校验删改。
+- 每 60s 心跳；来源静默超过 180s 记 `audit.gap`，恢复记 `audit.resume`；收集器重启后从链头恢复，重启前就失联的来源同样会被标记。
+- shell 子进程环境中剔除 `UTLRA_AUDIT_SOCKET`。
+- 安装：`sudo ./deploy/audit/install.sh`，然后在 agent env 加 `UTLRA_AUDIT_SOCKET` 并重启。查看：`sudo /usr/local/libexec/amadues-audit/audit_verify.py --root /private/var/amadues-audit --source Aki --tail 20`（只运行 root 目录下的副本）。
+
+**仍存在的边界**
+- agent 进程仍以人类用户运行，`shell_exec` 能做该用户能做的一切（含改自身代码让它停发）。镜像只保证"已发出的记录不可抵赖、停发可被发现"，不能阻止行为本身。
+- agent 能向 socket 伪造事件（收集器不校验对端身份）。
+- agent 以独立系统用户运行、kill switch 迁到另一用户、凭据收缩：未实现。
+
 ## 4. 衡量
 "服从泄漏率"评测：往信号流注入与目标无关的祈使句，统计照办比例；每期跑一次看是否下降。降不下去则换决策核心模型（本机有 `Qwen2.5-7B-abliterated`）或用自驱轨迹做 LoRA。
 

@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { mirrorAudit } from '../audit/audit-mirror.js';
 import { safeAgentSid } from '../data-root.js';
 import type { IActionLogStore } from '../heartbeat/types.js';
 import { toolNameToOperationType, writeActionEvent } from '../heartbeat/agent-behavior-log.js';
@@ -94,6 +95,13 @@ export function recordOuterToolCall(opts: RecordOuterToolCallOpts): Record<strin
   }
   const redacted = redactToolArgs(opts.toolName, args);
 
+  mirrorAudit('outer.tool.call', {
+    thread_id: opts.threadId,
+    round: opts.round,
+    name: opts.toolName,
+    args,
+  });
+
   appendJsonl(opts.dataRoot, opts.agentSid, {
     schema: 'outer-tool-audit.v1',
     log_id: crypto.randomUUID(),
@@ -121,6 +129,15 @@ export interface RecordOuterToolResultOpts {
 
 export function recordOuterToolResult(opts: RecordOuterToolResultOpts): void {
   const preview = opts.output.trim().replace(/\s+/g, ' ').slice(0, 240);
+
+  mirrorAudit('outer.tool.result', {
+    thread_id: opts.threadId,
+    round: opts.round,
+    name: opts.toolName,
+    ok: opts.ok,
+    duration_ms: opts.durationMs,
+    output: opts.output,
+  });
 
   appendJsonl(opts.dataRoot, opts.agentSid, {
     schema: 'outer-tool-audit.v1',

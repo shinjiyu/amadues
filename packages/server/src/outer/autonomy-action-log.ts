@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { mirrorAudit } from '../audit/audit-mirror.js';
 import type { AutonomyDispatchResult, AutonomyTaskType, ResourceSnapshot } from './autonomy-types.js';
 
 const LOG_DIR = 'autonomy';
@@ -21,6 +22,7 @@ export interface AutonomyActionLogEntry {
 }
 
 export function appendAutonomyActionLog(dataRoot: string, entry: AutonomyActionLogEntry): void {
+  mirrorAudit('autonomy', entry);
   const dir = path.join(dataRoot, LOG_DIR);
   fs.mkdirSync(dir, { recursive: true });
   fs.appendFileSync(path.join(dir, LOG_FILE), JSON.stringify(entry) + '\n', 'utf8');

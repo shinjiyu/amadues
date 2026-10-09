@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { mirrorAudit } from '../../audit/audit-mirror.js';
 import { redactToolArgs } from '../../outer/outer-tool-audit.js';
 
 export interface InnerToolAuditEntry {
@@ -68,6 +69,15 @@ export interface RecordInnerToolCallOpts {
 
 export function recordInnerToolCall(opts: RecordInnerToolCallOpts): void {
   const redacted = redactToolArgs(opts.toolName, opts.args);
+  mirrorAudit('inner.tool.call', {
+    workspace_id: opts.workspaceId,
+    module: opts.module,
+    round: opts.reactRound,
+    name: opts.toolName,
+    args: opts.args,
+    ...(opts.nodeInstId ? { node_inst_id: opts.nodeInstId } : {}),
+    ...(opts.burstId ? { burst_id: opts.burstId } : {}),
+  });
   appendJsonl(opts.dataRoot, opts.workspaceId, {
     schema: 'inner-tool-audit.v1',
     log_id: crypto.randomUUID(),
@@ -100,6 +110,16 @@ export interface RecordInnerToolResultOpts {
 
 export function recordInnerToolResult(opts: RecordInnerToolResultOpts): void {
   const preview = opts.output.trim().replace(/\s+/g, ' ').slice(0, 240);
+  mirrorAudit('inner.tool.result', {
+    workspace_id: opts.workspaceId,
+    module: opts.module,
+    round: opts.reactRound,
+    name: opts.toolName,
+    ok: opts.ok,
+    duration_ms: opts.durationMs,
+    output: opts.output,
+    ...(opts.burstId ? { burst_id: opts.burstId } : {}),
+  });
   appendJsonl(opts.dataRoot, opts.workspaceId, {
     schema: 'inner-tool-audit.v1',
     log_id: crypto.randomUUID(),

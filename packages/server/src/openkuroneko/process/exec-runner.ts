@@ -13,6 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+import { scrubAuditEnv } from '../../audit/audit-mirror.js';
+
 // ── 同步等待结果 ────────────────────────────────────────────────────────────
 
 export interface RunResult {
@@ -50,7 +52,7 @@ function spawnShellCommand(command: string, opts: SpawnShellOpts): ChildProcess 
   const pref = process.env['UTLRA_SHELL']?.trim().toLowerCase();
   const spawnOpts: SpawnOptions = {
     cwd: opts.cwd,
-    env: opts.env ?? process.env,
+    env: scrubAuditEnv(opts.env ?? process.env),
     stdio: opts.stdio,
   };
   if (process.platform === 'win32' && pref !== 'cmd') {
