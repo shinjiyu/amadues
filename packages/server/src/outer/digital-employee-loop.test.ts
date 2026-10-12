@@ -18,7 +18,7 @@ function environment(running = 0): DigitalEmployeeEnvironment {
       freeInnerSlots: running === 0 ? 1 : 0,
       reason: running === 0 ? undefined : 'running_inner=1>=1',
     },
-    activeKpis: [{ kpiId: 'kpi-1', status: 'active' }],
+    activeKpis: [{ kpiId: 'kpi-1', status: 'active', description: 'kpi-1', momentum: 0 }],
     pendingDependencies: [],
     runningConflicts: [],
     recentActions: [],
@@ -100,6 +100,58 @@ describe('DigitalEmployeeLoop', () => {
     });
     const result = await loop.trigger('burst_finished');
     expect(result.reason).toBe('dependency_unresolved');
+    expect(dispatchProposal).not.toHaveBeenCalled();
+  });
+
+  it('drive_threshold dispatches only the subject proposal', async () => {
+    const propose = vi.fn().mockResolvedValue(proposal);
+    const dispatchProposal = vi.fn().mockResolvedValue(undefined);
+    const loop = new DigitalEmployeeLoop({
+      collectEnvironment: vi.fn().mockResolvedValue(environment()),
+      calendar: { listDue: vi.fn().mockResolvedValue([]), execute: vi.fn() },
+      selfWorkPolicy: { propose },
+      dispatchProposal,
+    });
+    const result = await loop.trigger('drive_threshold', {
+      subjectProposal: {
+        kind: 'kpi_advance',
+        kpiId: 'kpi-1',
+        goalText: '调研同类小说',
+        expectedOutcome: '五条市场观察',
+        drive: 'curiosity',
+      },
+    });
+    expect(result.subjectProposalDispatched).toBe(true);
+    expect(propose).not.toHaveBeenCalled();
+    expect(dispatchProposal).toHaveBeenCalledOnce();
+    expect(dispatchProposal.mock.calls[0]?.[0].kpiId).toBe('kpi-1');
+  });
+
+  it('drive_threshold prefers a due calendar and does not dispatch the proposal', async () => {
+    const execute = vi.fn().mockResolvedValue(undefined);
+    const propose = vi.fn();
+    const dispatchProposal = vi.fn();
+    const loop = new DigitalEmployeeLoop({
+      collectEnvironment: vi.fn().mockResolvedValue(environment()),
+      calendar: {
+        listDue: vi.fn().mockResolvedValue([{ id: 'due-1', priority: 0 }]),
+        execute,
+      },
+      selfWorkPolicy: { propose },
+      dispatchProposal,
+    });
+    const result = await loop.trigger('drive_threshold', {
+      subjectProposal: {
+        kind: 'ad_hoc',
+        goalText: '自己看一眼仓库',
+        expectedOutcome: '一条观察',
+        drive: 'curiosity',
+      },
+    });
+    expect(execute).toHaveBeenCalledWith('due-1');
+    expect(result.subjectProposalDispatched).toBe(false);
+    expect(result.reason).toBe('calendar_dispatched');
+    expect(propose).not.toHaveBeenCalled();
     expect(dispatchProposal).not.toHaveBeenCalled();
   });
 });

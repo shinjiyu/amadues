@@ -1,6 +1,7 @@
 /** LLM 调用来源（用于 token 统计分桶） */
 export type LlmUsageSource =
   | 'outer_conversation'
+  | 'subject_think'
   | 'outer_heartbeat'
   | 'kpi_manager'
   | 'self_work_policy'

@@ -160,6 +160,7 @@ export class DiscordChannel implements ChatIRChannel {
       message_id: messageRecord.message_id,
       sender_sid: messageRecord.sender_sid,
       mention_target_sids: mentionTargetSidsFromParts(parts),
+      ...(body.disposition === 'status' ? { disposition: 'status' as const } : {}),
     });
     console.log(
       `[discord-channel] → discord channel ${channelId} (thread ${threadId}) msg ${sentId}`,

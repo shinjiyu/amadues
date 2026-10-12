@@ -768,7 +768,7 @@
                     }
                 }
 
-                // ── 自主主体（设计未实现；无旗标，入站 SPEAK 的唯一路径）──
+                // ── 自主主体（已实现；无旗标，入站 SPEAK 的唯一路径）──
                 subjectSignalSlot = component "Subject Signal Slot" "【主体模板】外部原文只进转义后的 observation 数据槽；解析器无权限" "TypeScript" {
                     tags "Outer-Module" "Subject"
                     properties {
@@ -779,7 +779,7 @@
                         "horizon.deps" "无"
                         "horizon.test.unit" "subject-signal-slot.test.ts"
                         "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
-                        "horizon.status" "⏳ 设计，未实现"
+                        "horizon.status" "✅ 已实现"
                     }
                 }
 
@@ -793,7 +793,7 @@
                         "horizon.deps" "文件系统"
                         "horizon.test.unit" "subject-state-store.test.ts"
                         "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
-                        "horizon.status" "⏳ 设计，未实现"
+                        "horizon.status" "✅ 已实现"
                     }
                 }
 
@@ -807,7 +807,7 @@
                         "horizon.deps" "无 I/O"
                         "horizon.test.unit" "subject-drive.test.ts"
                         "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
-                        "horizon.status" "⏳ 设计，未实现"
+                        "horizon.status" "✅ 已实现"
                     }
                 }
 
@@ -821,7 +821,7 @@
                         "horizon.deps" "无 I/O"
                         "horizon.test.unit" "subject-decide.test.ts"
                         "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
-                        "horizon.status" "⏳ 设计，未实现"
+                        "horizon.status" "✅ 已实现"
                     }
                 }
 
@@ -836,6 +836,6 @@
                         "horizon.test.unit" "subject-think.test.ts"
                         "horizon.test.integration" "subjectThink.component.integration.test.ts"
                         "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
-                        "horizon.status" "⏳ 设计，未实现；无旗标"
+                        "horizon.status" "✅ 已实现；入站 SPEAK 唯一路径，无旗标"
                     }
                 }

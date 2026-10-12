@@ -2,7 +2,7 @@
 
 > **English:** The agent is its own subject. Every human message, including the owner's own sid, is only an external **signal**, never a command. The owner sid is **not** an exception: `no_reply`, `defer`, and `decline` stay legal for that sid. A deterministic subject core occupies the Chat Completions **`user` role** and calls the LLM only as an **assistant** that proposes and scores actions. Code makes the final choice from an allowlist. Internal drives live in existing agent state storage; crossing a threshold can start self-initiated work. There is **no feature flag**. Inbound **SPEAK** always goes to `subjectThink`. `runOuterConversationLoop` and its forced-reply recovery are retired, not kept as a fallback. A non-chat outcome (`no_reply`, `defer`, `wait`, and the same class) still posts a **fixed status line** on that thread. The line reports what happened. It is not obedience and not a conversational reply.
 
-> **状态**：设计已关闭（2026-10-12）· **实现**：未开始（P0–P3 见 §14）· **生产路径**：入站 SPEAK 只走 `subjectThink`，无 `UTLRA_SUBJECT_CORE_ENABLED`。常数见 §17，没有待定项。
+> **状态**：设计已关闭（2026-10-12）· **实现**：P0–P2 已接入（`packages/server/src/outer/subject/`，Facade SPEAK 只走 `subjectThink`）。P3 真供应商 prompt 测与 mem9/repo 观察槽仍未做。· **生产路径**：入站 SPEAK 只走 `subjectThink`，无 `UTLRA_SUBJECT_CORE_ENABLED`。常数见 §17，没有待定项。
 
 > **相关权威**：[`doc/agent-data-state-machine.md`](../agent-data-state-machine.md) §5（能力 = 字段 + 转移，不新增长驻进程）、[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)（容量 / 日程 / `set_goal` 唯一 spawn）、[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)（心跳仍是 watchdog）、[`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.2（入站空口对账随对话环退役）、[`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUNDARY.md)。
 
@@ -444,7 +444,7 @@ lastAccruedAt = now
 
 ## 11. ADL 组件
 
-一模块一事。计划路径在实现前不存在；`horizon.test.*` 为计划中的文件名。
+一模块一事。路径已落地；`horizon.test.*` 见 [`COMPONENT-TEST-MAP.md`](./COMPONENT-TEST-MAP.md)。
 
 ### 11.1 `subjectSignalSlot`
 
@@ -539,7 +539,7 @@ lastAccruedAt = now
 
 | 阶段 | 内容 | 相对今天仍在跑的旧环 |
 |------|------|--------------------------|
-| **P0** | `subjectSignalSlot`、`subjectDecide`、`subjectDrive`、`subjectStateStore` 纯函数与文件契约。不接入 Facade | 生产暂时仍是旧环，因为还没接线。**不要**加 `UTLRA_SUBJECT_CORE_ENABLED` 来维持这一点 |
+| **P0** | `subjectSignalSlot`、`subjectDecide`、`subjectDrive`、`subjectStateStore` 纯函数与文件契约 | 已与 P1/P2 一起接入。没有 `UTLRA_SUBJECT_CORE_ENABLED` |
 | **P1** | 用 `subjectThink` **替换**入站 SPEAK。同一改动删除 Facade 对 `runOuterConversationLoop` 的调用，以及该路径上的强制回复和空口纠偏。inbox。`no_reply` / `defer` / `reply_to_thread` / `decline`，以及 §8.1 状态回执 | 行为断裂。没有关旗标的字节级兼容 |
 | **P2** | accrue、心跳尾步、`drive_threshold`、deferred 再访、`propose_self_work` 进数字员工环 | 合入后就是生产行为，不另设开关 |
 | **P3** | FakeLLM 组件测固化两跳 JSON；有 key 时的 prompt 形态测。只读审计查询可另说，本 ADL 不要求面板 | — |
@@ -587,7 +587,7 @@ lastAccruedAt = now
 | 5 | 自发 | 无人类消息，drive 0.9，候选 `propose_self_work` | `selfInitiated=true`；环收到 `drive_threshold`；无容量则不 spawn；不发状态回执 | integration |
 | 6 | 日程优先 | 同时有 due commitment | 派日程，提案被延后，驱动力不减 | integration |
 
-计划文件名见 [`COMPONENT-TEST-MAP.md`](./COMPONENT-TEST-MAP.md)。P0 先红后绿；本 PR 不包含这些测试文件。
+计划文件名见 [`COMPONENT-TEST-MAP.md`](./COMPONENT-TEST-MAP.md)。P0–P2 的单测与 `subjectThink` 组件测已在仓库里。P3 真供应商 prompt 测仍未做。无 LLM 时注入的 `defer` 与 `do_nothing` 同分，字典序选 `defer`（§7.2），所以 §14.4 第 4 条的「散文」用例落到 defer 的状态句，而不是 `do_nothing`。
 
 ---
 
@@ -634,7 +634,7 @@ lastAccruedAt = now
 | 非聊天终态要不要让发送者看见 | **要。** 同一线程一条代码固定的 `〔状态〕` 句（§8.1）。表情仅在渠道支持时附加，不能代替文本。心跳空转不发 | 2026-10-12 主人裁定。SC-10 仍成立：这是透明，不是服从，主人 sid 不因此得到对话回复 |
 | 是否保留旧对话环当回退 | **不保留。** 删除 `UTLRA_SUBJECT_CORE_ENABLED`。入站 SPEAK 只走 `subjectThink`。强制回复与空口对账退役 | 2026-10-12 主人裁定。旗标会把「必须回复」留成可切换的生产行为，和 SC-8 / SC-10 冲突。迁移风险见 §10.1 与 §13 |
 
-`scripts/structurizr/manifest.mjs` 仍留到实现 PR：生成器不要指向还不存在的源文件。这不是产品行为上的待定。
+`scripts/structurizr/manifest.mjs` 已指向这五个源文件。
 
 ---
 
@@ -647,3 +647,4 @@ lastAccruedAt = now
 | 2026-10-12 | §17 关闭其余决定：驱动力常数与 4 小时冷却、不新建 KPI、回复文本只取候选、保留 participation 前门、defer 4 小时、think-log 不存完整 prompt。 |
 | 2026-10-12 | 主人裁定去掉旗标：入站 SPEAK 只走 `subjectThink`。`runOuterConversationLoop` 强制回复路径退役，不留回退。 |
 | 2026-10-12 | SC-11：`no_reply` / `defer` / `wait` 等非聊天终态在同一线程发固定状态回执。不是对话回复，主人 sid 无例外。 |
+| 2026-10-12 | 实现 P0–P2：`outer/subject/*` 接入 Facade、心跳尾步与 `drive_threshold`。无旗标。 |

@@ -22,7 +22,11 @@ import {
 } from './advance-metrics.js';
 import { listStallAlertIndex } from '../openkuroneko/inner-brain/burst-stall-alert.js';
 import { appendAutonomyActionLog } from './autonomy-action-log.js';
-import { DigitalEmployeeLoop, type DigitalEmployeeTriggerReason } from './digital-employee-loop.js';
+import {
+  DigitalEmployeeLoop,
+  type DigitalEmployeeTriggerReason,
+  type SubjectWorkProposal,
+} from './digital-employee-loop.js';
 import {
   collectEnvironmentSnapshot,
   getSharedEnvironment,
@@ -175,6 +179,7 @@ export class DigitalEmployeeRuntime {
       },
       selfWorkPolicy: this.buildSelfWorkPolicy(),
       dispatchProposal: (proposal) => this.dispatchProposal(proposal),
+      dispatchAdHoc: (input) => this.dispatchAdHoc(input),
       log: (entry) => {
         appendAutonomyActionLog(deps.dataRoot, {
           at: new Date().toISOString(),
@@ -344,8 +349,11 @@ export class DigitalEmployeeRuntime {
     await this.scheduler.stop();
   }
 
-  trigger(reason: DigitalEmployeeTriggerReason): Promise<unknown> {
-    return this.loop.trigger(reason);
+  trigger(
+    reason: DigitalEmployeeTriggerReason,
+    options?: { subjectProposal?: SubjectWorkProposal },
+  ): Promise<unknown> {
+    return this.loop.trigger(reason, options);
   }
 
   getScheduler(): Scheduler {
@@ -359,6 +367,26 @@ export class DigitalEmployeeRuntime {
   private async triggerIfDue(): Promise<void> {
     const due = await this.calendar.listDue();
     if (due.length > 0) await this.loop.trigger('calendar_due');
+  }
+
+  private async dispatchAdHoc(input: { goalText: string; expectedOutcome: string }): Promise<void> {
+    const goal = [
+      '# 主体自发工作',
+      '',
+      input.goalText,
+      '',
+      '## 预期产出',
+      input.expectedOutcome,
+    ].join('\n');
+    const result = await executeOuterTool(
+      'set_goal',
+      JSON.stringify({
+        goal,
+        origin_thread: this.deps.defaultThreadId,
+      }),
+      this.deps.toolCtx,
+    );
+    if (!isSetGoalDispatched(result.output)) throw new Error(result.output);
   }
 
   private async dispatchProposal(proposal: SelfWorkProposal): Promise<void> {

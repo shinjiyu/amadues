@@ -232,7 +232,7 @@ export class WechatChannel implements ChatIRChannel {
         }
       }
       if (!lastClientId) return;
-      this.persistOutboundMessage(threadId, lastClientId, body.sender_sid, parts);
+      this.persistOutboundMessage(threadId, lastClientId, body.sender_sid, parts, body.disposition);
       this.setTyping(threadId, false);
       console.log(`[wechat-channel:${this.opts.config.botId}] → wechat ${route.peerId} msg ${lastClientId}`);
     } catch (e) {
@@ -420,6 +420,7 @@ export class WechatChannel implements ChatIRChannel {
     clientId: string,
     senderSid: string,
     parts: MessagePart[],
+    disposition?: 'status' | 'speech',
   ): void {
     const store = this.opts.loadThreads();
     if (!store.messages[irThreadId]) store.messages[irThreadId] = [];
@@ -437,6 +438,7 @@ export class WechatChannel implements ChatIRChannel {
       message_id: messageRecord.message_id,
       sender_sid: senderSid,
       mention_target_sids: mentionTargetSidsFromParts(parts),
+      ...(disposition === 'status' ? { disposition: 'status' as const } : {}),
     });
   }
 }

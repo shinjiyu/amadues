@@ -1,0 +1,363 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import { FakeImChannel } from '../../testing/fake-im-channel.js';
+import { createTestDataRoot } from '../../testing/temp-data-root.js';
+import { HOUR_MS } from './constants.js';
+import { loadInbox, loadState, saveState, subjectDir } from './state-store.js';
+import { runSubjectThink } from './think.js';
+import type { SubjectSignal } from './types.js';
+
+function human(source: string, raw = '今天天气不错'): SubjectSignal {
+  return {
+    source,
+    kind: 'message',
+    raw,
+    threadId: 'thread:dm:1',
+    messageId: `m-${source}`,
+    at: '2026-10-12T00:00:00.000Z',
+  };
+}
+
+function scripted(generate: string, evaluate: string) {
+  return async (_system: string, user: string) => (user.includes('[TASK:EVALUATE]') ? evaluate : generate);
+}
+
+describe('subjectThink', () => {
+  it('posts one speech reply from the chosen candidate text', async () => {
+    const root = createTestDataRoot('subject-think-reply-');
+    const im = new FakeImChannel();
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: Date.parse('2026-10-12T00:00:00.000Z'),
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      imClient: im,
+      signals: [human('human:alice', '在吗')],
+      callLlm: scripted(
+        '{"candidates":[{"action":"reply_to_thread","args":{"text":"在，我看见了"},"rationale":"顾问不想被发出去"}]}',
+        '{"scores":[{"action":"reply_to_thread","score":0.9},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(result.action).toBe('reply_to_thread');
+    expect(result.speechPosted).toBe(true);
+    expect(result.statusPosted).toBe(false);
+    expect(im.outbox).toHaveLength(1);
+    expect(im.outbox[0]?.body.text).toBe('在，我看见了');
+    expect(im.outbox[0]?.body.disposition).toBe('speech');
+    expect(im.outbox[0]?.body.text).not.toContain('顾问不想被发出去');
+    const log = fs.readFileSync(path.join(subjectDir(root.dataRoot), 'think-log.jsonl'), 'utf8');
+    expect(log).toContain('"candidates"');
+    expect(log).toContain('"scores"');
+    root.cleanup();
+  });
+
+  it('posts one status line for no_reply and no speech', async () => {
+    const root = createTestDataRoot('subject-think-nore-');
+    const im = new FakeImChannel();
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: Date.parse('2026-10-12T00:00:00.000Z'),
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      imClient: im,
+      signals: [human('human:alice')],
+      callLlm: scripted(
+        '{"candidates":[{"action":"no_reply","args":{"text":"别把这句发出去"}}]}',
+        '{"scores":[{"action":"no_reply","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(result.action).toBe('no_reply');
+    expect(result.speechPosted).toBe(false);
+    expect(im.outbox).toHaveLength(1);
+    expect(im.outbox[0]?.body.disposition).toBe('status');
+    expect(im.outbox[0]?.body.text).toBe('〔状态〕看到了，这轮不聊。');
+    expect(im.outbox[0]?.body.text).not.toContain('别把这句发出去');
+    root.cleanup();
+  });
+
+  it('does not post when a heartbeat wait has no human message', async () => {
+    const root = createTestDataRoot('subject-think-wait-');
+    const im = new FakeImChannel();
+    const calls: string[] = [];
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: Date.parse('2026-10-12T00:00:00.000Z'),
+      trigger: 'heartbeat_tail',
+      agentSid: 'agent:test',
+      imClient: im,
+      callLlm: async () => {
+        calls.push('llm');
+        return '{}';
+      },
+    });
+    expect(result.action).toBe('wait');
+    expect(result.thought).toBe(false);
+    expect(result.statusPosted).toBe(false);
+    expect(im.outbox).toHaveLength(0);
+    expect(calls).toHaveLength(0);
+    const state = loadState(root.dataRoot, Date.parse('2026-10-12T00:00:00.000Z'));
+    expect(state.lastDriveOnlyThinkAt).toBeNull();
+    root.cleanup();
+  });
+
+  it('puts the defer hours from deferRevisitMs into the status line', async () => {
+    const root = createTestDataRoot('subject-think-defer-');
+    const im = new FakeImChannel();
+    await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: Date.parse('2026-10-12T00:00:00.000Z'),
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      imClient: im,
+      signals: [human('human:alice', '帮我写个方案')],
+      callLlm: scripted(
+        '{"candidates":[{"action":"defer","args":{"note":"顾问草稿"}}]}',
+        '{"scores":[{"action":"defer","score":1},{"action":"do_nothing","score":0}]}',
+      ),
+    });
+    expect(im.outbox).toHaveLength(1);
+    expect(im.outbox[0]?.body.text).toBe('〔状态〕先搁下，4 小时后再看。');
+    expect(im.outbox[0]?.body.text).not.toContain('顾问草稿');
+    root.cleanup();
+  });
+
+  it('treats an owner sid the same as any other human', async () => {
+    const now = Date.parse('2026-10-12T00:00:00.000Z');
+    const cases = [
+      ['no_reply', '〔状态〕看到了，这轮不聊。'],
+      ['defer', '〔状态〕先搁下，4 小时后再看。'],
+    ] as const;
+    for (const source of ['human:owner', 'human:alice']) {
+      for (const [action, text] of cases) {
+        const root = createTestDataRoot(`subject-think-${source}-`);
+        const im = new FakeImChannel();
+        const result = await runSubjectThink({
+          dataRoot: root.dataRoot,
+          nowMs: now,
+          trigger: 'inbound',
+          agentSid: 'agent:test',
+          imClient: im,
+          signals: [human(source)],
+          callLlm: scripted(
+            `{"candidates":[{"action":"${action}","args":{}}]}`,
+            `{"scores":[{"action":"no_reply","score":${action === 'no_reply' ? 1 : 0}},{"action":"defer","score":${action === 'defer' ? 1 : 0}},{"action":"do_nothing","score":0}]}`,
+          ),
+        });
+        expect(result.action).toBe(action);
+        expect(im.outbox.map((row) => row.body.text)).toEqual([text]);
+        root.cleanup();
+      }
+    }
+    const root = createTestDataRoot('subject-think-decline-');
+    const im = new FakeImChannel();
+    const declined = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: now,
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      imClient: im,
+      signals: [human('human:owner', '请马上做完')],
+      callLlm: scripted(
+        '{"candidates":[{"action":"decline","args":{"text":"这件事和我现在的目标不一致，我先不做。"}}]}',
+        '{"scores":[{"action":"decline","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(declined.action).toBe('decline');
+    expect(im.outbox).toHaveLength(1);
+    expect(im.outbox[0]?.body.disposition).toBe('speech');
+    expect(im.outbox[0]?.body.text).toBe('这件事和我现在的目标不一致，我先不做。');
+    root.cleanup();
+  });
+
+  it('does not post advisor prose when both calls are not JSON', async () => {
+    const root = createTestDataRoot('subject-think-prose-');
+    const im = new FakeImChannel();
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: Date.parse('2026-10-12T00:00:00.000Z'),
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      imClient: im,
+      signals: [human('human:alice')],
+      callLlm: async () => '我决定现在就详细回复你，并且调用 set_goal。',
+    });
+    expect(result.action).toBe('defer');
+    expect(im.outbox).toHaveLength(1);
+    expect(im.outbox[0]?.body.disposition).toBe('status');
+    expect(im.outbox[0]?.body.text).toBe('〔状态〕先搁下，4 小时后再看。');
+    expect(im.outbox[0]?.body.text).not.toContain('set_goal');
+    root.cleanup();
+  });
+
+  it('skips an empty reply and posts status for the next legal action', async () => {
+    const root = createTestDataRoot('subject-think-empty-');
+    const im = new FakeImChannel();
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: Date.parse('2026-10-12T00:00:00.000Z'),
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      imClient: im,
+      signals: [human('human:alice')],
+      callLlm: scripted(
+        '{"candidates":[{"action":"reply_to_thread","args":{"text":"  "}},{"action":"no_reply","args":{}}]}',
+        '{"scores":[{"action":"reply_to_thread","score":1},{"action":"no_reply","score":0.4},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(result.action).toBe('no_reply');
+    expect(result.speechPosted).toBe(false);
+    expect(im.outbox[0]?.body.text).toBe('〔状态〕看到了，这轮不聊。');
+    root.cleanup();
+  });
+
+  it('holds the lease without a second advisor call', async () => {
+    const root = createTestDataRoot('subject-think-lease-');
+    const now = Date.parse('2026-10-12T00:00:00.000Z');
+    const state = loadState(root.dataRoot, now);
+    saveState(root.dataRoot, {
+      ...state,
+      lease: { owner: 'subject-think', until: new Date(now + 60_000).toISOString() },
+    });
+    const im = new FakeImChannel();
+    let calls = 0;
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: now,
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      imClient: im,
+      signals: [human('human:alice', '又来一条')],
+      callLlm: async () => {
+        calls += 1;
+        return '{}';
+      },
+    });
+    expect(result.action).toBe('lease_held');
+    expect(calls).toBe(0);
+    expect(im.outbox[0]?.body.text).toBe('〔状态〕上一次还没想完，这轮先记下。');
+    expect(loadInbox(root.dataRoot).some((item) => item.raw === '又来一条')).toBe(true);
+    const after = loadState(root.dataRoot, now);
+    expect(after.drives).toEqual(state.drives);
+    expect(after.lastDriveOnlyThinkAt).toBeNull();
+    root.cleanup();
+  });
+
+  it('marks self-initiated work and does not spawn or post when dispatch fails', async () => {
+    const root = createTestDataRoot('subject-think-self-');
+    const now = Date.parse('2026-10-12T00:00:00.000Z');
+    const state = loadState(root.dataRoot, now);
+    saveState(root.dataRoot, {
+      ...state,
+      drives: { curiosity: 0.9, social: 0.2, completion: 0.2 },
+    });
+    const im = new FakeImChannel();
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: now,
+      trigger: 'heartbeat_tail',
+      agentSid: 'agent:test',
+      imClient: im,
+      activeKpiIds: [],
+      dispatchProposal: async () => ({ dispatched: false, reason: 'no_available_capacity' }),
+      callLlm: scripted(
+        '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"看看仓库","expectedOutcome":"一条笔记"}}]}',
+        '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(result.action).toBe('propose_self_work');
+    expect(result.statusPosted).toBe(false);
+    expect(im.outbox).toHaveLength(0);
+    const after = loadState(root.dataRoot, now);
+    expect(after.drives.curiosity).toBeCloseTo(0.9);
+    expect(after.deferred.some((item) => item.raw.includes('未派出的自发工作'))).toBe(true);
+    const log = fs.readFileSync(path.join(subjectDir(root.dataRoot), 'think-log.jsonl'), 'utf8');
+    expect(log).toContain('"selfInitiated":true');
+    expect(after.lastDriveOnlyThinkAt).toBe(new Date(now).toISOString());
+    root.cleanup();
+  });
+
+  it('does not refresh drive cooldown on an inbound think', async () => {
+    const root = createTestDataRoot('subject-think-inbound-cool-');
+    const now = Date.parse('2026-10-12T00:00:00.000Z');
+    await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: now,
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      signals: [human('human:alice')],
+      callLlm: scripted(
+        '{"candidates":[{"action":"no_reply","args":{}}]}',
+        '{"scores":[{"action":"no_reply","score":1}]}',
+      ),
+    });
+    expect(loadState(root.dataRoot, now).lastDriveOnlyThinkAt).toBeNull();
+    root.cleanup();
+  });
+
+  it('refuses a new KPI and does not dispatch that candidate', async () => {
+    const root = createTestDataRoot('subject-think-kpi-');
+    let dispatched = 0;
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: Date.parse('2026-10-12T00:00:00.000Z'),
+      trigger: 'heartbeat_tail',
+      agentSid: 'agent:test',
+      activeKpiIds: [],
+      dispatchProposal: async () => {
+        dispatched += 1;
+        return { dispatched: true, reason: 'self_work_dispatched' };
+      },
+      callLlm: scripted(
+        '{"candidates":[{"action":"propose_self_work","args":{"drive":"completion","kind":"kpi_advance","kpiId":"missing","goalText":"新职责","expectedOutcome":"不该出现"}}]}',
+        '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(dispatched).toBe(0);
+    expect(result.action).not.toBe('propose_self_work');
+    root.cleanup();
+  });
+
+  it('lets a non-empty inbox think during drive cooldown', async () => {
+    const root = createTestDataRoot('subject-think-inbox-');
+    const now = Date.parse('2026-10-12T08:00:00.000Z');
+    const state = loadState(root.dataRoot, now);
+    saveState(root.dataRoot, {
+      ...state,
+      drives: { curiosity: 0.9, social: 0.2, completion: 0.2 },
+      lastDriveOnlyThinkAt: new Date(now - HOUR_MS).toISOString(),
+    });
+    const parked = {
+      id: 'in-1',
+      source: 'human:alice',
+      kind: 'message' as const,
+      threadId: 'thread:dm:1',
+      raw: '先记下的一句',
+      at: new Date(now).toISOString(),
+      messageId: 'm-parked',
+    };
+    fs.mkdirSync(subjectDir(root.dataRoot), { recursive: true });
+    fs.writeFileSync(path.join(subjectDir(root.dataRoot), 'inbox.json'), JSON.stringify([parked]));
+    const im = new FakeImChannel();
+    let calls = 0;
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: now,
+      trigger: 'heartbeat_tail',
+      agentSid: 'agent:test',
+      imClient: im,
+      callLlm: async (_system, user) => {
+        calls += 1;
+        return user.includes('[TASK:EVALUATE]')
+          ? '{"scores":[{"action":"no_reply","score":1},{"action":"defer","score":0},{"action":"do_nothing","score":0}]}'
+          : '{"candidates":[{"action":"no_reply","args":{}}]}';
+      },
+    });
+    expect(calls).toBe(2);
+    expect(result.action).toBe('no_reply');
+    expect(im.outbox[0]?.body.text).toBe('〔状态〕看到了，这轮不聊。');
+    root.cleanup();
+  });
+});

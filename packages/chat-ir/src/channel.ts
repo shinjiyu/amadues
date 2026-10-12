@@ -44,6 +44,11 @@ export interface ChatIROutboundBody {
   parts?: unknown[];
   /** 让 channel 实现解析 `@token` 为 mention parts；默认 true */
   parse_mentions?: boolean;
+  /**
+   * `status` 是代码写死的状态回执，不是对话回复。
+   * 缺省与 `speech` 都按对话处理。seenTracker 忽略 `status`。
+   */
+  disposition?: 'status' | 'speech';
 }
 
 /**
@@ -120,6 +125,16 @@ export interface ChatIRChannel {
    * channel 只做无状态转发。
    */
   sendActivity?(threadId: string, kind: 'typing' | 'idle'): void;
+
+  /**
+   * 状态回执的附加表情。`seen` / `later` / `working` 由桥映射到渠道 reaction。
+   * 不实现、没有对应表情、或调用失败时，文本回执仍然算数。
+   */
+  addStatusReaction?(
+    threadId: string,
+    messageId: string,
+    token: 'seen' | 'later' | 'working',
+  ): Promise<void>;
 }
 
 /**

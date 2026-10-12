@@ -35,6 +35,10 @@ export interface SeenMessage {
   mention_target_sids?: string[];
   /** 内部 LRU 修剪用；调用方可不传，由 tracker 填 Date.now() */
   seen_at?: number;
+  /**
+   * `status` 是主体状态回执。链深与抢答计数忽略它，既不加一也不把它当成人类打断。
+   */
+  disposition?: 'status';
 }
 
 /** 从 MessagePart 列表提取 mention 的 target_sid（去重保序）。 */
@@ -98,6 +102,7 @@ export class ChatIRSeenTracker {
       message_id: m.message_id,
       sender_sid: m.sender_sid,
       ...(m.mention_target_sids?.length ? { mention_target_sids: m.mention_target_sids } : {}),
+      ...(m.disposition === 'status' ? { disposition: 'status' as const } : {}),
       seen_at: m.seen_at ?? Date.now(),
     });
     while (list.length > this.maxPerThread) list.shift();
@@ -112,6 +117,7 @@ export class ChatIRSeenTracker {
     let count = 0;
     for (let i = list.length - 1; i >= 0; i--) {
       const m = list[i]!;
+      if (m.disposition === 'status') continue;
       if (this.isAgentSender(m.sender_sid)) count++;
       else break;
     }
@@ -139,6 +145,7 @@ export class ChatIRSeenTracker {
         continue;
       }
       if (!foundTrigger) continue;
+      if (m.disposition === 'status') continue;
       if (m.sender_sid === this.selfAgentSid) continue;
       if (this.isCompetingAgentReply(m.sender_sid, triggerMentions)) return true;
     }

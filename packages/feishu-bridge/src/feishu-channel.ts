@@ -120,7 +120,7 @@ export class FeishuChannel implements ChatIRChannel {
       const sent = replyTo
         ? await this.api.replyTextMessage(replyTo, contentJson)
         : await this.api.sendTextMessage(route.chatId, contentJson);
-      this.persistOutboundMessage(threadId, sent.message_id, body.sender_sid, parts);
+      this.persistOutboundMessage(threadId, sent.message_id, body.sender_sid, parts, body.disposition);
       // 回复已发出 = 不再"打字"
       this.clearTyping(threadId);
       console.log(
@@ -237,6 +237,7 @@ export class FeishuChannel implements ChatIRChannel {
     nativeMessageId: string,
     senderSid: string,
     parts: MessagePart[],
+    disposition?: 'status' | 'speech',
   ): void {
     const store = this.opts.loadThreads();
     if (!store.messages[irThreadId]) store.messages[irThreadId] = [];
@@ -254,6 +255,7 @@ export class FeishuChannel implements ChatIRChannel {
       message_id: messageRecord.message_id,
       sender_sid: senderSid,
       mention_target_sids: mentionTargetSidsFromParts(parts),
+      ...(disposition === 'status' ? { disposition: 'status' as const } : {}),
     });
   }
 }

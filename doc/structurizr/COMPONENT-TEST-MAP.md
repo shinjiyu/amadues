@@ -68,11 +68,11 @@
 | **digitalEmployeeLoop** | ✅ `digital-employee-loop.test.ts`（优先级、single-flight、coalesce、依赖拒绝） | ✅ `digitalEmployeeLoop.component.integration.test.ts`（Calendar 优先 + burst finish 续派） | — | [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §5 |
 | **employeeCalendar** | ✅ `employee-calendar.test.ts` + `calendar-tools.test.ts`（list/schedule/cancel/remind 幂等、白名单、cap） | ✅ loop due 链；remind→send_message / spawn→set_goal | — | ADL [`EMPLOYEE-CALENDAR.md`](./EMPLOYEE-CALENDAR.md)；对话一等工具 C1–C4 ✅ |
 | **selfWorkPolicy** | ✅ `self-work-policy.test.ts`（expectedOutcome、依赖、去重、冲突、route_blocked、null 休眠）+ `self-work-strategies.test.ts`（4 策略同 fixture 可比较、角度轮换、A/B 探索/利用/回退、spec 解析）+ `self-work-metrics.test.ts`（acceptance/duplicate/no-progress/byStrategy）+ `self-work-llm-policy.test.ts`（JSON 契约、sleep、非法/异常 fallback） | ✅ 由 `digitalEmployeeLoop.component.integration.test.ts` 覆盖提案→派发 | — | 只有提案权；✅ P2 多策略 + 指标 JSONL；✅ P3 llm_reflective + AbTest 灰度（`UTLRA_SELF_WORK_STRATEGY`）；⏳ Duty 整单重放拒收见 advance WP |
-| **subjectSignalSlot** | ⏳ `subject-signal-slot.test.ts` | — | — | ADL [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §14.1：转义槽、注入不闭合、system 常量 |
-| **subjectStateStore** | ⏳ `subject-state-store.test.ts` | — | — | §14.3 原子写、defer 上限 |
-| **subjectDrive** | ⏳ `subject-drive.test.ts` | — | — | §14.3：0.10/时、阈值严格大于 0.60、4 小时纯驱动力冷却、inbox 可打断冷却 |
-| **subjectDecide** | ⏳ `subject-decide.test.ts` | — | — | §14.2 白名单拒绝、权重、同分字典序；主人 sid 不进入决策（SC-10） |
-| **subjectThink** | ⏳ `subject-think.test.ts` | ⏳ `subjectThink.component.integration.test.ts` | ⏳ P3 | §14.4：`no_reply` 不发对话回复，但发一条 §8.1 状态回执，且不进入 `runOuterConversationLoop`；心跳空转 `wait` 不发；主人 sid 的状态句与其他人相同；回复只取候选 text；不新建 KPI；无旗标；`drive_threshold` 不绕过日程 |
+| **subjectSignalSlot** | ✅ `subject-signal-slot.test.ts` | — | — | ADL [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §14.1：转义槽、注入不闭合、system 常量 |
+| **subjectStateStore** | ✅ `subject-state-store.test.ts` | — | — | §14.3 原子写、defer 上限 |
+| **subjectDrive** | ✅ `subject-drive.test.ts` | — | — | §14.3：0.10/时、阈值严格大于 0.60、4 小时纯驱动力冷却、inbox 可打断冷却 |
+| **subjectDecide** | ✅ `subject-decide.test.ts` | — | — | §14.2 白名单拒绝、权重、同分字典序；主人 sid 不进入决策（SC-10） |
+| **subjectThink** | ✅ `subject-think.test.ts` | ✅ `subjectThink.component.integration.test.ts` | ⏳ P3 | §14.4：`no_reply` 不发对话回复，但发一条 §8.1 状态回执，且不进入 `runOuterConversationLoop`；心跳空转 `wait` 不发；主人 sid 的状态句与其他人相同；回复只取候选 text；不新建 KPI；无旗标；`drive_threshold` 不绕过日程 |
 | **advanceWorkPackageBuilder** | ✅ 感知 facet（日历+内脑+stall+cursor）+ 简单调配规则 | ✅ RUNNING/日历闸门；bootstrap+ensure；stall→repair；盲派/重复日历指标 | — | [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` + `memory-belief-card.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP + mem9 Belief Card supersede（[`MEMORY-BELIEF-CARD.md`](./MEMORY-BELIEF-CARD.md)） |
 | completionNotify | ✅ `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) + ingest R4.7 + scheduled report allowlist + **pending-scheduled-report** | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1）；ingest≠notify；日历 EW 报告附件；微信缺 token 挂起冲刷 |

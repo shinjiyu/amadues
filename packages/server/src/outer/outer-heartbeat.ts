@@ -29,7 +29,7 @@ import { isSetGoalDispatched } from './inner-brain-kpi-reuse.js';
 import { loadSoul } from './soul.js';
 import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
 import type { OuterMemoryStore } from './outer-memory.js';
-import type { LogEntry } from './outer-brain.js';
+import { outerInboundTurnActive, type LogEntry } from './outer-brain.js';
 import { formatAgentIsoLocal, formatAgentLocalDateTime, resolveAgentTimezone } from '../agent-time.js';
 import type { KpiRegistry } from './kpi-registry.js';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
@@ -43,6 +43,19 @@ import { PerformanceGoalEngine } from '../performance-goals/engine.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE, buildBrainAsyncSnapshot } from './brain-async-snapshot.js';
 import { OUTER_EXECUTABLE_WORKFLOW_GUIDE } from './executable-workflow-guide.js';
 import { runAutonomyPipeline } from './autonomy-pipeline.js';
+import {
+  collectEnvironmentSnapshot,
+  getSharedEnvironment,
+  hasAvailableCapacity,
+  loadAutonomyPolicy,
+} from './environment/index.js';
+import { llmChatCompletion } from '../llm/client.js';
+import {
+  runSubjectThink,
+  subjectHeartbeatWouldThink,
+  type SubjectDispatchResult,
+  type SubjectProposalDispatch,
+} from './subject/think.js';
 import type { ResourceProbeDeps } from './resource-probe.js';
 import { OUTER_TOOL_DEFS } from './outer-tools.js';
 import {
@@ -668,6 +681,8 @@ export interface HeartbeatDeps {
   identityRegistry?: IdentityRegistry;
   /** Shared capacity loop fallback; heartbeat must not create a second dispatch path. */
   triggerDigitalEmployee?: () => Promise<unknown>;
+  /** Subject propose_self_work enters the same loop as drive_threshold. */
+  dispatchSubjectProposal?: (proposal: SubjectProposalDispatch) => Promise<SubjectDispatchResult>;
   /** 与 DigitalEmployeeRuntime 共享的日历 Port（心跳工具若调日历时用） */
   getEmployeeCalendar?: () => EmployeeCalendarPort | undefined;
 }
@@ -848,18 +863,20 @@ export class OuterHeartbeat {
       return;
     }
 
-    const env = this.deps.getLlmEnv();
-    if (!env) {
-      console.log('[utlra][heartbeat] no LLM env, skipping tick');
-      return;
-    }
-
     this.running = true;
     console.log('[utlra][heartbeat] tick start');
 
     try {
+      const env = this.deps.getLlmEnv();
       const agentSid = resolveAgentSid();
       const workspaceId = resolveWorkspaceId();
+      const skipCasual = this.previewSubjectThink();
+
+      if (!env) {
+        console.log('[utlra][heartbeat] no LLM env, skipping legacy tick');
+        await this.runSubjectTail(null, agentSid);
+        return;
+      }
 
       // ── P0 autonomy：probe → hard gates → KPI/闲聊 dispatch ─────────────
       if (this.deps.innerBrainRegistry && this.deps.kpiRegistry) {
@@ -882,10 +899,12 @@ export class OuterHeartbeat {
           loadThreads: this.deps.loadThreads,
           identityRegistry: this.deps.identityRegistry,
           digitalEmployeeMode: Boolean(this.deps.triggerDigitalEmployee),
+          skipCasualChat: skipCasual,
         });
 
         if (autonomy.skippedLegacyHeartbeat) {
           console.log('[utlra][heartbeat] tick done (autonomy dispatched, legacy LLM skipped)');
+          await this.runSubjectTail(env, agentSid);
           return;
         }
       }
@@ -942,11 +961,85 @@ export class OuterHeartbeat {
         performanceBlock,
         threadContext,
       );
+      await this.runSubjectTail(env, agentSid);
       console.log('[utlra][heartbeat] tick done');
     } catch (e) {
       console.error('[utlra][heartbeat] tick error', e);
     } finally {
       this.running = false;
+    }
+  }
+
+  /** True when this tick's tail is expected to call the advisor, so casual chat stays quiet. */
+  private previewSubjectThink(): boolean {
+    if (outerInboundTurnActive()) return false;
+    if (!this.subjectCapacityAvailable()) return false;
+    try {
+      return subjectHeartbeatWouldThink(this.deps.dataRoot, Date.now());
+    } catch (error) {
+      console.log(`[utlra][heartbeat] subject preview failed ${error instanceof Error ? error.message : error}`);
+      return false;
+    }
+  }
+
+  private subjectCapacityAvailable(): boolean {
+    const registry = this.deps.innerBrainRegistry;
+    if (!registry) return false;
+    try {
+      const shared = getSharedEnvironment(this.deps.dataRoot);
+      const { snapshot } = collectEnvironmentSnapshot(
+        {
+          agentId: resolveAgentSid(),
+          registry,
+          defaultThreadId: this.config.defaultThreadId,
+          getOrchestratorStats: this.deps.getOrchestratorStats,
+        },
+        shared.registry,
+        shared.journal,
+      );
+      return hasAvailableCapacity(snapshot, loadAutonomyPolicy(this.deps.dataRoot)).available;
+    } catch (error) {
+      console.log(`[utlra][heartbeat] subject capacity failed ${error instanceof Error ? error.message : error}`);
+      return false;
+    }
+  }
+
+  private async runSubjectTail(env: InnerLlmEnv | null, agentSid: string): Promise<void> {
+    const blocked = outerInboundTurnActive() || !this.subjectCapacityAvailable();
+    const activeKpiIds = this.deps.kpiRegistry?.list({ status: 'active' }).map((kpi) => kpi.kpiId) ?? [];
+    const callLlm = env
+      ? async (system: string, user: string) => {
+          const result = await llmChatCompletion({
+            provider: env.provider,
+            apiKey: env.apiKey,
+            baseUrl: env.baseUrl,
+            model: env.textModel,
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: user },
+            ],
+            maxTokens: env.maxTokensText,
+            temperature: 0,
+            thinking: 'disabled',
+            usageMeta: { source: 'subject_think', model: env.textModel, provider: env.provider },
+          });
+          return result.content ?? '';
+        }
+      : undefined;
+    try {
+      await runSubjectThink({
+        dataRoot: this.deps.dataRoot,
+        trigger: 'heartbeat_tail',
+        agentSid,
+        imClient: this.deps.imClient,
+        soul: loadSoul(this.deps.dataRoot),
+        activeKpiIds,
+        accrueOnly: blocked,
+        callLlm: blocked ? undefined : callLlm,
+        dispatchProposal: this.deps.dispatchSubjectProposal,
+      });
+    } catch (error) {
+      console.error('[utlra][heartbeat] subject tail failed', error);
     }
   }
 }
