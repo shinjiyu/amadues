@@ -14,7 +14,7 @@ graph TB
         style 16 fill:#85bbf0,stroke:#5d82a8,color:#000000
         17["<div style='font-weight: bold'>Thread Orchestrator</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【线程编排】jitter/debounce + 同<br />thread FIFO 串行 +<br />freshCheck（仅触发上被一并@的 agent<br />算抢答；独占@本 agent 不因他人插话放弃）</div>"]
         style 17 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        18["<div style='font-weight: bold'>Outer Brain Facade</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【唯一外脑入口】Discord/WebChat/HTTP<br />入站 → 检索 → 是否说话 → 外脑对话环</div>"]
+        18["<div style='font-weight: bold'>Outer Brain Facade</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【唯一外脑入口】Discord/WebChat/HTTP<br />入站 → 检索 → 是否说话 → subjectThink</div>"]
         style 18 fill:#85bbf0,stroke:#5d82a8,color:#000000
         19["<div style='font-weight: bold'>Structured Reply Parts</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>reply.v1 →<br />MessagePart[]（mention +<br />attach 展开）</div>"]
         style 19 fill:#85bbf0,stroke:#5d82a8,color:#000000
@@ -24,7 +24,7 @@ graph TB
         style 21 fill:#85bbf0,stroke:#5d82a8,color:#000000
         22["<div style='font-weight: bold'>Memory Block Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【结构化长期记忆】Block+Strategy<br />CRUD；keychain=kv_secret；bind→.brain/secrets</div>"]
         style 22 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        23["<div style='font-weight: bold'>Outer Conversation Loop</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【外脑多轮】LLM ↔ tools 循环直到<br />reply_to_user 或达上限；空口承诺<br />post-loop 对账</div>"]
+        23["<div style='font-weight: bold'>Outer Conversation Loop</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【入站已退役】原 LLM↔tools 与强制回复；入站<br />SPEAK 改由 subjectThink 取代，不留旗标</div>"]
         style 23 fill:#85bbf0,stroke:#5d82a8,color:#000000
         24["<div style='font-weight: bold'>Empty Promise Reconcile</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【空口对账】用户祈使+口头承诺+无成功派活 →<br />强制再跑一轮工具环</div>"]
         style 24 fill:#85bbf0,stroke:#5d82a8,color:#000000
@@ -155,12 +155,11 @@ graph TB
     18-. "<div>Step 3.4 只读上下文装配（不派发，注入<br />inboundHint）</div><div style='font-size: 70%'>[in-process]</div>" .->35
     35-. "<div>active KPI 只读上下文（去重提示）</div><div style='font-size: 70%'>[in-process]</div>" .->43
     35-. "<div>在跑 burst 只读上下文（供 LLM<br />send_directive）</div><div style='font-size: 70%'>[in-process]</div>" .->27
-    18-. "<div>runOuterConversationLoop</div><div style='font-size: 70%'>[in-process]</div>" .->23
-    17-. "<div>mention-aware freshCheck →<br />ctx</div><div style='font-size: 70%'>[in-process]</div>" .->23
+    17-. "<div>freshCheck 曾注入已退役对话环；不得把<br />SPEAK 送回该环</div><div style='font-size: 70%'>[in-process]</div>" .->23
     16-. "<div>SPEAK/SILENT / topic check</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
-    23-. "<div>多轮 messages+tools</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
-    23-. "<div>shouldReconcileEmptyPromise /<br />recovery prompt</div><div style='font-size: 70%'>[in-process]</div>" .->24
-    23-. "<div>executeOuterTool</div><div style='font-size: 70%'>[in-process]</div>" .->25
+    23-. "<div>已退役：多轮 messages+tools</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    23-. "<div>已退役：空口对账 / recovery</div><div style='font-size: 70%'>[in-process]</div>" .->24
+    23-. "<div>已退役：executeOuterTool</div><div style='font-size: 70%'>[in-process]</div>" .->25
     25-. "<div>register / list / stop</div><div style='font-size: 70%'>[in-process]</div>" .->27
     25-. "<div>set_goal output →<br />isSetGoalDispatched</div><div style='font-size: 70%'>[in-process]</div>" .->29
     25-. "<div>set_goal:<br />prepareKpiPeerHandoff（peer<br />ids + .inbox catalog）</div><div style='font-size: 70%'>[in-process]</div>" .->30
@@ -204,7 +203,7 @@ graph TB
     72-. "<div>post_to_im</div><div style='font-size: 70%'>[in-process]</div>" .->25
     72-. "<div>casual_chat 频控</div><div style='font-size: 70%'>[in-process]</div>" .->16
     72-. "<div>defer when active KPI + can<br />spawn</div><div style='font-size: 70%'>[in-process]</div>" .->43
-    23-. "<div>read/update via chat tools</div><div style='font-size: 70%'>[in-process]</div>" .->69
+    23-. "<div>已退役：聊天工具改 policy</div><div style='font-size: 70%'>[in-process]</div>" .->69
     25-. "<div>read_autonomy_policy /<br />update_*</div><div style='font-size: 70%'>[in-process]</div>" .->69
     25-. "<div>read/update_personality</div><div style='font-size: 70%'>[in-process]</div>" .->71
     56-. "<div>innerBrains sensor read</div><div style='font-size: 70%'>[in-process]</div>" .->27
@@ -242,7 +241,7 @@ graph TB
     49-. "<div>合法日程/提案 → 唯一 set_goal</div><div style='font-size: 70%'>[in-process]</div>" .->25
     56-. "<div>calendar sensor 只读 due/missed</div><div style='font-size: 70%'>[in-process]</div>" .->50
     61-. "<div>peekPendingMatch（避免杀正在收敛）</div><div style='font-size: 70%'>[in-process]</div>" .->37
-    18-. "<div>旗标开且 SPEAK：一次 think，不进工具环</div><div style='font-size: 70%'>[in-process]</div>" .->79
+    18-. "<div>SPEAK：一次 think，不进工具环</div><div style='font-size: 70%'>[in-process]</div>" .->79
     16-. "<div>SPEAK=可以想；SILENT=只入 inbox</div><div style='font-size: 70%'>[in-process]</div>" .->79
     79-. "<div>固定模板 + observation 槽</div><div style='font-size: 70%'>[in-process]</div>" .->75
     79-. "<div>读写真相与 defer/inbox</div><div style='font-size: 70%'>[in-process]</div>" .->76

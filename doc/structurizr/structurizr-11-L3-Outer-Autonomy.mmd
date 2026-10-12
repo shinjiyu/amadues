@@ -14,8 +14,6 @@ graph TB
         style 16 fill:#85bbf0,stroke:#5d82a8,color:#000000
         17["<div style='font-weight: bold'>Thread Orchestrator</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【线程编排】jitter/debounce + 同<br />thread FIFO 串行 +<br />freshCheck（仅触发上被一并@的 agent<br />算抢答；独占@本 agent 不因他人插话放弃）</div>"]
         style 17 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        23["<div style='font-weight: bold'>Outer Conversation Loop</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【外脑多轮】LLM ↔ tools 循环直到<br />reply_to_user 或达上限；空口承诺<br />post-loop 对账</div>"]
-        style 23 fill:#85bbf0,stroke:#5d82a8,color:#000000
         25["<div style='font-weight: bold'>Outer Tool Executor</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【工具执行】reply_to_user /<br />set_goal（KPI 单实例复用 + peer<br />catalog）/ list_brains /<br />read_inner_status / KPI 等</div>"]
         style 25 fill:#85bbf0,stroke:#5d82a8,color:#000000
         26["<div style='font-weight: bold'>LLM Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【模型网关】参与判别、外脑对话、复盘、roundtrip<br />草稿；Zhipu/Kimi/LocalModule</div>"]
@@ -48,14 +46,13 @@ graph TB
         style 71 fill:#85bbf0,stroke:#5d82a8,color:#000000
         72["<div style='font-weight: bold'>Casual Chat Dispatcher</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【idle 闲聊】性格概率 proactive<br />IM；KPI spawn 由 kpiManager 负责</div>"]
         style 72 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        79["<div style='font-weight: bold'>Subject Think</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【一次主体<br />reducer】user=主体模板，assistant=无工具<br />JSON；no_reply 与 defer 是合法终态</div>"]
+        style 79 fill:#85bbf0,stroke:#5d82a8,color:#000000
       end
 
     end
 
-    17-. "<div>mention-aware freshCheck →<br />ctx</div><div style='font-size: 70%'>[in-process]</div>" .->23
     16-. "<div>SPEAK/SILENT / topic check</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
-    23-. "<div>多轮 messages+tools</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
-    23-. "<div>executeOuterTool</div><div style='font-size: 70%'>[in-process]</div>" .->25
     25-. "<div>register / list / stop</div><div style='font-size: 70%'>[in-process]</div>" .->27
     25-. "<div>set_kpi / view_kpi</div><div style='font-size: 70%'>[in-process]</div>" .->43
     48-. "<div>tick sweepKpiCompletions +<br />digest</div><div style='font-size: 70%'>[in-process]</div>" .->47
@@ -75,7 +72,6 @@ graph TB
     72-. "<div>post_to_im</div><div style='font-size: 70%'>[in-process]</div>" .->25
     72-. "<div>casual_chat 频控</div><div style='font-size: 70%'>[in-process]</div>" .->16
     72-. "<div>defer when active KPI + can<br />spawn</div><div style='font-size: 70%'>[in-process]</div>" .->43
-    23-. "<div>read/update via chat tools</div><div style='font-size: 70%'>[in-process]</div>" .->69
     25-. "<div>read_autonomy_policy /<br />update_*</div><div style='font-size: 70%'>[in-process]</div>" .->69
     25-. "<div>read/update_personality</div><div style='font-size: 70%'>[in-process]</div>" .->71
     50-. "<div>calendar_due → trigger；due<br />保留至有容量</div><div style='font-size: 70%'>[in-process]</div>" .->49
@@ -86,5 +82,10 @@ graph TB
     51-. "<div>active KPI + momentum/history</div><div style='font-size: 70%'>[in-process]</div>" .->43
     51-. "<div>pending dependencies +<br />running conflicts</div><div style='font-size: 70%'>[in-process]</div>" .->27
     49-. "<div>合法日程/提案 → 唯一 set_goal</div><div style='font-size: 70%'>[in-process]</div>" .->25
+    16-. "<div>SPEAK=可以想；SILENT=只入 inbox</div><div style='font-size: 70%'>[in-process]</div>" .->79
+    79-. "<div>user=主体模板；assistant=JSON；tools<br />空</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    79-. "<div>仅选中的 reply/decline 文本</div><div style='font-size: 70%'>[in-process]</div>" .->25
+    79-. "<div>propose_self_work →<br />drive_threshold</div><div style='font-size: 70%'>[in-process]</div>" .->49
+    48-. "<div>监督步骤之后的尾步；不改 0–6 顺序</div><div style='font-size: 70%'>[in-process]</div>" .->79
 
   end

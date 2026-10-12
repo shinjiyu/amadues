@@ -27,7 +27,7 @@ alwaysApply: false
 | [`OUTER-HEARTBEAT-OVERSIGHT.md`](doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md) | watchdog：验收、卡死/restart、missed、fallback |
 | [`KPI-MANAGER-LAYER.md`](doc/structurizr/KPI-MANAGER-LAYER.md) | KPI 真相、R3–R7、burst 卫生 |
 | [`KPI-COMPLETION-JUDGE.md`](doc/structurizr/KPI-COMPLETION-JUDGE.md) | **KPI 完成判定**：`sweep` / `achieve_kpi` |
-| [`SUBJECT-CORE.md`](doc/structurizr/SUBJECT-CORE.md) | **自主主体**（未实现，默认关）：驱动力尾步在监督顺序之后 |
+| [`SUBJECT-CORE.md`](doc/structurizr/SUBJECT-CORE.md) | **自主主体**（未实现，无旗标）：驱动力尾步在监督顺序之后；入站 SPEAK 只走 subjectThink |
 
 Structurizr：`components/agent-server.dsl`（`digitalEmployeeLoop`、`employeeCalendar`、`selfWorkPolicy`、`outerHeartbeat`）+ `workspace.dsl` 边与视图 `11`/`14`。
 
@@ -44,7 +44,7 @@ burst_finished / calendar_due / dependency_resolved
 heartbeat watchdog：
 死亡检测 → completion sweep → 环境/质控 → R3–R7/reap
 → Calendar missed → digitalEmployeeLoop(heartbeat_fallback)
-→ 仅 UTLRA_SUBJECT_CORE_ENABLED=1：subjectThink 尾步（不插入到监督步骤之前）
+→ subjectThink 尾步（无旗标；不插入到监督步骤之前）
 ```
 
 ## 三层勿混

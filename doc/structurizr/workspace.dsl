@@ -424,22 +424,20 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.inboundKpiRouter -> kuroneko.agentServer.innerBrainRegistry "在跑 burst 只读上下文（供 LLM send_directive）" "in-process" {
             tags "import"
         }
-        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.outerConversationLoop "runOuterConversationLoop" "in-process" {
-            tags "import"
-        }
-        kuroneko.agentServer.threadOrchestrator -> kuroneko.agentServer.outerConversationLoop "mention-aware freshCheck → ctx" "in-process" {
+        // 入站 SPEAK 不再调用 outerConversationLoop（SUBJECT-CORE SC-8）。该边已删除，不留旗标回退。
+        kuroneko.agentServer.threadOrchestrator -> kuroneko.agentServer.outerConversationLoop "freshCheck 曾注入已退役对话环；不得把 SPEAK 送回该环" "in-process" {
             tags "import"
         }
         kuroneko.agentServer.participationPolicy -> kuroneko.agentServer.llmGateway "SPEAK/SILENT / topic check" "HTTPS" {
             tags "http"
         }
-        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.llmGateway "多轮 messages+tools" "HTTPS" {
+        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.llmGateway "已退役：多轮 messages+tools" "HTTPS" {
             tags "http"
         }
-        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.emptyPromiseReconcile "shouldReconcileEmptyPromise / recovery prompt" "in-process" {
+        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.emptyPromiseReconcile "已退役：空口对账 / recovery" "in-process" {
             tags "Relation"
         }
-        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.outerToolExecutor "executeOuterTool" "in-process" {
+        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.outerToolExecutor "已退役：executeOuterTool" "in-process" {
             tags "import"
         }
         // 工具 → 内脑 / KPI / 通知
@@ -739,7 +737,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.casualChatDispatcher -> kuroneko.agentServer.kpiRegistry "defer when active KPI + can spawn" "in-process" {
             tags "import"
         }
-        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.autonomyPolicyStore "read/update via chat tools" "in-process" {
+        kuroneko.agentServer.outerConversationLoop -> kuroneko.agentServer.autonomyPolicyStore "已退役：聊天工具改 policy" "in-process" {
             tags "import"
         }
         kuroneko.agentServer.outerToolExecutor -> kuroneko.agentServer.autonomyPolicyStore "read_autonomy_policy / update_*" "in-process" {
@@ -860,8 +858,8 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.staleBurstReaper -> kuroneko.innerWorker.archiveStore "archive(workDir, abortReason)" "file" {
             tags "file"
         }
-        // 自主主体（SUBJECT-CORE.md）。旗标 UTLRA_SUBJECT_CORE_ENABLED 默认关。
-        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.subjectThink "旗标开且 SPEAK：一次 think，不进工具环" "in-process" {
+        // 自主主体（SUBJECT-CORE.md）。无旗标。入站 SPEAK 只走 subjectThink。
+        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.subjectThink "SPEAK：一次 think，不进工具环" "in-process" {
             tags "import"
         }
         kuroneko.agentServer.participationPolicy -> kuroneko.agentServer.subjectThink "SPEAK=可以想；SILENT=只入 inbox" "in-process" {
@@ -937,8 +935,8 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
 
         component kuroneko.agentServer "07-L3-Outer-Inbound-IM" {
-            title "L3 Outer — IM 入站（Facade 路径）"
-            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.agentStatusChatCommand kuroneko.agentServer.inboundKpiRouter kuroneko.agentServer.imIntentClassifier kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.memoryBlockStore kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiRegistry kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.identityLinkService kuroneko.agentServer.channelConnectionRegistry
+            title "L3 Outer — IM 入站（Facade → subjectThink；对话环已退役）"
+            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.agentStatusChatCommand kuroneko.agentServer.inboundKpiRouter kuroneko.agentServer.imIntentClassifier kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.knowledgeRetrieval kuroneko.agentServer.outerMemory kuroneko.agentServer.memoryBlockStore kuroneko.agentServer.participationPolicy kuroneko.agentServer.llmGateway kuroneko.agentServer.subjectThink kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiRegistry kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.identityLinkService kuroneko.agentServer.channelConnectionRegistry
             autolayout tb
         }
 
@@ -949,8 +947,8 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
 
         component kuroneko.agentServer "07b-L3-Outer-Inbound-HTTP" {
-            title "L3 Outer — HTTP 入站（与 Facade 同路径）"
-            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.participationPolicy kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.structuredReplyParts
+            title "L3 Outer — HTTP 入站（与 Facade 同路径，SPEAK → subjectThink）"
+            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.participationPolicy kuroneko.agentServer.subjectThink kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.structuredReplyParts
             autolayout lr
         }
 
@@ -992,7 +990,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "11-L3-Outer-Autonomy" {
             title "L3 外脑 — 数字员工自主工作（容量+日程+创造性提案；心跳 watchdog）"
-            include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.employeeCalendar kuroneko.agentServer.selfWorkPolicy kuroneko.agentServer.kpiCompletionJudge kuroneko.agentServer.resourceProbe kuroneko.agentServer.llmUsageTracker kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.agentPersonality kuroneko.agentServer.autonomyJudge kuroneko.agentServer.casualChatDispatcher kuroneko.agentServer.performanceGoalEngine kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.participationPolicy kuroneko.agentServer.kpiRegistry kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop
+            include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.employeeCalendar kuroneko.agentServer.selfWorkPolicy kuroneko.agentServer.kpiCompletionJudge kuroneko.agentServer.resourceProbe kuroneko.agentServer.llmUsageTracker kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.agentPersonality kuroneko.agentServer.autonomyJudge kuroneko.agentServer.casualChatDispatcher kuroneko.agentServer.performanceGoalEngine kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.participationPolicy kuroneko.agentServer.kpiRegistry kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.llmGateway kuroneko.agentServer.subjectThink
             autolayout tb
         }
 
@@ -1015,8 +1013,8 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
 
         component kuroneko.agentServer "15-L3-Outer-Subject" {
-            title "L3 外脑 — 自主主体（默认关；user=主体，assistant=顾问）"
-            include kuroneko.agentServer.subjectSignalSlot kuroneko.agentServer.subjectStateStore kuroneko.agentServer.subjectDrive kuroneko.agentServer.subjectDecide kuroneko.agentServer.subjectThink kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.llmGateway
+            title "L3 外脑 — 自主主体（唯一入站 SPEAK；user=主体，assistant=顾问）"
+            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.subjectSignalSlot kuroneko.agentServer.subjectStateStore kuroneko.agentServer.subjectDrive kuroneko.agentServer.subjectDecide kuroneko.agentServer.subjectThink kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.llmGateway
             autolayout tb
         }
 

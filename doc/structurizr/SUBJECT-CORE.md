@@ -1,10 +1,10 @@
 # 自主主体层（Subject Core）（ADL 权威）
 
-> **English:** The agent is its own subject. Every human message, including the owner's own sid, is only an external **signal**, never a command. The owner sid is **not** an exception: `no_reply`, `defer`, and `decline` stay legal for that sid. A deterministic subject core occupies the Chat Completions **`user` role** and calls the LLM only as an **assistant** that proposes and scores actions. Code makes the final choice from an allowlist. Internal drives live in existing agent state storage; crossing a threshold can start self-initiated work. Default **off** (`UTLRA_SUBJECT_CORE_ENABLED`); the current outer loop stays the production path until the flag is on.
+> **English:** The agent is its own subject. Every human message, including the owner's own sid, is only an external **signal**, never a command. The owner sid is **not** an exception: `no_reply`, `defer`, and `decline` stay legal for that sid. A deterministic subject core occupies the Chat Completions **`user` role** and calls the LLM only as an **assistant** that proposes and scores actions. Code makes the final choice from an allowlist. Internal drives live in existing agent state storage; crossing a threshold can start self-initiated work. There is **no feature flag**. Inbound **SPEAK** always goes to `subjectThink`. `runOuterConversationLoop` and its forced-reply recovery are retired, not kept as a fallback.
 
-> **状态**：设计已关闭（2026-10-12）· **实现**：未开始（P0–P3 见 §14）· **默认**：关。常数与分支见 §17，没有待定项。
+> **状态**：设计已关闭（2026-10-12）· **实现**：未开始（P0–P3 见 §14）· **生产路径**：入站 SPEAK 只走 `subjectThink`，无 `UTLRA_SUBJECT_CORE_ENABLED`。常数见 §17，没有待定项。
 
-> **相关权威**：[`doc/agent-data-state-machine.md`](../agent-data-state-machine.md) §5（能力 = 字段 + 转移，不新增长驻进程）、[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)（容量 / 日程 / `set_goal` 唯一 spawn）、[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)（心跳仍是 watchdog）、[`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.2（空口对账在本层开启时让路）、[`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUNDARY.md)。
+> **相关权威**：[`doc/agent-data-state-machine.md`](../agent-data-state-machine.md) §5（能力 = 字段 + 转移，不新增长驻进程）、[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)（容量 / 日程 / `set_goal` 唯一 spawn）、[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)（心跳仍是 watchdog）、[`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.2（入站空口对账随对话环退役）、[`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUNDARY.md)。
 
 > **参考原型**（行为对照，不移植代码）：外部 Python 原型 `agent/core.py`、`agent/prompts.py`、`agent/signals.py`、`agent/state.py`。本文把同样的分工接到 Amadues 外脑已有模块上。
 
@@ -35,7 +35,7 @@
 | **SC-5** | `defer` 的事项必须写进主体状态，并在之后的某次 think 里作为 `source="deferred:…"` 的 observation 再出现。 |
 | **SC-6** | 驱动力是持久化控制状态。超过阈值是「可以自己想一次」的触发，不是直接 `set_goal`。 |
 | **SC-7** | 内脑 spawn 仍只有 `set_goal` 这一条边界（[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) 不变量 1）。主体只有提案权。 |
-| **SC-8** | 旗标关闭时，§1 的现行为保持不变，包括强制回复与空口对账。本层不创建文件、不增加 LLM 调用。 |
+| **SC-8** | 入站 SPEAK 的唯一生产路径是 `subjectThink`。不设 `UTLRA_SUBJECT_CORE_ENABLED`，也不把 `runOuterConversationLoop` 的强制回复留作回退。实现时删除或替换该调用，而不是放在旗标后面。 |
 | **SC-9** | 不新增长驻进程、不在内存里做主体注册表、不用新的 socket 当唤醒信号（宪法 §5）。 |
 | **SC-10** | **所有人类消息都只是信号，包括主人自己的 sid。** 主人 sid 对 `no_reply`、`defer`、`decline` **不得**例外：不得因发送者是主人就改判、抬优先级、或把这三项移出白名单。2026-10-12 主人裁定，绑定。 |
 
@@ -47,10 +47,8 @@
 IM / HTTP 入站
   → outerBrainFacade（已有：链深、状态快指令、ask_user resolve）
   → participationPolicy（已有：SPEAK / SILENT）
-       SILENT 且旗标关 → 与今天相同，直接返回
-       SILENT 且旗标开 → 只把信号写入 subject inbox，不调用模型
-       SPEAK  且旗标关 → runOuterConversationLoop（今天的工具环）
-       SPEAK  且旗标开 → subjectThink（本层），不再进入工具环
+       SILENT → 只把信号写入 subject inbox，不调用模型
+       SPEAK  → subjectThink（唯一生产路径），不进入工具环
 
 subjectThink
   → 候选/打分：llmGateway（assistant，无 tools）
@@ -58,16 +56,16 @@ subjectThink
   → 选定 propose_self_work：digitalEmployeeLoop.trigger('drive_threshold', proposal)
   → 选定 no_reply / defer / wait / do_nothing：只写 subject 状态
 
-digitalEmployeeLoop（旗标开时多一个 reason，顺序不变）
+digitalEmployeeLoop（多一个 reason drive_threshold，其余顺序不变）
   容量 → 到期日程优先 → 本触发若带着主体提案则只校验该提案
   → 唯一 set_goal
 ```
 
-不把主体塞进内脑 DyFlow 的每一步 ReAct。内脑仍是「主体（或今天的对话环）已经决定要做的那份工作」的执行者。
+不把主体塞进内脑 DyFlow 的每一步 ReAct。内脑仍是「主体已经决定要做的那份工作」的执行者。`runOuterConversationLoop` 不再承接入站 SPEAK。
 
-`agentStatusChatCommand`（整句「状态/进度」「密度/今天」）在 Facade 里早于对话环返回。旗标开时也保持这条无 LLM 短路。
+`agentStatusChatCommand`（整句「状态/进度」「密度/今天」）在 Facade 里早于 `subjectThink` 返回，保持这条无 LLM 短路。
 
-`casualChatDispatcher` 不并入本层。旗标开时，心跳尾步的 subject think 与闲聊分发互斥：同一 tick 已跑 subject think 则不再按性格概率另发一条闲聊（避免双自发）。旗标关时闲聊路径不动。
+`casualChatDispatcher` 不并入本层。心跳尾步的 subject think 与闲聊分发互斥：同一 tick 已跑 subject think 则不再按性格概率另发一条闲聊（避免双自发）。
 
 ---
 
@@ -82,7 +80,7 @@ digitalEmployeeLoop（旗标开时多一个 reason，顺序不变）
 | 文件 | 语义 | 写入者 | 读取者 | 备注 |
 |------|------|--------|--------|------|
 | `subject/state.json` | 身份句、目标、驱动力、`lastAccruedAt`、短期记忆、延后队列、单飞锁 | 仅 `subjectStateStore`（由 `subjectThink` / `subjectDrive` 调用） | think、心跳尾步 | 原子替换（临时文件 + rename） |
-| `subject/inbox.json` | 尚未被 think 消费的信号（SILENT 入站、未处理事件） | Facade（旗标开且 SILENT） | 下一次 think | 上限 32，超出丢最旧并记日志 |
+| `subject/inbox.json` | 尚未被 think 消费的信号（SILENT 入站、未处理事件） | Facade（SILENT） | 下一次 think | 上限 32，超出丢最旧并记日志 |
 | `subject/think-log.jsonl` | 审计：驱动力、解析字段、截断后的 observation、候选、分数、拒绝原因、选择、是否自发。不存完整 prompt | `subjectThink` 追加 | 人读 jsonl。本设计不做面板 | **不回注**到下一次 prompt |
 
 `workDir/.brain/` 与 GitBackedBrainFS **不**承载本状态。P0 不把 `DATA_ROOT/subject` 做成 git 仓。
@@ -158,7 +156,7 @@ interface DeferredItem {
 }
 ```
 
-初次打开旗标且文件不存在时，用 §17 的常数创建，并立刻把 `lastAccruedAt` 写成创建时刻（不追补停机前的时间）。`goals` 只在这次创建时种入一次：
+`state.json` 不存在时，用 §17 的常数创建，并立刻把 `lastAccruedAt` 写成创建时刻（不追补停机前的时间）。没有「旗标关闭则不创建」的模式。`goals` 只在这次创建时种入一次：
 
 - `DATA_ROOT/outer/goal.md` 去掉首尾空白后非空：一条 `{ id: "g-outer", text: 前 500 个 Unicode 码位, keywords: [], priority: 0.8 }`。
 - 否则：`{ id: "g-default", text: "把正在做的事做完", keywords: [], priority: 0.5 }`。
@@ -230,9 +228,9 @@ interface SignalParse {
 
 ### 6.3 哪些现有上下文必须改道
 
-旗标开时，**禁止**把今天的 `knowledgeContext` 整段拼进 `user` 消息。那段里有线程历史、跨线程、按人召回、mem9，都是外部或不可信文本。
+**禁止**把今天的 `knowledgeContext` 整段拼进 `user` 消息。那段里有线程历史、跨线程、按人召回、mem9，都是外部或不可信文本。
 
-| 材料 | 旗标开时放哪 |
+| 材料 | 放哪 |
 |------|----------------|
 | 当前入站正文、到期 defer、inbox 里未消费信号 | 各自一个 observation |
 | 最近线程消息（最多 20 条，每条原文先截到 2000 个码位再转义） | 每条一个 observation，`source` = 该条 `sender_sid` |
@@ -319,12 +317,12 @@ P2 把 `participationPolicy` 里那次可选 LLM 判别的外部原文改成同�
 
 没有后台定时器专门扫 defer。下一次已经会发生的 Facade 入站或心跳尾步就是扫描器。这和宪法里「到点改数据」一致：时间条件是字段，唤醒复用已有 tick。
 
-旗标开且本轮由 `subjectThink` 收场时：
+入站收场只经过 `subjectThink`：
 
-- 不调用 `runForcedReplyRecovery`；
+- 不调用 `runForcedReplyRecovery`（该恢复路径退役，不留回退）；
 - 不调用 `shouldReconcileEmptyPromise` / 空口纠偏轮。
 
-主体选 `no_reply` 或 `defer` 是合法终态，不是「答应了却没派活」。旗标关时 §4.2 原样保留。
+主体选 `no_reply` 或 `defer` 是合法终态，不是「答应了却没派活」。[`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.2 描述的是被替换掉的对话环行为，不再作用于生产入站。
 
 ---
 
@@ -344,7 +342,7 @@ lastAccruedAt = now
 
 ### 9.2 心跳尾步（不改监督顺序）
 
-[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) §0 的步骤 0–6 **顺序不变**。仅当 `UTLRA_SUBJECT_CORE_ENABLED=1` 时，在步骤 6 之后追加：
+[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) §0 的步骤 0–6 **顺序不变**。步骤 6 之后**总是**追加尾步（不看环境变量）：
 
 ```text
 7. 若 hasAvailableCapacity 且没有进行中的 outer 入站 turn，并且
@@ -360,7 +358,7 @@ lastAccruedAt = now
 
 ### 9.3 `drive_threshold` 触发
 
-`digitalEmployeeLoop` 增加 reason `drive_threshold`，**仅旗标开且主体已经选出 `propose_self_work` 时**由 `subjectThink` 调用。环内顺序仍是：容量 → **到期日程优先** → 然后才看提案。
+`digitalEmployeeLoop` 增加 reason `drive_threshold`，**仅当主体已经选出 `propose_self_work` 时**由 `subjectThink` 调用。环内顺序仍是：容量 → **到期日程优先** → 然后才看提案。
 
 - 无容量：提案不派，defer 一条 `kind=event` 的「未派出的自发工作」，`revisitAt` 用 `deferRevisitMs`。驱动力不减。
 - 有到期日程：日程照旧派发（DE 优先级）。主体提案同样延后，不丢。
@@ -368,22 +366,37 @@ lastAccruedAt = now
 
 **不新建 KPI。** `kind=kpi_advance` 的 `kpiId` 必须是已有 active KPI，否则这条候选作废。没有 active KPI 时，自发工作只能走 `kind=ad_hoc`（既有一次性 `set_goal`，无 `kpi_id`，仍过槽位和 freshCheck）。白名单里没有 `set_kpi`。理由：驱动力可以开始一份工作，但不能往 KPI 注册表里写一条永久职责；永久职责仍走今天的 KPI 治理入口。主体不获得新的 spawn API。
 
-旗标关时，`drive_threshold` 不会被发出，环的行为与今天相同。
+没有「旗标关则不发 `drive_threshold`」的分支。
 
 ### 9.4 和「用户请求优先」的关系
 
-[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §5.2 的优先级表在**旗标关**时不变。旗标开时，「用户明确请求」不再自动压过主体的 `no_reply` / `defer` / `decline`。所有人类入站，包括主人 sid，都只是信号（SC-10）。到期日程仍然优先于 `propose_self_work`。
+[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §5.2 里「用户明确请求优先」**不再**表示必须回复或必须派活。「用户明确请求」不压过主体的 `no_reply` / `defer` / `decline`。所有人类入站，包括主人 sid，都只是信号（SC-10）。到期日程仍然优先于 `propose_self_work`。
 
 ---
 
-## 10. 旗标与保留行为
+## 10. 退役的入站路径（无旗标）
 
-| 条件 | 行为 |
-|------|------|
-| `UTLRA_SUBJECT_CORE_ENABLED` 未设置、`0`、`false` 或其他值 | **关**。不读不写 `DATA_ROOT/subject/`。对话环、强制回复、空口对账、数字员工触发集合与今天一致 |
-| `1` 或 `true` | 开。入站 SPEAK 走 `subjectThink`；SILENT 进 inbox；心跳尾步按 §9.2 |
+生产配置**不**增加 `UTLRA_SUBJECT_CORE_ENABLED`。没有关/开两态，也没有「未设置则回到旧环」。
 
-只认显式开启。这与 `UTLRA_AUTONOMY_ENABLED=0` 表示关闭、缺省即开启的习惯**相反**，因为本层会改变「主人的话是命令」这一现行为，缺省必须是关。
+| 路径 | 生产行为 |
+|------|----------|
+| SPEAK | 永远 `subjectThink`。Facade 不调用 `runOuterConversationLoop` |
+| SILENT | 写入 subject inbox，不调用模型 |
+| `runForcedReplyRecovery`（约 392 行提示、约 773 行调用） | **退役。** 实现时从入站路径删除，不留在旗标或兼容分支后面 |
+| 空口对账 `shouldReconcileEmptyPromise` | 不在入站路径上运行 |
+| 心跳尾步 | 按 §9.2，不看环境变量 |
+| `DATA_ROOT/subject/` | 第一次 think 或 SILENT 入 inbox 时按 §4 创建。没有「关闭则不写」 |
+
+§1 的表格是**被替换的现码**，不是仍受支持的模式。`outer-conversation-loop.ts` 可以在实现 PR 里删除入站调用，或把强制回复整段换成不再被 Facade 到达的死代码；它不是回退实现。
+
+### 10.1 迁移
+
+合入 P1 的那一次部署就是行为断裂，不能用环境变量切回旧环：
+
+- 主人和其他人的消息都可以 `no_reply` / `defer` / `decline`。依赖「每条 SPEAK 必有回复」的操作会看到静默。
+- 入站模型不再拿到 `OUTER_TOOL_DEFS`。聊天里不能再直接 `set_goal` / `set_kpi` / `send_directive`，也不能再直接 `schedule_commitment` 或改 autonomy policy。派活只经白名单 `propose_self_work` → `digitalEmployeeLoop`。日历到期执行与 policy 文件还在；聊天预约要回来必须另增白名单动作，本裁定不新增。
+- 强制回复和空口纠偏不再补上一轮工具调用。断言这两段的测试不再描述生产入站。
+- 每条 SPEAK 固定两次顾问调用。不能用关旗标省掉这笔花费。
 
 ---
 
@@ -441,7 +454,7 @@ lastAccruedAt = now
 | **计划路径** | `packages/server/src/outer/subject/think.ts` |
 | **Deps** | 上列四模块、`llmGateway`、`outerToolExecutor`（仅回复出口）、`digitalEmployeeLoop` |
 
-`outerConversationLoop` 在旗标开时不被调用。不把本层的分支写进它的 ReAct 循环内部，避免「想完又掉进工具选择」。Facade 在旗标处二选一。
+`outerConversationLoop` 不再被 Facade 调用。不把本层的分支写进它的 ReAct 循环内部，避免「想完又掉进工具选择」。也没有旗标处的二选一：SPEAK 只有 `subjectThink`。
 
 ---
 
@@ -456,7 +469,7 @@ lastAccruedAt = now
 | 驱动力存 mem9 或 Memory Block | mem9 是回忆；Block 可被对话工具改。控制状态必须只由本层代码写 |
 | 把 SILENT 直接当成 `no_reply` | SILENT 发生在想之前，没有候选、打分、defer、审计，信号也会丢 |
 | 第三次 LLM 专门起草回复 | 多一条可被注入的生成通道。回复文本放在已被打分的候选 args 里，代码只发送选中项 |
-| 旗标开时仍跑空口纠偏 | 纠偏的前提是「用户祈使 = 应当派活」。这与「外部文本只是信号」相反 |
+| 退役对话环之后仍跑空口纠偏，或用旗标把旧环留作回退 | 纠偏的前提是「用户祈使 = 应当派活」。旗标会把「必须回复」留在生产配置里。两者都与 SC-4 / SC-8 相反 |
 | P0 就把 Cursor CLI 接成内脑后端 | 见 §16。本阶段只登记，不设计协议 |
 
 ---
@@ -465,14 +478,14 @@ lastAccruedAt = now
 
 | 风险 | 缓解 |
 |------|------|
-| 每次 think 两次 LLM，SPEAK 路径变贵 | 旗标默认关。SILENT 不调用。阈值以下且无到期项时零调用。两次调用是契约，各阶段都不合并成一次 |
+| 每次 think 两次 LLM，SPEAK 路径变贵 | 没有关旗标可以省掉。SILENT 不调用。阈值以下且无到期项时心跳尾步零调用。两次调用是契约，各阶段都不合并成一次 |
 | 转义挡不住模型「读懂并照做」observation | 顾问调用无 tools；执行面只有白名单；`suspicious_instruction` 只降低契合度 |
 | `participationPolicy` 的可选 LLM 在 P0/P1 仍把原文放在 `user` 角色 | P2 改为 observation 槽。在那之前，判别只决定想或不想，不执行工具 |
-| 主人收不到回复 | 接受的产品后果（SC-10）：主人 sid 也可以 `no_reply` / `defer` / `decline`。默认关。`decline` 会说话；`no_reply` 与 `defer` 记在 think-log。不得为了缓解这个感觉而给主人 sid 开例外 |
+| 主人收不到回复 | 接受的产品后果（SC-10）：主人 sid 也可以 `no_reply` / `defer` / `decline`。没有默认关可以躲开。`decline` 会说话；`no_reply` 与 `defer` 记在 think-log。不得为了缓解这个感觉而给主人 sid 开例外，也不得把旧强制回复留作回退 |
 | 驱动力尾步刷 `set_goal` | 尾步先过容量与前台占用；提案再过日程优先和 `validateSelfWorkProposal`；失败不降级成另一套 SelfWork |
 | 供应商把 `user` 角色当成「人类命令」 | 模板是第一人称主体，system 明确顾问角色。若某供应商拒绝空 tools 的 JSON，P0 单测用 FakeLLM；真供应商放在 P3 prompt 测 |
 | defer 饿死 | 4 小时后再访；5 分钟心跳会在到期后的下一拍看见。队列上限 20，只丢最旧 |
-| 旗标只改一半，强制回复仍开火 | 接线要求 Facade 二选一，而不是在工具环末尾再加判断。测试见 §14：旗标开且选择 `no_reply` 时 `postMessage` 次数为 0，且不出现 recovery 提示 |
+| 只在工具环末尾加判断，强制回复仍开火 | 接线是替换调用，不是在 `runForcedReplyRecovery` 外面包一层。测试见 §14：选择 `no_reply` 时 `postMessage` 次数为 0，不调用 `runOuterConversationLoop`，且不出现 recovery 提示 |
 | think-log 里留下注入原文 | 日志不回注 prompt。单槽 2000 码位，整行 65536 字节。不另存完整 prompt |
 
 ---
@@ -481,12 +494,12 @@ lastAccruedAt = now
 
 实现阶段才写代码。本文件阶段只登记用例（[`COMPONENT-TESTING.md`](./COMPONENT-TESTING.md)：每模块至少主路径 + 拒绝路径）。
 
-| 阶段 | 内容 | 旗标 | 现行为 |
-|------|------|------|--------|
-| **P0** | `subjectSignalSlot`、`subjectDecide`、`subjectDrive`、`subjectStateStore` 纯函数与文件契约。不接入 Facade | 无关 | 不变 |
-| **P1** | Facade 二选一。`no_reply` / `defer` / `reply_to_thread` / `decline`。跳过强制回复与空口纠偏。inbox | 默认关 | 关时字节级路径不变 |
-| **P2** | accrue、心跳尾步、`drive_threshold`、deferred 再访、`propose_self_work` 进数字员工环 | 默认关 | 关时不发该 reason |
-| **P3** | FakeLLM 组件测固化两跳 JSON；有 key 时的 prompt 形态测。只读审计查询可另说，本 ADL 不要求面板 | 实验开 | — |
+| 阶段 | 内容 | 相对今天仍在跑的旧环 |
+|------|------|--------------------------|
+| **P0** | `subjectSignalSlot`、`subjectDecide`、`subjectDrive`、`subjectStateStore` 纯函数与文件契约。不接入 Facade | 生产暂时仍是旧环，因为还没接线。**不要**加 `UTLRA_SUBJECT_CORE_ENABLED` 来维持这一点 |
+| **P1** | 用 `subjectThink` **替换**入站 SPEAK。同一改动删除 Facade 对 `runOuterConversationLoop` 的调用，以及该路径上的强制回复和空口纠偏。inbox。`no_reply` / `defer` / `reply_to_thread` / `decline` | 行为断裂。没有关旗标的字节级兼容 |
+| **P2** | accrue、心跳尾步、`drive_threshold`、deferred 再访、`propose_self_work` 进数字员工环 | 合入后就是生产行为，不另设开关 |
+| **P3** | FakeLLM 组件测固化两跳 JSON；有 key 时的 prompt 形态测。只读审计查询可另说，本 ADL 不要求面板 | — |
 
 ### 14.1 `subjectSignalSlot`
 
@@ -524,7 +537,7 @@ lastAccruedAt = now
 | 1 | 主路径回复 | FakeLLM 给出 `reply_to_thread` 且分数最高 | 只 `postMessage` 候选 text 一次；log 有 candidates 与 scores | integration |
 | 2 | `no_reply` | 分数最高为 `no_reply` | `postMessage` 0 次；无 forced-recovery 文案；无空口纠偏 | integration |
 | 2b | 主人 sid | `source` 为配置的主人 sid；最高分分别为 `no_reply`、`defer`、`decline` | 与其他人类相同的终态；不因 sid 改成必须回复 | integration |
-| 3 | 旗标关 | 同一入站 | 不调用 subject 模块；仍可走今天的强制回复 | integration |
+| 3 | 旧环已退役 | 同一入站 SPEAK | 不调用 `runOuterConversationLoop`；无 forced-recovery 文案；无空口纠偏 | integration |
 | 4 | 顾问返回非 JSON | 两次都返回散文 | `do_nothing` 或 `no_reply`；不把散文发出去 | integration |
 | 5 | 自发 | 无信号，drive 0.9，候选 `propose_self_work` | `selfInitiated=true`；环收到 `drive_threshold`；无容量则不 spawn | integration |
 | 6 | 日程优先 | 同时有 due commitment | 派日程，提案被延后，驱动力不减 | integration |
@@ -535,14 +548,15 @@ lastAccruedAt = now
 
 ## 15. 接线点（实现时改这些，设计已定）
 
-| 位置 | 旗标关 | 旗标开 |
-|------|--------|--------|
-| `outer-brain.ts` 在 `decideOuterShouldReply` 之后、`runOuterConversationLoop` 之前 | 照旧 | SPEAK → `subjectThink`；SILENT → inbox |
-| `outer-conversation-loop.ts` | 照旧，含约 392 行与约 773 行的强制回复 | 不被调用 |
-| `empty-promise-reconcile.ts` | 照旧 | 不在 subject 路径上运行 |
-| `digital-employee-loop.ts` 的 reason 联合类型 | 无 `drive_threshold` | 多该 reason；校验失败不回落 SelfWork |
-| `outer-heartbeat.ts` tick 末尾 | 不加步骤 | §9.2 尾步 |
-| `knowledge-retrieval.ts` | 照旧把历史拼进对话环 | subject 路径改由 `subjectSignalSlot` 逐条做槽；检索模块本身可复用「取消息」但不复用「拼进指令字符串」 |
+| 位置 | 生产行为 |
+|------|----------|
+| `outer-brain.ts` 在 `decideOuterShouldReply` 之后 | SPEAK → `subjectThink`；SILENT → inbox。删除对 `runOuterConversationLoop` 的入站调用 |
+| `outer-conversation-loop.ts` | 入站强制回复退役。实现可删调用或替换该路径，不得用旗标保留 |
+| `empty-promise-reconcile.ts` | 不在入站路径上运行 |
+| `digital-employee-loop.ts` 的 reason 联合类型 | 增加 `drive_threshold`；校验失败不回落 SelfWork |
+| `outer-heartbeat.ts` tick 末尾 | §9.2 尾步，无环境变量 |
+| `knowledge-retrieval.ts` | 可复用「取消息」。不得把 `knowledgeContext` 拼进主体的 `user` 指令串；逐条槽由 `subjectSignalSlot` 做 |
+| `thread-orchestrator.ts` 的 freshCheck | 仍可挡住过期的 `postMessage`。不得把 SPEAK 送回对话环 |
 
 ---
 
@@ -572,6 +586,7 @@ lastAccruedAt = now
 | 顾问调用次数 | 永远两次，不合并 | 生成和打分分开，代码才能在打分前补上 `do_nothing` 与 `defer` |
 | 目标与身份谁改 | 只有人和创建时的种子。顾问无写入口 | 控制状态若能被模型改，白名单就空了 |
 | 租赁 | 120 秒。未过期则第二次调用直接返回，零 LLM，原因 `lease_held` | 入站和心跳尾步可能叠在一起；不排队第二次顾问 |
+| 是否保留旧对话环当回退 | **不保留。** 删除 `UTLRA_SUBJECT_CORE_ENABLED`。入站 SPEAK 只走 `subjectThink`。强制回复与空口对账退役 | 2026-10-12 主人裁定。旗标会把「必须回复」留成可切换的生产行为，和 SC-8 / SC-10 冲突。迁移风险见 §10.1 与 §13 |
 
 `scripts/structurizr/manifest.mjs` 仍留到实现 PR：生成器不要指向还不存在的源文件。这不是产品行为上的待定。
 
@@ -584,3 +599,4 @@ lastAccruedAt = now
 | 2026-10-12 | 初版 ADL：主体 / 顾问角色、observation 数据槽、`no_reply` 与 `defer`、白名单决策、驱动力阈值、旗标默认关。无实现。 |
 | 2026-10-12 | SC-10：主人裁定所有人类消息（含主人 sid）只是信号。`no_reply` / `defer` / `decline` 对主人 sid 不得例外。 |
 | 2026-10-12 | §17 关闭其余决定：驱动力常数与 4 小时冷却、不新建 KPI、回复文本只取候选、保留 participation 前门、defer 4 小时、think-log 不存完整 prompt。 |
+| 2026-10-12 | 主人裁定去掉旗标：入站 SPEAK 只走 `subjectThink`。`runOuterConversationLoop` 强制回复路径退役，不留回退。 |

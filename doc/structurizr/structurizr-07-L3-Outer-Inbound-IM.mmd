@@ -1,7 +1,7 @@
 graph TB
   linkStyle default fill:#ffffff
 
-  subgraph diagram ["L3 Outer — IM 入站（Facade 路径）"]
+  subgraph diagram ["L3 Outer — IM 入站（Facade → subjectThink；对话环已退役）"]
     style diagram fill:#ffffff,stroke:#ffffff
 
     subgraph 11 ["Kuroneko (utlra)"]
@@ -14,7 +14,7 @@ graph TB
         style 16 fill:#85bbf0,stroke:#5d82a8,color:#000000
         17["<div style='font-weight: bold'>Thread Orchestrator</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【线程编排】jitter/debounce + 同<br />thread FIFO 串行 +<br />freshCheck（仅触发上被一并@的 agent<br />算抢答；独占@本 agent 不因他人插话放弃）</div>"]
         style 17 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        18["<div style='font-weight: bold'>Outer Brain Facade</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【唯一外脑入口】Discord/WebChat/HTTP<br />入站 → 检索 → 是否说话 → 外脑对话环</div>"]
+        18["<div style='font-weight: bold'>Outer Brain Facade</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【唯一外脑入口】Discord/WebChat/HTTP<br />入站 → 检索 → 是否说话 → subjectThink</div>"]
         style 18 fill:#85bbf0,stroke:#5d82a8,color:#000000
         20["<div style='font-weight: bold'>Knowledge Retrieval</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【上下文检索】本地 repository K/S/P +<br />本线程/跨线程历史 +<br />按人跨会话记忆（personMessageRecall）→<br />注入 LLM 前缀</div>"]
         style 20 fill:#85bbf0,stroke:#5d82a8,color:#000000
@@ -22,8 +22,6 @@ graph TB
         style 21 fill:#85bbf0,stroke:#5d82a8,color:#000000
         22["<div style='font-weight: bold'>Memory Block Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【结构化长期记忆】Block+Strategy<br />CRUD；keychain=kv_secret；bind→.brain/secrets</div>"]
         style 22 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        23["<div style='font-weight: bold'>Outer Conversation Loop</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【外脑多轮】LLM ↔ tools 循环直到<br />reply_to_user 或达上限；空口承诺<br />post-loop 对账</div>"]
-        style 23 fill:#85bbf0,stroke:#5d82a8,color:#000000
         25["<div style='font-weight: bold'>Outer Tool Executor</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【工具执行】reply_to_user /<br />set_goal（KPI 单实例复用 + peer<br />catalog）/ list_brains /<br />read_inner_status / KPI 等</div>"]
         style 25 fill:#85bbf0,stroke:#5d82a8,color:#000000
         26["<div style='font-weight: bold'>LLM Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【模型网关】参与判别、外脑对话、复盘、roundtrip<br />草稿；Zhipu/Kimi/LocalModule</div>"]
@@ -48,6 +46,8 @@ graph TB
         style 73 fill:#85bbf0,stroke:#5d82a8,color:#000000
         74["<div style='font-weight: bold'>Channel Connection Registry</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【IM 连接表】N 条飞书等连接；运行时热插；secret<br />仅 keychain ref</div>"]
         style 74 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        79["<div style='font-weight: bold'>Subject Think</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【一次主体<br />reducer】user=主体模板，assistant=无工具<br />JSON；no_reply 与 defer 是合法终态</div>"]
+        style 79 fill:#85bbf0,stroke:#5d82a8,color:#000000
       end
 
     end
@@ -65,11 +65,7 @@ graph TB
     18-. "<div>Step 3.4 只读上下文装配（不派发，注入<br />inboundHint）</div><div style='font-size: 70%'>[in-process]</div>" .->35
     35-. "<div>active KPI 只读上下文（去重提示）</div><div style='font-size: 70%'>[in-process]</div>" .->43
     35-. "<div>在跑 burst 只读上下文（供 LLM<br />send_directive）</div><div style='font-size: 70%'>[in-process]</div>" .->27
-    18-. "<div>runOuterConversationLoop</div><div style='font-size: 70%'>[in-process]</div>" .->23
-    17-. "<div>mention-aware freshCheck →<br />ctx</div><div style='font-size: 70%'>[in-process]</div>" .->23
     16-. "<div>SPEAK/SILENT / topic check</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
-    23-. "<div>多轮 messages+tools</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
-    23-. "<div>executeOuterTool</div><div style='font-size: 70%'>[in-process]</div>" .->25
     25-. "<div>register / list / stop</div><div style='font-size: 70%'>[in-process]</div>" .->27
     25-. "<div>set_kpi / view_kpi</div><div style='font-size: 70%'>[in-process]</div>" .->43
     25-. "<div>memory_block_* list/put/bind</div><div style='font-size: 70%'>[in-process]</div>" .->22
@@ -78,7 +74,10 @@ graph TB
     73-. "<div>投递确认消息（经 imClient Fan-in）</div><div style='font-size: 70%'>[in-process]</div>" .->18
     74-. "<div>secret_ref → keychain</div><div style='font-size: 70%'>[in-process]</div>" .->22
     22-. "<div>bind → workDir/.brain/secrets</div><div style='font-size: 70%'>[in-process]</div>" .->27
-    23-. "<div>read/update via chat tools</div><div style='font-size: 70%'>[in-process]</div>" .->69
     25-. "<div>read_autonomy_policy /<br />update_*</div><div style='font-size: 70%'>[in-process]</div>" .->69
+    18-. "<div>SPEAK：一次 think，不进工具环</div><div style='font-size: 70%'>[in-process]</div>" .->79
+    16-. "<div>SPEAK=可以想；SILENT=只入 inbox</div><div style='font-size: 70%'>[in-process]</div>" .->79
+    79-. "<div>user=主体模板；assistant=JSON；tools<br />空</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    79-. "<div>仅选中的 reply/decline 文本</div><div style='font-size: 70%'>[in-process]</div>" .->25
 
   end

@@ -1,6 +1,6 @@
 # 外脑日历（Employee Calendar）一等工具设计（ADL）
 
-> **English:** Calendar is a **first-class outer commitment store + tool surface**, not a KPI-only backend ensure. Chat can schedule appointments and one-shots; the digital-employee loop remains the **sole due-execution path**. Complements [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §3、[`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md).
+> **English:** Calendar is a **first-class outer commitment store**, not a KPI-only backend ensure. The digital-employee loop remains the **sole due-execution path**. Inbound chat no longer calls calendar tools: that surface lived on `outerConversationLoop`, which is retired in favor of `subjectThink` ([`SUBJECT-CORE.md`](./SUBJECT-CORE.md)). Complements [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §3、[`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md).
 >
 > **状态**：设计权威；**C1–C4 已落地**（Port upsert/list/cancel/pause、对话工具、due 经 loop、ensure 统一 upsert、tool_call 白名单）。
 
@@ -22,10 +22,12 @@
 
 ## 1. 分层（严格边界）
 
+入站 SPEAK 已改走 `subjectThink`（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)）。主体白名单没有 `schedule_commitment`。下面这层「对话环调日历工具」随该环退役，不是旗标后的回退。到期执行仍只走 `digitalEmployeeLoop`。聊天预约若要回来，须另增白名单动作；本裁定不新增该动作。系统 ensure 与推进路径的写入不变。
+
 ```text
 ┌─────────────────────────────────────────────────────────┐
-│ 对话环 outerConversationLoop / outerToolExecutor         │
-│   list_calendar · schedule_commitment · cancel/pause…    │  ← 写/读 API
+│ 原对话环 outerConversationLoop / outerToolExecutor       │
+│   list_calendar · schedule_commitment · cancel/pause…    │  ← 入站工具面已退役
 └────────────────────────────┬────────────────────────────┘
                              │ create / list / mutate
                              ▼
@@ -279,3 +281,4 @@ expected_outcome: string
 | 2026-07-22 | 名词：到期派活称 **burst**（不用 sprint）；见 [`TERMINOLOGY.md`](./TERMINOLOGY.md) |
 | 2026-07-22 | 接线修复：`OuterBrain` / `OuterHeartbeat` 经 `getEmployeeCalendar` 懒取 `DigitalEmployeeRuntime.getCalendar()`，聊天不再 `calendar_unavailable` |
 | 2026-07-22 | 修复：显式不同 `calendarKey` 的同 KPI `kpi_increment` 不再被 seedKind 遗留回退冲成一条；一天 N 次优先单条多小时 cron |
+| 2026-10-12 | 入站对话环退役后，聊天不再直接调日历工具（SUBJECT-CORE，无旗标）。到期执行仍只走 loop。 |

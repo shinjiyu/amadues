@@ -190,7 +190,7 @@ loop 结束后（含 forced reply recovery 之后）：
 
 模块：`emptyPromiseReconcile` → `outer/empty-promise-reconcile.ts`；由 `outerConversationLoop` 在主循环结束后调用。
 
-**自主主体旗标开时**（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)，默认关）：入站不进入本对话环，因此不跑本节纠偏。`no_reply` / `defer` / `decline` 是主体的合法终态，不是空口承诺。所有人类消息（含主人自己的 sid）都只是信号，主人 sid 不是必须回复的例外（SC-10）。旗标关时本节不变。
+**生产入站不再走本节。** [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) 把 `runOuterConversationLoop` 与强制回复退役，不留旗标。入站 SPEAK 只进入 `subjectThink`，因此不跑本节纠偏。`no_reply` / `defer` / `decline` 是主体的合法终态，不是空口承诺。所有人类消息（含主人自己的 sid）都只是信号，主人 sid 不是必须回复的例外（SC-10）。上文规则只描述被替换的现码，直到实现 PR 删掉调用。
 
 ---
 
@@ -291,5 +291,5 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | 2026-06-24 | **方案一（P4）**：取消前置层短路派发，派发决策下沉对话环 LLM 工具；`inboundKpiRouter` 降为只读上下文装配 + `inboundHint`；分类器退出关键路径（§4 为权威契约，§0–§3 留作演进/回归来源） |
 | 2026-07-21 | 新增只读状态快指令：`状态/进度` 查询当前快照，`密度/今天` 查询 24h 执行槽位利用率；无 LLM、无副作用、禁止走 brain-inspector。 |
 | 2026-07-25 | §4.2 空口承诺对账：post-loop 强制再跑一轮工具环 + `isToolOutputOk` 软跳过纠偏；不恢复前置短路派发（仍 P7）。 |
-| 2026-10-12 | §4.2：`UTLRA_SUBJECT_CORE_ENABLED=1` 时入站不进对话环，空口纠偏不运行（见 SUBJECT-CORE）。默认关。 |
+| 2026-10-12 | §4.2：入站不再进对话环，空口纠偏不运行（见 SUBJECT-CORE）。无旗标，旧环不是回退。 |
 | 2026-10-12 | §4.2：主人 sid 同样不构成必须回复；`no_reply` / `defer` / `decline` 无 sid 例外。 |

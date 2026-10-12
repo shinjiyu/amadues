@@ -22,7 +22,7 @@
 | outerBrainFacade | 🟡 片段 | ✅ `outerBrainFacade.component.integration.test.ts` | — | + `integration/outer-brain-inbound` 全链 |
 | knowledgeRetrieval | ❌ | ✅ `knowledgeRetrieval.component.integration.test.ts`（含 P3 按人跨会话块） | — | |
 | threadOrchestrator | ✅ `chat-ir/seen-tracker.test.ts`（freshCheck @ 语义） | ✅ `threadOrchestrator.component.integration.test.ts`（串行 + FIFO 排队） | — | freshCheck 实现于 `@utlra/chat-ir` |
-| outerConversationLoop | ✅ `outer-conversation-loop.test.ts`（forced reply + empty-promise 纠偏轮） | ✅ `outerConversationLoop.component.integration.test.ts` | — | + `integration/outer-conversation-loop-assembly`；ADL [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.2 |
+| outerConversationLoop | ✅ `outer-conversation-loop.test.ts`（forced reply + empty-promise 纠偏轮；测的是退役前的现码） | ✅ `outerConversationLoop.component.integration.test.ts` | — | 生产入站改走 subjectThink，不留旗标。见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §10 |
 | **emptyPromiseReconcile** | ✅ `empty-promise-reconcile.test.ts` | —（经 outerConversationLoop 接线测） | — | 空口答应不派活；软跳过不算成功派活 |
 | outerToolExecutor | 🟡 tools 单测散落 | ✅ `outerToolExecutor.component.integration.test.ts` | — | `normalizeAgentReplyMentionText` |
 | **workspaceInbox** | ✅ `workspace-inbox.test.ts` | ⏳ | — | ADL [`INNER-WORKSPACE-INBOX.md`](./INNER-WORKSPACE-INBOX.md) |
@@ -72,7 +72,7 @@
 | **subjectStateStore** | ⏳ `subject-state-store.test.ts` | — | — | §14.3 原子写、defer 上限 |
 | **subjectDrive** | ⏳ `subject-drive.test.ts` | — | — | §14.3：0.10/时、阈值严格大于 0.60、4 小时纯驱动力冷却、inbox 可打断冷却 |
 | **subjectDecide** | ⏳ `subject-decide.test.ts` | — | — | §14.2 白名单拒绝、权重、同分字典序；主人 sid 不进入决策（SC-10） |
-| **subjectThink** | ⏳ `subject-think.test.ts` | ⏳ `subjectThink.component.integration.test.ts` | ⏳ P3 | §14.4：`no_reply` 不发消息；主人 sid 同样可 `no_reply`/`defer`/`decline`；回复只取候选 text；不新建 KPI；旗标关不进入本模块；`drive_threshold` 不绕过日程 |
+| **subjectThink** | ⏳ `subject-think.test.ts` | ⏳ `subjectThink.component.integration.test.ts` | ⏳ P3 | §14.4：`no_reply` 不发消息且不进入 `runOuterConversationLoop`；主人 sid 同样可 `no_reply`/`defer`/`decline`；回复只取候选 text；不新建 KPI；无旗标；`drive_threshold` 不绕过日程 |
 | **advanceWorkPackageBuilder** | ✅ 感知 facet（日历+内脑+stall+cursor）+ 简单调配规则 | ✅ RUNNING/日历闸门；bootstrap+ensure；stall→repair；盲派/重复日历指标 | — | [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` + `memory-belief-card.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP + mem9 Belief Card supersede（[`MEMORY-BELIEF-CARD.md`](./MEMORY-BELIEF-CARD.md)） |
 | completionNotify | ✅ `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) + ingest R4.7 + scheduled report allowlist + **pending-scheduled-report** | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1）；ingest≠notify；日历 EW 报告附件；微信缺 token 挂起冲刷 |

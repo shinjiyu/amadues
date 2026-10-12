@@ -37,7 +37,7 @@
    - 任务/对话摘要：`outerMemory` → mem9  
    - 结构化长期 KV：**`memoryBlockStore`**（Cookie 等 **不进** mem9）
    - **跨渠道同人**：`identityBindingIndex` + `identityLinkService`（双边确认）；**禁止** LLM 直接改映射
-   - **主体控制状态（⏳，默认关）**：`DATA_ROOT/subject/`（驱动力、目标、defer、inbox）。与 burst `.brain/`、mem9、Memory Block 都不是同一层。见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md)
+   - **主体控制状态（⏳，无旗标）**：`DATA_ROOT/subject/`（驱动力、目标、defer、inbox）。与 burst `.brain/`、mem9、Memory Block 都不是同一层。见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md)
    - **按人跨会话记忆**：`personMessageRecall`（chat-ir）——入站 sender 的 sid 别名集（bindingIndex 派生）→ 其它 thread 近期发言注入「关于此人」块；只读 Chat IR，不新增存储；见 [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §6.5
 
 2. **内脑 burst（legacy 三件套）**  

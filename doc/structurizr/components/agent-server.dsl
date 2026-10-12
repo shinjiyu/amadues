@@ -25,13 +25,13 @@
                     }
                 }
 
-                outerBrainFacade = component "Outer Brain Facade" "【唯一外脑入口】Discord/WebChat/HTTP 入站 → 检索 → 是否说话 → 外脑对话环" "TypeScript" {
+                outerBrainFacade = component "Outer Brain Facade" "【唯一外脑入口】Discord/WebChat/HTTP 入站 → 检索 → 是否说话 → subjectThink" "TypeScript" {
                     tags "Outer-Module" "Inbound"
                     properties {
                         "path" "packages/server/src/outer/outer-brain.ts; packages/server/src/outer/outer-http-inbound.ts"
-                        "horizon.intention" "渠道与 HTTP 统一入站编排"
+                        "horizon.intention" "渠道与 HTTP 统一入站编排；SPEAK 只进 subjectThink"
                         "horizon.in" "ChatIRInboundEvent; POST /api/outer/inbound"
-                        "horizon.out" "调用 knowledge / policy / conversationLoop"
+                        "horizon.out" "调用 knowledge / policy / subjectThink；不调用对话环"
                         "entry" "channel.onInbound; dispatchOuterHttpInbound"
                         "horizon.test.integration" "outerBrainFacade.component.integration.test.ts; outer-brain-inbound.integration.test.ts; outer-brain-channel-wire.integration.test.ts; outer-http-inbound.integration.test.ts"
                     }
@@ -89,17 +89,17 @@
                 }
 
                 // ── 对话 / 工具 ─────────────────────────────────────────
-                outerConversationLoop = component "Outer Conversation Loop" "【外脑多轮】LLM ↔ tools 循环直到 reply_to_user 或达上限；空口承诺 post-loop 对账" "TypeScript" {
+                outerConversationLoop = component "Outer Conversation Loop" "【入站已退役】原 LLM↔tools 与强制回复；入站 SPEAK 改由 subjectThink 取代，不留旗标" "TypeScript" {
                     tags "Outer-Module" "Conversation"
                     properties {
                         "path" "packages/server/src/outer/outer-conversation-loop.ts"
-                        "horizon.intention" "外脑 ReAct 环 + emptyPromiseReconcile"
+                        "horizon.intention" "原外脑 ReAct 环 + emptyPromiseReconcile；不再是生产入站路径"
                         "horizon.in" "userMessage + knowledgeContext + soul"
                         "horizon.out" "tool_calls 或最终回复"
                         "horizon.deps" "emptyPromiseReconcile"
                         "horizon.test.unit" "outer-conversation-loop.test.ts; empty-promise-reconcile.test.ts"
                         "horizon.test.integration" "outerConversationLoop.component.integration.test.ts; outer-conversation-loop-assembly.integration.test.ts"
-                        "horizon.note" "方案一不盲派；§4.2 口头承诺须成功派活或改口。UTLRA_SUBJECT_CORE_ENABLED=1 时 Facade 改走 subjectThink，本环不跑（见 SUBJECT-CORE.md）"
+                        "horizon.note" "入站 SPEAK 与 runForcedReplyRecovery 退役，由 subjectThink 替换（SUBJECT-CORE.md）。实现时删除 Facade 调用，不留回退旗标。源码可删。"
                     }
                 }
 
@@ -111,7 +111,7 @@
                         "horizon.in" "userMessage + replyTexts + toolResults"
                         "horizon.out" "shouldReconcile boolean + recovery system prompt"
                         "horizon.test.unit" "empty-promise-reconcile.test.ts"
-                        "horizon.note" "见 IM-INBOUND-INTENT-ROUTING.md §4.2"
+                        "horizon.note" "随入站对话环退役，不再跑在生产 SPEAK 上。见 SUBJECT-CORE.md 与 IM-INBOUND-INTENT-ROUTING.md §4.2"
                     }
                 }
 
@@ -430,7 +430,7 @@
                     properties {
                         "path" "packages/server/src/outer/digital-employee-loop.ts; packages/server/src/outer/digital-employee-runtime.ts"
                         "horizon.intention" "数字员工一释放容量就找下一件有价值的工作；heartbeat 仅 fallback"
-                        "horizon.in" "burst_finished/calendar_due/dependency_resolved/inbound_drained/policy_changed/heartbeat_fallback；旗标开时另有 drive_threshold（SUBJECT-CORE.md）"
+                        "horizon.in" "burst_finished/calendar_due/dependency_resolved/inbound_drained/policy_changed/heartbeat_fallback/drive_threshold（SUBJECT-CORE.md，无旗标）"
                         "horizon.out" "dispatch result / sleep reason / action-log"
                         "horizon.deps" "environmentModelFacade; autonomyJudge; employeeCalendar; selfWorkPolicy; outerToolExecutor"
                         "horizon.test.unit" "digital-employee-loop.test.ts"
@@ -768,7 +768,7 @@
                     }
                 }
 
-                // ── 自主主体（设计待评审，未实现；默认关）────────────────
+                // ── 自主主体（设计未实现；无旗标，入站 SPEAK 的唯一路径）──
                 subjectSignalSlot = component "Subject Signal Slot" "【主体模板】外部原文只进转义后的 observation 数据槽；解析器无权限" "TypeScript" {
                     tags "Outer-Module" "Subject"
                     properties {
@@ -829,14 +829,13 @@
                     tags "Outer-Module" "Subject"
                     properties {
                         "path" "packages/server/src/outer/subject/think.ts"
-                        "horizon.intention" "旗标开时取代外脑工具环；旗标关时不存在。所有人类消息含主人 sid 只是信号（SC-10）"
+                        "horizon.intention" "入站 SPEAK 的唯一生产路径；取代外脑工具环与强制回复，不设旗标。所有人类消息含主人 sid 只是信号（SC-10）"
                         "horizon.in" "trigger inbound|heartbeat_tail + signals + now"
                         "horizon.out" "think-log；可选 IM 回复；可选 drive_threshold"
                         "horizon.deps" "subjectSignalSlot; subjectStateStore; subjectDrive; subjectDecide; llmGateway; outerToolExecutor; digitalEmployeeLoop"
-                        "horizon.env" "UTLRA_SUBJECT_CORE_ENABLED"
                         "horizon.test.unit" "subject-think.test.ts"
                         "horizon.test.integration" "subjectThink.component.integration.test.ts"
                         "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
-                        "horizon.status" "⏳ 设计，未实现；默认关"
+                        "horizon.status" "⏳ 设计，未实现；无旗标"
                     }
                 }
