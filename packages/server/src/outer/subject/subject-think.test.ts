@@ -295,7 +295,7 @@ describe('subjectThink', () => {
       kind: 'ad_hoc',
       kpiId: undefined,
       goalText: NORTH_STAR_TEXT,
-      expectedOutcome: '一个仍开放的问题和两条可核对线索',
+      expectedOutcome: `围绕「${NORTH_STAR_TEXT}」：一个仍开放的问题和两条可核对线索`,
       drive: 'curiosity',
       work: { source: 'north_star', execution: 'open_question' },
     }]);
@@ -337,7 +337,7 @@ describe('subjectThink', () => {
       kind: 'ad_hoc',
       kpiId: undefined,
       goalText: NORTH_STAR_TEXT,
-      expectedOutcome: '一个仍开放的问题和两条可核对线索',
+      expectedOutcome: `围绕「${NORTH_STAR_TEXT}」：一个仍开放的问题和两条可核对线索`,
       drive: 'curiosity',
       work: { source: 'north_star', execution: 'open_question' },
     }]);
@@ -378,7 +378,7 @@ describe('subjectThink', () => {
     expect(result.statusPosted).toBe(false);
     expect(proposals).toHaveLength(1);
     expect(proposals[0]?.goalText).toBe(NORTH_STAR_TEXT);
-    expect(proposals[0]?.expectedOutcome).toBe('一个仍开放的问题和两条可核对线索');
+    expect(proposals[0]?.expectedOutcome).toBe(`围绕「${NORTH_STAR_TEXT}」：一个仍开放的问题和两条可核对线索`);
     expect(proposals[0]?.work).toMatchObject({ op: 'explore', execution: 'open_question', source: 'north_star' });
     expect(JSON.stringify(proposals[0])).not.toContain('shell');
     expect(JSON.stringify(proposals[0])).not.toContain('收尾');
@@ -387,6 +387,41 @@ describe('subjectThink', () => {
     expect(saved.workObjects?.some((row) => row.label.includes('收尾'))).toBe(false);
     const log = fs.readFileSync(path.join(subjectDir(root.dataRoot), 'think-log.jsonl'), 'utf8');
     expect(log).not.toContain('abstractType');
+    root.cleanup();
+  });
+
+  it('dispatches a concrete commitment instead of the north-star slogan', async () => {
+    const root = createTestDataRoot('subject-think-pokemon-');
+    const now = Date.parse('2026-10-12T00:00:00.000Z');
+    const state = loadState(root.dataRoot, now);
+    saveState(root.dataRoot, {
+      ...state,
+      drives: { curiosity: 0.9, social: 0.1, completion: 0.15 },
+      goals: [{ id: 'g-poke', text: '想成为宝可梦大师', keywords: [], priority: 0.8 }],
+    });
+    const proposals: Array<{ goalText: string; expectedOutcome: string; work?: { source: string; label: string } }> = [];
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: now,
+      trigger: 'heartbeat_tail',
+      agentSid: 'agent:test',
+      activeKpiIds: [],
+      dispatchProposal: async (proposal) => {
+        proposals.push(proposal);
+        return { dispatched: true, reason: 'self_work_dispatched' };
+      },
+      callLlm: scripted(
+        '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"我在意我自己还想弄明白的事","expectedOutcome":"一个问题","workObjects":[{"id":"wo-train","kind":"theme","label":"训练一只皮卡丘","op":"explore","interestingness":0.62,"novelty":0.4,"valueToMissions":0.5,"cost":0.3,"risk":0.2},{"id":"wo-badge","kind":"question","label":"道馆徽章要怎么凑齐","op":"gather","interestingness":0.58,"novelty":0.55,"valueToMissions":0.5,"cost":0.35,"risk":0.2}]}}]}',
+        '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(result.action).toBe('propose_self_work');
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]?.goalText).toBe('想成为宝可梦大师');
+    expect(proposals[0]?.expectedOutcome).toContain('想成为宝可梦大师');
+    expect(proposals[0]?.work).toMatchObject({ source: 'commitment', label: '想成为宝可梦大师' });
+    expect(proposals[0]?.goalText).not.toBe(NORTH_STAR_TEXT);
+    expect(JSON.stringify(proposals[0])).not.toContain('循环');
     root.cleanup();
   });
 

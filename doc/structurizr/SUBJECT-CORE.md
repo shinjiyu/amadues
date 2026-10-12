@@ -318,25 +318,25 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 workScore = Σ(weight × oriented) / Σ(weight)
 ```
 
-闲着（本轮没有 `kind=message` 的信号）时，主体根再加 `0.16 × curiosity`，`curiosity` 来源加 `0.10 × curiosity`，挂着根的 `proposal` 加 `0.06 × curiosity`。`observation` 与 `residue` 减 0.45。同分按 id 字典序。不闲着时不加这些项。
+闲着（本轮没有 `kind=message` 的信号）时，具体承诺再加 `0.12 × curiosity`，挂着该承诺的 `proposal` 再加 `0.06 × curiosity`。没有具体承诺时，`curiosity` 来源加 `0.10 × curiosity`，其余主体根加 `0.16 × curiosity`。`observation` 与 `residue` 减 0.45。身份句和北极星套话再减 0.45。有具体承诺时，不挂这条承诺的提案再减 0.22。同分按 id 字典序。
 
 根由代码种入，每次选点都在池子里，不依赖顾问先写 `workObjects`：
 
 | 根 | 从哪来 | 说明 |
 |----|--------|------|
-| `identity` | `state.identity` | 主体自己的句子 |
-| `north_star` | 常量「我在意我自己还想弄明白的事」 | 站着的兴趣，novelty 低 |
-| `commitment` | `goals` 里不是替人收尾的句子 | 自己的承诺。`把正在做的事做完` 这类不进根 |
-| `curiosity` | 闲着且 `curiosity > 0.6` | 「我忽然又想碰一碰本来就在意的事」，不是新缺口 |
+| `identity` | `state.identity` | 锚。没有具体兴趣时才可能被选中，不拿它当派出的活 |
+| `north_star` | 常量「我在意我自己还想弄明白的事」 | 套话锚。池子里有具体承诺或具体提案所挂的承诺时，不参与选点 |
+| `commitment` | `goals` 里具体的、不是替人收尾的句子 | 自己的长期兴趣，例如「想成为宝可梦大师」。套话「我还想慢慢弄明白的事」和「把正在做的事做完」不进 |
+| `curiosity` | 闲着且 `curiosity > 0.6` | 「我忽然又想碰一碰本来就在意的事」。有具体承诺时不参与选点 |
 
 已经在 `state.workObjects` 里、状态是 `open` 或 `done` 的对象也回到池子，状态按 `open` 再参与选点。这是重访旧题目，不是再造一个必新的问题。
 
-顾问的工作是岔开，不是在根上填空。`args.workObjects` 里的对象一律记为 `proposal`。标签和某条根相同，记 `不要填已有的根`。`帮人收尾`、`用户`、`搁置`、`待办`、`看看仓库` 一类记 `这是替人收尾，不是我自己的兴趣`。novelty 低的岔开可以赢过根，只要有趣度确实更高；只是新，赢不了。`shell`、`set_goal`、`set_kpi`、`delete_memory`、`reply`、`reply_to_user`、`send_directive` 记 `工具名不能进入工作对象空间`，不投影。代码选点。
+顾问的工作是从具体承诺上岔开，不是复述北极星套话，也不是在根上填空。`args.workObjects` 里的对象一律记为 `proposal`。标签和某条根相同，记 `不要填已有的根`。`relatesTo` 写承诺的 id 时，这条岔开才和该承诺比；有趣度明显更高可以赢过承诺。没挂上具体承诺的提案，有承诺在场时压过不了它。`帮人收尾`、`用户`、`搁置`、`待办`、`看看仓库` 一类记 `这是替人收尾，不是我自己的兴趣`。没有具体承诺时，novelty 低的岔开仍可以赢过套话，只要有趣度确实更高；只是新，赢不了。`shell`、`set_goal`、`set_kpi`、`delete_memory`、`reply`、`reply_to_user`、`send_directive` 记 `工具名不能进入工作对象空间`，不投影。代码选点。
 
 选中之后才投影。闭表把操作落到执行种类，不是工具名：
 
-| 操作 | 执行种类 | 派出的 expectedOutcome |
-|------|----------|------------------------|
+| 操作 | 执行种类 | 句子 |
+|------|----------|------|
 | `gather` | `collect_notes` | 一批可引用的材料，每条带来源 |
 | `compare` | `compare_notes` | 一张差异表，至少两个对象 |
 | `synthesize` | `synthesis` | 一段把材料收成判断的说明 |
@@ -344,7 +344,7 @@ workScore = Σ(weight × oriented) / Σ(weight)
 | `deliver` | `write_deliverable` | 一份可交出的产物 |
 | `explore` | `open_question` | 一个仍开放的问题和两条可核对线索 |
 
-投影替换本轮派出的 `goalText`（对象的 label）和 `expectedOutcome`，并附上 `work`。闸门上的 `goalText` 只负责通过字段校验，不直接成为派出的活。`kind`、`drive`、`kpiId` 仍走 §7.2。`drive_threshold` 仍只认既有字段；`work` 是附带的执行元数据，环不据此调用工具。
+`goalText` 是选中对象的 label。`expectedOutcome` 是 `围绕「label」：` 加上表里的句子。两处都带着具体对象，不把北极星套话交给内脑。闸门上的 `goalText` 只负责通过字段校验。`kind`、`drive`、`kpiId` 仍走 §7.2。`drive_threshold` 仍只认既有字段；`work` 是附带的执行元数据，环不据此调用工具。
 
 做完的对象标 `done`。`explore` 与 `gather` 会留下一条 `follow_on`，标签是「我还想再看看「…」」，操作仍是 `explore`。派发成功的对象标 `active`，写回 `state.workObjects`。
 
@@ -645,7 +645,8 @@ lastAccruedAt = now
 | 1 | 抽象操作先于投影 | `explore` | 执行种类 `open_question`，不是操作名本身 | unit |
 | 2 | 有趣度 | 高 interestingness、低 cost/risk，对照高 cost/risk | 前者分数更高；cost 与 risk 反向 | unit |
 | 3 | 工具名 | `shell` / `set_goal` / `delete_memory` | 拒绝，理由「工具名不能进入工作对象空间」 | unit |
-| 4 | 没人派活 | 闲着，curiosity 0.9，身份、北极星、自己的承诺；另有一条替人收尾的目标 | 选中 `north_star`；收尾句不进根；不种 observation | unit |
+| 4 | 没人派活 | 闲着，curiosity 0.9，只有身份、北极星和套话目标 | 选中 `north_star`；收尾句和套话目标不进承诺 | unit |
+| 4d | 具体兴趣 | 承诺「想成为宝可梦大师」，另有几条更弱的宝可梦提案 | 派出该承诺；`goalText` 与 `expectedOutcome` 都含这句，不含北极星套话。挂着该承诺且有趣度明显更高的提案可以赢过承诺 | unit |
 | 4b | 旧题目 | 高 novelty、低 interestingness 的新问题，对照低 novelty 的北极星 | 北极星赢。novelty 不单独决定 | unit |
 | 4c | 岔开 | 挂着根、interestingness 很高、novelty 不高的 proposal | 岔开的对象赢过北极星 | unit |
 | 5 | 心跳派出 | 无人类消息，完整 `propose_self_work`，顾问写了收尾句和 `shell`，没有 workObjects 时同样选根 | 派出北极星的投影；收尾句和 `shell` 不出现；成功后该对象 `active` | unit |
@@ -717,3 +718,4 @@ lastAccruedAt = now
 | 2026-10-12 | 决策空间曾写成目标关系图 × 抽象行动类型 × 多维行动分数。该层已删除，不留旗标，也不留双路径。 |
 | 2026-10-12 | 工作对象空间（§7A）是 `self_work` 之后的决策空间：对象图 × 抽象操作 × 有趣度，投影到执行种类。行动白名单保持标量打分。 |
 | 2026-10-12 | §7A 的选点池改由身份、北极星、自己的承诺和好奇心种入。顾问负责岔开，也可以重访旧题目。替人收尾不进池。novelty 权重降到 0.35。无旗标。 |
+| 2026-10-12 | 具体承诺赢过北极星套话。派出的 `goalText` / `expectedOutcome` 带着选中的具体对象。挂着该承诺的更有趣提案可以赢过承诺。无旗标。 |

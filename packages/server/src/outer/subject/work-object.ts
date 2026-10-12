@@ -1,4 +1,4 @@
-import { NORTH_STAR_TEXT } from './constants.js';
+import { DEFAULT_GOAL_TEXT, DEFAULT_IDENTITY, NORTH_STAR_TEXT } from './constants.js';
 import { clamp01 } from './text.js';
 
 /** Kinds of thing the subject can work on. Not tool names. */
@@ -27,6 +27,15 @@ const OUTCOME: Record<WorkOp, string> = {
   deliver: '一份可交出的产物',
   explore: '一个仍开放的问题和两条可核对线索',
 };
+
+const CURIOSITY_LABEL = '我忽然又想碰一碰本来就在意的事';
+
+const FILLER_LABELS = new Set([
+  NORTH_STAR_TEXT,
+  DEFAULT_IDENTITY,
+  DEFAULT_GOAL_TEXT,
+  CURIOSITY_LABEL,
+]);
 
 const KIND_SET = new Set<string>(WORK_OBJECT_KINDS);
 const OP_SET = new Set<string>(WORK_OPS);
@@ -145,11 +154,18 @@ export function projectWorkObject(object: Pick<WorkObject, 'op' | 'label'>): {
   goalText: string;
   expectedOutcome: string;
 } {
+  const label = object.label.trim();
   return {
     execution: WORK_EXECUTION[object.op],
-    goalText: object.label.trim(),
-    expectedOutcome: OUTCOME[object.op],
+    goalText: label,
+    expectedOutcome: `围绕「${label}」：${OUTCOME[object.op]}`,
   };
+}
+
+/** Identity text and the north-star slogan are anchors, not a task to dispatch. */
+export function isFillerWork(row: { source: string; label: string }): boolean {
+  if (row.source === 'identity' || row.source === 'north_star') return true;
+  return FILLER_LABELS.has(row.label.trim());
 }
 
 function readDims(row: Record<string, unknown>): WorkDims {
@@ -271,17 +287,17 @@ export function seedWorkObjects(input: {
     source: 'north_star',
     relatesTo: ['g-north'],
     status: 'open',
-    dims: {
-      interestingness: 0.74,
-      novelty: 0.18,
-      valueToMissions: 0.82,
-      cost: 0.28,
-      risk: 0.14,
-    },
+      dims: {
+        interestingness: 0.62,
+        novelty: 0.18,
+        valueToMissions: 0.7,
+        cost: 0.3,
+        risk: 0.16,
+      },
   });
   (input.goals ?? []).forEach((goal, index) => {
     const label = goal.text.trim();
-    if (!label || isServiceShaped(label)) return;
+    if (!label || isServiceShaped(label) || FILLER_LABELS.has(label)) return;
     push({
       id: idOf(`commit-${goal.id || index}`),
       kind: 'theme',
@@ -291,11 +307,11 @@ export function seedWorkObjects(input: {
       relatesTo: [goal.id],
       status: 'open',
       dims: {
-        interestingness: 0.5,
-        novelty: 0.2,
-        valueToMissions: clamp01(goal.priority),
-        cost: 0.35,
-        risk: 0.2,
+        interestingness: 0.82,
+        novelty: 0.24,
+        valueToMissions: clamp01(Math.max(0.75, goal.priority)),
+        cost: 0.26,
+        risk: 0.15,
       },
     });
   });
@@ -304,7 +320,7 @@ export function seedWorkObjects(input: {
     push({
       id: idOf('curiosity'),
       kind: 'question',
-      label: '我忽然又想碰一碰本来就在意的事',
+      label: CURIOSITY_LABEL,
       op: 'explore',
       source: 'curiosity',
       relatesTo: ['g-north'],
@@ -325,22 +341,49 @@ export function seedWorkObjects(input: {
   return objects;
 }
 
-function selectionScore(row: WorkObject, curiosity: number, idle: boolean): number {
+function anchorIds(objects: WorkObject[]): Set<string> {
+  const ids = new Set<string>();
+  for (const row of objects) {
+    if (row.status === 'dropped' || isFillerWork(row)) continue;
+    if (row.source !== 'commitment' && row.source !== 'goal' && row.source !== 'follow_on') continue;
+    ids.add(row.id);
+    for (const rel of row.relatesTo) ids.add(rel);
+  }
+  return ids;
+}
+
+function selectionScore(row: WorkObject, curiosity: number, idle: boolean, anchors: Set<string>): number {
   let score = workScore(row.dims);
-  if (!idle) return score;
   const drive = clamp01(curiosity);
-  if (row.source === 'curiosity') score += 0.1 * drive;
+  const tied = row.relatesTo.some((id) => anchors.has(id));
+  if (isFillerWork(row)) {
+    if (idle) score += 0.16 * drive;
+  } else if (row.source === 'commitment' || row.source === 'goal' || row.source === 'follow_on') {
+    if (idle) score += 0.12 * drive;
+  } else if (row.source === 'proposal' && anchors.size > 0 && !tied) score -= 0.22;
+  else if (row.source === 'proposal' && tied && idle) score += 0.06 * drive;
+  else if (!idle) return score;
+  else if (row.source === 'curiosity') score += 0.1 * drive;
   else if (ROOT_SET.has(row.source)) score += 0.16 * drive;
-  else if (row.source === 'proposal' && row.relatesTo.length > 0) score += 0.06 * drive;
   else if (row.source === 'observation' || row.source === 'residue') score -= 0.45;
   return score;
 }
 
+function isConcreteInterest(row: WorkObject): boolean {
+  if (isFillerWork(row) || isServiceShaped(row.label)) return false;
+  return row.source === 'commitment' || row.source === 'goal' || row.source === 'follow_on' || row.source === 'proposal';
+}
+
 export function selectWorkPoint(objects: WorkObject[], curiosity: number, idle: boolean): WorkObject | null {
-  const open = objects.filter((row) => row.status === 'open');
+  const open = objects.filter((row) => row.status === 'open' && !isServiceShaped(row.label));
   if (open.length === 0) return null;
-  const ranked = [...open].sort((left, right) => {
-    const delta = selectionScore(right, curiosity, idle) - selectionScore(left, curiosity, idle);
+  const lasting = open.filter((row) => isConcreteInterest(row) && row.source !== 'proposal');
+  const pool = lasting.length > 0
+    ? open.filter((row) => !isFillerWork(row) && row.source !== 'observation' && row.source !== 'residue')
+    : open;
+  const anchors = anchorIds(objects);
+  const ranked = [...pool].sort((left, right) => {
+    const delta = selectionScore(right, curiosity, idle, anchors) - selectionScore(left, curiosity, idle, anchors);
     if (delta !== 0) return delta;
     return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
   });

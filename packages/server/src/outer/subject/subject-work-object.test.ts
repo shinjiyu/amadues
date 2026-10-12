@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_IDENTITY, NORTH_STAR_TEXT } from './constants.js';
+import { DEFAULT_GOAL_TEXT, DEFAULT_IDENTITY, NORTH_STAR_TEXT } from './constants.js';
 import type { WorkObject } from './work-object.js';
 import {
   WORK_EXECUTION,
@@ -26,7 +26,7 @@ describe('subjectWorkObject', () => {
     expect(point).toEqual({
       execution: 'open_question',
       goalText: '还没核对的缺口',
-      expectedOutcome: '一个仍开放的问题和两条可核对线索',
+      expectedOutcome: '围绕「还没核对的缺口」：一个仍开放的问题和两条可核对线索',
     });
   });
 
@@ -75,12 +75,13 @@ describe('subjectWorkObject', () => {
       identity: DEFAULT_IDENTITY,
       goals: [
         { id: 'g-chore', text: '把正在做的事做完', priority: 0.9 },
-        { id: 'g-own', text: '我还想慢慢弄明白的事', priority: 0.5 },
+        { id: 'g-own', text: DEFAULT_GOAL_TEXT, priority: 0.5 },
       ],
       curiosity: 0.9,
       idle: true,
     });
-    expect(seeded.map((row) => row.source)).toEqual(expect.arrayContaining(['identity', 'north_star', 'commitment', 'curiosity']));
+    expect(seeded.map((row) => row.source)).toEqual(expect.arrayContaining(['identity', 'north_star', 'curiosity']));
+    expect(seeded.some((row) => row.source === 'commitment')).toBe(false);
     expect(seeded.some((row) => row.source === 'observation')).toBe(false);
     expect(seeded.some((row) => row.label.includes('把正在做的事做完'))).toBe(false);
     expect(seeded.find((row) => row.source === 'north_star')?.label).toBe(NORTH_STAR_TEXT);
@@ -95,6 +96,66 @@ describe('subjectWorkObject', () => {
       idle: false,
     });
     expect(busy.some((row) => row.source === 'curiosity')).toBe(false);
+  });
+
+  it('dispatches a concrete commitment instead of the north-star slogan', () => {
+    const seeded = seedWorkObjects({
+      identity: DEFAULT_IDENTITY,
+      goals: [
+        { id: 'g-poke', text: '想成为宝可梦大师', priority: 0.8 },
+        { id: 'g-filler', text: DEFAULT_GOAL_TEXT, priority: 0.95 },
+      ],
+      curiosity: 0.9,
+      idle: true,
+    });
+    const proposals = parseWorkProposals([
+      {
+        id: 'wo-train',
+        kind: 'theme',
+        label: '训练一只皮卡丘',
+        op: 'explore',
+        interestingness: 0.62,
+        novelty: 0.4,
+        valueToMissions: 0.5,
+        cost: 0.3,
+        risk: 0.2,
+      },
+      {
+        id: 'wo-badge',
+        kind: 'question',
+        label: '道馆徽章要怎么凑齐',
+        op: 'gather',
+        interestingness: 0.58,
+        novelty: 0.55,
+        valueToMissions: 0.5,
+        cost: 0.35,
+        risk: 0.2,
+      },
+    ], (hint) => hint, seeded).accepted;
+    const chosen = selectWorkPoint([...seeded, ...proposals], 0.9, true);
+    expect(chosen?.label).toBe('想成为宝可梦大师');
+    expect(chosen?.source).toBe('commitment');
+    const projected = projectWorkObject(chosen!);
+    expect(projected.goalText).toBe('想成为宝可梦大师');
+    expect(projected.expectedOutcome).toContain('想成为宝可梦大师');
+    expect(projected.goalText).not.toBe(NORTH_STAR_TEXT);
+
+    const tied = parseWorkProposals([{
+      id: 'wo-spark',
+      kind: 'question',
+      label: '皮卡丘的电是从哪里来的',
+      op: 'explore',
+      relatesTo: ['g-poke'],
+      interestingness: 0.98,
+      novelty: 0.3,
+      valueToMissions: 0.9,
+      cost: 0.12,
+      risk: 0.1,
+    }], (hint) => hint, seeded).accepted[0]!;
+    const hotter = selectWorkPoint([...seeded, ...proposals, tied], 0.9, true);
+    expect(hotter?.id).toBe('wo-spark');
+    expect(projectWorkObject(hotter!).goalText).toBe('皮卡丘的电是从哪里来的');
+    expect(projectWorkObject(hotter!).expectedOutcome).toContain('皮卡丘的电是从哪里来的');
   });
 
   it('rejects service-shaped proposals and copies of an existing root', () => {
