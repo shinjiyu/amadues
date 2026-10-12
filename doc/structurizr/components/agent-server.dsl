@@ -825,13 +825,13 @@
                     }
                 }
 
-                subjectThink = component "Subject Think" "【一次主体 reducer】user=主体模板，assistant=无工具 JSON；no_reply 与 defer 是合法终态" "TypeScript" {
+                subjectThink = component "Subject Think" "【一次主体 reducer】user=主体模板，assistant=无工具 JSON；不聊天时仍发固定状态回执" "TypeScript" {
                     tags "Outer-Module" "Subject"
                     properties {
                         "path" "packages/server/src/outer/subject/think.ts"
-                        "horizon.intention" "入站 SPEAK 的唯一生产路径；取代外脑工具环与强制回复，不设旗标。所有人类消息含主人 sid 只是信号（SC-10）"
+                        "horizon.intention" "入站 SPEAK 的唯一生产路径；取代外脑工具环与强制回复，不设旗标。所有人类消息含主人 sid 只是信号（SC-10）。非聊天终态发固定状态回执（SC-11）"
                         "horizon.in" "trigger inbound|heartbeat_tail + signals + now"
-                        "horizon.out" "think-log；可选 IM 回复；可选 drive_threshold"
+                        "horizon.out" "think-log；可选对话回复；有人类入站时的状态回执；可选 drive_threshold"
                         "horizon.deps" "subjectSignalSlot; subjectStateStore; subjectDrive; subjectDecide; llmGateway; outerToolExecutor; digitalEmployeeLoop"
                         "horizon.test.unit" "subject-think.test.ts"
                         "horizon.test.integration" "subjectThink.component.integration.test.ts"

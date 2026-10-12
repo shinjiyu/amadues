@@ -190,7 +190,7 @@ loop 结束后（含 forced reply recovery 之后）：
 
 模块：`emptyPromiseReconcile` → `outer/empty-promise-reconcile.ts`；由 `outerConversationLoop` 在主循环结束后调用。
 
-**生产入站不再走本节。** [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) 把 `runOuterConversationLoop` 与强制回复退役，不留旗标。入站 SPEAK 只进入 `subjectThink`，因此不跑本节纠偏。`no_reply` / `defer` / `decline` 是主体的合法终态，不是空口承诺。所有人类消息（含主人自己的 sid）都只是信号，主人 sid 不是必须回复的例外（SC-10）。上文规则只描述被替换的现码，直到实现 PR 删掉调用。
+**生产入站不再走本节。** [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) 把 `runOuterConversationLoop` 与强制回复退役，不留旗标。入站 SPEAK 只进入 `subjectThink`，因此不跑本节纠偏。`no_reply` / `defer` / `decline` 是主体的合法终态，不是空口承诺。这些终态在同一线程发固定 `〔状态〕` 回执（SUBJECT-CORE §8.1，`disposition=status`）。该回执不是派活承诺，也不是对话回复。所有人类消息（含主人自己的 sid）都只是信号，主人 sid 不是必须对话回复的例外（SC-10）。上文规则只描述被替换的现码，直到实现 PR 删掉调用。
 
 ---
 
@@ -293,3 +293,4 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | 2026-07-25 | §4.2 空口承诺对账：post-loop 强制再跑一轮工具环 + `isToolOutputOk` 软跳过纠偏；不恢复前置短路派发（仍 P7）。 |
 | 2026-10-12 | §4.2：入站不再进对话环，空口纠偏不运行（见 SUBJECT-CORE）。无旗标，旧环不是回退。 |
 | 2026-10-12 | §4.2：主人 sid 同样不构成必须回复；`no_reply` / `defer` / `decline` 无 sid 例外。 |
+| 2026-10-12 | §4.2：非聊天终态的 `〔状态〕` 回执不是空口承诺（SUBJECT-CORE §8.1）。 |

@@ -597,7 +597,7 @@ while (未到 stop_reason):
 权威 ADL：[`structurizr/SUBJECT-CORE.md`](structurizr/SUBJECT-CORE.md)。按 §5 扩展，不新增长驻进程：
 
 - **字段**在 agent 级 `DATA_ROOT/subject/`（`state.json`、`inbox.json`、`think-log.jsonl`），不在某个 burst 的 `.brain/`。驱动力比单次 workspace 活得长。
-- **转移**是一次 reducer：入站 Facade 或既有心跳尾步读取状态 → 顾问只出 JSON → 白名单选择 → 写回。`no_reply` / `defer` 不产生 IM。所有人类消息（含主人自己的 sid）只是信号；主人 sid 对 `no_reply` / `defer` / `decline` 不得例外（SUBJECT-CORE SC-10）。
+- **转移**是一次 reducer：入站 Facade 或既有心跳尾步读取状态 → 顾问只出 JSON → 白名单选择 → 写回。`no_reply` / `defer` / `wait` 不产生对话回复；本轮有人类入站时，同一线程发一条代码固定的状态回执（SUBJECT-CORE §8.1）。所有人类消息（含主人自己的 sid）只是信号；主人 sid 对 `no_reply` / `defer` / `decline` 不得例外，状态句也相同（SC-10、SC-11）。
 - **唤醒**复用已有入站与心跳，不用新的 socket。`defer` 的 `revisitAt` 默认 4 小时，由下一次已有 tick 看见。纯驱动力心跳尾步另有 4 小时冷却。常数以 SUBJECT-CORE §17 为准。
 - 不设 `UTLRA_SUBJECT_CORE_ENABLED`。入站 SPEAK 只走这次 reducer。旧对话环的强制回复不是回退路径。实现合入前，仓库里的旧环仍是还没被替换的代码，不是受支持的第二模式。
 
@@ -668,3 +668,4 @@ A：本文档是**架构准则**，绿场里程碑是**业务功能**。两者�
 | 2026-10-12 | §9.4：主人 sid 不是命令通道；`no_reply` / `defer` / `decline` 对主人 sid 同样合法。 |
 | 2026-10-12 | §9.4：defer 默认 4 小时；纯驱动力尾步 4 小时冷却。详见 SUBJECT-CORE §17。 |
 | 2026-10-12 | §9.4：去掉主体旗标。入站 SPEAK 只走 subjectThink；强制回复路径退役。 |
+| 2026-10-12 | §9.4：非聊天终态发固定状态回执，不是静默，也不是对话回复。 |

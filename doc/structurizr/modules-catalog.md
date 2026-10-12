@@ -76,7 +76,7 @@
 | **subjectStateStore** | **⏳ 主体控制状态（目标 / 驱动力 / defer / inbox）** | `outer/subject/state-store.ts` | DATA_ROOT/subject → SubjectState；不进 mem9 |
 | **subjectDrive** | **⏳ 墙钟 accrue（0.10/0.06/0.08 每小时，阈值严格大于 0.60）+ 4 小时纯驱动力冷却** | `outer/subject/drive.ts` | state+now → shouldThink |
 | **subjectDecide** | **⏳ 白名单最终选择（LLM 分 + 驱动力权重）；无主人 sid 特权** | `outer/subject/decide.ts` | candidates+scores → chosen / rejected |
-| **subjectThink** | **⏳ 入站 SPEAK 的唯一路径（无旗标）。user=主体，assistant=无工具 JSON；no_reply / defer / decline 对所有人类 sid（含主人）合法** | `outer/subject/think.ts` | inbound 或心跳尾步 → think-log；可选回复；可选 `drive_threshold` |
+| **subjectThink** | **⏳ 入站 SPEAK 的唯一路径（无旗标）。user=主体，assistant=无工具 JSON；no_reply / defer / wait 对所有人类 sid（含主人）合法，并在同一线程发固定状态回执** | `outer/subject/think.ts` | inbound 或心跳尾步 → think-log；可选对话回复或状态回执；可选 `drive_threshold` |
 | **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **channelConnectionRegistry** | **IM 多连接 + 飞书热插** | `outer/channel-connection-registry.ts` | connections.json + keychain；N 条 feishu（connector 已注册） |
 | **qrTools** | **URL/文本 → 二维码 PNG 发当前 thread** | `outer/qr-tools.ts` | `qr_generate` 工具；`generateQrPng` 供扫码流（P4a/P4b）附图复用 |
@@ -116,7 +116,7 @@
 | **`14-L3-Digital-Employee-Loop`** | **数字员工主循环：事件触发 → 容量 → Calendar / SelfWorkPolicy → set_goal；heartbeat watchdog** |
 | **`12-L3-Outer-Environment`** | **环境模型：sensor registry / journal / change detector / 消费方** |
 | **`13-L3-Outer-Strategy`** | **【历史视图名】** 战略层已删除；现行见 `14-L3-Digital-Employee-Loop` |
-| **`15-L3-Outer-Subject`** | **自主主体（唯一入站 SPEAK，无旗标）：Facade / 模板 / 状态 / 驱动力 / 白名单决策 / think；细节不并进视图 07** |
+| **`15-L3-Outer-Subject`** | **自主主体（唯一入站 SPEAK，无旗标）：Facade / 模板 / 状态 / 驱动力 / 白名单决策 / think / 状态回执出口；细节不并进视图 07** |
 
 **KPI 闭环**（实现与 ADL）：见 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)。
 
@@ -293,3 +293,4 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-10-12 | SC-10：主人 sid 与其他人类一样只是信号；`no_reply` / `defer` / `decline` 无例外 |
 | 2026-10-12 | 主体层常数关闭：驱动力速率与 4 小时冷却、不新建 KPI、回复只取候选、participation 前门保留、defer 4 小时、think-log 64KiB。见 SUBJECT-CORE §17 |
 | 2026-10-12 | 去掉主体旗标。入站 SPEAK 只走 `subjectThink`；视图 07/07b/11/15 不再把对话环当作该路径 |
+| 2026-10-12 | SC-11：非聊天终态在同一线程发固定 `〔状态〕` 回执。视图 15 画出到 outerToolExecutor 的这条边 |

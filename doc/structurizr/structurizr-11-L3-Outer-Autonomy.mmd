@@ -46,7 +46,7 @@ graph TB
         style 71 fill:#85bbf0,stroke:#5d82a8,color:#000000
         72["<div style='font-weight: bold'>Casual Chat Dispatcher</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【idle 闲聊】性格概率 proactive<br />IM；KPI spawn 由 kpiManager 负责</div>"]
         style 72 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        79["<div style='font-weight: bold'>Subject Think</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【一次主体<br />reducer】user=主体模板，assistant=无工具<br />JSON；no_reply 与 defer 是合法终态</div>"]
+        79["<div style='font-weight: bold'>Subject Think</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【一次主体<br />reducer】user=主体模板，assistant=无工具<br />JSON；不聊天时仍发固定状态回执</div>"]
         style 79 fill:#85bbf0,stroke:#5d82a8,color:#000000
       end
 
@@ -84,7 +84,7 @@ graph TB
     49-. "<div>合法日程/提案 → 唯一 set_goal</div><div style='font-size: 70%'>[in-process]</div>" .->25
     16-. "<div>SPEAK=可以想；SILENT=只入 inbox</div><div style='font-size: 70%'>[in-process]</div>" .->79
     79-. "<div>user=主体模板；assistant=JSON；tools<br />空</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
-    79-. "<div>仅选中的 reply/decline 文本</div><div style='font-size: 70%'>[in-process]</div>" .->25
+    79-. "<div>对话回复，或非聊天终态的固定状态回执</div><div style='font-size: 70%'>[in-process]</div>" .->25
     79-. "<div>propose_self_work →<br />drive_threshold</div><div style='font-size: 70%'>[in-process]</div>" .->49
     48-. "<div>监督步骤之后的尾步；不改 0–6 顺序</div><div style='font-size: 70%'>[in-process]</div>" .->79
 

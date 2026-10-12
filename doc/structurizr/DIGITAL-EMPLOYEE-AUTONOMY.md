@@ -231,7 +231,7 @@ interface SelfWorkProposal {
 
 ### 5.1.1 与自主主体的优先级
 
-所有人类入站（含主人自己的 sid）都只是信号。主体可以 `no_reply`、`defer` 或 `decline`，不再自动压过主体决策。主人 sid 不是例外（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md) SC-10）。没有把旧入站工具环留作回退的旗标。`participationPolicy` 仍是想不想的前门，不是命令权。到期日程仍然优先于 `drive_threshold` 带来的提案。该提案不能新建 KPI（只 advance 已有的，或 ad_hoc）。校验失败**不**回落成另一次 `SelfWorkPolicy`。纯驱动力尾步有 4 小时冷却，见 SUBJECT-CORE §9.2 与 §17。§5.2 第 5 条「用户明确请求优先」只表示到期承诺与明确事项先于自主找活，不表示必须回复或必须派活。
+所有人类入站（含主人自己的 sid）都只是信号。主体可以 `no_reply`、`defer` 或 `decline`，不再自动压过主体决策。`no_reply` / `defer` / `wait` 在同一线程发固定状态回执（SUBJECT-CORE §8.1），这不是服从。主人 sid 不是例外（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md) SC-10）。没有把旧入站工具环留作回退的旗标。`participationPolicy` 仍是想不想的前门，不是命令权。到期日程仍然优先于 `drive_threshold` 带来的提案。该提案不能新建 KPI（只 advance 已有的，或 ad_hoc）。校验失败**不**回落成另一次 `SelfWorkPolicy`。纯驱动力尾步有 4 小时冷却，见 SUBJECT-CORE §9.2 与 §17。§5.2 第 5 条「用户明确请求优先」只表示到期承诺与明确事项先于自主找活，不表示必须回复或必须派活。
 
 ### 5.2 调度顺序
 

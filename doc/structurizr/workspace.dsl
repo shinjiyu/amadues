@@ -880,7 +880,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.subjectThink -> kuroneko.agentServer.llmGateway "user=主体模板；assistant=JSON；tools 空" "HTTPS" {
             tags "http"
         }
-        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.outerToolExecutor "仅选中的 reply/decline 文本" "in-process" {
+        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.outerToolExecutor "对话回复，或非聊天终态的固定状态回执" "in-process" {
             tags "import"
         }
         kuroneko.agentServer.subjectThink -> kuroneko.agentServer.digitalEmployeeLoop "propose_self_work → drive_threshold" "in-process" {
@@ -1014,7 +1014,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "15-L3-Outer-Subject" {
             title "L3 外脑 — 自主主体（唯一入站 SPEAK；user=主体，assistant=顾问）"
-            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.subjectSignalSlot kuroneko.agentServer.subjectStateStore kuroneko.agentServer.subjectDrive kuroneko.agentServer.subjectDecide kuroneko.agentServer.subjectThink kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.llmGateway
+            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.subjectSignalSlot kuroneko.agentServer.subjectStateStore kuroneko.agentServer.subjectDrive kuroneko.agentServer.subjectDecide kuroneko.agentServer.subjectThink kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.llmGateway kuroneko.agentServer.outerToolExecutor
             autolayout tb
         }
 

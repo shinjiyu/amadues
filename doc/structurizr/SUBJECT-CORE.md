@@ -1,6 +1,6 @@
 # 自主主体层（Subject Core）（ADL 权威）
 
-> **English:** The agent is its own subject. Every human message, including the owner's own sid, is only an external **signal**, never a command. The owner sid is **not** an exception: `no_reply`, `defer`, and `decline` stay legal for that sid. A deterministic subject core occupies the Chat Completions **`user` role** and calls the LLM only as an **assistant** that proposes and scores actions. Code makes the final choice from an allowlist. Internal drives live in existing agent state storage; crossing a threshold can start self-initiated work. There is **no feature flag**. Inbound **SPEAK** always goes to `subjectThink`. `runOuterConversationLoop` and its forced-reply recovery are retired, not kept as a fallback.
+> **English:** The agent is its own subject. Every human message, including the owner's own sid, is only an external **signal**, never a command. The owner sid is **not** an exception: `no_reply`, `defer`, and `decline` stay legal for that sid. A deterministic subject core occupies the Chat Completions **`user` role** and calls the LLM only as an **assistant** that proposes and scores actions. Code makes the final choice from an allowlist. Internal drives live in existing agent state storage; crossing a threshold can start self-initiated work. There is **no feature flag**. Inbound **SPEAK** always goes to `subjectThink`. `runOuterConversationLoop` and its forced-reply recovery are retired, not kept as a fallback. A non-chat outcome (`no_reply`, `defer`, `wait`, and the same class) still posts a **fixed status line** on that thread. The line reports what happened. It is not obedience and not a conversational reply.
 
 > **状态**：设计已关闭（2026-10-12）· **实现**：未开始（P0–P3 见 §14）· **生产路径**：入站 SPEAK 只走 `subjectThink`，无 `UTLRA_SUBJECT_CORE_ENABLED`。常数见 §17，没有待定项。
 
@@ -31,13 +31,14 @@
 | **SC-1** | 主体是第一人称。喂给模型的 `user` 消息由**固定模板**拼出（目标、驱动力、自身记忆、任务句）。外部原文不得出现在模板的指令句里。 |
 | **SC-2** | 外部原文（含主人、其他人类、其他 agent、引用、附件名）只进入被转义的 `<observation source="…" kind="…">` 数据槽。 |
 | **SC-3** | 每一次「想」分两跳：模型先给候选，再按主体目标给候选打分。两跳都**不带 tools**。确定性代码用白名单做最终选择，并写审计日志。 |
-| **SC-4** | `no_reply`、`defer`、`wait`、`do_nothing` 是一等结果。选中它们就结束本轮，不跑强制回复，不跑空口承诺纠偏。 |
+| **SC-4** | `no_reply`、`defer`、`wait`、`do_nothing` 是一等结果。选中它们就结束本轮对话，不跑强制回复，不跑空口承诺纠偏。有人在等时，同一线程另发一条代码写死的状态回执（§8.1）。 |
 | **SC-5** | `defer` 的事项必须写进主体状态，并在之后的某次 think 里作为 `source="deferred:…"` 的 observation 再出现。 |
 | **SC-6** | 驱动力是持久化控制状态。超过阈值是「可以自己想一次」的触发，不是直接 `set_goal`。 |
 | **SC-7** | 内脑 spawn 仍只有 `set_goal` 这一条边界（[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) 不变量 1）。主体只有提案权。 |
 | **SC-8** | 入站 SPEAK 的唯一生产路径是 `subjectThink`。不设 `UTLRA_SUBJECT_CORE_ENABLED`，也不把 `runOuterConversationLoop` 的强制回复留作回退。实现时删除或替换该调用，而不是放在旗标后面。 |
 | **SC-9** | 不新增长驻进程、不在内存里做主体注册表、不用新的 socket 当唤醒信号（宪法 §5）。 |
-| **SC-10** | **所有人类消息都只是信号，包括主人自己的 sid。** 主人 sid 对 `no_reply`、`defer`、`decline` **不得**例外：不得因发送者是主人就改判、抬优先级、或把这三项移出白名单。2026-10-12 主人裁定，绑定。 |
+| **SC-10** | **所有人类消息都只是信号，包括主人自己的 sid。** 主人 sid 对 `no_reply`、`defer`、`decline` **不得**例外：不得因发送者是主人就改判、抬优先级、或把这三项移出白名单。状态回执的文句也不得因主人 sid 改成对话回复。2026-10-12 主人裁定，绑定。 |
+| **SC-11** | 非聊天终态不是黑洞。本轮含人类入站时，`no_reply` / `defer` / `wait` / `do_nothing` / `schedule_revisit` / `lease_held`，以及未把话回出去的 `propose_self_work`，必须在**同一线程**发出 §8.1 的状态回执。回执由代码填固定句，顾问不能起草。这是透明，不是服从。 |
 
 ---
 
@@ -53,8 +54,8 @@ IM / HTTP 入站
 subjectThink
   → 候选/打分：llmGateway（assistant，无 tools）
   → 选定 reply / decline：outerToolExecutor 的既有回复出口（只发被选中的文本）
-  → 选定 propose_self_work：digitalEmployeeLoop.trigger('drive_threshold', proposal)
-  → 选定 no_reply / defer / wait / do_nothing：只写 subject 状态
+  → 选定 propose_self_work：digitalEmployeeLoop.trigger('drive_threshold', proposal)；本轮有人类入站时再发 §8.1 状态回执
+  → 选定 no_reply / defer / wait / do_nothing：写 subject 状态，并在本轮有人类入站时发 §8.1 状态回执
 
 digitalEmployeeLoop（多一个 reason drive_threshold，其余顺序不变）
   容量 → 到期日程优先 → 本触发若带着主体提案则只校验该提案
@@ -94,7 +95,9 @@ digitalEmployeeLoop（多一个 reason drive_threshold，其余顺序不变）
   → action = wait，零次 LLM，只把按墙钟 accrue 后的 drives 写回
 
 lease 未过期
-  → 返回 lease_held，零次 LLM，不改状态
+  → 返回 lease_held，零次 LLM；不改驱动力与 deferred
+  → 本条入站还不在 inbox 则追加（带 threadId）
+  → 若本轮有人类入站，发 §8.1 的 lease_held 回执
 
 否则进入 thinking（写下 lease，120_000 ms 内第二次直接返回；过期可抢占）
   → 顾问生成候选（assistant）
@@ -106,11 +109,11 @@ lease 未过期
 
 | 选中动作 | 数据演化 | 对外副作用 |
 |----------|----------|------------|
-| `wait` / `do_nothing` / `no_reply` | 短期记忆记一笔；对应驱动力不减（没做那件事） | 无 IM、无 spawn |
-| `defer` | `deferred[]` 追加 open 项，`revisitAt = now + deferRevisitMs` | 无 IM |
-| `schedule_revisit` | 改某条 deferred 的 `revisitAt` | 无 IM |
-| `reply_to_thread` / `decline` | `social` 减 `decayOnAct`；outbox 式短期记忆 | 经既有回复出口发**被选中的文本** |
-| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减 | `digitalEmployeeLoop` reason `drive_threshold`；仍可能被容量或到期日程挡住 |
+| `wait` / `do_nothing` / `no_reply` | 短期记忆记一笔；对应驱动力不减（没做那件事） | 无 spawn。有人类入站则发 §8.1 状态回执，不发对话回复 |
+| `defer` | `deferred[]` 追加 open 项，`revisitAt = now + deferRevisitMs` | 无 spawn。有人类入站则发 §8.1 状态回执 |
+| `schedule_revisit` | 改某条 deferred 的 `revisitAt` | 无 spawn。有人类入站则发 §8.1 状态回执 |
+| `reply_to_thread` / `decline` | `social` 减 `decayOnAct`；outbox 式短期记忆 | 经既有回复出口发**被选中的文本**。不再另附状态回执 |
+| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减 | `digitalEmployeeLoop` reason `drive_threshold`；仍可能被容量或到期日程挡住。有人类入站时另发 §8.1 状态回执 |
 
 唤醒来源只有已经存在的 reducer：入站 Facade，以及心跳 tick **既有监督顺序之后**的尾步（见 §9）。没有第三个循环。
 
@@ -148,10 +151,12 @@ interface DeferredItem {
   id: string;
   source: string;
   kind: string;
+  threadId: string | null; // 状态回执发回的线程；没有则无法回执
   raw: string;          // 仅用于下次再放进 observation；不进指令句
   parsed: SignalParse;
   createdAt: string;
   revisitAt: string;
+  statusAckAt: string | null; // 已对这条发过 §8.1 回执则不再重复发
   status: 'open' | 'revisited' | 'dropped';
 }
 ```
@@ -267,10 +272,10 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 
 | action | 允许的 args | 对应驱动力 | 效果 |
 |--------|-------------|------------|------|
-| `no_reply` | `{}` | — | 结束。不发 IM |
-| `defer` | `{}` | — | 把本轮 message 类 observation 写入 `deferred` |
-| `wait` | `{}` | — | 与阈值以下的短路相同；模型也可主动选 |
-| `do_nothing` | `{}` | — | 想过了，明确不做 |
+| `no_reply` | `{}` | — | 结束对话。有人类入站则发 §8.1 回执，不发对话回复 |
+| `defer` | `{}` | — | 把本轮 message 类 observation 写入 `deferred`，并按 §8.1 回执 |
+| `wait` | `{}` | — | 与阈值以下的短路相同；模型也可主动选。有人类入站则发 §8.1 回执 |
+| `do_nothing` | `{}` | — | 想过了，明确不做。有人类入站则发 §8.1 回执 |
 | `decline` | `{ "text": string }` | social | 发拒绝文本。`text` 来自候选 args，最长 500 字；空则用固定句「这件事和我现在的目标不一致，我先不做。」 |
 | `reply_to_thread` | `{ "text": string }` | social | 发 `text`，最长 500 字。空文本则这条候选作废，试下一条 |
 | `schedule_revisit` | `{ "deferredId": string, "revisitAt": string }` | completion | 只改已有 open 项的时间 |
@@ -296,7 +301,7 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 
 ### 7.3 审计一条记录至少包含
 
-`at`、`trigger`（`inbound` | `heartbeat_tail`）、`drivesBefore`、`drivesAfter`、`signals`（parse + alignment + 转义后的 observation）、`candidates`、`scores`、`rejected`、`chosen`、`reason`、`selfInitiated`、`result`。
+`at`、`trigger`（`inbound` | `heartbeat_tail`）、`drivesBefore`、`drivesAfter`、`signals`（parse + alignment + 转义后的 observation）、`candidates`、`scores`、`rejected`、`chosen`、`reason`、`selfInitiated`、`result`、`statusPosted`（是否发出 §8.1 回执；心跳空转 `wait` 为 false）。
 
 `selfInitiated =` 本轮没有任何外部 message 信号，且 `chosen` 不是 `wait` / `do_nothing` / `defer` / `no_reply`。
 
@@ -309,6 +314,43 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 **保留 `participationPolicy` 当 think 的前门**（频控、@、链深、空 DM），不把它拆掉。这和 SC-10 一致：前门只决定要不要为这一条花一轮顾问调用，不决定必须服从谁。SILENT 把原文写入 inbox（上限 32，超出丢最旧），主人 sid 走同一条。SPEAK 只表示「现在可以想」，think 仍可以 `no_reply`、`defer` 或 `decline`。生产代码不设「主人 sid」配置，也不得因为某个 sid 强制 SPEAK 或强制回复。一次 think 从 inbox 取最旧的 8 条，其余留下。inbox / deferred 里存的原文截到 4000 个码位。
 
 P2 把 `participationPolicy` 里那次可选 LLM 判别的外部原文改成同一套 observation 槽。P0/P1 可以仍用它今天的提示，因为判别结果只换来「想或不想」，换不来工具执行。
+
+SILENT 本身不发状态回执。群里被频控挡住的消息若每条都回「先搁下」，会刷屏。原文进 inbox，并带上 `threadId`。下一次 think 若把它当成人类入站消费，再按 §8.1 回执。
+
+### 8.1 状态回执（透明，不是服从）
+
+主人裁定（2026-10-12）：`no_reply`、`defer`、`wait` 以及同类的非聊天终态不能是黑洞。发送者要在**同一条渠道、同一个线程**看见发生了什么。这不改变 SC-10：回执不表示答应，不把主人 sid 升级成必须对话，也不让顾问起草这句话。
+
+**何时发。** 本轮 observation 里至少有一条人类 `kind=message`（当轮 SPEAK，或从 inbox 取出的人类消息），并且选中的动作是 `no_reply`、`defer`、`wait`、`do_nothing`、`schedule_revisit`、`lease_held`，或 `propose_self_work`。心跳尾步在没有这类人类消息时选 `wait`（驱动力未过线、冷却中、空转）**不发**。已经带 `statusAckAt` 的 deferred 被心跳再次 `defer`，也不再发。
+
+**发到哪。** 这些人类消息的 `threadId`，去重后按时间取最新的 4 个线程，每个线程一条相同文句。没有 `threadId` 的信号只写 think-log（`statusPosted: false`），不猜一个默认线程。超过 4 个线程时，其余记 `statusDroppedThreads`，不发。
+
+**文句由代码填，不由模型填。** 顾问的 `args`、自由 `content`、rationale 都不得进入回执。小时数用 `deferRevisitMs / 3_600_000` 的整数，不另写一个「4」。
+
+| 终态 | 固定文本 |
+|------|----------|
+| `no_reply` | `〔状态〕看到了，这轮不聊。` |
+| `do_nothing` | `〔状态〕看到了，这轮不做。` |
+| `wait` | `〔状态〕这轮先停着。` |
+| `defer` | `〔状态〕先搁下，N 小时后再看。`（N = `deferRevisitMs / 3_600_000`，现在是 4） |
+| `schedule_revisit` | `〔状态〕改到 YYYY-MM-DD HH:mm UTC 再看。` |
+| `lease_held` | `〔状态〕上一次还没想完，这轮先记下。` |
+| `propose_self_work` 且已 `set_goal` | `〔状态〕不在这里接话，我按自己的安排去做。` |
+| `propose_self_work` 未派发（无容量、日程优先、校验失败） | 与 `defer` 同一句 |
+
+`reply_to_thread` 与 `decline` 已经把话说出去，不再附这条回执。
+
+**出口。** 走既有 `postMessage`，但不是对话回复：
+
+- `ChatIROutboundBody.disposition = 'status'`（新可选字段；缺省仍是对话）。
+- `parse_mentions = false`。不 @ 发送者。
+- `text` 就是上表那一句，最长 80 个码位。
+- `seenTracker` 与 `participationPolicy` 的链深、连续发言计数**忽略** `disposition=status`。回执不把下一轮推进 SILENT，也不算「已经回复过所以必须继续聊」。
+- 线程历史若再进 observation，这条以 `source` 为 agent sid、`kind=status` 进入数据槽，仍转义。它不是指令。
+
+**表情是附加，不是正文。** 渠道若实现可选的 `addStatusReaction(threadId, messageId, token)`，在文本回执之外再打一个记号：`seen`（`no_reply` / `do_nothing`）、`later`（`defer` / `wait` / `schedule_revisit` / `lease_held` / 未派发的提案）、`working`（已派发的提案）。具体 emoji 由桥映射到该渠道已有的 reaction 集合（飞书已有 reaction API，见 channel-bridge-guide §5.4）。方法不存在、渠道没有对应表情、或调用失败：只记日志，文本回执仍然算数。不得只用表情、不发文本——WebChat 与微信没有可靠的 reaction。
+
+**失败。** `subjectThink` 在返回前必须调用这次 `postMessage`。渠道拒绝或网络失败时 `statusPosted: false`，决定保持不变，不改判成 `reply_to_thread`，也不启动强制回复。崩溃窗口里同一条最多再发一次，可以接受。
 
 `defer`：
 
@@ -393,7 +435,7 @@ lastAccruedAt = now
 
 合入 P1 的那一次部署就是行为断裂，不能用环境变量切回旧环：
 
-- 主人和其他人的消息都可以 `no_reply` / `defer` / `decline`。依赖「每条 SPEAK 必有回复」的操作会看到静默。
+- 主人和其他人的消息都可以 `no_reply` / `defer` / `decline`。他们看到的是 §8.1 的固定状态句，不是对话回复，也不是静默。依赖「每条 SPEAK 必有一段对话」的操作仍会断。
 - 入站模型不再拿到 `OUTER_TOOL_DEFS`。聊天里不能再直接 `set_goal` / `set_kpi` / `send_directive`，也不能再直接 `schedule_commitment` 或改 autonomy policy。派活只经白名单 `propose_self_work` → `digitalEmployeeLoop`。日历到期执行与 policy 文件还在；聊天预约要回来必须另增白名单动作，本裁定不新增。
 - 强制回复和空口纠偏不再补上一轮工具调用。断言这两段的测试不再描述生产入站。
 - 每条 SPEAK 固定两次顾问调用。不能用关旗标省掉这笔花费。
@@ -481,11 +523,12 @@ lastAccruedAt = now
 | 每次 think 两次 LLM，SPEAK 路径变贵 | 没有关旗标可以省掉。SILENT 不调用。阈值以下且无到期项时心跳尾步零调用。两次调用是契约，各阶段都不合并成一次 |
 | 转义挡不住模型「读懂并照做」observation | 顾问调用无 tools；执行面只有白名单；`suspicious_instruction` 只降低契合度 |
 | `participationPolicy` 的可选 LLM 在 P0/P1 仍把原文放在 `user` 角色 | P2 改为 observation 槽。在那之前，判别只决定想或不想，不执行工具 |
-| 主人收不到回复 | 接受的产品后果（SC-10）：主人 sid 也可以 `no_reply` / `defer` / `decline`。没有默认关可以躲开。`decline` 会说话；`no_reply` 与 `defer` 记在 think-log。不得为了缓解这个感觉而给主人 sid 开例外，也不得把旧强制回复留作回退 |
+| 主人收不到对话回复 | 接受的产品后果（SC-10）：主人 sid 也可以 `no_reply` / `defer` / `decline`。同一线程会收到 §8.1 的固定状态句，主人与其他人文句相同。不得因此改判成 `reply_to_thread`，也不得把旧强制回复留作回退 |
 | 驱动力尾步刷 `set_goal` | 尾步先过容量与前台占用；提案再过日程优先和 `validateSelfWorkProposal`；失败不降级成另一套 SelfWork |
 | 供应商把 `user` 角色当成「人类命令」 | 模板是第一人称主体，system 明确顾问角色。若某供应商拒绝空 tools 的 JSON，P0 单测用 FakeLLM；真供应商放在 P3 prompt 测 |
 | defer 饿死 | 4 小时后再访；5 分钟心跳会在到期后的下一拍看见。队列上限 20，只丢最旧 |
-| 只在工具环末尾加判断，强制回复仍开火 | 接线是替换调用，不是在 `runForcedReplyRecovery` 外面包一层。测试见 §14：选择 `no_reply` 时 `postMessage` 次数为 0，不调用 `runOuterConversationLoop`，且不出现 recovery 提示 |
+| 只在工具环末尾加判断，强制回复仍开火 | 接线是替换调用，不是在 `runForcedReplyRecovery` 外面包一层。测试见 §14：选择 `no_reply` 时对话回复次数为 0，状态回执恰好一条，不调用 `runOuterConversationLoop`，且不出现 recovery 提示 |
+| 状态回执被模型写成承诺 | 文句是代码常量表。顾问 `args` 与自由 content 不进入回执。`disposition=status` 不计入空口承诺 |
 | think-log 里留下注入原文 | 日志不回注 prompt。单槽 2000 码位，整行 65536 字节。不另存完整 prompt |
 
 ---
@@ -497,7 +540,7 @@ lastAccruedAt = now
 | 阶段 | 内容 | 相对今天仍在跑的旧环 |
 |------|------|--------------------------|
 | **P0** | `subjectSignalSlot`、`subjectDecide`、`subjectDrive`、`subjectStateStore` 纯函数与文件契约。不接入 Facade | 生产暂时仍是旧环，因为还没接线。**不要**加 `UTLRA_SUBJECT_CORE_ENABLED` 来维持这一点 |
-| **P1** | 用 `subjectThink` **替换**入站 SPEAK。同一改动删除 Facade 对 `runOuterConversationLoop` 的调用，以及该路径上的强制回复和空口纠偏。inbox。`no_reply` / `defer` / `reply_to_thread` / `decline` | 行为断裂。没有关旗标的字节级兼容 |
+| **P1** | 用 `subjectThink` **替换**入站 SPEAK。同一改动删除 Facade 对 `runOuterConversationLoop` 的调用，以及该路径上的强制回复和空口纠偏。inbox。`no_reply` / `defer` / `reply_to_thread` / `decline`，以及 §8.1 状态回执 | 行为断裂。没有关旗标的字节级兼容 |
 | **P2** | accrue、心跳尾步、`drive_threshold`、deferred 再访、`propose_self_work` 进数字员工环 | 合入后就是生产行为，不另设开关 |
 | **P3** | FakeLLM 组件测固化两跳 JSON；有 key 时的 prompt 形态测。只读审计查询可另说，本 ADL 不要求面板 | — |
 
@@ -535,11 +578,13 @@ lastAccruedAt = now
 | # | 场景 | horizon.in | horizon.out | 层级 |
 |---|------|------------|-------------|------|
 | 1 | 主路径回复 | FakeLLM 给出 `reply_to_thread` 且分数最高 | 只 `postMessage` 候选 text 一次；log 有 candidates 与 scores | integration |
-| 2 | `no_reply` | 分数最高为 `no_reply` | `postMessage` 0 次；无 forced-recovery 文案；无空口纠偏 | integration |
-| 2b | 主人 sid | `source` 为配置的主人 sid；最高分分别为 `no_reply`、`defer`、`decline` | 与其他人类相同的终态；不因 sid 改成必须回复 | integration |
+| 2 | `no_reply` | 分数最高为 `no_reply`，本轮有人类入站 | 对话回复 0 次；状态回执恰好 1 条，文本为 §8.1 的 `no_reply` 句，`disposition=status`；无 forced-recovery 文案；无空口纠偏 | integration |
+| 2a | 心跳空转 | 无人类消息，选 `wait` | `postMessage` 0 次 | integration |
+| 2c | `defer` | 本轮有人类入站 | 回执含由 `deferRevisitMs` 算出的小时数（现在是「4 小时」）；顾问给出的 args 不出现在文本里 | integration |
+| 2b | 主人 sid | `source` 为任意主人 sid；最高分分别为 `no_reply`、`defer`、`decline` | 与其他人类相同的终态和相同的状态句；不因 sid 改成必须对话回复 | integration |
 | 3 | 旧环已退役 | 同一入站 SPEAK | 不调用 `runOuterConversationLoop`；无 forced-recovery 文案；无空口纠偏 | integration |
-| 4 | 顾问返回非 JSON | 两次都返回散文 | `do_nothing` 或 `no_reply`；不把散文发出去 | integration |
-| 5 | 自发 | 无信号，drive 0.9，候选 `propose_self_work` | `selfInitiated=true`；环收到 `drive_threshold`；无容量则不 spawn | integration |
+| 4 | 顾问返回非 JSON | 两次都返回散文，且本轮有人类入站 | `do_nothing` 或 `no_reply`；散文不发出；只发 §8.1 固定句 | integration |
+| 5 | 自发 | 无人类消息，drive 0.9，候选 `propose_self_work` | `selfInitiated=true`；环收到 `drive_threshold`；无容量则不 spawn；不发状态回执 | integration |
 | 6 | 日程优先 | 同时有 due commitment | 派日程，提案被延后，驱动力不减 | integration |
 
 计划文件名见 [`COMPONENT-TEST-MAP.md`](./COMPONENT-TEST-MAP.md)。P0 先红后绿；本 PR 不包含这些测试文件。
@@ -585,7 +630,8 @@ lastAccruedAt = now
 | think-log | **不存完整 prompt。** 单槽转义文本 2000 码位，整行 65536 字节，先丢最旧的槽，决策字段不丢 | 模板固定，审计要的是候选、分数和数据槽。64KiB 够放下截断后的一轮，又不会把 jsonl 撑成第二份对话史 |
 | 顾问调用次数 | 永远两次，不合并 | 生成和打分分开，代码才能在打分前补上 `do_nothing` 与 `defer` |
 | 目标与身份谁改 | 只有人和创建时的种子。顾问无写入口 | 控制状态若能被模型改，白名单就空了 |
-| 租赁 | 120 秒。未过期则第二次调用直接返回，零 LLM，原因 `lease_held` | 入站和心跳尾步可能叠在一起；不排队第二次顾问 |
+| 租赁 | 120 秒。未过期则第二次调用直接返回，零 LLM，原因 `lease_held`。入站追加 inbox 并发 §8.1 回执 | 入站和心跳尾步可能叠在一起；不排队第二次顾问。回执说明「还没想完」，避免这条消息消失 |
+| 非聊天终态要不要让发送者看见 | **要。** 同一线程一条代码固定的 `〔状态〕` 句（§8.1）。表情仅在渠道支持时附加，不能代替文本。心跳空转不发 | 2026-10-12 主人裁定。SC-10 仍成立：这是透明，不是服从，主人 sid 不因此得到对话回复 |
 | 是否保留旧对话环当回退 | **不保留。** 删除 `UTLRA_SUBJECT_CORE_ENABLED`。入站 SPEAK 只走 `subjectThink`。强制回复与空口对账退役 | 2026-10-12 主人裁定。旗标会把「必须回复」留成可切换的生产行为，和 SC-8 / SC-10 冲突。迁移风险见 §10.1 与 §13 |
 
 `scripts/structurizr/manifest.mjs` 仍留到实现 PR：生成器不要指向还不存在的源文件。这不是产品行为上的待定。
@@ -600,3 +646,4 @@ lastAccruedAt = now
 | 2026-10-12 | SC-10：主人裁定所有人类消息（含主人 sid）只是信号。`no_reply` / `defer` / `decline` 对主人 sid 不得例外。 |
 | 2026-10-12 | §17 关闭其余决定：驱动力常数与 4 小时冷却、不新建 KPI、回复文本只取候选、保留 participation 前门、defer 4 小时、think-log 不存完整 prompt。 |
 | 2026-10-12 | 主人裁定去掉旗标：入站 SPEAK 只走 `subjectThink`。`runOuterConversationLoop` 强制回复路径退役，不留回退。 |
+| 2026-10-12 | SC-11：`no_reply` / `defer` / `wait` 等非聊天终态在同一线程发固定状态回执。不是对话回复，主人 sid 无例外。 |
