@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import {
   DECAY_ON_ACT,
-  DEFAULT_GOAL_TEXT,
   DEFAULT_IDENTITY,
   DEFER_REVISIT_MS,
   DEFERRED_CAP,
@@ -15,8 +14,9 @@ import {
   THINK_LOG_LINE_BYTES,
   THINK_THRESHOLD,
 } from './constants.js';
+import { lifeGoalGraph, mergeGoalGraph } from './space.js';
 import { truncateCodePoints } from './text.js';
-import type { InboxItem, SubjectState, ThinkLogRecord } from './types.js';
+import type { InboxItem, SubjectGoal, SubjectState, ThinkLogRecord } from './types.js';
 
 export function subjectDir(dataRoot: string): string {
   return path.join(dataRoot, 'subject');
@@ -41,7 +41,8 @@ function atomicWrite(file: string, body: string): void {
   fs.renameSync(tmp, file);
 }
 
-export function readGoalSeed(dataRoot: string, nowIso: string): SubjectState['goals'] {
+export function readGoalSeed(dataRoot: string, _nowIso: string): SubjectGoal[] {
+  const graph = lifeGoalGraph();
   const file = path.join(dataRoot, 'outer', 'goal.md');
   let text = '';
   try {
@@ -49,10 +50,16 @@ export function readGoalSeed(dataRoot: string, nowIso: string): SubjectState['go
   } catch {
     text = '';
   }
-  if (text) {
-    return [{ id: 'g-outer', text: truncateCodePoints(text, 500), keywords: [], priority: 0.8 }];
-  }
-  return [{ id: 'g-default', text: DEFAULT_GOAL_TEXT, keywords: [], priority: 0.5 }];
+  if (!text) return graph;
+  return mergeGoalGraph([...graph, {
+    id: 'g-outer',
+    text: truncateCodePoints(text, 500),
+    keywords: [],
+    priority: 0.8,
+    layer: 'mission',
+    relatesTo: ['g-north'],
+    relation: 'serves',
+  }]);
 }
 
 export function createInitialState(dataRoot: string, nowMs: number): SubjectState {
@@ -83,7 +90,7 @@ export function loadState(dataRoot: string, nowMs: number): SubjectState {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as SubjectState;
     if (parsed?.version !== 1 || !parsed.drives) return createInitialState(dataRoot, nowMs);
-    return parsed;
+    return { ...parsed, goals: mergeGoalGraph(Array.isArray(parsed.goals) ? parsed.goals : []) };
   } catch {
     return createInitialState(dataRoot, nowMs);
   }

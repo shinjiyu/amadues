@@ -71,7 +71,11 @@ export interface PromptHeader {
 }
 
 function headerBlock(header: PromptHeader): string {
-  const goals = header.goals.map((goal) => `${goal.id}:${goal.text}(${goal.priority})`).join(' | ') || '（无）';
+  const goals = header.goals.map((goal) => {
+    const layer = goal.layer ?? 'mission';
+    const link = goal.relatesTo?.length ? ` ${goal.relation ?? 'serves'}→${goal.relatesTo.join(',')}` : '';
+    return `${goal.id}[${layer}${link}]:${goal.text}(${goal.priority})`;
+  }).join(' | ') || '（无）';
   const drives = `curiosity=${header.drives.curiosity} social=${header.drives.social} completion=${header.drives.completion}`;
   const memory = header.shortTerm.map((row) => `${row.at} ${row.action} ${row.result}`).join(' | ') || '（无）';
   return [

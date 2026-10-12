@@ -193,6 +193,30 @@ describe('subjectThink', () => {
     root.cleanup();
   });
 
+  it('projects an abstract express candidate into one speech reply', async () => {
+    const root = createTestDataRoot('subject-think-express-');
+    const im = new FakeImChannel();
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: Date.parse('2026-10-12T00:00:00.000Z'),
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      imClient: im,
+      signals: [human('human:alice', '回一句')],
+      callLlm: scripted(
+        '{"candidates":[{"type":"express","args":{"text":"收到，测试正常。"},"rationale":"表达"}]}',
+        '{"scores":[{"type":"express","alignment":0.8,"novelty":0.2,"cost":0.1,"risk":0.1,"socialPressure":0.7,"completionPressure":0.2},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(result.action).toBe('reply_to_thread');
+    expect(result.speechPosted).toBe(true);
+    expect(im.outbox[0]?.body.text).toBe('收到，测试正常。');
+    expect(im.outbox[0]?.body.disposition).toBe('speech');
+    const log = fs.readFileSync(path.join(subjectDir(root.dataRoot), 'think-log.jsonl'), 'utf8');
+    expect(log).toContain('"abstractType":"express"');
+    root.cleanup();
+  });
+
   it('posts reply text when the advisor used args.message', async () => {
     const root = createTestDataRoot('subject-think-message-');
     const im = new FakeImChannel();

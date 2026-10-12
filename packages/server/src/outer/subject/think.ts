@@ -516,6 +516,7 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
     scores,
     rejected: decision.rejected,
     chosen: chosen.action,
+    abstractType: chosen.type,
     reason: decision.reason,
     selfInitiated,
     result: String(result),

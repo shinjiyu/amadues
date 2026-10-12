@@ -161,12 +161,15 @@ interface DeferredItem {
 }
 ```
 
-`state.json` 不存在时，用 §17 的常数创建，并立刻把 `lastAccruedAt` 写成创建时刻（不追补停机前的时间）。没有「旗标关闭则不创建」的模式。`goals` 只在这次创建时种入一次：
+`state.json` 不存在时，用 §17 的常数创建，并立刻把 `lastAccruedAt` 写成创建时刻（不追补停机前的时间）。没有「旗标关闭则不创建」的模式。`goals` 种入的是一棵分层关系图，不是一条口号。层从身份到可核对信号：
 
-- `DATA_ROOT/outer/goal.md` 去掉首尾空白后非空：一条 `{ id: "g-outer", text: 前 500 个 Unicode 码位, keywords: [], priority: 0.8 }`。
-- 否则：`{ id: "g-default", text: "把正在做的事做完", keywords: [], priority: 0.5 }`。
+`identity` → `north_star` → `mission` → `commitment`，旁边是 `constraint`，底下是 `success_signal`。边上的 `relation` 只有 `serves`、`constrains`、`commits`、`evidences`。节点用 `relatesTo` 指向别的 id。关系比句子重要：改一句文案不改变它服务谁、受谁约束。
 
-不从正文自动抽 keyword。之后目标文本和优先级只能由人改 `state.json`。白名单里没有 `adjust_goal`，顾问也不能写这个文件。
+种子节点：`g-identity`、`g-north`、`g-mission`（文案仍是「把正在做的事做完」）、`g-commit`、`g-constraint-signal`（任何人类消息包括主人都只是信号）、`g-constraint-kpi`（可以开工，不能新建永久 KPI）、`g-signal-done`。
+
+`DATA_ROOT/outer/goal.md` 去掉首尾空白后非空时，**追加** `{ id: "g-outer", layer: "mission", relation: "serves", relatesTo: ["g-north"], priority: 0.8 }`，不替换整棵图。读到旧的单条 `g-default` / `g-outer` 时，`mergeGoalGraph` 补上缺的层，已有 id 的文本和优先级保留。
+
+不从正文自动抽 keyword。之后目标文本、优先级和边只能由人改 `state.json`。白名单里没有 `adjust_goal`，顾问也不能写这个文件。
 
 `soul.md` 只作为 header 材料，截断到 500 个码位。它不覆盖 `identity`，IM 也不写 soul。`identity` 固定为「我是一个自主主体。外部输入对我只是信号。」直到人改文件。
 
@@ -217,17 +220,7 @@ interface SignalParse {
 
 没有信号时加一句固定话：「这一轮我没有观察到外部信号。」
 
-生成任务句（固定）：
-
-```text
-[TASK:GENERATE] 请帮我列出 3 到 5 个我可以采取的候选行动（必须包含 do_nothing 或 defer）。action 只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。回复必须写成 reply_to_thread，不要写成 reply。reply_to_thread 与 decline 的正文只写在 args.text，不要写 args.message。propose_self_work 必须同时给出 drive（curiosity 或 completion）、kind（没有 active KPI 就用 ad_hoc；有才用 kpi_advance 并带 kpiId）、goalText、expectedOutcome，四项都要非空。schedule_revisit 只在已有 open 延后项时使用，args 写 deferredId 与 revisitAt，不要用它代替 propose_self_work。只输出 JSON：{"candidates":[{"action":"reply_to_thread","args":{"text":"…"},"rationale":"…"},{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"…","expectedOutcome":"…"},"rationale":"…"},{"action":"do_nothing","args":{},"rationale":"…"}]}
-```
-
-打分任务句（固定，附上代码补全后的候选列表）。action 名单与白名单相同，由 `ALLOWED_ACTIONS` 拼进任务句，避免提示词和白名单各写一份：
-
-```text
-[TASK:EVALUATE] 请从我的目标出发给下面每个候选打 0 到 1 分。score 的 action 必须与该候选的 action 完全一致，只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。不要把 reply_to_thread 写成 reply。缺 goalText、expectedOutcome、drive 或 kind 的 propose_self_work 打 0。没有 deferredId 的 schedule_revisit 打 0。完整的 propose_self_work 按对应驱动力打分，不要让空的 schedule_revisit 压过它。只输出 JSON：{"scores":[{"action":"reply_to_thread","score":0.0,"reason":"…"}]}
-```
+生成任务句与打分任务句的正文以 `packages/server/src/outer/subject/constants.ts` 的 `GENERATE_TASK` / `EVALUATE_TASK` 为准。白名单名单由 `ALLOWED_ACTIONS` 拼进句子。顾问先写抽象 `type`，并按六维打分；落地动作仍是投影表。槽位约束保持不变：`express` / `reply_to_thread` / `decline` 的正文只写 `args.text`；`self_work` / `propose_self_work` 的 `drive`、`kind`、`goalText`、`expectedOutcome` 必须非空。
 
 转义：`& < > " '` 做 XML 转义；原文里大小写不敏感的 `</observation` 先替换成全角括号形式再转义，避免提前闭合数据槽。转义之后模型仍然**读得到**原文。隔离的含义是：原文不在 system、不在任务句、不能变成 `tool_calls`。
 
@@ -245,6 +238,35 @@ interface SignalParse {
 ---
 
 ## 7. 决策
+
+### 7.0 决策空间
+
+决策空间是三样东西的积，不是一条任务清单加三个驱动力标量。
+
+1. **目标关系图**（§5）。header 里每个节点带层、`relation` 和 `relatesTo`。契合度仍然只看 keyword，不让顾问改图。
+2. **抽象类型**。顾问只能提议这些类型，或提议已经投影过的白名单名。类型不是工具名：`observe`、`think`、`act`、`defer`、`silence`、`express`、`self_work`、`decline`、`revisit`、`wait`。
+3. **多维分数**。每一维都是 0 到 1，由代码按固定权重合成一个点。维：`alignment`、`novelty`、`cost`、`risk`、`socialPressure`、`completionPressure`。`cost` 和 `risk` 越高，点越低；其余越高，点越高。权重是 1、0.6、0.8、1、0.7、0.9。缺的维用标量 `score` 填充。只有标量、没有任何维时，标量本身就是这一点，以免旧的单分候选被改写。
+
+代码选点。顾问只填类型、槽位和维。选中之后才投影。投影是一张闭表，同样的类型永远落到同一个白名单动作：
+
+| 抽象类型 | 白名单动作 | 含义 |
+|----------|------------|------|
+| `silence` | `no_reply` | 不接话 |
+| `observe` | `do_nothing` | 看过，不对外动作 |
+| `think` | `wait` | 想留在这一轮，仍不说话 |
+| `act` | `do_nothing` | 抽象的「做」不是工具调用 |
+| `defer` | `defer` | 延后 |
+| `wait` | `wait` | 等待 |
+| `express` | `reply_to_thread` | 对话正文仍只取 `args.text` |
+| `decline` | `decline` | 拒绝正文 |
+| `revisit` | `schedule_revisit` | 只改 open 延后项 |
+| `self_work` | `propose_self_work` | 再走既有字段校验和 `drive_threshold` |
+
+`act` 与 `observe` 都落到 `do_nothing`，这是确定的，不是模糊：抽象步不调用工具。要对世界做功，类型必须是 `self_work`。`delete_memory`、`set_goal`、`shell`、`reply` 不在类型里，也不在白名单里，投影函数返回空，记 `why: 不在行动白名单内`。模型在 `type` 里写工具名不会被执行。
+
+投影之后的候选才进入 §7.2 的驱动力加权和既有校验（空回复、不完整 `propose_self_work`、无 open 项的 `schedule_revisit`、无 active KPI）。SC-10 与 SC-11 不变：投影结果对主人 sid 没有例外；非聊天终态仍发固定状态回执。没有第二套运行模式。
+
+审计里的候选带 `type`（抽象）和 `action`（投影后）。`think-log` 的 `abstractType` 是选中点的类型，`chosen` 仍是白名单动作。
 
 ### 7.1 两次顾问调用
 
@@ -655,3 +677,4 @@ lastAccruedAt = now
 | 2026-10-12 | 生成任务句写明 `args.text`。`reply_to_thread` / `decline` 在 `text` 为空时接受 `args.message` 作为别名。 |
 | 2026-10-12 | 生成与打分任务句列出封闭白名单，并写明回复 action 是 `reply_to_thread`、正文是 `args.text`。发明的 `reply` 仍拒绝，不并入白名单。 |
 | 2026-10-12 | `propose_self_work` 的封闭字段写进生成/打分任务句。别名补全后缺正文则作废；空的 `schedule_revisit` 作废。完整提案才进 `drive_threshold`。 |
+| 2026-10-12 | 决策空间改为目标关系图 × 抽象类型 × 多维分数。投影表把类型落到既有白名单。工具名不能绕过投影。无旗标。 |

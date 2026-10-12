@@ -75,8 +75,8 @@
 | **subjectSignalSlot** | **⏳ 主体模板：外部原文只进转义 observation 槽** | `outer/subject/signal-slot.ts` | raw → SignalParse + user 模板；见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) |
 | **subjectStateStore** | **⏳ 主体控制状态（目标 / 驱动力 / defer / inbox）** | `outer/subject/state-store.ts` | DATA_ROOT/subject → SubjectState；不进 mem9 |
 | **subjectDrive** | **⏳ 墙钟 accrue（0.10/0.06/0.08 每小时，阈值严格大于 0.60）+ 4 小时纯驱动力冷却** | `outer/subject/drive.ts` | state+now → shouldThink |
-| **subjectDecide** | **⏳ 白名单最终选择（LLM 分 + 驱动力权重）；无主人 sid 特权** | `outer/subject/decide.ts` | candidates+scores → chosen / rejected |
-| **subjectThink** | **⏳ 入站 SPEAK 的唯一路径（无旗标）。user=主体，assistant=无工具 JSON；no_reply / defer / wait 对所有人类 sid（含主人）合法，并在同一线程发固定状态回执** | `outer/subject/think.ts` | inbound 或心跳尾步 → think-log；可选对话回复或状态回执；可选 `drive_threshold` |
+| **subjectDecide** | **决策空间：抽象类型 × 目标关系图 × 多维分数；代码选点，闭表投影到白名单；工具名不投影。无主人 sid 特权** | `outer/subject/decide.ts`、`outer/subject/space.ts` | candidates+dims → chosen / rejected |
+| **subjectThink** | **入站 SPEAK 的唯一路径（无旗标）。user=主体，assistant=无工具 JSON；投影后的 no_reply / defer / wait 对所有人类 sid（含主人）合法，并在同一线程发固定状态回执** | `outer/subject/think.ts` | inbound 或心跳尾步 → think-log（含 abstractType）；可选对话回复或状态回执；可选 `drive_threshold` |
 | **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **channelConnectionRegistry** | **IM 多连接 + 飞书热插** | `outer/channel-connection-registry.ts` | connections.json + keychain；N 条 feishu（connector 已注册） |
 | **qrTools** | **URL/文本 → 二维码 PNG 发当前 thread** | `outer/qr-tools.ts` | `qr_generate` 工具；`generateQrPng` 供扫码流（P4a/P4b）附图复用 |

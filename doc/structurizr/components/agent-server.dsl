@@ -811,11 +811,11 @@
                     }
                 }
 
-                subjectDecide = component "Subject Decide" "【白名单决策】顾问分数加驱动力权重；代码选择；拒绝名单记审计" "TypeScript" {
+                subjectDecide = component "Subject Decide" "【决策空间】抽象类型 × 目标图 × 多维分数；代码选点后按闭表投影到白名单" "TypeScript" {
                     tags "Outer-Module" "Subject"
                     properties {
                         "path" "packages/server/src/outer/subject/decide.ts"
-                        "horizon.intention" "最终动作不由模型 tool_calls 决定；主人 sid 不能改判 no_reply/defer/decline"
+                        "horizon.intention" "顾问只填抽象类型和分数维；代码选点并投影。工具名不在投影表内就拒绝。主人 sid 不能改判"
                         "horizon.in" "candidates + scores + drives + allowlist；无特权 sid"
                         "horizon.out" "chosen + rejected + reason"
                         "horizon.deps" "无 I/O"
