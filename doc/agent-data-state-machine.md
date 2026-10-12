@@ -598,7 +598,7 @@ while (未到 stop_reason):
 
 - **字段**在 agent 级 `DATA_ROOT/subject/`（`state.json`、`inbox.json`、`think-log.jsonl`），不在某个 burst 的 `.brain/`。驱动力比单次 workspace 活得长。
 - **转移**是一次 reducer：入站 Facade 或既有心跳尾步读取状态 → 顾问只出 JSON → 白名单选择 → 写回。`no_reply` / `defer` 不产生 IM。所有人类消息（含主人自己的 sid）只是信号；主人 sid 对 `no_reply` / `defer` / `decline` 不得例外（SUBJECT-CORE SC-10）。
-- **唤醒**复用已有入站与心跳，不用新的 socket。`defer` 的 `revisitAt` 由下一次已有 tick 看见。
+- **唤醒**复用已有入站与心跳，不用新的 socket。`defer` 的 `revisitAt` 默认 4 小时，由下一次已有 tick 看见。纯驱动力心跳尾步另有 4 小时冷却。常数以 SUBJECT-CORE §17 为准。
 - 旗标 `UTLRA_SUBJECT_CORE_ENABLED` 默认关。关时本条不改变任何现行为。
 
 ---
@@ -666,3 +666,4 @@ A：本文档是**架构准则**，绿场里程碑是**业务功能**。两者�
 | 2026-05-16 | 实施 P0–P4、P6 部分：pendings 数据层、AWAITING 模式、异步工具、自动迁移 BLOCKED/SLEEPING、ChangeWatcher、GitBackedBrainFS、外脑 send_directive 数据驱动 resolve。134/137 测试通过（mem9 外部服务失败无关）。 |
 | 2026-10-12 | §9.4 指向自主主体 ADL（设计，未实现）：`DATA_ROOT/subject/` 字段 + 一次 think 转移；默认关。 |
 | 2026-10-12 | §9.4：主人 sid 不是命令通道；`no_reply` / `defer` / `decline` 对主人 sid 同样合法。 |
+| 2026-10-12 | §9.4：defer 默认 4 小时；纯驱动力尾步 4 小时冷却。详见 SUBJECT-CORE §17。 |

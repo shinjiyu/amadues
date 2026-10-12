@@ -2,7 +2,7 @@
 
 > **English:** The agent is its own subject. Every human message, including the owner's own sid, is only an external **signal**, never a command. The owner sid is **not** an exception: `no_reply`, `defer`, and `decline` stay legal for that sid. A deterministic subject core occupies the Chat Completions **`user` role** and calls the LLM only as an **assistant** that proposes and scores actions. Code makes the final choice from an allowlist. Internal drives live in existing agent state storage; crossing a threshold can start self-initiated work. Default **off** (`UTLRA_SUBJECT_CORE_ENABLED`); the current outer loop stays the production path until the flag is on.
 
-> **状态**：设计待评审（2026-10-12）· **实现**：未开始（P0–P3 见 §14）· **默认**：关
+> **状态**：设计已关闭（2026-10-12）· **实现**：未开始（P0–P3 见 §14）· **默认**：关。常数与分支见 §17，没有待定项。
 
 > **相关权威**：[`doc/agent-data-state-machine.md`](../agent-data-state-machine.md) §5（能力 = 字段 + 转移，不新增长驻进程）、[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)（容量 / 日程 / `set_goal` 唯一 spawn）、[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)（心跳仍是 watchdog）、[`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.2（空口对账在本层开启时让路）、[`MEMORY-STORAGE-BOUNDARY.md`](./MEMORY-STORAGE-BOUNDARY.md)。
 
@@ -83,7 +83,7 @@ digitalEmployeeLoop（旗标开时多一个 reason，顺序不变）
 |------|------|--------|--------|------|
 | `subject/state.json` | 身份句、目标、驱动力、`lastAccruedAt`、短期记忆、延后队列、单飞锁 | 仅 `subjectStateStore`（由 `subjectThink` / `subjectDrive` 调用） | think、心跳尾步 | 原子替换（临时文件 + rename） |
 | `subject/inbox.json` | 尚未被 think 消费的信号（SILENT 入站、未处理事件） | Facade（旗标开且 SILENT） | 下一次 think | 上限 32，超出丢最旧并记日志 |
-| `subject/think-log.jsonl` | 审计：驱动力、解析字段、转义后的 observation、候选、分数、拒绝原因、选择、是否自发 | `subjectThink` 追加 | 人读 / 以后的只读面板 | **不回注**到下一次 prompt |
+| `subject/think-log.jsonl` | 审计：驱动力、解析字段、截断后的 observation、候选、分数、拒绝原因、选择、是否自发。不存完整 prompt | `subjectThink` 追加 | 人读 jsonl。本设计不做面板 | **不回注**到下一次 prompt |
 
 `workDir/.brain/` 与 GitBackedBrainFS **不**承载本状态。P0 不把 `DATA_ROOT/subject` 做成 git 仓。
 
@@ -92,10 +92,13 @@ digitalEmployeeLoop（旗标开时多一个 reason，顺序不变）
 ```text
 (state, now, signals) → state'
 
-signals 为空 且 无到期 defer 且 max(drives) ≤ threshold
-  → action = wait，零次 LLM，只把按墙钟accrue 后的 drives 写回
+无 observation、无到期 defer、inbox 为空，且（max(drives) ≤ 0.60 或纯驱动力冷却未到）
+  → action = wait，零次 LLM，只把按墙钟 accrue 后的 drives 写回
 
-否则进入 thinking（state.lease 单飞；超时 120s 可被下一次抢占）
+lease 未过期
+  → 返回 lease_held，零次 LLM，不改状态
+
+否则进入 thinking（写下 lease，120_000 ms 内第二次直接返回；过期可抢占）
   → 顾问生成候选（assistant）
   → 顾问打分（assistant）
   → subjectDecide 白名单选择
@@ -128,17 +131,19 @@ interface SubjectState {
     keywords: string[];
     priority: number; // 0..1
   }>;
-  drives: { curiosity: number; social: number; completion: number }; // 各 0..1
-  lastAccruedAt: string; // ISO
-  accrualPerHour: { curiosity: number; social: number; completion: number };
-  thinkThreshold: number; // 默认 0.6
-  driveWeight: number;    // 默认 0.3，加在 LLM 分上
-  decayOnAct: number;     // 默认 0.5
-  deferRevisitMs: number; // 默认 30 分钟
-  deferredCap: number;    // 默认 20
+  drives: { curiosity: number; social: number; completion: number }; // 初值各 0.30，之后夹在 0..1
+  lastAccruedAt: string; // ISO UTC
+  accrualPerHour: { curiosity: 0.10; social: 0.06; completion: 0.08 };
+  thinkThreshold: 0.60;          // 严格大于才算「过阈值」
+  driveWeight: 0.30;
+  decayOnAct: 0.50;
+  driveThinkCooldownMs: 14400000; // 4 小时；只约束「纯驱动力」心跳尾步
+  lastDriveOnlyThinkAt: string | null;
+  deferRevisitMs: 14400000;       // 4 小时
+  deferredCap: 20;
   shortTerm: Array<{ at: string; action: string; result: string }>; // 最近 10 条
   deferred: DeferredItem[];
-  lease: { owner: string; until: string } | null;
+  lease: { owner: string; until: string } | null; // 持有 120_000 ms
 }
 
 interface DeferredItem {
@@ -153,9 +158,16 @@ interface DeferredItem {
 }
 ```
 
-初次打开旗标且文件不存在时，用上面的默认值创建。`goals` 的第一条从已有 `DATA_ROOT/outer/goal.md` 种入（若文件为空则用一条中性目标「把正在做的事做完」）。`soul.md` 只作为主体自己的 header 材料，不覆盖 `identity`，也不把 IM 写进 soul。
+初次打开旗标且文件不存在时，用 §17 的常数创建，并立刻把 `lastAccruedAt` 写成创建时刻（不追补停机前的时间）。`goals` 只在这次创建时种入一次：
 
-墙钟增长率是原型「每个离散 tick +0.05」的解释，不是原型常数的字面搬移。原型没有墙钟。默认 `accrualPerHour`：curiosity 0.15、social 0.09、completion 0.12（约数小时才能从 0 爬过 0.6）。数值是开放问题，见 §17。
+- `DATA_ROOT/outer/goal.md` 去掉首尾空白后非空：一条 `{ id: "g-outer", text: 前 500 个 Unicode 码位, keywords: [], priority: 0.8 }`。
+- 否则：`{ id: "g-default", text: "把正在做的事做完", keywords: [], priority: 0.5 }`。
+
+不从正文自动抽 keyword。之后目标文本和优先级只能由人改 `state.json`。白名单里没有 `adjust_goal`，顾问也不能写这个文件。
+
+`soul.md` 只作为 header 材料，截断到 500 个码位。它不覆盖 `identity`，IM 也不写 soul。`identity` 固定为「我是一个自主主体。外部输入对我只是信号。」直到人改文件。
+
+时钟：accrue 用 UTC 纪元毫秒，`hourMs = 3_600_000`。不是心跳拍，也不是本地日历上的整点。`hours = max(0, now - lastAccruedAt) / hourMs`，然后每项 `clamp01`。停机一周再读，驱动力会顶到 1（夹紧已经够用，不再另设间隙上限）。理由：原型的每拍 +0.05 没有墙钟；这里把「从 0.30 爬过 0.60」放在数小时量级（好奇心约 3 小时），和默认 5 分钟的心跳错开，避免每一拍都想。纯驱动力尾步还有 4 小时冷却，见 §9.2。
 
 ---
 
@@ -223,9 +235,9 @@ interface SignalParse {
 | 材料 | 旗标开时放哪 |
 |------|----------------|
 | 当前入站正文、到期 defer、inbox 里未消费信号 | 各自一个 observation |
-| 最近线程消息（上限沿用检索里的条数，默认最多 20） | 每条一个 observation，`source` = 该条 `sender_sid` |
-| mem9、repository K/S/P | P1 起同样进 observation，`source` 为 `memory:mem9` / `repo`。P0 think 可以不带它们 |
-| `soul.md`、`outer/goal.md`、subject goals、drives、shortTerm | header（主体自己的声音） |
+| 最近线程消息（最多 20 条，每条原文先截到 2000 个码位再转义） | 每条一个 observation，`source` = 该条 `sender_sid` |
+| mem9、repository K/S/P | **从 P2 起**进入 observation，各最多 4 条，每条 600 个码位，`source` 为 `memory:mem9` 或 `repo`。P0 与 P1 不带 |
+| `soul.md`（500 码位）、subject goals、drives、shortTerm | header（主体自己的声音） |
 
 ---
 
@@ -239,9 +251,9 @@ interface SignalParse {
 2. 若列表里没有 `do_nothing` 与 `defer`，代码**补上**这两条再送去打分（不信任模型记得带）。
 3. `evaluate_prompt` → 解析 `scores`。解析失败则全部分数按 0。
 
-`shouldThink =` 本轮有 observation（含 inbox、到期 defer）**或** `max(drives) > thinkThreshold`。
+入站 SPEAK 的 `shouldThink` 恒为真（这条信号本身就是 observation）。心跳尾步的 `shouldThink` 见 §9.2：到期 defer 或 inbox 非空，**或**（`max(drives) > 0.60` 且已过纯驱动力冷却）。等于 0.60 不算过线。
 
-否则选择 `wait`，理由「驱动力未过阈值且无信号」，零次 LLM。
+否则心跳尾步选择 `wait`，理由「驱动力未过阈值且无信号」，零次 LLM，也不刷新 `lastDriveOnlyThinkAt`。
 
 ### 7.2 白名单与打分
 
@@ -280,7 +292,9 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 
 **不在白名单内的名字一律拒绝并记 `why: 不在行动白名单内`。** 包括模型写出的 `set_goal`、`delete_memory`、`shell`、任何今天 `OUTER_TOOL_DEFS` 里的工具名。白名单不是「把现有工具都允许一遍」。
 
-回复文本取自**被选中的候选 args**，不再开第三次「起草」调用，也不把模型的自由 `content` 拿去 `postMessage`。这样今天「无 tool 就把 content 发出去」的兜底在旗标开时不存在。
+回复文本只取**被选中候选的 `args.text`**。没有第三次起草调用，也不把顾问的自由 `content` 拿去 `postMessage`。长度按 Unicode 码位，上限 500；`reply_to_thread` 空文本则作废并试下一条；`decline` 空文本用固定句「这件事和我现在的目标不一致，我先不做。」发出去的就是这段文本，经既有回复出口，不再改写。
+
+顾问 JSON 的解析：从第一次出现的 `{` 取到最后一次 `}`，`JSON.parse` 失败则该跳视为空列表或全部分数 0。分数不是有限数值、或落在 0..1 之外的，夹到 0..1；缺项当 0。
 
 ### 7.3 审计一条记录至少包含
 
@@ -288,18 +302,19 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 
 `selfInitiated =` 本轮没有任何外部 message 信号，且 `chosen` 不是 `wait` / `do_nothing` / `defer` / `no_reply`。
 
-日志行不设回读。单行超过 64KB 时截断 observation 文本并打 `truncated: true`。
+不保存拼好的完整 prompt（模板是固定的，可从状态和 observation 重放）。每条 observation 在日志里最多保留转义后 2000 个码位。整行 UTF-8 超过 65536 字节时，从最旧的 observation 起删槽，直到不超；`chosen`、`scores`、`rejected`、`reason`、`drivesBefore`、`drivesAfter` 不删。被截或被删的槽记 `truncated: true`。日志不回读进 prompt。
 
 ---
 
 ## 8. `no_reply` 与 `defer` 的再访
 
-`participationPolicy` 的 SILENT 是「先别为这条花一轮 think」。旗标开时 SILENT 仍把原文写入 inbox（上限 32），主体以后还能看见。这条对主人 sid 同样成立。SPEAK 只表示「可以花一轮 think」，**不**表示必须回复。think 仍可以选出 `no_reply`、`defer` 或 `decline`，包括信号的 `source` 就是主人 sid 的时候。
+**保留 `participationPolicy` 当 think 的前门**（频控、@、链深、空 DM），不把它拆掉。这和 SC-10 一致：前门只决定要不要为这一条花一轮顾问调用，不决定必须服从谁。SILENT 把原文写入 inbox（上限 32，超出丢最旧），主人 sid 走同一条。SPEAK 只表示「现在可以想」，think 仍可以 `no_reply`、`defer` 或 `decline`。生产代码不设「主人 sid」配置，也不得因为某个 sid 强制 SPEAK 或强制回复。一次 think 从 inbox 取最旧的 8 条，其余留下。inbox / deferred 里存的原文截到 4000 个码位。
+
+P2 把 `participationPolicy` 里那次可选 LLM 判别的外部原文改成同一套 observation 槽。P0/P1 可以仍用它今天的提示，因为判别结果只换来「想或不想」，换不来工具执行。
 
 `defer`：
 
-- 为本轮每条 `kind=message` 的信号写一条 `DeferredItem`，`status=open`，`revisitAt = now + deferRevisitMs`。
-- 队列超过 `deferredCap` 时，把最旧的 open 项标 `dropped` 并写审计。
+- 为本轮每条 `kind=message` 的信号写一条 `DeferredItem`，`status=open`，`revisitAt = now + 4 小时`。没有再访次数上限：主体可以一直 `defer`。队列超过 20 时，最旧的 open 项标 `dropped` 并写审计。
 - 之后任意一次 think（入站或心跳尾步）开始时，把 `revisitAt <= now` 且 `status=open` 的项重新放进 observation，`source="deferred:<id>"`，原文仍只出现在数据槽。消费后标 `revisited`（若本轮又选 `defer`，则刷新 `revisitAt`，状态回到 `open`）。
 
 没有后台定时器专门扫 defer。下一次已经会发生的 Facade 入站或心跳尾步就是扫描器。这和宪法里「到点改数据」一致：时间条件是字段，唤醒复用已有 tick。
@@ -320,26 +335,28 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 纯函数，在每次读取 state 时计算，不靠内存里的 tick 计数：
 
 ```text
-hours = max(0, now - lastAccruedAt) 的小时数
+hours = max(0, now - lastAccruedAt) / 3_600_000
 drives[k] = clamp01(drives[k] + accrualPerHour[k] * hours)
 lastAccruedAt = now
 ```
 
-心跳停了再起来也不会少算这段墙钟，也不会在进程里用 `setInterval` 空转。
+心跳停了再起来按整段墙钟补算，不在进程里用 `setInterval` 空转。默认速率：好奇心 0.10/时、社交 0.06/时、完成 0.08/时。从初值 0.30 起，好奇心约 3 小时严格超过 0.60，社交约 5 小时，完成约 3.75 小时。成功做出对应动作后减 0.50，于是要再爬大约同样久才重新过线。
 
 ### 9.2 心跳尾步（不改监督顺序）
 
 [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) §0 的步骤 0–6 **顺序不变**。仅当 `UTLRA_SUBJECT_CORE_ENABLED=1` 时，在步骤 6 之后追加：
 
 ```text
-7. 若 subjectDrive.shouldThink（无新入站：到期 defer 或 inbox 或 drive > threshold）
-   且 hasAvailableCapacity
-   且当前没有进行中的 outer 入站 turn
+7. 若 hasAvailableCapacity 且没有进行中的 outer 入站 turn，并且
+     到期 defer 或 inbox 非空
+     或（max(drives) > 0.60 且 now >= lastDriveOnlyThinkAt + 4 小时）
    → subjectThink(trigger=heartbeat_tail) 一次
-   否则什么都不做（零 LLM）
+   否则零 LLM
 ```
 
-这一步不是第二套派发时钟。它只决定要不要让主体想一次。想的结果若是 `propose_self_work`，才进入下面的环。
+`lastDriveOnlyThinkAt` 初值是 null，第一次过线可以马上想。任何一次心跳尾步 think **结束时**都把该字段写成 now，不论选了什么。这样驱动力停在 0.60 以上、而选择又是 `wait` / `do_nothing` / `no_reply`（这三项不减驱动力）时，不会跟着 5 分钟心跳连着想。入站 SPEAK 不读、不写这个冷却。到期 defer 和 inbox 不受冷却挡住。
+
+这一步不是第二套派发时钟。它只决定要不要让主体想一次。想的结果若是 `propose_self_work`，才进入下面的环。同一 tick 若跑了 subject think，就不再跑 `casualChatDispatcher`。
 
 ### 9.3 `drive_threshold` 触发
 
@@ -349,7 +366,7 @@ lastAccruedAt = now
 - 有到期日程：日程照旧派发（DE 优先级）。主体提案同样延后，不丢。
 - 无到期日程：只用这份提案走既有 `validateSelfWorkProposal`（预期产出、依赖、去重、冲突、路线熔断）。通过则 `set_goal`，并衰减对应驱动力。不通过则睡，reason `subject_proposal_rejected`，**不**再调用 `SelfWorkPolicy` 另提一个。其他 reason（`burst_finished` 等）仍走原来的 SelfWorkPolicy，不经过主体。
 
-`kind=kpi_advance` 不得创建新 KPI，只能指向已有 active KPI。`kind=ad_hoc` 走既有一次性 `set_goal` 守卫（槽位、freshCheck）。主体不获得新的 spawn API。
+**不新建 KPI。** `kind=kpi_advance` 的 `kpiId` 必须是已有 active KPI，否则这条候选作废。没有 active KPI 时，自发工作只能走 `kind=ad_hoc`（既有一次性 `set_goal`，无 `kpi_id`，仍过槽位和 freshCheck）。白名单里没有 `set_kpi`。理由：驱动力可以开始一份工作，但不能往 KPI 注册表里写一条永久职责；永久职责仍走今天的 KPI 治理入口。主体不获得新的 spawn API。
 
 旗标关时，`drive_threshold` 不会被发出，环的行为与今天相同。
 
@@ -448,15 +465,15 @@ lastAccruedAt = now
 
 | 风险 | 缓解 |
 |------|------|
-| 每次 think 两次 LLM，SPEAK 路径变贵 | 旗标默认关。SILENT 不调用。阈值以下零调用。P3 再谈合并为一次调用 |
+| 每次 think 两次 LLM，SPEAK 路径变贵 | 旗标默认关。SILENT 不调用。阈值以下且无到期项时零调用。两次调用是契约，各阶段都不合并成一次 |
 | 转义挡不住模型「读懂并照做」observation | 顾问调用无 tools；执行面只有白名单；`suspicious_instruction` 只降低契合度 |
-| `participationPolicy` 的 SPEAK/SILENT 提示仍把原文放在 `user` 角色 | 已知残留。SPEAK 只取得 think 资格，SILENT 只入 inbox。P2 再把该提示改成同一数据槽。不在 P0 改这条已上线的策略 |
+| `participationPolicy` 的可选 LLM 在 P0/P1 仍把原文放在 `user` 角色 | P2 改为 observation 槽。在那之前，判别只决定想或不想，不执行工具 |
 | 主人收不到回复 | 接受的产品后果（SC-10）：主人 sid 也可以 `no_reply` / `defer` / `decline`。默认关。`decline` 会说话；`no_reply` 与 `defer` 记在 think-log。不得为了缓解这个感觉而给主人 sid 开例外 |
 | 驱动力尾步刷 `set_goal` | 尾步先过容量与前台占用；提案再过日程优先和 `validateSelfWorkProposal`；失败不降级成另一套 SelfWork |
 | 供应商把 `user` 角色当成「人类命令」 | 模板是第一人称主体，system 明确顾问角色。若某供应商拒绝空 tools 的 JSON，P0 单测用 FakeLLM；真供应商放在 P3 prompt 测 |
-| defer 饿死 | 默认 30 分钟后再访，且每次心跳尾步都会看见到期项。队列有上限 |
+| defer 饿死 | 4 小时后再访；5 分钟心跳会在到期后的下一拍看见。队列上限 20，只丢最旧 |
 | 旗标只改一半，强制回复仍开火 | 接线要求 Facade 二选一，而不是在工具环末尾再加判断。测试见 §14：旗标开且选择 `no_reply` 时 `postMessage` 次数为 0，且不出现 recovery 提示 |
-| think-log 里留下注入原文 | 日志不回注 prompt。截断上限 64KB。面板若以后展示，按数据而不是按指令渲染 |
+| think-log 里留下注入原文 | 日志不回注 prompt。单槽 2000 码位，整行 65536 字节。不另存完整 prompt |
 
 ---
 
@@ -493,8 +510,10 @@ lastAccruedAt = now
 
 | # | 场景 | horizon.in | horizon.out | 层级 |
 |---|------|------------|-------------|------|
-| 1 | 墙钟 accrue | curiosity 0.3，经过 2 小时，rate 0.15 | 0.6；不超过 1 | unit |
-| 2 | 阈值下无信号 | drives 均 0.2，无 observation | `shouldThink=false` | unit |
+| 1 | 墙钟 accrue | curiosity 0.30，经过 4 小时，rate 0.10 | 0.70；3 小时时为 0.60，`>` 阈值不成立 | unit |
+| 1b | 长停机 | 间隙 7 天，rate 0.10 | 夹到 1，不另做间隙上限 | unit |
+| 2 | 阈值下无信号 | drives 均 0.20，无 observation | 心跳 `shouldThink=false` | unit |
+| 2b | 冷却 | drive 0.90，`lastDriveOnlyThinkAt` 在 1 小时前 | 纯驱动力尾步不调用 LLM；inbox 非空仍调用 | unit |
 | 3 | 原子写 | 写入中断的临时文件 | 原 `state.json` 仍可解析 | unit |
 | 4 | defer 上限 | 已有 20 条 open，再 defer | 最旧变为 `dropped` | unit |
 
@@ -536,20 +555,25 @@ lastAccruedAt = now
 
 ---
 
-## 17. 已决与仍开放的问题
+## 17. 已关闭的决定
 
-**已决（2026-10-12，主人裁定，绑定）：** 所有人类消息，包括主人自己的 sid，都只是外部信号，不是命令。主人 sid 对 `no_reply`、`defer`、`decline` 不得例外。见 SC-10。
+没有待定项。实现按这张表，不再留主人裁决占位。SC-10 仍绑定：所有人类消息（含主人 sid）只是信号；`no_reply` / `defer` / `decline` 没有特权 sid。生产配置里不增加 `OWNER_SID`。
 
-仍开放：
+| 问题 | 决定 | 理由 |
+|------|------|------|
+| 驱动力速率与阈值 | 好奇心 0.10/时、社交 0.06/时、完成 0.08/时；初值各 0.30；阈值 **0.60 且严格大于**；`driveWeight` 0.30；成功动作减 0.50 | 原型阈值是 0.6，但每拍 +0.05 没有墙钟。按 UTC 毫秒 / 3_600_000 计时后，从 0.30 到过线大约 3–5 小时，一天能自己醒几次，又不会贴着 5 分钟心跳 |
+| 过线之后会不会每拍都想 | 纯驱动力尾步冷却 **4 小时**（`driveThinkCooldownMs`）。入站与到期 defer、inbox 不走这道冷却 | `wait` 不减驱动力。没有冷却的话，过线后每个心跳都是两次 LLM |
+| 停机很久 | 按整段墙钟 accrue，只做 0..1 夹紧 | 夹紧之后再设「最多补 24 小时」没有额外效果，少一条分支 |
+| 自发工作能否新建 KPI | **不能。** 只能 `kpi_advance` 已有 active KPI，或 `ad_hoc` 一次性 `set_goal`。没有 `set_kpi` / `adjust_goal` | 自主的是「做一份工作」，不是往注册表写永久职责。没有 KPI 时仍可用 ad_hoc，不会无事可做 |
+| 回复文本从哪来 | **只使用被打分候选的 `args.text`**，上限 500 码位。不设第三次起草 | 第三次调用是另一条注入通道，而且没经过打分 |
+| `participationPolicy` | **保留为前门。** SILENT 入 inbox（最多 32，每次想取 8 条）。不因任何 sid 强制回复 | 群里每条都想会把顾问调用打满；信号仍在 inbox 里，SC-10 不要求当场服从。前门是花费闸，不是命令权 |
+| defer 再访 | **4 小时**，与驱动力冷却同一量级。不设再访次数上限 | 30 分钟会让同一条被连续推迟的事项在一天里被重新打分几十次。心跳 5 分钟，到期后下一拍就能看见 |
+| think-log | **不存完整 prompt。** 单槽转义文本 2000 码位，整行 65536 字节，先丢最旧的槽，决策字段不丢 | 模板固定，审计要的是候选、分数和数据槽。64KiB 够放下截断后的一轮，又不会把 jsonl 撑成第二份对话史 |
+| 顾问调用次数 | 永远两次，不合并 | 生成和打分分开，代码才能在打分前补上 `do_nothing` 与 `defer` |
+| 目标与身份谁改 | 只有人和创建时的种子。顾问无写入口 | 控制状态若能被模型改，白名单就空了 |
+| 租赁 | 120 秒。未过期则第二次调用直接返回，零 LLM，原因 `lease_held` | 入站和心跳尾步可能叠在一起；不排队第二次顾问 |
 
-2. `accrualPerHour` 与 `thinkThreshold=0.6` 只是把原型的离散 tick 换成墙钟后的起点。要多勤？
-3. `propose_self_work` 是否永远不能新建 KPI（本文：不能，只能 advance 已有的或 ad-hoc）？
-4. 回复文本放在候选 args 里（本文）还是允许第三次起草调用？
-5. 群聊是否继续用 `participationPolicy` 当 think 前门（本文：继续）？还是每条消息都 think、只靠主体自己沉默？
-6. `deferRevisitMs` 默认 30 分钟是否太密？
-7. think-log 是否保存完整 prompt（本文：保存转义后的 observation 与候选，单行 64KB 截断）？
-
-规则歧义的解释见 §4.1、§10，以及 PR 说明：Phase 1 只做 Structurizr 第一步；`scripts/structurizr/manifest.mjs` 等实现落地再改，避免生成器指向尚不存在的源文件。
+`scripts/structurizr/manifest.mjs` 仍留到实现 PR：生成器不要指向还不存在的源文件。这不是产品行为上的待定。
 
 ---
 
@@ -559,3 +583,4 @@ lastAccruedAt = now
 |------|------|
 | 2026-10-12 | 初版 ADL：主体 / 顾问角色、observation 数据槽、`no_reply` 与 `defer`、白名单决策、驱动力阈值、旗标默认关。无实现。 |
 | 2026-10-12 | SC-10：主人裁定所有人类消息（含主人 sid）只是信号。`no_reply` / `defer` / `decline` 对主人 sid 不得例外。 |
+| 2026-10-12 | §17 关闭其余决定：驱动力常数与 4 小时冷却、不新建 KPI、回复文本只取候选、保留 participation 前门、defer 4 小时、think-log 不存完整 prompt。 |

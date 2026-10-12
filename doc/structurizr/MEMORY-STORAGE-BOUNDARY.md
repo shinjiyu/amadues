@@ -25,7 +25,7 @@
 | **IM 通道连接表** | 本地 JSON | `DATA_ROOT/channels/connections.json` | `channelConnectionRegistry` | boot + 热插；`secret_ref` → keychain |
 | **数字员工日程** | 本地 JSON（复用 Scheduler） | `DATA_ROOT/scheduled-tasks/`（或等价 TaskStore） | `employeeCalendar` | `digitalEmployeeLoop` due/missed；见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) |
 | **主体控制状态（⏳）** | 本地 JSON | `DATA_ROOT/subject/state.json` + `inbox.json` | **仅** `subjectStateStore` | `subjectThink` / `subjectDrive`；见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) |
-| **主体审计（⏳）** | 本地 JSONL | `DATA_ROOT/subject/think-log.jsonl` | `subjectThink` 追加 | 人读；**不回注** prompt |
+| **主体审计（⏳）** | 本地 JSONL | `DATA_ROOT/subject/think-log.jsonl` | `subjectThink` 追加 | 人读。不存完整 prompt；单槽 2000 码位，整行 65536 字节。**不回注** prompt。见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §7.3 / §17 |
 
 专篇：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md) · [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) · [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) · [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) · [`SUBJECT-CORE.md`](./SUBJECT-CORE.md)
 

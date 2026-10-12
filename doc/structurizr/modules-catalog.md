@@ -74,7 +74,7 @@
 | **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 找活由 digitalEmployeeLoop / SelfWorkPolicy）** | `outer/casual-chat-dispatcher.ts` | capacity + personality → post_to_im |
 | **subjectSignalSlot** | **⏳ 主体模板：外部原文只进转义 observation 槽** | `outer/subject/signal-slot.ts` | raw → SignalParse + user 模板；见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) |
 | **subjectStateStore** | **⏳ 主体控制状态（目标 / 驱动力 / defer / inbox）** | `outer/subject/state-store.ts` | DATA_ROOT/subject → SubjectState；不进 mem9 |
-| **subjectDrive** | **⏳ 墙钟 accrue + 阈值；超阈值只表示可以想** | `outer/subject/drive.ts` | state+now → shouldThink |
+| **subjectDrive** | **⏳ 墙钟 accrue（0.10/0.06/0.08 每小时，阈值严格大于 0.60）+ 4 小时纯驱动力冷却** | `outer/subject/drive.ts` | state+now → shouldThink |
 | **subjectDecide** | **⏳ 白名单最终选择（LLM 分 + 驱动力权重）；无主人 sid 特权** | `outer/subject/decide.ts` | candidates+scores → chosen / rejected |
 | **subjectThink** | **⏳ 一次主体 reducer（默认关）。user=主体，assistant=无工具 JSON；no_reply / defer / decline 对所有人类 sid（含主人）合法** | `outer/subject/think.ts` | inbound 或心跳尾步 → think-log；可选回复；可选 `drive_threshold` |
 | **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
@@ -291,3 +291,4 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-07-28 | 内脑 workspace 保留：[`INNER-WORKSPACE-RETENTION.md`](./INNER-WORKSPACE-RETENTION.md)；`innerWorkspaceRetention` + `read_inner_status` historyCap |
 | 2026-10-12 | 自主主体 ADL（未实现）：[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)；模块 `subjectSignalSlot` / `subjectStateStore` / `subjectDrive` / `subjectDecide` / `subjectThink`（⏳）；视图 `15-L3-Outer-Subject`；旗标 `UTLRA_SUBJECT_CORE_ENABLED` 默认关 |
 | 2026-10-12 | SC-10：主人 sid 与其他人类一样只是信号；`no_reply` / `defer` / `decline` 无例外 |
+| 2026-10-12 | 主体层常数关闭：驱动力速率与 4 小时冷却、不新建 KPI、回复只取候选、participation 前门保留、defer 4 小时、think-log 64KiB。见 SUBJECT-CORE §17 |

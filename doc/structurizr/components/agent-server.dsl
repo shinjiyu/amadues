@@ -801,7 +801,7 @@
                     tags "Outer-Module" "Subject"
                     properties {
                         "path" "packages/server/src/outer/subject/drive.ts"
-                        "horizon.intention" "curiosity / social / completion 的纯函数演化"
+                        "horizon.intention" "curiosity 0.10/h、social 0.06/h、completion 0.08/h；阈值严格大于 0.60；纯驱动力冷却 4 小时"
                         "horizon.in" "SubjectState + now + observation 计数"
                         "horizon.out" "accrued drives + shouldThink"
                         "horizon.deps" "无 I/O"
