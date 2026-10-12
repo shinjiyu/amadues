@@ -1,4 +1,5 @@
-import { DEFAULT_GOAL_TEXT, DEFAULT_IDENTITY, NORTH_STAR_TEXT } from './constants.js';
+import { DEFAULT_GOAL_TEXT, DEFAULT_IDENTITY, DESCRIBE_TASK, NORTH_STAR_TEXT } from './constants.js';
+import { extractJsonObject } from './decide.js';
 import { clamp01 } from './text.js';
 
 /** Kinds of thing the subject can work on. Not tool names. */
@@ -19,14 +20,15 @@ export const WORK_EXECUTION: Record<WorkOp, string> = {
   explore: 'open_question',
 };
 
-const OUTCOME: Record<WorkOp, string> = {
-  gather: '一批可引用的材料，每条带来源',
-  compare: '一张差异表，至少两个对象',
-  synthesize: '一段把材料收成判断的说明',
-  verify: '核对过的结论，以及仍不成立的点',
-  deliver: '一份可交出的产物',
-  explore: '一个仍开放的问题和两条可核对线索',
-};
+/** Echoes of the retired per-op sentences. They are not dispatched. */
+const CANNED_OUTCOMES = [
+  '一批可引用的材料，每条带来源',
+  '一张差异表，至少两个对象',
+  '一段把材料收成判断的说明',
+  '核对过的结论，以及仍不成立的点',
+  '一份可交出的产物',
+  '一个仍开放的问题和两条可核对线索',
+];
 
 const CURIOSITY_LABEL = '我忽然又想碰一碰本来就在意的事';
 
@@ -152,14 +154,48 @@ export function projectWorkOp(op: string): { op: WorkOp; execution: string } | n
 export function projectWorkObject(object: Pick<WorkObject, 'op' | 'label'>): {
   execution: string;
   goalText: string;
-  expectedOutcome: string;
 } {
-  const label = object.label.trim();
   return {
     execution: WORK_EXECUTION[object.op],
-    goalText: label,
-    expectedOutcome: `围绕「${label}」：${OUTCOME[object.op]}`,
+    goalText: object.label.trim(),
   };
+}
+
+export function isCannedOutcome(text: string): boolean {
+  const body = text.trim();
+  if (!body) return false;
+  return CANNED_OUTCOMES.some((line) => body === line || body.endsWith(line));
+}
+
+export function buildWorkDescribeUser(object: Pick<WorkObject, 'label' | 'kind' | 'op'>, execution: string): string {
+  return `${DESCRIBE_TASK}\n对象：${JSON.stringify({
+    label: object.label,
+    kind: object.kind,
+    op: object.op,
+    execution,
+  })}`;
+}
+
+export function acceptWorkDescription(
+  raw: string,
+  object: Pick<WorkObject, 'label'>,
+): { ok: true; goalText: string; expectedOutcome: string } | { ok: false; why: string } {
+  const label = object.label.trim();
+  const parsed = extractJsonObject(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, why: '产物说明是空的' };
+  }
+  const record = parsed as Record<string, unknown>;
+  const outcome = typeof record.expectedOutcome === 'string' ? record.expectedOutcome.trim() : '';
+  if (!outcome) return { ok: false, why: '产物说明是空的' };
+  if (isServiceShaped(outcome)) return { ok: false, why: '产物说明是替人收尾' };
+  if (isCannedOutcome(outcome)) return { ok: false, why: '产物说明是套话' };
+  if (!outcome.includes(label)) return { ok: false, why: '产物说明没有落到这个对象上' };
+  const refined = typeof record.goalText === 'string' ? record.goalText.trim() : '';
+  const goalText = refined.includes(label) && !isServiceShaped(refined) && !isCannedOutcome(refined)
+    ? refined
+    : label;
+  return { ok: true, goalText, expectedOutcome: outcome };
 }
 
 /** Identity text and the north-star slogan are anchors, not a task to dispatch. */

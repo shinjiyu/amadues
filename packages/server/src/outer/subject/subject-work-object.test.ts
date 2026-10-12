@@ -5,6 +5,8 @@ import type { WorkObject } from './work-object.js';
 import {
   WORK_EXECUTION,
   WORK_OPS,
+  acceptWorkDescription,
+  buildWorkDescribeUser,
   finishWorkObject,
   parseWorkProposals,
   projectWorkObject,
@@ -26,8 +28,40 @@ describe('subjectWorkObject', () => {
     expect(point).toEqual({
       execution: 'open_question',
       goalText: '还没核对的缺口',
-      expectedOutcome: '围绕「还没核对的缺口」：一个仍开放的问题和两条可核对线索',
     });
+  });
+
+  it('accepts a living description and rejects empty, servant, and canned outcomes', () => {
+    const object = { label: '想成为宝可梦大师', kind: 'theme' as const, op: 'explore' as const };
+    const prompt = buildWorkDescribeUser(object, 'open_question');
+    expect(prompt).toContain('[TASK:DESCRIBE]');
+    expect(prompt).toContain('想成为宝可梦大师');
+    expect(prompt).toContain('explore');
+    expect(prompt).toContain('open_question');
+    expect(prompt).toContain('一个仍开放的问题和两条可核对线索');
+
+    const accepted = acceptWorkDescription(
+      '{"goalText":"想成为宝可梦大师，从一只精灵开始","expectedOutcome":"我想成为宝可梦大师，先自己搞清一只精灵怎么变强。"}',
+      object,
+    );
+    expect(accepted).toEqual({
+      ok: true,
+      goalText: '想成为宝可梦大师，从一只精灵开始',
+      expectedOutcome: '我想成为宝可梦大师，先自己搞清一只精灵怎么变强。',
+    });
+    expect(acceptWorkDescription('{"expectedOutcome":""}', object)).toMatchObject({ ok: false, why: '产物说明是空的' });
+    expect(acceptWorkDescription(
+      '{"expectedOutcome":"帮用户把想成为宝可梦大师这件事收尾"}',
+      object,
+    )).toMatchObject({ ok: false, why: '产物说明是替人收尾' });
+    expect(acceptWorkDescription(
+      '{"expectedOutcome":"围绕「想成为宝可梦大师」：一个仍开放的问题和两条可核对线索"}',
+      object,
+    )).toMatchObject({ ok: false, why: '产物说明是套话' });
+    expect(acceptWorkDescription(
+      '{"expectedOutcome":"写成一段和这件事无关的旧故事"}',
+      object,
+    )).toMatchObject({ ok: false, why: '产物说明没有落到这个对象上' });
   });
 
   it('applies interestingness weights and inverts cost and risk', () => {
@@ -137,7 +171,7 @@ describe('subjectWorkObject', () => {
     expect(chosen?.source).toBe('commitment');
     const projected = projectWorkObject(chosen!);
     expect(projected.goalText).toBe('想成为宝可梦大师');
-    expect(projected.expectedOutcome).toContain('想成为宝可梦大师');
+    expect(projected.execution).toBe('open_question');
     expect(projected.goalText).not.toBe(NORTH_STAR_TEXT);
 
     const tied = parseWorkProposals([{
@@ -155,7 +189,7 @@ describe('subjectWorkObject', () => {
     const hotter = selectWorkPoint([...seeded, ...proposals, tied], 0.9, true);
     expect(hotter?.id).toBe('wo-spark');
     expect(projectWorkObject(hotter!).goalText).toBe('皮卡丘的电是从哪里来的');
-    expect(projectWorkObject(hotter!).expectedOutcome).toContain('皮卡丘的电是从哪里来的');
+    expect(projectWorkObject(hotter!).execution).toBe('open_question');
   });
 
   it('rejects service-shaped proposals and copies of an existing root', () => {

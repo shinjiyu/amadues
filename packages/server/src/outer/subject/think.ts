@@ -11,8 +11,11 @@ import {
 } from './constants.js';
 import { decayDrive, accrue, heartbeatShouldThink } from './drive.js';
 import { decide, driveOf, ensureDoNothingAndDefer, parseCandidates, parseScores, readProposeSelfWork } from './decide.js';
+import { ADVISOR_SYSTEM } from './constants.js';
 import {
+  acceptWorkDescription,
   activateWorkObject,
+  buildWorkDescribeUser,
   parseWorkProposals,
   projectWorkObject,
   seedWorkObjects,
@@ -427,9 +430,6 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
     let dispatched: SubjectDispatchResult = { dispatched: false, reason: ready.ok ? 'no_dispatcher' : ready.why };
     let selectedWork: WorkObject | null = null;
     if (ready.ok && input.dispatchProposal) {
-      let goalText = truncateCodePoints(ready.proposal.goalText, 500);
-      let expectedOutcome = ready.proposal.expectedOutcome;
-      let work: SubjectProposalDispatch['work'];
       const idle = !signals.some((signal) => signal.kind === 'message');
       const seeds = seedWorkObjects({
         identity: state.identity,
@@ -450,31 +450,48 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
         pool.push(row);
       }
       const point = selectWorkPoint(pool, state.drives.curiosity, idle);
-      if (point) {
+      if (!point) {
+        dispatched = { dispatched: false, reason: '没有工作对象' };
+      } else if (!input.callLlm) {
+        dispatched = { dispatched: false, reason: '没有产物说明' };
+      } else {
         const projected = projectWorkObject(point);
-        goalText = truncateCodePoints(projected.goalText, 500);
-        expectedOutcome = projected.expectedOutcome;
-        selectedWork = point;
-        work = {
-          id: point.id,
-          kind: point.kind,
-          label: point.label,
-          op: point.op,
-          source: point.source,
-          execution: projected.execution,
-          score: workScore(point.dims),
-        };
-      }
-      const proposal: SubjectProposalDispatch = {
-        ...ready.proposal,
-        goalText,
-        expectedOutcome,
-        ...(work ? { work } : {}),
-      };
-      try {
-        dispatched = await input.dispatchProposal(proposal);
-      } catch (error) {
-        dispatched = { dispatched: false, reason: error instanceof Error ? error.message : 'dispatch_failed' };
+        let draft = '';
+        let draftError = '';
+        try {
+          draft = await input.callLlm(ADVISOR_SYSTEM, buildWorkDescribeUser(point, projected.execution));
+        } catch (error) {
+          draftError = error instanceof Error ? error.message : '没有产物说明';
+        }
+        const accepted = draftError
+          ? { ok: false as const, why: draftError }
+          : acceptWorkDescription(draft, point);
+        if (!accepted.ok) {
+          dispatched = { dispatched: false, reason: accepted.why };
+        } else {
+          const goalText = truncateCodePoints(accepted.goalText, 500);
+          const expectedOutcome = truncateCodePoints(accepted.expectedOutcome, 500);
+          selectedWork = point;
+          const work: SubjectProposalDispatch['work'] = {
+            id: point.id,
+            kind: point.kind,
+            label: point.label,
+            op: point.op,
+            source: point.source,
+            execution: projected.execution,
+            score: workScore(point.dims),
+          };
+          try {
+            dispatched = await input.dispatchProposal({
+              ...ready.proposal,
+              goalText,
+              expectedOutcome,
+              work,
+            });
+          } catch (error) {
+            dispatched = { dispatched: false, reason: error instanceof Error ? error.message : 'dispatch_failed' };
+          }
+        }
       }
     }
     proposalDispatched = dispatched.dispatched;
