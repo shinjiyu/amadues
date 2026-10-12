@@ -32,6 +32,9 @@ function living(label: string, outcome: string): string {
   return JSON.stringify({ goalText: label, expectedOutcome: outcome });
 }
 
+const NORTH_STAR_MOVE = `顺着「${NORTH_STAR_TEXT}」，我先去练一件能上手的小事。`;
+const POKE_MOVE = '我想成为宝可梦大师，先去打一场对战。';
+
 describe('subjectThink', () => {
   it('posts one speech reply from the chosen candidate text', async () => {
     const root = createTestDataRoot('subject-think-reply-');
@@ -294,7 +297,7 @@ describe('subjectThink', () => {
       callLlm: scripted(
         '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"看看仓库","expectedOutcome":"一条笔记"}}]}',
         '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0},{"action":"reply_to_thread","score":0}]}',
-        living(NORTH_STAR_TEXT, `顺着「${NORTH_STAR_TEXT}」，我要写成我此刻还想弄明白的一段话。`),
+        living(NORTH_STAR_TEXT, NORTH_STAR_MOVE),
       ),
     });
     expect(result.action).toBe('propose_self_work');
@@ -302,8 +305,8 @@ describe('subjectThink', () => {
     expect(proposals).toMatchObject([{
       kind: 'ad_hoc',
       kpiId: undefined,
-      goalText: NORTH_STAR_TEXT,
-      expectedOutcome: `顺着「${NORTH_STAR_TEXT}」，我要写成我此刻还想弄明白的一段话。`,
+      goalText: NORTH_STAR_MOVE,
+      expectedOutcome: NORTH_STAR_MOVE,
       drive: 'curiosity',
       work: { source: 'north_star', execution: 'open_question' },
     }]);
@@ -337,7 +340,7 @@ describe('subjectThink', () => {
       callLlm: scripted(
         '{"candidates":[{"action":"propose_self_work","args":{"goal":"看看仓库","expected_outcome":"一条笔记","type":"ad-hoc"}},{"action":"schedule_revisit","args":{"deferredId":"missing","revisitAt":"2026-10-13T00:00:00.000Z"}}]}',
         '{"scores":[{"action":"schedule_revisit","score":0.95},{"action":"propose_self_work","score":0.62},{"action":"do_nothing","score":0.1},{"action":"defer","score":0}]}',
-        living(NORTH_STAR_TEXT, `顺着「${NORTH_STAR_TEXT}」，我要写成我此刻还想弄明白的一段话。`),
+        living(NORTH_STAR_TEXT, NORTH_STAR_MOVE),
       ),
     });
     expect(result.action).toBe('propose_self_work');
@@ -345,8 +348,8 @@ describe('subjectThink', () => {
     expect(proposals).toMatchObject([{
       kind: 'ad_hoc',
       kpiId: undefined,
-      goalText: NORTH_STAR_TEXT,
-      expectedOutcome: `顺着「${NORTH_STAR_TEXT}」，我要写成我此刻还想弄明白的一段话。`,
+      goalText: NORTH_STAR_MOVE,
+      expectedOutcome: NORTH_STAR_MOVE,
       drive: 'curiosity',
       work: { source: 'north_star', execution: 'open_question' },
     }]);
@@ -381,15 +384,17 @@ describe('subjectThink', () => {
       callLlm: scripted(
         '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"看看仓库","expectedOutcome":"一条笔记","workObjects":[{"id":"wo-chore","kind":"question","label":"把用户搁置的需求收尾","op":"explore","interestingness":1,"novelty":0.2,"valueToMissions":1,"cost":0,"risk":0},{"id":"wo-mild","kind":"question","label":"一个还没什么感觉的新问题","op":"explore","relatesTo":["g-north"],"interestingness":0.45,"novelty":0.99,"valueToMissions":0.4,"cost":0.3,"risk":0.2},{"kind":"question","label":"跑命令","op":"shell","interestingness":1}]}}]}',
         '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
-        living(NORTH_STAR_TEXT, `顺着「${NORTH_STAR_TEXT}」，我要写成我此刻还想弄明白的一段话。`),
+        living(NORTH_STAR_TEXT, NORTH_STAR_MOVE),
       ),
     });
     expect(result.action).toBe('propose_self_work');
     expect(result.statusPosted).toBe(false);
     expect(proposals).toHaveLength(1);
-    expect(proposals[0]?.goalText).toBe(NORTH_STAR_TEXT);
-    expect(proposals[0]?.expectedOutcome).toBe(`顺着「${NORTH_STAR_TEXT}」，我要写成我此刻还想弄明白的一段话。`);
+    expect(proposals[0]?.goalText).toBe(NORTH_STAR_MOVE);
+    expect(proposals[0]?.expectedOutcome).toBe(NORTH_STAR_MOVE);
     expect(proposals[0]?.expectedOutcome).not.toContain('一个仍开放的问题和两条可核对线索');
+    expect(proposals[0]?.expectedOutcome).not.toContain('拆开');
+    expect(proposals[0]?.expectedOutcome).not.toContain('探讨');
     expect(proposals[0]?.work).toMatchObject({ op: 'explore', execution: 'open_question', source: 'north_star' });
     expect(JSON.stringify(proposals[0])).not.toContain('shell');
     expect(JSON.stringify(proposals[0])).not.toContain('收尾');
@@ -424,14 +429,16 @@ describe('subjectThink', () => {
       callLlm: scripted(
         '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"我在意我自己还想弄明白的事","expectedOutcome":"一个问题","workObjects":[{"id":"wo-train","kind":"theme","label":"训练一只皮卡丘","op":"explore","interestingness":0.62,"novelty":0.4,"valueToMissions":0.5,"cost":0.3,"risk":0.2},{"id":"wo-badge","kind":"question","label":"道馆徽章要怎么凑齐","op":"gather","interestingness":0.58,"novelty":0.55,"valueToMissions":0.5,"cost":0.35,"risk":0.2}]}}]}',
         '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
-        living('想成为宝可梦大师', '我想成为宝可梦大师，先自己搞清一只精灵怎么变强。'),
+        living('想成为宝可梦大师', POKE_MOVE),
       ),
     });
     expect(result.action).toBe('propose_self_work');
     expect(proposals).toHaveLength(1);
-    expect(proposals[0]?.goalText).toBe('想成为宝可梦大师');
-    expect(proposals[0]?.expectedOutcome).toBe('我想成为宝可梦大师，先自己搞清一只精灵怎么变强。');
+    expect(proposals[0]?.goalText).toBe(POKE_MOVE);
+    expect(proposals[0]?.expectedOutcome).toBe(POKE_MOVE);
     expect(proposals[0]?.expectedOutcome).not.toContain('一个仍开放的问题和两条可核对线索');
+    expect(proposals[0]?.expectedOutcome).not.toContain('搞清');
+    expect(proposals[0]?.expectedOutcome).not.toContain('探讨');
     expect(proposals[0]?.work).toMatchObject({ source: 'commitment', label: '想成为宝可梦大师' });
     expect(proposals[0]?.goalText).not.toBe(NORTH_STAR_TEXT);
     expect(JSON.stringify(proposals[0])).not.toContain('循环');
@@ -468,6 +475,40 @@ describe('subjectThink', () => {
     expect(result.reason).toBe('最高分');
     const log = fs.readFileSync(path.join(subjectDir(root.dataRoot), 'think-log.jsonl'), 'utf8');
     expect(log).toContain('产物说明是套话');
+    expect(loadState(root.dataRoot, now).deferred.some((item) => item.raw.includes('未派出的自发工作'))).toBe(true);
+    root.cleanup();
+  });
+
+  it('does not dispatch an analysis essay as the product description', async () => {
+    const root = createTestDataRoot('subject-think-analysis-');
+    const now = Date.parse('2026-10-12T00:00:00.000Z');
+    const state = loadState(root.dataRoot, now);
+    saveState(root.dataRoot, {
+      ...state,
+      drives: { curiosity: 0.9, social: 0.1, completion: 0.15 },
+      goals: [{ id: 'g-poke', text: '想成为宝可梦大师', keywords: [], priority: 0.8 }],
+    });
+    const proposals: string[] = [];
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: now,
+      trigger: 'heartbeat_tail',
+      agentSid: 'agent:test',
+      activeKpiIds: [],
+      dispatchProposal: async (proposal) => {
+        proposals.push(proposal.expectedOutcome);
+        return { dispatched: true, reason: 'self_work_dispatched' };
+      },
+      callLlm: scripted(
+        '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"想成为宝可梦大师","expectedOutcome":"一个问题"}}]}',
+        '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+        '{"goalText":"把想成为宝可梦大师拆开来想","expectedOutcome":"对想成为宝可梦大师做一次开放式探讨"}',
+      ),
+    });
+    expect(result.action).toBe('propose_self_work');
+    expect(proposals).toEqual([]);
+    const log = fs.readFileSync(path.join(subjectDir(root.dataRoot), 'think-log.jsonl'), 'utf8');
+    expect(log).toContain('产物说明是在分析');
     expect(loadState(root.dataRoot, now).deferred.some((item) => item.raw.includes('未派出的自发工作'))).toBe(true);
     root.cleanup();
   });
@@ -654,7 +695,7 @@ describe('subjectThink', () => {
       callLlm: scripted(
         '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"看看仓库","expectedOutcome":"一条笔记"}}]}',
         '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
-        living(NORTH_STAR_TEXT, `顺着「${NORTH_STAR_TEXT}」，我要写成我此刻还想弄明白的一段话。`),
+        living(NORTH_STAR_TEXT, NORTH_STAR_MOVE),
       ),
     });
     expect(result.action).toBe('propose_self_work');

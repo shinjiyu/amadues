@@ -459,7 +459,7 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
         let draft = '';
         let draftError = '';
         try {
-          draft = await input.callLlm(ADVISOR_SYSTEM, buildWorkDescribeUser(point, projected.execution));
+          draft = await input.callLlm(ADVISOR_SYSTEM, buildWorkDescribeUser(point));
         } catch (error) {
           draftError = error instanceof Error ? error.message : '没有产物说明';
         }

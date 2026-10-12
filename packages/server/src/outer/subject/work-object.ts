@@ -161,18 +161,61 @@ export function projectWorkObject(object: Pick<WorkObject, 'op' | 'label'>): {
   };
 }
 
+const ANALYSIS_PATTERNS = [
+  /拆开/,
+  /探讨/,
+  /分析/,
+  /反思/,
+  /思考/,
+  /想想/,
+  /想清楚/,
+  /想明白/,
+  /弄明白/,
+  /搞清楚/,
+  /搞清/,
+  /搞明白/,
+  /论述/,
+  /写成/,
+  /开放式/,
+  /琢磨/,
+  /沉思/,
+  /梳理/,
+  /复盘/,
+  /研究/,
+  /做法/,
+  /理解/,
+];
+
+const ACTION_MARKERS = ['练习', '训练', '练', '收集', '搜集', '采集', '试试', '尝试', '试', '对战', '战斗', '打一场', '打', '动手', '搭建', '做出', '造', '做'];
+
+function outsideLabel(text: string, label: string): string {
+  const name = label.trim();
+  if (!name) return text;
+  return text.split(name).join('');
+}
+
+function isAnalysisShaped(text: string, label: string): boolean {
+  const body = outsideLabel(text, label);
+  if (!body.trim()) return false;
+  return ANALYSIS_PATTERNS.some((pattern) => pattern.test(body));
+}
+
+function hasDoableMove(text: string): boolean {
+  const body = text.replace(/打算/g, '').replace(/作为/g, '').replace(/做法/g, '');
+  return ACTION_MARKERS.some((marker) => body.includes(marker));
+}
+
 export function isCannedOutcome(text: string): boolean {
   const body = text.trim();
   if (!body) return false;
   return CANNED_OUTCOMES.some((line) => body === line || body.endsWith(line));
 }
 
-export function buildWorkDescribeUser(object: Pick<WorkObject, 'label' | 'kind' | 'op'>, execution: string): string {
+export function buildWorkDescribeUser(object: Pick<WorkObject, 'label' | 'kind' | 'op'>): string {
   return `${DESCRIBE_TASK}\n对象：${JSON.stringify({
     label: object.label,
     kind: object.kind,
     op: object.op,
-    execution,
   })}`;
 }
 
@@ -191,10 +234,16 @@ export function acceptWorkDescription(
   if (isServiceShaped(outcome)) return { ok: false, why: '产物说明是替人收尾' };
   if (isCannedOutcome(outcome)) return { ok: false, why: '产物说明是套话' };
   if (!outcome.includes(label)) return { ok: false, why: '产物说明没有落到这个对象上' };
+  if (isAnalysisShaped(outcome, label)) return { ok: false, why: '产物说明是在分析' };
+  if (!hasDoableMove(outcome)) return { ok: false, why: '产物说明不是可做的一步' };
   const refined = typeof record.goalText === 'string' ? record.goalText.trim() : '';
-  const goalText = refined.includes(label) && !isServiceShaped(refined) && !isCannedOutcome(refined)
+  const goalText = refined.includes(label)
+    && !isServiceShaped(refined)
+    && !isCannedOutcome(refined)
+    && !isAnalysisShaped(refined, label)
+    && hasDoableMove(refined)
     ? refined
-    : label;
+    : outcome;
   return { ok: true, goalText, expectedOutcome: outcome };
 }
 

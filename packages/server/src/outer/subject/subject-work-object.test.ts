@@ -33,21 +33,32 @@ describe('subjectWorkObject', () => {
 
   it('accepts a living description and rejects empty, servant, and canned outcomes', () => {
     const object = { label: '想成为宝可梦大师', kind: 'theme' as const, op: 'explore' as const };
-    const prompt = buildWorkDescribeUser(object, 'open_question');
+    const prompt = buildWorkDescribeUser(object);
     expect(prompt).toContain('[TASK:DESCRIBE]');
     expect(prompt).toContain('想成为宝可梦大师');
     expect(prompt).toContain('explore');
-    expect(prompt).toContain('open_question');
+    expect(prompt).toContain('对战');
+    expect(prompt).toContain('拆开来想');
+    expect(prompt).toContain('开放式探讨');
+    expect(prompt).not.toContain('open_question');
     expect(prompt).toContain('一个仍开放的问题和两条可核对线索');
 
     const accepted = acceptWorkDescription(
-      '{"goalText":"想成为宝可梦大师，从一只精灵开始","expectedOutcome":"我想成为宝可梦大师，先自己搞清一只精灵怎么变强。"}',
+      '{"goalText":"想成为宝可梦大师，先去打一场对战","expectedOutcome":"我想成为宝可梦大师，先去打一场对战。"}',
       object,
     );
     expect(accepted).toEqual({
       ok: true,
-      goalText: '想成为宝可梦大师，从一只精灵开始',
-      expectedOutcome: '我想成为宝可梦大师，先自己搞清一只精灵怎么变强。',
+      goalText: '想成为宝可梦大师，先去打一场对战',
+      expectedOutcome: '我想成为宝可梦大师，先去打一场对战。',
+    });
+    expect(acceptWorkDescription(
+      '{"goalText":"想成为宝可梦大师","expectedOutcome":"我想成为宝可梦大师，先去收集一只精灵的对战记录。"}',
+      object,
+    )).toEqual({
+      ok: true,
+      goalText: '我想成为宝可梦大师，先去收集一只精灵的对战记录。',
+      expectedOutcome: '我想成为宝可梦大师，先去收集一只精灵的对战记录。',
     });
     expect(acceptWorkDescription('{"expectedOutcome":""}', object)).toMatchObject({ ok: false, why: '产物说明是空的' });
     expect(acceptWorkDescription(
@@ -58,6 +69,18 @@ describe('subjectWorkObject', () => {
       '{"expectedOutcome":"围绕「想成为宝可梦大师」：一个仍开放的问题和两条可核对线索"}',
       object,
     )).toMatchObject({ ok: false, why: '产物说明是套话' });
+    expect(acceptWorkDescription(
+      '{"expectedOutcome":"把想成为宝可梦大师拆开来想"}',
+      object,
+    )).toMatchObject({ ok: false, why: '产物说明是在分析' });
+    expect(acceptWorkDescription(
+      '{"expectedOutcome":"对想成为宝可梦大师做一次开放式探讨"}',
+      object,
+    )).toMatchObject({ ok: false, why: '产物说明是在分析' });
+    expect(acceptWorkDescription(
+      '{"expectedOutcome":"想成为宝可梦大师先放着"}',
+      object,
+    )).toMatchObject({ ok: false, why: '产物说明不是可做的一步' });
     expect(acceptWorkDescription(
       '{"expectedOutcome":"写成一段和这件事无关的旧故事"}',
       object,

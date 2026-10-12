@@ -114,7 +114,7 @@ lease 未过期
 | `defer` | `deferred[]` 追加 open 项，`revisitAt = now + deferRevisitMs` | 无 spawn。有人类入站则发 §8.1 状态回执 |
 | `schedule_revisit` | 改某条 deferred 的 `revisitAt` | 无 spawn。有人类入站则发 §8.1 状态回执 |
 | `reply_to_thread` / `decline` | `social` 减 `decayOnAct`；outbox 式短期记忆 | 经既有回复出口发**被选中的文本**。不再另附状态回执 |
-| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减。派发成功时，选中的工作对象标为 `active` | `digitalEmployeeLoop` reason `drive_threshold`。执行种类由代码投影。`goalText` / `expectedOutcome` 是顾问按选中对象写的话，空的、替人收尾的、或按操作固定的套话不派出。仍可能被容量或到期日程挡住。有人类入站时另发 §8.1 状态回执 |
+| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减。派发成功时，选中的工作对象标为 `active` | `digitalEmployeeLoop` reason `drive_threshold`。执行种类由代码投影。`goalText` / `expectedOutcome` 是顾问按选中对象写的可做动作（练、收集、试、对战、做）。空的、替人收尾的、按操作固定的套话，以及拆开来想、开放式探讨这类分析不派出。仍可能被容量或到期日程挡住。有人类入站时另发 §8.1 状态回执 |
 
 唤醒来源只有已经存在的 reducer：入站 Facade，以及心跳 tick **既有监督顺序之后**的尾步（见 §9）。没有第三个循环。
 
@@ -218,7 +218,7 @@ interface SignalParse {
 
 没有信号时加一句固定话：「这一轮我没有观察到外部信号。」
 
-生成任务句与打分任务句的正文以 `packages/server/src/outer/subject/constants.ts` 的 `GENERATE_TASK` / `EVALUATE_TASK` 为准。白名单名单由 `ALLOWED_ACTIONS` 拼进句子。回复必须写成 `reply_to_thread`，正文只写 `args.text`。`propose_self_work` 的 `drive`、`kind`、`goalText`、`expectedOutcome` 必须非空。自己找工作时，顾问从身份、北极星和自己的承诺上岔开，写进 `args.workObjects`；可以是新对象，也可以是旧题目。打分句不负责给工作对象打分：interestingness 由 §7A 的代码计算。替人收尾打 0。选中对象之后另有一次 `[TASK:DESCRIBE]`，顾问按该对象写 `goalText` 与 `expectedOutcome`。
+生成任务句与打分任务句的正文以 `packages/server/src/outer/subject/constants.ts` 的 `GENERATE_TASK` / `EVALUATE_TASK` 为准。白名单名单由 `ALLOWED_ACTIONS` 拼进句子。回复必须写成 `reply_to_thread`，正文只写 `args.text`。`propose_self_work` 的 `drive`、`kind`、`goalText`、`expectedOutcome` 必须非空。自己找工作时，顾问从身份、北极星和自己的承诺上岔开，写进 `args.workObjects`；可以是新对象，也可以是旧题目。打分句不负责给工作对象打分：interestingness 由 §7A 的代码计算。替人收尾打 0。选中对象之后另有一次 `[TASK:DESCRIBE]`，顾问按该对象写下一步可做的 `goalText` 与 `expectedOutcome`，不写分析或探讨。
 
 转义：`& < > " '` 做 XML 转义；原文里大小写不敏感的 `</observation` 先替换成全角括号形式再转义，避免提前闭合数据槽。转义之后模型仍然**读得到**原文。隔离的含义是：原文不在 system、不在任务句、不能变成 `tool_calls`。
 
@@ -344,7 +344,7 @@ workScore = Σ(weight × oriented) / Σ(weight)
 | `deliver` | `write_deliverable` |
 | `explore` | `open_question` |
 
-产物说明由顾问在选点之后写。`[TASK:DESCRIBE]` 把选中对象的 `label`、`kind`、`op` 和执行种类交给顾问。顾问输出 `goalText` 与 `expectedOutcome`。`goalText` 可以顺着名字改写，但必须还包含这个 label，否则用 label 本身。`expectedOutcome` 必须非空、点名这个对象、不是替人收尾，也不是按操作备好的套话（例如「一个仍开放的问题和两条可核对线索」）。不合格就不派发，不把套话交给内脑。闸门上的 `goalText` / `expectedOutcome` 只负责通过字段校验。`kind`、`drive`、`kpiId` 仍走 §7.2。`drive_threshold` 仍只认既有字段；`work.execution` 是代码投影的执行种类，环不据此调用工具。
+产物说明由顾问在选点之后写。`[TASK:DESCRIBE]` 只把选中对象的 `label`、`kind`、`op` 交给顾问，不把执行种类交给顾问，避免 `open_question` 把话写成探讨。顾问输出 `goalText` 与 `expectedOutcome`。两者都要包含这个 label。`expectedOutcome` 必须是下一步真会做的动作，用上练、收集、试、对战、做、造、打里的一种，并点名这个对象。它不是替人收尾，不是按操作备好的套话（例如「一个仍开放的问题和两条可核对线索」），也不是分析或反思。名字以外出现「拆开来想」「开放式探讨」「分析」「反思」「写成一段话」「搞清」时记 `产物说明是在分析`。点了名却没有这些动作时记 `产物说明不是可做的一步`。不合格就不派发，不改回套话，也不改成一篇分析。`goalText` 只有在同样是可做的一步时才采用顾问的改写；否则用这条 `expectedOutcome`，不用光秃秃的对象名字。对象名字里如果本来有「弄明白」，判断分析时先拿掉名字。闸门上的 `goalText` / `expectedOutcome` 只负责通过字段校验。`kind`、`drive`、`kpiId` 仍走 §7.2。`drive_threshold` 仍只认既有字段；`work.execution` 是代码投影的执行种类，环不据此调用工具。
 
 做完的对象标 `done`。`explore` 与 `gather` 会留下一条 `follow_on`，标签是「我还想再看看「…」」，操作仍是 `explore`。派发成功的对象标 `active`，写回 `state.workObjects`。
 
@@ -543,7 +543,7 @@ lastAccruedAt = now
 |------|-----|
 | **职责** | `propose_self_work` 通过字段校验之后，用主体根和顾问岔开的对象按有趣度选点，并投影到执行种类 |
 | **In** | 身份、北极星、自己的承诺、好奇心、已有对象、`workObjects` 提案、是否闲着 |
-| **Out** | 选中对象的 `execution`；顾问写的 `goalText` 与 `expectedOutcome`；拒绝的工具名、替人收尾和套话 |
+| **Out** | 选中对象的 `execution`；顾问写的可做动作 `goalText` 与 `expectedOutcome`；拒绝的工具名、替人收尾、套话和分析 |
 | **计划路径** | `packages/server/src/outer/subject/work-object.ts` |
 | **Deps** | 无 I/O、无 LLM |
 
@@ -647,7 +647,7 @@ lastAccruedAt = now
 | 3 | 工具名 | `shell` / `set_goal` / `delete_memory` | 拒绝，理由「工具名不能进入工作对象空间」 | unit |
 | 4 | 没人派活 | 闲着，curiosity 0.9，只有身份、北极星和套话目标 | 选中 `north_star`；收尾句和套话目标不进承诺 | unit |
 | 4d | 具体兴趣 | 承诺「想成为宝可梦大师」，另有几条更弱的宝可梦提案 | 选中该承诺。挂着该承诺且有趣度明显更高的提案可以赢过承诺 | unit |
-| 4e | 产物说明 | 选中对象之后顾问写一句点名它的话；或写套话、空话、替人收尾 | 派出顾问的话。套话、空话、替人收尾不派发，也不改回按操作固定的句子 | unit |
+| 4e | 产物说明 | 选中对象之后顾问写一步可做的动作（练、收集、试、对战、做）；或写套话、空话、替人收尾、拆开来想、开放式探讨 | 派出这个动作。套话、空话、替人收尾和分析不派发，也不改回按操作固定的句子 | unit |
 | 4b | 旧题目 | 高 novelty、低 interestingness 的新问题，对照低 novelty 的北极星 | 北极星赢。novelty 不单独决定 | unit |
 | 4c | 岔开 | 挂着根、interestingness 很高、novelty 不高的 proposal | 岔开的对象赢过北极星 | unit |
 | 5 | 心跳派出 | 无人类消息，完整 `propose_self_work`，顾问写了收尾句和 `shell`，没有 workObjects 时同样选根 | 派出北极星的投影；收尾句和 `shell` 不出现；成功后该对象 `active` | unit |
@@ -721,3 +721,4 @@ lastAccruedAt = now
 | 2026-10-12 | §7A 的选点池改由身份、北极星、自己的承诺和好奇心种入。顾问负责岔开，也可以重访旧题目。替人收尾不进池。novelty 权重降到 0.35。无旗标。 |
 | 2026-10-12 | 具体承诺赢过北极星套话。派出的 `goalText` / `expectedOutcome` 带着选中的具体对象。挂着该承诺的更有趣提案可以赢过承诺。无旗标。 |
 | 2026-10-12 | 不再按操作派发固定的 `expectedOutcome`。选点之后由顾问写产物说明；空话、替人收尾和套话不派出。执行种类仍由代码投影。无旗标。 |
+| 2026-10-12 | 产物说明必须是可做的一步（练、收集、试、对战、做、造、打）。拆开来想、开放式探讨这类分析不派出。描述任务不接收执行种类。无旗标。 |

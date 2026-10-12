@@ -829,7 +829,7 @@
                     tags "Outer-Module" "Subject"
                     properties {
                         "path" "packages/server/src/outer/subject/work-object.ts"
-                        "horizon.intention" "根来自身份、北极星、自己的承诺和好奇心。顾问负责岔开或重访，不填空，也不写替人收尾。代码选点。产物说明由顾问按选中对象写，不用按操作固定的句子"
+                        "horizon.intention" "根来自身份、北极星、自己的承诺和好奇心。顾问负责岔开或重访，不填空，也不写替人收尾。代码选点。产物说明必须是可做的一步（练、收集、试、对战、做），拆开来想和开放式探讨不派出"
                         "horizon.in" "workObjects + goals + observations + curiosity + idle"
                         "horizon.out" "选中对象的 execution；顾问写的 goalText 与 expectedOutcome"
                         "horizon.deps" "无 I/O"
