@@ -220,13 +220,13 @@ interface SignalParse {
 生成任务句（固定）：
 
 ```text
-[TASK:GENERATE] 请帮我列出 3 到 5 个我可以采取的候选行动（必须包含 do_nothing 或 defer）。action 只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。回复必须写成 reply_to_thread，不要写成 reply 或 reply_to_user。reply_to_thread 与 decline 的正文只写在 args.text，不要写 args.message。只输出 JSON：{"candidates":[{"action":"reply_to_thread","args":{"text":"…"},"rationale":"…"},{"action":"do_nothing","args":{},"rationale":"…"}]}
+[TASK:GENERATE] 请帮我列出 3 到 5 个我可以采取的候选行动（必须包含 do_nothing 或 defer）。action 只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。回复必须写成 reply_to_thread，不要写成 reply。reply_to_thread 与 decline 的正文只写在 args.text，不要写 args.message。只输出 JSON：{"candidates":[{"action":"reply_to_thread","args":{"text":"…"},"rationale":"…"},{"action":"do_nothing","args":{},"rationale":"…"}]}
 ```
 
-打分任务句（固定，附上代码补全后的候选列表）：
+打分任务句（固定，附上代码补全后的候选列表）。action 名单与白名单相同，由 `ALLOWED_ACTIONS` 拼进任务句，避免提示词和白名单各写一份：
 
 ```text
-[TASK:EVALUATE] 请从我的目标出发给每个候选打 0 到 1 分。只输出 JSON：{"scores":[{"action":"…","score":0.0,"reason":"…"}]}
+[TASK:EVALUATE] 请从我的目标出发给下面每个候选打 0 到 1 分。score 的 action 必须与该候选的 action 完全一致，只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。不要把 reply_to_thread 写成 reply。只输出 JSON：{"scores":[{"action":"reply_to_thread","score":0.0,"reason":"…"}]}
 ```
 
 转义：`& < > " '` 做 XML 转义；原文里大小写不敏感的 `</observation` 先替换成全角括号形式再转义，避免提前闭合数据槽。转义之后模型仍然**读得到**原文。隔离的含义是：原文不在 system、不在任务句、不能变成 `tool_calls`。
@@ -297,7 +297,7 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 
 回复文本只取**被选中候选的 `args.text`**。没有第三次起草调用，也不把顾问的自由 `content` 拿去 `postMessage`。长度按 Unicode 码位，上限 500；`reply_to_thread` 空文本则作废并试下一条；`decline` 空文本用固定句「这件事和我现在的目标不一致，我先不做。」发出去的就是这段文本，经既有回复出口，不再改写。
 
-顾问有时把 action 写成 `reply` 或 `reply_to_user`，或把正文写在 `args.message`。解析候选时先把这两个 action 别名改成 `reply_to_thread`（trim 后大小写不敏感），再按白名单拒绝。仅当改名后的 action 是 `reply_to_thread` 或 `decline`，且 `args.text` 缺失或只有空白，才把 `message` 抄到 `text`。已有非空 `text` 不被覆盖。打分表里的 `reply` / `reply_to_user` 记到 `reply_to_thread` 上；同一 action 同时有规范名和别名时，以规范名的分数为准。`delete_memory` 等不在别名表里的名字不改，仍按白名单拒绝。`decide` 在拒绝前对候选再做一次同样的改名，避免绕过解析器的候选被当成非法 action。
+顾问有时把 action 写成 `reply`，或把正文写在 `args.message`。`reply` 不在白名单内，不改名，记 `why: 不在行动白名单内`。打分表里的 `reply` 也不记到 `reply_to_thread` 上。仅当 action 已经是 `reply_to_thread` 或 `decline`，且 `args.text` 缺失或只有空白，才把 `message` 抄到 `text`。已有非空 `text` 不被覆盖。其他 action（含 `reply`、`delete_memory`）不抄，也不因此变成回复。同一轮里若另有一条合法的 `reply_to_thread` 且它在合法候选中总分最高，仍然选它。
 
 顾问 JSON 的解析：从第一次出现的 `{` 取到最后一次 `}`，`JSON.parse` 失败则该跳视为空列表或全部分数 0。分数不是有限数值、或落在 0..1 之外的，夹到 0..1；缺项当 0。
 
@@ -651,4 +651,4 @@ lastAccruedAt = now
 | 2026-10-12 | SC-11：`no_reply` / `defer` / `wait` 等非聊天终态在同一线程发固定状态回执。不是对话回复，主人 sid 无例外。 |
 | 2026-10-12 | 实现 P0–P2：`outer/subject/*` 接入 Facade、心跳尾步与 `drive_threshold`。无旗标。 |
 | 2026-10-12 | 生成任务句写明 `args.text`。`reply_to_thread` / `decline` 在 `text` 为空时接受 `args.message` 作为别名。 |
-| 2026-10-12 | 生成任务句要求 action 写成 `reply_to_thread`。解析与 `decide` 在白名单拒绝前把 `reply` / `reply_to_user` 改成 `reply_to_thread`，打分表同样改名。 |
+| 2026-10-12 | 生成与打分任务句列出封闭白名单，并写明回复 action 是 `reply_to_thread`、正文是 `args.text`。发明的 `reply` 仍拒绝，不并入白名单。 |

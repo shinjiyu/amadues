@@ -38,7 +38,8 @@ describe('subjectSignalSlot', () => {
     expect(task).toContain('args.text');
     expect(task).toContain('不要写 args.message');
     expect(task).toContain('必须写成 reply_to_thread');
-    expect(task).toContain('不要写成 reply 或 reply_to_user');
+    expect(task).toContain('不要写成 reply');
+    expect(task).toContain('no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work');
   });
 
   it('escapes a closing observation tag so the slot cannot end early', () => {
@@ -69,5 +70,8 @@ describe('subjectSignalSlot', () => {
     expect(prompt.user.startsWith(header.identity)).toBe(true);
     expect(prompt.user).toContain('这一轮我没有观察到外部信号。');
     expect(prompt.user).toContain('[TASK:EVALUATE]');
+    expect(prompt.user).toContain('reply_to_thread');
+    expect(prompt.user).toContain('不要把 reply_to_thread 写成 reply');
+    expect(prompt.user).toContain('no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work');
   });
 });

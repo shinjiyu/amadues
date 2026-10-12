@@ -217,7 +217,7 @@ describe('subjectThink', () => {
     root.cleanup();
   });
 
-  it('posts reply text when the advisor named the action reply', async () => {
+  it('does not post speech when the advisor invents action reply', async () => {
     const root = createTestDataRoot('subject-think-reply-alias-');
     const im = new FakeImChannel();
     const result = await runSubjectThink({
@@ -226,18 +226,19 @@ describe('subjectThink', () => {
       trigger: 'inbound',
       agentSid: 'agent:test',
       imClient: im,
-      signals: [human('human:alice', '在吗')],
+      signals: [human('human:alice', '请回一句很短的确认')],
       callLlm: scripted(
-        '{"candidates":[{"action":"reply","args":{"message":"夜行好，我在"},"rationale":"GLM 用了 reply"}]}',
+        '{"candidates":[{"action":"reply","args":{"message":"收到，测试正常。"},"rationale":"GLM 用了 reply"}]}',
         '{"scores":[{"action":"reply","score":0.95},{"action":"do_nothing","score":0.2},{"action":"defer","score":0}]}',
       ),
     });
-    expect(result.action).toBe('reply_to_thread');
-    expect(result.speechPosted).toBe(true);
-    expect(result.statusPosted).toBe(false);
+    expect(result.action).toBe('do_nothing');
+    expect(result.speechPosted).toBe(false);
+    expect(result.statusPosted).toBe(true);
     expect(im.outbox).toHaveLength(1);
-    expect(im.outbox[0]?.body.text).toBe('夜行好，我在');
-    expect(im.outbox[0]?.body.disposition).toBe('speech');
+    expect(im.outbox[0]?.body.disposition).toBe('status');
+    expect(im.outbox[0]?.body.text).toBe('〔状态〕看到了，这轮不做。');
+    expect(im.outbox[0]?.body.text).not.toContain('收到，测试正常。');
     root.cleanup();
   });
 
