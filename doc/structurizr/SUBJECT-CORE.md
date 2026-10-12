@@ -220,13 +220,13 @@ interface SignalParse {
 生成任务句（固定）：
 
 ```text
-[TASK:GENERATE] 请帮我列出 3 到 5 个我可以采取的候选行动（必须包含 do_nothing 或 defer）。action 只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。回复必须写成 reply_to_thread，不要写成 reply。reply_to_thread 与 decline 的正文只写在 args.text，不要写 args.message。只输出 JSON：{"candidates":[{"action":"reply_to_thread","args":{"text":"…"},"rationale":"…"},{"action":"do_nothing","args":{},"rationale":"…"}]}
+[TASK:GENERATE] 请帮我列出 3 到 5 个我可以采取的候选行动（必须包含 do_nothing 或 defer）。action 只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。回复必须写成 reply_to_thread，不要写成 reply。reply_to_thread 与 decline 的正文只写在 args.text，不要写 args.message。propose_self_work 必须同时给出 drive（curiosity 或 completion）、kind（没有 active KPI 就用 ad_hoc；有才用 kpi_advance 并带 kpiId）、goalText、expectedOutcome，四项都要非空。schedule_revisit 只在已有 open 延后项时使用，args 写 deferredId 与 revisitAt，不要用它代替 propose_self_work。只输出 JSON：{"candidates":[{"action":"reply_to_thread","args":{"text":"…"},"rationale":"…"},{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"…","expectedOutcome":"…"},"rationale":"…"},{"action":"do_nothing","args":{},"rationale":"…"}]}
 ```
 
 打分任务句（固定，附上代码补全后的候选列表）。action 名单与白名单相同，由 `ALLOWED_ACTIONS` 拼进任务句，避免提示词和白名单各写一份：
 
 ```text
-[TASK:EVALUATE] 请从我的目标出发给下面每个候选打 0 到 1 分。score 的 action 必须与该候选的 action 完全一致，只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。不要把 reply_to_thread 写成 reply。只输出 JSON：{"scores":[{"action":"reply_to_thread","score":0.0,"reason":"…"}]}
+[TASK:EVALUATE] 请从我的目标出发给下面每个候选打 0 到 1 分。score 的 action 必须与该候选的 action 完全一致，只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。不要把 reply_to_thread 写成 reply。缺 goalText、expectedOutcome、drive 或 kind 的 propose_self_work 打 0。没有 deferredId 的 schedule_revisit 打 0。完整的 propose_self_work 按对应驱动力打分，不要让空的 schedule_revisit 压过它。只输出 JSON：{"scores":[{"action":"reply_to_thread","score":0.0,"reason":"…"}]}
 ```
 
 转义：`& < > " '` 做 XML 转义；原文里大小写不敏感的 `</observation` 先替换成全角括号形式再转义，避免提前闭合数据槽。转义之后模型仍然**读得到**原文。隔离的含义是：原文不在 system、不在任务句、不能变成 `tool_calls`。
@@ -292,6 +292,8 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
   expectedOutcome: string; // 必填，供既有 validateSelfWorkProposal 使用
 }
 ```
+
+解析时把常见别名抄进这四个字段，再打分：`goal` / `goal_text` / `action` / `title` / `task` → `goalText`；`expected_outcome` / `outcome` / `deliverable` → `expectedOutcome`；`kpi_id` → `kpiId`；`ad-hoc` / `adhoc` / `one_shot` → `ad_hoc`；`advance` → `kpi_advance`；`curious` → `curiosity`；`complete` → `completion`。两条正文都有、但 `kind` 或 `drive` 仍空时：有 `kpiId` 则 `kind=kpi_advance` 且 `drive=completion`，否则 `kind=ad_hoc` 且 `drive=curiosity`。正文仍缺则不补 `drive`，这条候选记 `why: 字段不完整` 并试下一条，不把空 `goalText` 送进 `drive_threshold`（避免 `action_missing`）。`kind=kpi_advance` 且 `kpiId` 不是 active KPI 时仍作废。`schedule_revisit` 的 `deferredId` 必须是一条 open deferred，否则记 `why: 无对应延后项` 并试下一条；因此一条空的 `schedule_revisit` 不会压过已经补全的 `propose_self_work`。指向真实 open 项、且总分更高的 `schedule_revisit` 仍然当选。
 
 **不在白名单内的名字一律拒绝并记 `why: 不在行动白名单内`。** 包括模型写出的 `set_goal`、`delete_memory`、`shell`、任何今天 `OUTER_TOOL_DEFS` 里的工具名。白名单不是「把现有工具都允许一遍」。
 
@@ -652,3 +654,4 @@ lastAccruedAt = now
 | 2026-10-12 | 实现 P0–P2：`outer/subject/*` 接入 Facade、心跳尾步与 `drive_threshold`。无旗标。 |
 | 2026-10-12 | 生成任务句写明 `args.text`。`reply_to_thread` / `decline` 在 `text` 为空时接受 `args.message` 作为别名。 |
 | 2026-10-12 | 生成与打分任务句列出封闭白名单，并写明回复 action 是 `reply_to_thread`、正文是 `args.text`。发明的 `reply` 仍拒绝，不并入白名单。 |
+| 2026-10-12 | `propose_self_work` 的封闭字段写进生成/打分任务句。别名补全后缺正文则作废；空的 `schedule_revisit` 作废。完整提案才进 `drive_threshold`。 |

@@ -305,6 +305,118 @@ describe('subjectThink', () => {
     root.cleanup();
   });
 
+  it('normalizes alias fields and dispatches a complete propose_self_work', async () => {
+    const root = createTestDataRoot('subject-think-propose-alias-');
+    const now = Date.parse('2026-10-12T00:00:00.000Z');
+    const state = loadState(root.dataRoot, now);
+    saveState(root.dataRoot, {
+      ...state,
+      drives: { curiosity: 0.85, social: 0.1, completion: 0.15 },
+    });
+    const proposals: Array<{ kind: string; goalText: string; expectedOutcome: string; drive: string; kpiId?: string }> = [];
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: now,
+      trigger: 'heartbeat_tail',
+      agentSid: 'agent:test',
+      activeKpiIds: [],
+      dispatchProposal: async (proposal) => {
+        proposals.push(proposal);
+        return { dispatched: true, reason: 'self_work_dispatched' };
+      },
+      callLlm: scripted(
+        '{"candidates":[{"action":"propose_self_work","args":{"goal":"看看仓库","expected_outcome":"一条笔记","type":"ad-hoc"}},{"action":"schedule_revisit","args":{"deferredId":"missing","revisitAt":"2026-10-13T00:00:00.000Z"}}]}',
+        '{"scores":[{"action":"schedule_revisit","score":0.95},{"action":"propose_self_work","score":0.62},{"action":"do_nothing","score":0.1},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(result.action).toBe('propose_self_work');
+    expect(result.speechPosted).toBe(false);
+    expect(proposals).toEqual([{
+      kind: 'ad_hoc',
+      kpiId: undefined,
+      goalText: '看看仓库',
+      expectedOutcome: '一条笔记',
+      drive: 'curiosity',
+    }]);
+    expect(loadState(root.dataRoot, now).drives.curiosity).toBeCloseTo(0.35);
+    root.cleanup();
+  });
+
+  it('does not dispatch an incomplete propose_self_work', async () => {
+    const root = createTestDataRoot('subject-think-propose-incomplete-');
+    let dispatched = 0;
+    const im = new FakeImChannel();
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: Date.parse('2026-10-12T00:00:00.000Z'),
+      trigger: 'inbound',
+      agentSid: 'agent:test',
+      imClient: im,
+      signals: [human('human:alice', '你自己看着办')],
+      dispatchProposal: async () => {
+        dispatched += 1;
+        return { dispatched: true, reason: 'self_work_dispatched' };
+      },
+      callLlm: scripted(
+        '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity"}}]}',
+        '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0.2},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(dispatched).toBe(0);
+    expect(result.action).toBe('do_nothing');
+    expect(result.speechPosted).toBe(false);
+    expect(im.outbox[0]?.body.text).toBe('〔状态〕看到了，这轮不做。');
+    root.cleanup();
+  });
+
+  it('keeps a schedule_revisit that names an open deferred item', async () => {
+    const root = createTestDataRoot('subject-think-revisit-open-');
+    const now = Date.parse('2026-10-12T00:00:00.000Z');
+    const state = loadState(root.dataRoot, now);
+    saveState(root.dataRoot, {
+      ...state,
+      drives: { curiosity: 0.9, social: 0.1, completion: 0.2 },
+      deferred: [{
+        id: 'def-open',
+        source: 'human:alice',
+        kind: 'message',
+        threadId: 'thread:dm:1',
+        raw: '回头再看',
+        parsed: {
+          source: 'human:alice',
+          kind: 'message',
+          intent_category: 'statement',
+          entities: [],
+          sentiment: 'neutral',
+        },
+        createdAt: new Date(now).toISOString(),
+        revisitAt: new Date(now).toISOString(),
+        statusAckAt: null,
+        status: 'open',
+      }],
+    });
+    let dispatched = 0;
+    const result = await runSubjectThink({
+      dataRoot: root.dataRoot,
+      nowMs: now,
+      trigger: 'heartbeat_tail',
+      agentSid: 'agent:test',
+      dispatchProposal: async () => {
+        dispatched += 1;
+        return { dispatched: true, reason: 'self_work_dispatched' };
+      },
+      callLlm: scripted(
+        '{"candidates":[{"action":"schedule_revisit","args":{"deferredId":"def-open","revisitAt":"2026-10-13T00:00:00.000Z"}},{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"看看仓库","expectedOutcome":"一条笔记"}}]}',
+        '{"scores":[{"action":"schedule_revisit","score":1},{"action":"propose_self_work","score":0.2},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
+      ),
+    });
+    expect(result.action).toBe('schedule_revisit');
+    expect(dispatched).toBe(0);
+    expect(loadState(root.dataRoot, now).deferred.find((item) => item.id === 'def-open')?.revisitAt)
+      .toBe('2026-10-13T00:00:00.000Z');
+    root.cleanup();
+  });
+
   it('posts status when a later think drains a silent inbox item', async () => {
     const root = createTestDataRoot('subject-think-inbox-later-');
     const now = Date.parse('2026-10-12T03:00:00.000Z');

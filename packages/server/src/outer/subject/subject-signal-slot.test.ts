@@ -40,6 +40,9 @@ describe('subjectSignalSlot', () => {
     expect(task).toContain('必须写成 reply_to_thread');
     expect(task).toContain('不要写成 reply');
     expect(task).toContain('no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work');
+    expect(task).toContain('goalText');
+    expect(task).toContain('expectedOutcome');
+    expect(task).toContain('不要用它代替 propose_self_work');
   });
 
   it('escapes a closing observation tag so the slot cannot end early', () => {
@@ -72,6 +75,8 @@ describe('subjectSignalSlot', () => {
     expect(prompt.user).toContain('[TASK:EVALUATE]');
     expect(prompt.user).toContain('reply_to_thread');
     expect(prompt.user).toContain('不要把 reply_to_thread 写成 reply');
+    expect(prompt.user).toContain('缺 goalText、expectedOutcome、drive 或 kind 的 propose_self_work 打 0');
+    expect(prompt.user).toContain('没有 deferredId 的 schedule_revisit 打 0');
     expect(prompt.user).toContain('no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work');
   });
 });

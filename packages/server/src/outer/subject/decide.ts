@@ -29,6 +29,74 @@ function nonEmptyString(value: unknown): boolean {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function firstText(args: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function canonicalKind(raw: string): 'ad_hoc' | 'kpi_advance' | null {
+  const name = raw.toLowerCase().replace(/-/g, '_');
+  if (name === 'ad_hoc' || name === 'adhoc' || name === 'one_shot' || name === 'oneshot') return 'ad_hoc';
+  if (name === 'kpi_advance' || name === 'kpiadvance' || name === 'advance') return 'kpi_advance';
+  return null;
+}
+
+function canonicalDrive(raw: string): 'curiosity' | 'completion' | null {
+  const name = raw.toLowerCase();
+  if (name === 'curiosity' || name === 'curious') return 'curiosity';
+  if (name === 'completion' || name === 'complete') return 'completion';
+  return null;
+}
+
+export interface ProposeSelfWorkFields {
+  kind: 'kpi_advance' | 'ad_hoc';
+  kpiId?: string;
+  goalText: string;
+  expectedOutcome: string;
+  drive: 'curiosity' | 'completion';
+}
+
+/**
+ * Copy nearby field names onto the closed propose_self_work schema.
+ * goal/action/title, expected_outcome/outcome, kpi_id, ad-hoc, and
+ * curious/complete become goalText, expectedOutcome, kpiId, kind, and drive.
+ * Drive and kind are filled in only when both texts are present, so an
+ * empty proposal does not pick up a drive weight. Other actions are unchanged.
+ */
+export function normalizeProposeSelfWorkArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const goalText = firstText(args, ['goalText', 'goal_text', 'goal', 'action', 'title', 'task']);
+  const expectedOutcome = firstText(args, ['expectedOutcome', 'expected_outcome', 'outcome', 'deliverable']);
+  const kpiId = firstText(args, ['kpiId', 'kpi_id']);
+  const explicitKind = canonicalKind(firstText(args, ['kind', 'type', 'mode']));
+  const explicitDrive = canonicalDrive(firstText(args, ['drive']));
+  const complete = goalText.length > 0 && expectedOutcome.length > 0;
+  const kind = explicitKind ?? (complete ? (kpiId ? 'kpi_advance' : 'ad_hoc') : null);
+  const drive = explicitDrive ?? (complete && kind ? (kind === 'kpi_advance' ? 'completion' : 'curiosity') : null);
+  const next: Record<string, unknown> = { ...args };
+  if (goalText) next.goalText = goalText;
+  if (expectedOutcome) next.expectedOutcome = expectedOutcome;
+  if (kpiId) next.kpiId = kpiId;
+  if (kind) next.kind = kind;
+  if (drive) next.drive = drive;
+  return next;
+}
+
+export function readProposeSelfWork(args: Record<string, unknown>):
+  | { ok: true; proposal: ProposeSelfWorkFields }
+  | { ok: false; why: '字段不完整' } {
+  const normalized = normalizeProposeSelfWorkArgs(args);
+  const goalText = typeof normalized.goalText === 'string' ? normalized.goalText.trim() : '';
+  const expectedOutcome = typeof normalized.expectedOutcome === 'string' ? normalized.expectedOutcome.trim() : '';
+  const kind = normalized.kind === 'ad_hoc' || normalized.kind === 'kpi_advance' ? normalized.kind : null;
+  const drive = normalized.drive === 'curiosity' || normalized.drive === 'completion' ? normalized.drive : null;
+  const kpiId = typeof normalized.kpiId === 'string' && normalized.kpiId.trim() ? normalized.kpiId.trim() : undefined;
+  if (!goalText || !expectedOutcome || !kind || !drive) return { ok: false, why: '字段不完整' };
+  return { ok: true, proposal: { kind, kpiId, goalText, expectedOutcome, drive } };
+}
+
 /**
  * Reply body is `args.text`. Some models write `args.message` instead.
  * Copy that onto `text` only for reply_to_thread and decline, and only when
@@ -44,7 +112,8 @@ export function normalizeCandidateArgs(action: string, args: Record<string, unkn
 
 function prepareCandidate(candidate: Candidate): Candidate {
   const action = candidate.action.trim();
-  const args = normalizeCandidateArgs(action, candidate.args);
+  let args = normalizeCandidateArgs(action, candidate.args);
+  if (action === 'propose_self_work') args = normalizeProposeSelfWorkArgs(args);
   if (candidate.action !== action) candidate.action = action;
   if (candidate.args !== args) candidate.args = args;
   return candidate;

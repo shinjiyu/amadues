@@ -154,4 +154,53 @@ describe('DigitalEmployeeLoop', () => {
     expect(propose).not.toHaveBeenCalled();
     expect(dispatchProposal).not.toHaveBeenCalled();
   });
+
+  it('drive_threshold dispatches a complete ad_hoc proposal', async () => {
+    const dispatchAdHoc = vi.fn().mockResolvedValue(undefined);
+    const propose = vi.fn();
+    const loop = new DigitalEmployeeLoop({
+      collectEnvironment: vi.fn().mockResolvedValue(environment()),
+      calendar: { listDue: vi.fn().mockResolvedValue([]), execute: vi.fn() },
+      selfWorkPolicy: { propose },
+      dispatchProposal: vi.fn(),
+      dispatchAdHoc,
+    });
+    const result = await loop.trigger('drive_threshold', {
+      subjectProposal: {
+        kind: 'ad_hoc',
+        goalText: '看看仓库',
+        expectedOutcome: '一条笔记',
+        drive: 'curiosity',
+      },
+    });
+    expect(result.subjectProposalDispatched).toBe(true);
+    expect(result.reason).toBe('self_work_dispatched');
+    expect(dispatchAdHoc).toHaveBeenCalledWith({ goalText: '看看仓库', expectedOutcome: '一条笔记' });
+    expect(propose).not.toHaveBeenCalled();
+  });
+
+  it('drive_threshold rejects an ad_hoc proposal with no goalText', async () => {
+    const dispatchAdHoc = vi.fn();
+    const logs: Array<{ reason: string; detail?: string }> = [];
+    const loop = new DigitalEmployeeLoop({
+      collectEnvironment: vi.fn().mockResolvedValue(environment()),
+      calendar: { listDue: vi.fn().mockResolvedValue([]), execute: vi.fn() },
+      selfWorkPolicy: { propose: vi.fn() },
+      dispatchProposal: vi.fn(),
+      dispatchAdHoc,
+      log: (entry) => logs.push({ reason: entry.reason, detail: entry.detail }),
+    });
+    const result = await loop.trigger('drive_threshold', {
+      subjectProposal: {
+        kind: 'ad_hoc',
+        goalText: '  ',
+        expectedOutcome: '',
+        drive: 'curiosity',
+      },
+    });
+    expect(result.subjectProposalDispatched).toBe(false);
+    expect(result.reason).toBe('subject_proposal_rejected');
+    expect(dispatchAdHoc).not.toHaveBeenCalled();
+    expect(logs).toContainEqual({ reason: 'subject_proposal_rejected', detail: 'action_missing' });
+  });
 });

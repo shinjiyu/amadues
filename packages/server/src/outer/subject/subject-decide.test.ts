@@ -116,6 +116,52 @@ describe('subjectDecide', () => {
     expect(chosen.total).toBeCloseTo(0.8 + 0.3 * 0.4);
   });
 
+  it('fills a complete propose_self_work from aliases and does not invent fields for other actions', () => {
+    const rows = parseCandidates(JSON.stringify({
+      candidates: [
+        {
+          action: 'propose_self_work',
+          args: { goal: '看看仓库', expected_outcome: '一条笔记', type: 'ad-hoc' },
+        },
+        {
+          action: 'propose_self_work',
+          args: { goal_text: '推进一章', outcome: '三千字', kpi_id: 'kpi-1', kind: 'kpi_advance' },
+        },
+        { action: 'propose_self_work', args: { drive: 'social' } },
+        { action: 'delete_memory', args: { goal: '删掉', action: '全部删掉' } },
+      ],
+    }));
+    expect(rows[0]?.args).toMatchObject({
+      drive: 'curiosity',
+      kind: 'ad_hoc',
+      goalText: '看看仓库',
+      expectedOutcome: '一条笔记',
+    });
+    expect(rows[1]?.args).toMatchObject({
+      drive: 'completion',
+      kind: 'kpi_advance',
+      kpiId: 'kpi-1',
+      goalText: '推进一章',
+      expectedOutcome: '三千字',
+    });
+    expect(rows[2]?.args.goalText).toBeUndefined();
+    expect(rows[2]?.args.drive).toBe('social');
+    expect(rows[3]?.action).toBe('delete_memory');
+    expect(rows[3]?.args.goalText).toBeUndefined();
+
+    const chosen = decide({
+      candidates: [rows[0]!, candidate('schedule_revisit', { deferredId: 'missing' }), candidate('do_nothing')],
+      scores: [
+        { action: 'propose_self_work', score: 0.7 },
+        { action: 'schedule_revisit', score: 0.7 },
+        { action: 'do_nothing', score: 0 },
+      ],
+      drives: { curiosity: 0.9, social: 0.1, completion: 0.2 },
+    });
+    expect(chosen.chosen?.action).toBe('propose_self_work');
+    expect(chosen.chosen?.args.goalText).toBe('看看仓库');
+  });
+
   it('does not accept a privileged sid', () => {
     type DecideInput = Parameters<typeof decide>[0];
     type HasSid = 'sid' extends keyof DecideInput ? true : false;

@@ -45,10 +45,10 @@ export type SubjectAction = (typeof ALLOWED_ACTIONS)[number];
 const ALLOWED_ACTION_LIST = ALLOWED_ACTIONS.join('、');
 
 export const GENERATE_TASK =
-  `[TASK:GENERATE] 请帮我列出 3 到 5 个我可以采取的候选行动（必须包含 do_nothing 或 defer）。action 只能是 ${ALLOWED_ACTION_LIST}。回复必须写成 reply_to_thread，不要写成 reply。reply_to_thread 与 decline 的正文只写在 args.text，不要写 args.message。只输出 JSON：{"candidates":[{"action":"reply_to_thread","args":{"text":"…"},"rationale":"…"},{"action":"do_nothing","args":{},"rationale":"…"}]}`;
+  `[TASK:GENERATE] 请帮我列出 3 到 5 个我可以采取的候选行动（必须包含 do_nothing 或 defer）。action 只能是 ${ALLOWED_ACTION_LIST}。回复必须写成 reply_to_thread，不要写成 reply。reply_to_thread 与 decline 的正文只写在 args.text，不要写 args.message。propose_self_work 必须同时给出 drive（curiosity 或 completion）、kind（没有 active KPI 就用 ad_hoc；有才用 kpi_advance 并带 kpiId）、goalText、expectedOutcome，四项都要非空。schedule_revisit 只在已有 open 延后项时使用，args 写 deferredId 与 revisitAt，不要用它代替 propose_self_work。只输出 JSON：{"candidates":[{"action":"reply_to_thread","args":{"text":"…"},"rationale":"…"},{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"…","expectedOutcome":"…"},"rationale":"…"},{"action":"do_nothing","args":{},"rationale":"…"}]}`;
 
 export const EVALUATE_TASK =
-  `[TASK:EVALUATE] 请从我的目标出发给下面每个候选打 0 到 1 分。score 的 action 必须与该候选的 action 完全一致，只能是 ${ALLOWED_ACTION_LIST}。不要把 reply_to_thread 写成 reply。只输出 JSON：{"scores":[{"action":"reply_to_thread","score":0.0,"reason":"…"}]}`;
+  `[TASK:EVALUATE] 请从我的目标出发给下面每个候选打 0 到 1 分。score 的 action 必须与该候选的 action 完全一致，只能是 ${ALLOWED_ACTION_LIST}。不要把 reply_to_thread 写成 reply。缺 goalText、expectedOutcome、drive 或 kind 的 propose_self_work 打 0。没有 deferredId 的 schedule_revisit 打 0。完整的 propose_self_work 按对应驱动力打分，不要让空的 schedule_revisit 压过它。只输出 JSON：{"scores":[{"action":"reply_to_thread","score":0.0,"reason":"…"}]}`;
 
 export const DECLINE_FALLBACK = '这件事和我现在的目标不一致，我先不做。';
 

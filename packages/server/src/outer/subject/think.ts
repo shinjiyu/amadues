@@ -10,7 +10,7 @@ import {
   STATUS_THREAD_CAP,
 } from './constants.js';
 import { decayDrive, accrue, heartbeatShouldThink } from './drive.js';
-import { decide, driveOf, ensureDoNothingAndDefer, parseCandidates, parseScores } from './decide.js';
+import { decide, driveOf, ensureDoNothingAndDefer, parseCandidates, parseScores, readProposeSelfWork } from './decide.js';
 import { alignmentOf, buildSubjectUserMessage, escapeObservation, parseSignal } from './signal-slot.js';
 import { reactionFor, statusText } from './status-ack.js';
 import {
@@ -292,10 +292,27 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
       continue;
     }
     if (chosen.action === 'propose_self_work') {
-      const kind = chosen.args.kind === 'ad_hoc' ? 'ad_hoc' : 'kpi_advance';
-      const kpiId = typeof chosen.args.kpiId === 'string' ? chosen.args.kpiId : '';
-      if (kind === 'kpi_advance' && !active.has(kpiId)) {
+      const ready = readProposeSelfWork(chosen.args);
+      const kpiId = ready.ok ? ready.proposal.kpiId ?? '' : '';
+      if (!ready.ok) {
+        decision.rejected.push({ action: 'propose_self_work', why: ready.why });
+        pool = pool.filter((row) => row !== chosen);
+        decision = decide({ candidates: pool, scores, drives: state.drives, driveWeight: state.driveWeight });
+        continue;
+      }
+      if (ready.proposal.kind === 'kpi_advance' && !active.has(kpiId)) {
         decision.rejected.push({ action: 'propose_self_work', why: '无 active KPI' });
+        pool = pool.filter((row) => row !== chosen);
+        decision = decide({ candidates: pool, scores, drives: state.drives, driveWeight: state.driveWeight });
+        continue;
+      }
+      chosen.args = { ...chosen.args, ...ready.proposal };
+    }
+    if (chosen.action === 'schedule_revisit') {
+      const deferredId = typeof chosen.args.deferredId === 'string' ? chosen.args.deferredId : '';
+      const open = state.deferred.some((item) => item.status === 'open' && item.id === deferredId);
+      if (!open) {
+        decision.rejected.push({ action: 'schedule_revisit', why: '无对应延后项' });
         pool = pool.filter((row) => row !== chosen);
         decision = decide({ candidates: pool, scores, drives: state.drives, driveWeight: state.driveWeight });
         continue;
@@ -387,23 +404,23 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
     state = pushShortTerm(state, { at: nowIso, action: chosen.action, result: text });
     result = text;
   } else if (chosen.action === 'propose_self_work') {
-    const kind = chosen.args.kind === 'ad_hoc' ? 'ad_hoc' : 'kpi_advance';
-    const drive = chosen.args.drive === 'curiosity' ? 'curiosity' : 'completion';
-    const goalText = truncateCodePoints(typeof chosen.args.goalText === 'string' ? chosen.args.goalText : '', 500);
-    const expectedOutcome = typeof chosen.args.expectedOutcome === 'string' ? chosen.args.expectedOutcome : '';
-    const kpiId = typeof chosen.args.kpiId === 'string' ? chosen.args.kpiId : undefined;
-    let dispatched: SubjectDispatchResult = { dispatched: false, reason: 'no_dispatcher' };
-    if (input.dispatchProposal) {
+    const ready = readProposeSelfWork(chosen.args);
+    let dispatched: SubjectDispatchResult = { dispatched: false, reason: ready.ok ? 'no_dispatcher' : ready.why };
+    if (ready.ok && input.dispatchProposal) {
+      const proposal = {
+        ...ready.proposal,
+        goalText: truncateCodePoints(ready.proposal.goalText, 500),
+      };
       try {
-        dispatched = await input.dispatchProposal({ kind, kpiId, goalText, expectedOutcome, drive });
+        dispatched = await input.dispatchProposal(proposal);
       } catch (error) {
         dispatched = { dispatched: false, reason: error instanceof Error ? error.message : 'dispatch_failed' };
       }
     }
     proposalDispatched = dispatched.dispatched;
     result = dispatched.reason;
-    if (proposalDispatched) state = decayDrive(state, drive);
-    else {
+    if (ready.ok && proposalDispatched) state = decayDrive(state, ready.proposal.drive);
+    else if (ready.ok) {
       state = {
         ...state,
         deferred: [...state.deferred, {
