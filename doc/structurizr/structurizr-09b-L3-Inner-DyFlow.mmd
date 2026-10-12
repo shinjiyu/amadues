@@ -1,0 +1,77 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L3 内脑 — DyFlow（designer/runner/baseNode + promote_local_node + LocalNode/Memory + Abstractor/Assembler）"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      subgraph 15 ["Agent Server"]
+        style 15 fill:#ffffff,stroke:#2e6295,color:#2e6295
+
+        26["<div style='font-weight: bold'>LLM Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【模型网关】参与判别、外脑对话、复盘、roundtrip<br />草稿；Zhipu/Kimi/LocalModule</div>"]
+        style 26 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        62["<div style='font-weight: bold'>NodeDef drive9 Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>drive9 /nodes/shared/<br />客户端：list/get/put/tombstone +<br />index.json 维护 + dedupeKey 查询</div>"]
+        style 62 fill:#85bbf0,stroke:#5d82a8,color:#000000
+      end
+
+      subgraph 80 ["Inner Brain Worker"]
+        style 80 fill:#ffffff,stroke:#2e6295,color:#2e6295
+
+        101["<div style='font-weight: bold'>LocalNode Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>.brain/local_nodes/*.json +<br />index 读写；preset / creator /<br />imported 三 origin</div>"]
+        style 101 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        102["<div style='font-weight: bold'>Memory Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>.brain/memory.json：global<br />memory（goal/constraints/facts/last_failure/node_results/kpi_progress）</div>"]
+        style 102 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        103["<div style='font-weight: bold'>Designer Tool Registry</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>Designer<br />专用工具集：list_local_nodes /<br />read_local_node / read_memory<br />/ read_trace /<br />search_and_instance /<br />commit_local_dag /<br />report_done</div>"]
+        style 103 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        104["<div style='font-weight: bold'>Preset Seeder</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>首次 spawn 注入 preset/*<br />LocalNode（base /<br />extract_facts）</div>"]
+        style 104 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        106["<div style='font-weight: bold'>Node Abstractor</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>LocalNode → NodeDef：LLM 推断<br />placeholder + 校验 sanitized<br />无残留 + dedupeKey + 写<br />nodeDefDrive9Store</div>"]
+        style 106 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        107["<div style='font-weight: bold'>Node Assembler</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>NodeDef + binding →<br />LocalNode：LLM 推断<br />binding（envSnapshot+hints）+<br />机械替换 placeholder</div>"]
+        style 107 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        111["<div style='font-weight: bold'>Inner File Tools</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>read_file / search_files /<br />write_file /<br />edit_file；peer：read_peer_file<br />/ list_peer_files</div>"]
+        style 111 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        81["<div style='font-weight: bold'>Worker Host</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>子进程入口、status.json、tick 循环</div>"]
+        style 81 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        82["<div style='font-weight: bold'>Pi-mono Scheduler</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>run-tick：驱动 DyFlow<br />Controller.tick</div>"]
+        style 82 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        83["<div style='font-weight: bold'>Controller FSM</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>DyFlow mode<br />切换：DESIGN|RUN|AWAITING|DONE</div>"]
+        style 83 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        84["<div style='font-weight: bold'>Designer (DyFlow)</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>DESIGN 阶段：LLM 编排 local_dag；读<br />memory + last_failure +<br />LocalNode index；调 Designer<br />Tools</div>"]
+        style 84 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        85["<div style='font-weight: bold'>Runner (DyFlow)</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>RUN 阶段：解析 local_dag，按<br />NodeInst 派发 baseNode /<br />graph；写 memory.node_results &<br />last_failure</div>"]
+        style 85 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        98["<div style='font-weight: bold'>BaseNode Executor (DyFlow)</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>单 baseNode 执行：LLM + tools<br />allowlist + ReAct（猛猛干）；产出<br />outputs 或 high-confidence<br />failure_summary</div>"]
+        style 98 fill:#85bbf0,stroke:#5d82a8,color:#000000
+      end
+
+    end
+
+    81-. "<div>run-tick</div><div style='font-size: 70%'>[in-process]</div>" .->82
+    82-. "<div>tick()</div><div style='font-size: 70%'>[in-process]</div>" .->83
+    83-. "<div>mode=DESIGN</div><div style='font-size: 70%'>[in-process]</div>" .->84
+    83-. "<div>mode=RUN</div><div style='font-size: 70%'>[in-process]</div>" .->85
+    84-. "<div>tools allowlist</div><div style='font-size: 70%'>[in-process]</div>" .->103
+    84-. "<div>read<br />goal/last_failure/facts/constraints</div><div style='font-size: 70%'>[in-process]</div>" .->102
+    84-. "<div>list / read LocalNode</div><div style='font-size: 70%'>[in-process]</div>" .->101
+    84-. "<div>DESIGN LLM</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    85-. "<div>dispatch baseNode</div><div style='font-size: 70%'>[in-process]</div>" .->98
+    85-. "<div>resolve ref → LocalNode</div><div style='font-size: 70%'>[in-process]</div>" .->101
+    85-. "<div>write node_results /<br />last_failure</div><div style='font-size: 70%'>[in-process]</div>" .->102
+    98-. "<div>RUN tool_calls</div><div style='font-size: 70%'>[in-process]</div>" .->111
+    98-. "<div>ReAct LLM</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    106-. "<div>placeholder 推断 LLM</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    106-. "<div>put NodeDef + index</div><div style='font-size: 70%'>[HTTPS]</div>" .->62
+    107-. "<div>binding 推断 LLM</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    107-. "<div>commit imported LocalNode</div><div style='font-size: 70%'>[in-process]</div>" .->101
+    103-. "<div>search_and_instance 内循环</div><div style='font-size: 70%'>[in-process]</div>" .->107
+    103-. "<div>search NodeDef catalog</div><div style='font-size: 70%'>[HTTPS]</div>" .->62
+    103-. "<div>list / read /<br />promote_local_node commit</div><div style='font-size: 70%'>[in-process]</div>" .->101
+    103-. "<div>fire-and-forget on<br />promote_local_node</div><div style='font-size: 70%'>[in-process]</div>" .->106
+    103-. "<div>read / report_done</div><div style='font-size: 70%'>[in-process]</div>" .->102
+    81-. "<div>首次 spawn 注入 preset/*</div><div style='font-size: 70%'>[in-process]</div>" .->104
+    104-. "<div>write preset LocalNode</div><div style='font-size: 70%'>[file]</div>" .->101
+
+  end

@@ -1,0 +1,96 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Container View: Kuroneko (utlra)"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>用户</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>仅经 IM 渠道对话与派任务；不直连 Agent API</div>"]
+    style 1 fill:#ffffff,stroke:#444444,color:#444444
+    2["<div style='font-weight: bold'>运维/观察者</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>ops-console、performance<br />dashboard；查看内外脑与 KPI</div>"]
+    style 2 fill:#ffffff,stroke:#444444,color:#444444
+    3["<div style='font-weight: bold'>Discord</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>外部 IM（Gateway + REST）</div>"]
+    style 3 fill:#8e44ad,stroke:#632f79,color:#ffffff
+    4["<div style='font-weight: bold'>飞书 / Lark</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>外部 IM：企业自建应用机器人；一 agent 可 N<br />条连接（非单例）</div>"]
+    style 4 fill:#8e44ad,stroke:#632f79,color:#ffffff
+    5["<div style='font-weight: bold'>微信 iLink（ClawBot）</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>外部 IM：个人微信号 Bot<br />API（ilinkai.weixin.qq.com）；扫码登录、长轮询、基本仅私聊</div>"]
+    style 5 fill:#8e44ad,stroke:#632f79,color:#ffffff
+    8["<div style='font-weight: bold'>LLM 提供商</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Zhipu / LocalModule 等</div>"]
+    style 8 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    9["<div style='font-weight: bold'>mem9</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>对话与任务云记忆</div>"]
+    style 9 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    10["<div style='font-weight: bold'>drive9</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>技能 / 知识 Markdown + grep</div>"]
+    style 10 fill:#999999,stroke:#6b6b6b,color:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      115["<div style='font-weight: bold'>Discord Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/discord-bridge]</div><div style='font-size: 80%; margin-top:10px'>Discord ↔ ChatIR</div>"]
+      style 115 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      116["<div style='font-weight: bold'>WebChat Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/webchat-bridge]</div><div style='font-size: 80%; margin-top:10px'>chat-server ↔ agent；出站 asset:<br />→ POST /uploads</div>"]
+      style 116 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      117["<div style='font-weight: bold'>Feishu Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/feishu-bridge]</div><div style='font-size: 80%; margin-top:10px'>飞书 ↔ ChatIR；N 连接/热插；入站经<br />identityBindingIndex.resolve</div>"]
+      style 117 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      118["<div style='font-weight: bold'>WeChat Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/wechat-bridge]</div><div style='font-size: 80%; margin-top:10px'>微信 iLink ↔ ChatIR；扫码登录<br />bot_token；长轮询收消息；context_token<br />会话锚点</div>"]
+      style 118 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      119["<div style='font-weight: bold'>Chat Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js apps/chat-server]</div><div style='font-size: 80%; margin-top:10px'>本地 IM 服务：REST + WS<br />消息枢纽（大群/私聊）</div>"]
+      style 119 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      12["<div style='font-weight: bold'>Chat IR</div><div style='font-size: 70%; margin-top: 0px'>[Container: npm @utlra/chat-ir]</div><div style='font-size: 80%; margin-top:10px'>消息/线程<br />schema、ChatIRChannel、FanInChatIRChannel（多连接合流/路由）、ChatIRSeenTracker、identityBindingIndex（channel_key→sid）、StructuredReply</div>"]
+      style 12 fill:#5d6d7e,stroke:#414c58,color:#ffffff
+      120["<div style='font-weight: bold'>Web Chat UI</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript apps/web-chat]</div><div style='font-size: 80%; margin-top:10px'>Vite React 客户端</div>"]
+      style 120 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      121["<div style='font-weight: bold'>Ops Console</div><div style='font-size: 70%; margin-top: 0px'>[Container: Hono + Vite apps/ops-console]</div><div style='font-size: 80%; margin-top:10px'>本地运维 Web：启停<br />agent/dashboard、跨实例 KPI 调试</div>"]
+      style 121 fill:#16a085,stroke:#0f705d,color:#ffffff
+      122["<div style='font-weight: bold'>Performance Dashboard</div><div style='font-size: 70%; margin-top: 0px'>[Container: Vite apps/dashboard]</div><div style='font-size: 80%; margin-top:10px'>KPI/性能目标可视化（含 agent 托管 API）</div>"]
+      style 122 fill:#16a085,stroke:#0f705d,color:#ffffff
+      13["<div style='font-weight: bold'>Workspace Kit</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript packages/server/src/workspace-kit]</div><div style='font-size: 80%; margin-top:10px'>外脑侧 workDir<br />工具：路径安全读写、manifest、InnerBrainEngine<br />生命周期门面（内联于 @utlra/server）</div>"]
+      style 13 fill:#7f8c8d,stroke:#586262,color:#ffffff
+      14["<div style='font-weight: bold'>WebChat Protocol</div><div style='font-size: 70%; margin-top: 0px'>[Container: npm @utlra/webchat-protocol]</div><div style='font-size: 80%; margin-top:10px'>chat-server 与 agent 共享协议类型</div>"]
+      style 14 fill:#5d6d7e,stroke:#414c58,color:#ffffff
+      15["<div style='font-weight: bold'>Agent Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/server]</div><div style='font-size: 80%; margin-top:10px'>外脑 + spawn + Hono API</div>"]
+      style 15 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      80["<div style='font-weight: bold'>Inner Brain Worker</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js child_process]</div><div style='font-size: 80%; margin-top:10px'>子进程：openkuroneko 阶段机 + 反思</div>"]
+      style 80 fill:#438dd5,stroke:#2e6295,color:#ffffff
+    end
+
+    1-. "<div>使用 Discord 客户端</div><div style='font-size: 70%'>[Discord 桌面/移动客户端]</div>" .->3
+    1-. "<div>使用飞书客户端</div><div style='font-size: 70%'>[飞书桌面/移动客户端]</div>" .->4
+    115-. "<div>ChatIRChannel +<br />seenTracker.track(mention)</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    116-. "<div>ChatIR 映射 +<br />seenTracker.track(mention)</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    116-. "<div>共享 DTO</div><div style='font-size: 70%'>[npm import]</div>" .->14
+    119-. "<div>REST/WS 类型</div><div style='font-size: 70%'>[npm import]</div>" .->14
+    120-. "<div>客户端类型</div><div style='font-size: 70%'>[npm import]</div>" .->14
+    15-. "<div>外脑 ChatIR</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    15-. "<div>InnerBrainEngine /<br />workspaceStore</div><div style='font-size: 70%'>[npm import]</div>" .->13
+    80-. "<div>共享 workDir（.brain / .run<br />文件契约）</div><div style='font-size: 70%'>[同盘读写]</div>" .->13
+    13-. "<div>goal.md /<br />controller-state（外脑经 engine 写<br />.brain）</div><div style='font-size: 70%'>[同盘读写]</div>" .->80
+    3-. "<div>MESSAGE_CREATE</div><div style='font-size: 70%'>[WSS]</div>" .->115
+    115-. "<div>ChatIRInboundEvent</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    15-. "<div>StructuredReply</div><div style='font-size: 70%'>[in-process]</div>" .->115
+    115-. "<div>messages.create</div><div style='font-size: 70%'>[HTTPS]</div>" .->3
+    4-. "<div>im.message.receive 等</div><div style='font-size: 70%'>[长连接]</div>" .->117
+    117-. "<div>resolve(channel_key) +<br />seenTracker</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    117-. "<div>ChatIRInboundEvent（canonical<br />sid）</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    15-. "<div>postMessage /<br />sendActivity(Typing reaction)</div><div style='font-size: 70%'>[in-process]</div>" .->117
+    117-. "<div>messages + reactions</div><div style='font-size: 70%'>[HTTPS]</div>" .->4
+    5-. "<div>getupdates 长轮询 msgs</div><div style='font-size: 70%'>[HTTPS]</div>" .->118
+    118-. "<div>resolve(channel_key) +<br />seenTracker</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    118-. "<div>ChatIRInboundEvent（canonical<br />sid）</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    15-. "<div>postMessage /<br />sendActivity(sendtyping)</div><div style='font-size: 70%'>[in-process]</div>" .->118
+    118-. "<div>sendmessage（context_token）</div><div style='font-size: 70%'>[HTTPS]</div>" .->5
+    1-. "<div>浏览输入</div><div style='font-size: 70%'>[HTTPS]</div>" .->120
+    120-. "<div>REST + WS</div><div style='font-size: 70%'>[HTTPS/WSS]</div>" .->119
+    119-. "<div>线程与消息</div><div style='font-size: 70%'>[HTTP/WS]</div>" .->116
+    116-. "<div>入站/出站映射</div><div style='font-size: 70%'>[HTTP + bridge]</div>" .->15
+    15-. "<div>agent 回复</div><div style='font-size: 70%'>[HTTP + bridge]</div>" .->116
+    15-. "<div>messages + tools</div><div style='font-size: 70%'>[HTTPS]</div>" .->8
+    15-. "<div>OuterMemoryStore</div><div style='font-size: 70%'>[HTTPS]</div>" .->9
+    15-. "<div>SkillDrive9 + KnowledgeDrive9<br />+ AgentPool</div><div style='font-size: 70%'>[HTTPS]</div>" .->10
+    15-. "<div>spawn + env</div><div style='font-size: 70%'>[child_process]</div>" .->80
+    80-. "<div>DONE/BLOCK/status</div><div style='font-size: 70%'>[stdio + file]</div>" .->15
+    80-. "<div>query_available_skills</div><div style='font-size: 70%'>[HTTPS]</div>" .->10
+    2-. "<div>运维操作</div><div style='font-size: 70%'>[HTTPS]</div>" .->121
+    2-. "<div>查看面板</div><div style='font-size: 70%'>[HTTPS]</div>" .->122
+    121-. "<div>/api/kpis、inner-brains、reflexion</div><div style='font-size: 70%'>[HTTPS]</div>" .->15
+    122-. "<div>/api/performance/goals</div><div style='font-size: 70%'>[HTTPS]</div>" .->15
+
+  end

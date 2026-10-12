@@ -1,0 +1,31 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L2 飞书路径（多连接 + resolve）"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>用户</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>仅经 IM 渠道对话与派任务；不直连 Agent API</div>"]
+    style 1 fill:#ffffff,stroke:#444444,color:#444444
+    4["<div style='font-weight: bold'>飞书 / Lark</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>外部 IM：企业自建应用机器人；一 agent 可 N<br />条连接（非单例）</div>"]
+    style 4 fill:#8e44ad,stroke:#632f79,color:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      117["<div style='font-weight: bold'>Feishu Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/feishu-bridge]</div><div style='font-size: 80%; margin-top:10px'>飞书 ↔ ChatIR；N 连接/热插；入站经<br />identityBindingIndex.resolve</div>"]
+      style 117 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      12["<div style='font-weight: bold'>Chat IR</div><div style='font-size: 70%; margin-top: 0px'>[Container: npm @utlra/chat-ir]</div><div style='font-size: 80%; margin-top:10px'>消息/线程<br />schema、ChatIRChannel、FanInChatIRChannel（多连接合流/路由）、ChatIRSeenTracker、identityBindingIndex（channel_key→sid）、StructuredReply</div>"]
+      style 12 fill:#5d6d7e,stroke:#414c58,color:#ffffff
+      15["<div style='font-weight: bold'>Agent Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/server]</div><div style='font-size: 80%; margin-top:10px'>外脑 + spawn + Hono API</div>"]
+      style 15 fill:#438dd5,stroke:#2e6295,color:#ffffff
+    end
+
+    1-. "<div>使用飞书客户端</div><div style='font-size: 70%'>[飞书桌面/移动客户端]</div>" .->4
+    15-. "<div>外脑 ChatIR</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    4-. "<div>im.message.receive 等</div><div style='font-size: 70%'>[长连接]</div>" .->117
+    117-. "<div>resolve(channel_key) +<br />seenTracker</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    117-. "<div>ChatIRInboundEvent（canonical<br />sid）</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    15-. "<div>postMessage /<br />sendActivity(Typing reaction)</div><div style='font-size: 70%'>[in-process]</div>" .->117
+    117-. "<div>messages + reactions</div><div style='font-size: 70%'>[HTTPS]</div>" .->4
+
+  end

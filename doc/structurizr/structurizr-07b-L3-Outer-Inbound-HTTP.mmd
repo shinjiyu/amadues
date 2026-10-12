@@ -1,0 +1,31 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L3 Outer — HTTP 入站（与 Facade 同路径）"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      subgraph 15 ["Agent Server"]
+        style 15 fill:#ffffff,stroke:#2e6295,color:#2e6295
+
+        16["<div style='font-weight: bold'>Participation Policy</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【是否回复】规则过滤 + 群聊@判定 +<br />SPEAK/SILENT LLM；入站第一道闸门</div>"]
+        style 16 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        18["<div style='font-weight: bold'>Outer Brain Facade</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【唯一外脑入口】Discord/WebChat/HTTP<br />入站 → 检索 → 是否说话 → 外脑对话环</div>"]
+        style 18 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        19["<div style='font-weight: bold'>Structured Reply Parts</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>reply.v1 →<br />MessagePart[]（mention +<br />attach 展开）</div>"]
+        style 19 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        23["<div style='font-weight: bold'>Outer Conversation Loop</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【外脑多轮】LLM ↔ tools 循环直到<br />reply_to_user 或达上限；空口承诺<br />post-loop 对账</div>"]
+        style 23 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        25["<div style='font-weight: bold'>Outer Tool Executor</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【工具执行】reply_to_user /<br />set_goal（KPI 单实例复用 + peer<br />catalog）/ list_brains /<br />read_inner_status / KPI 等</div>"]
+        style 25 fill:#85bbf0,stroke:#5d82a8,color:#000000
+      end
+
+    end
+
+    18-. "<div>decideOuterShouldReply</div><div style='font-size: 70%'>[in-process]</div>" .->16
+    18-. "<div>runOuterConversationLoop</div><div style='font-size: 70%'>[in-process]</div>" .->23
+    23-. "<div>executeOuterTool</div><div style='font-size: 70%'>[in-process]</div>" .->25
+
+  end

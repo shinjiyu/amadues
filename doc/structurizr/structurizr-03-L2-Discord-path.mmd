@@ -1,0 +1,50 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Container View: Kuroneko (utlra)"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>用户</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>仅经 IM 渠道对话与派任务；不直连 Agent API</div>"]
+    style 1 fill:#ffffff,stroke:#444444,color:#444444
+    3["<div style='font-weight: bold'>Discord</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>外部 IM（Gateway + REST）</div>"]
+    style 3 fill:#8e44ad,stroke:#632f79,color:#ffffff
+    8["<div style='font-weight: bold'>LLM 提供商</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Zhipu / LocalModule 等</div>"]
+    style 8 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    9["<div style='font-weight: bold'>mem9</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>对话与任务云记忆</div>"]
+    style 9 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    10["<div style='font-weight: bold'>drive9</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>技能 / 知识 Markdown + grep</div>"]
+    style 10 fill:#999999,stroke:#6b6b6b,color:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      115["<div style='font-weight: bold'>Discord Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/discord-bridge]</div><div style='font-size: 80%; margin-top:10px'>Discord ↔ ChatIR</div>"]
+      style 115 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      12["<div style='font-weight: bold'>Chat IR</div><div style='font-size: 70%; margin-top: 0px'>[Container: npm @utlra/chat-ir]</div><div style='font-size: 80%; margin-top:10px'>消息/线程<br />schema、ChatIRChannel、FanInChatIRChannel（多连接合流/路由）、ChatIRSeenTracker、identityBindingIndex（channel_key→sid）、StructuredReply</div>"]
+      style 12 fill:#5d6d7e,stroke:#414c58,color:#ffffff
+      13["<div style='font-weight: bold'>Workspace Kit</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript packages/server/src/workspace-kit]</div><div style='font-size: 80%; margin-top:10px'>外脑侧 workDir<br />工具：路径安全读写、manifest、InnerBrainEngine<br />生命周期门面（内联于 @utlra/server）</div>"]
+      style 13 fill:#7f8c8d,stroke:#586262,color:#ffffff
+      15["<div style='font-weight: bold'>Agent Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/server]</div><div style='font-size: 80%; margin-top:10px'>外脑 + spawn + Hono API</div>"]
+      style 15 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      80["<div style='font-weight: bold'>Inner Brain Worker</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js child_process]</div><div style='font-size: 80%; margin-top:10px'>子进程：openkuroneko 阶段机 + 反思</div>"]
+      style 80 fill:#438dd5,stroke:#2e6295,color:#ffffff
+    end
+
+    1-. "<div>使用 Discord 客户端</div><div style='font-size: 70%'>[Discord 桌面/移动客户端]</div>" .->3
+    115-. "<div>ChatIRChannel +<br />seenTracker.track(mention)</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    15-. "<div>外脑 ChatIR</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    15-. "<div>InnerBrainEngine /<br />workspaceStore</div><div style='font-size: 70%'>[npm import]</div>" .->13
+    80-. "<div>共享 workDir（.brain / .run<br />文件契约）</div><div style='font-size: 70%'>[同盘读写]</div>" .->13
+    13-. "<div>goal.md /<br />controller-state（外脑经 engine 写<br />.brain）</div><div style='font-size: 70%'>[同盘读写]</div>" .->80
+    3-. "<div>MESSAGE_CREATE</div><div style='font-size: 70%'>[WSS]</div>" .->115
+    115-. "<div>ChatIRInboundEvent</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    15-. "<div>StructuredReply</div><div style='font-size: 70%'>[in-process]</div>" .->115
+    115-. "<div>messages.create</div><div style='font-size: 70%'>[HTTPS]</div>" .->3
+    15-. "<div>messages + tools</div><div style='font-size: 70%'>[HTTPS]</div>" .->8
+    15-. "<div>OuterMemoryStore</div><div style='font-size: 70%'>[HTTPS]</div>" .->9
+    15-. "<div>SkillDrive9 + KnowledgeDrive9<br />+ AgentPool</div><div style='font-size: 70%'>[HTTPS]</div>" .->10
+    15-. "<div>spawn + env</div><div style='font-size: 70%'>[child_process]</div>" .->80
+    80-. "<div>DONE/BLOCK/status</div><div style='font-size: 70%'>[stdio + file]</div>" .->15
+    80-. "<div>query_available_skills</div><div style='font-size: 70%'>[HTTPS]</div>" .->10
+
+  end

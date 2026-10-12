@@ -1,0 +1,69 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L3 内脑 — Harness-RSI（revise → gate → upgrade/rollback → restart-with-H）"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      subgraph 80 ["Inner Brain Worker"]
+        style 80 fill:#ffffff,stroke:#2e6295,color:#2e6295
+
+        81["<div style='font-weight: bold'>Worker Host</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>子进程入口、status.json、tick 循环</div>"]
+        style 81 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        83["<div style='font-weight: bold'>Controller FSM</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>DyFlow mode<br />切换：DESIGN|RUN|AWAITING|DONE</div>"]
+        style 83 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        85["<div style='font-weight: bold'>Runner (DyFlow)</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>RUN 阶段：解析 local_dag，按<br />NodeInst 派发 baseNode /<br />graph；写 memory.node_results &<br />last_failure</div>"]
+        style 85 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        86["<div style='font-weight: bold'>Workflow Runner</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【⏳】execute 模式：按 Executable<br />Workflow steps 逐步执行并机械验收</div>"]
+        style 86 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        87["<div style='font-weight: bold'>Harness Spec Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅ P0】版本化<br />HarnessSpec：LocalNode/skill/EW/assets<br />快照；不可变 blob</div>"]
+        style 87 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        88["<div style='font-weight: bold'>Harness Pointer</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅ P0】active.json +<br />history；upgrade / rollback</div>"]
+        style 88 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        89["<div style='font-weight: bold'>Harness Revise</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅】分析 run-context → 提案<br />H′；失败节点 skillRefs 优先（不可见评测<br />rubric）</div>"]
+        style 89 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        90["<div style='font-weight: bold'>Harness Gate</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅ P1】机械 expect/回放；相对 parent<br />不回归才允许 upgrade</div>"]
+        style 90 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        91["<div style='font-weight: bold'>Harness Restart</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅ P1】切 active 后同 charter 再进<br />DESIGN→RUN（≠ 进程 resume）</div>"]
+        style 91 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        92["<div style='font-weight: bold'>Harness Analyze</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅ P4】读 run-context/日志 → soft<br />findings；管 cadence（类 pstune<br />analyze）</div>"]
+        style 92 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        93["<div style='font-weight: bold'>Harness RSI Cycle</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅ P4】周期<br />analyze→revise→gate→upgrade；失败辅触发；封顶<br />2 轮/burst</div>"]
+        style 93 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        94["<div style='font-weight: bold'>Harness Held-Out</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅ P3】同类型 held-out charter<br />机械门控；写<br />.brain/harness/held-out/</div>"]
+        style 94 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        95["<div style='font-weight: bold'>Harness Auto Held-Out</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅】成功 RUN 后对 active H 自动跑<br />held-out（无 pass 时）</div>"]
+        style 95 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        96["<div style='font-weight: bold'>Harness Drive9 Sync Gate</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅ P3】active H 拥有 EW 时<br />promote→drive9 须 held-out</div>"]
+        style 96 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        97["<div style='font-weight: bold'>Harness W15 Dedup</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【✅ P3】内脑 RSI 已覆盖 EW 时抑制外脑<br />ew_revision</div>"]
+        style 97 fill:#85bbf0,stroke:#5d82a8,color:#000000
+      end
+
+    end
+
+    83-. "<div>mode=RUN</div><div style='font-size: 70%'>[in-process]</div>" .->85
+    89-. "<div>put draft H′</div><div style='font-size: 70%'>[in-process]</div>" .->87
+    90-. "<div>read H′ / parent</div><div style='font-size: 70%'>[in-process]</div>" .->87
+    88-. "<div>resolve active id</div><div style='font-size: 70%'>[in-process]</div>" .->87
+    90-. "<div>upgrade only if gated_ok</div><div style='font-size: 70%'>[in-process]</div>" .->88
+    91-. "<div>read active after<br />upgrade/rollback</div><div style='font-size: 70%'>[in-process]</div>" .->88
+    91-. "<div>re-enter DESIGN|RUN under H</div><div style='font-size: 70%'>[in-process]</div>" .->83
+    83-. "<div>ATTRIBUTE/显式触发 revise（⏳）</div><div style='font-size: 70%'>[in-process]</div>" .->89
+    85-. "<div>load active H refs（⏳）</div><div style='font-size: 70%'>[in-process]</div>" .->88
+    86-. "<div>prefer active workflowRef（⏳）</div><div style='font-size: 70%'>[in-process]</div>" .->88
+    83-. "<div>ATTRIBUTE 后 RSI（周期为主；失败辅）</div><div style='font-size: 70%'>[in-process]</div>" .->93
+    93-. "<div>cadence / fail → analyze</div><div style='font-size: 70%'>[in-process]</div>" .->92
+    92-. "<div>read active for baseline</div><div style='font-size: 70%'>[in-process]</div>" .->88
+    93-. "<div>revise from findings</div><div style='font-size: 70%'>[in-process]</div>" .->89
+    93-. "<div>gate</div><div style='font-size: 70%'>[in-process]</div>" .->90
+    93-. "<div>upgrade</div><div style='font-size: 70%'>[in-process]</div>" .->88
+    93-. "<div>request restart-with-H</div><div style='font-size: 70%'>[in-process]</div>" .->91
+    83-. "<div>ATTRIBUTE 成功后自动 held-out</div><div style='font-size: 70%'>[in-process]</div>" .->95
+    95-. "<div>runHeldOutGate if no pass</div><div style='font-size: 70%'>[in-process]</div>" .->94
+    96-. "<div>require held-out pass</div><div style='font-size: 70%'>[in-process]</div>" .->94
+    97-. "<div>active covering workflow?</div><div style='font-size: 70%'>[in-process]</div>" .->88
+
+  end

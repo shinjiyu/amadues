@@ -1,0 +1,52 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Container View: Kuroneko (utlra)"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      115["<div style='font-weight: bold'>Discord Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/discord-bridge]</div><div style='font-size: 80%; margin-top:10px'>Discord ↔ ChatIR</div>"]
+      style 115 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      116["<div style='font-weight: bold'>WebChat Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/webchat-bridge]</div><div style='font-size: 80%; margin-top:10px'>chat-server ↔ agent；出站 asset:<br />→ POST /uploads</div>"]
+      style 116 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      117["<div style='font-weight: bold'>Feishu Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/feishu-bridge]</div><div style='font-size: 80%; margin-top:10px'>飞书 ↔ ChatIR；N 连接/热插；入站经<br />identityBindingIndex.resolve</div>"]
+      style 117 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      118["<div style='font-weight: bold'>WeChat Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/wechat-bridge]</div><div style='font-size: 80%; margin-top:10px'>微信 iLink ↔ ChatIR；扫码登录<br />bot_token；长轮询收消息；context_token<br />会话锚点</div>"]
+      style 118 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      119["<div style='font-weight: bold'>Chat Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js apps/chat-server]</div><div style='font-size: 80%; margin-top:10px'>本地 IM 服务：REST + WS<br />消息枢纽（大群/私聊）</div>"]
+      style 119 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      12["<div style='font-weight: bold'>Chat IR</div><div style='font-size: 70%; margin-top: 0px'>[Container: npm @utlra/chat-ir]</div><div style='font-size: 80%; margin-top:10px'>消息/线程<br />schema、ChatIRChannel、FanInChatIRChannel（多连接合流/路由）、ChatIRSeenTracker、identityBindingIndex（channel_key→sid）、StructuredReply</div>"]
+      style 12 fill:#5d6d7e,stroke:#414c58,color:#ffffff
+      120["<div style='font-weight: bold'>Web Chat UI</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript apps/web-chat]</div><div style='font-size: 80%; margin-top:10px'>Vite React 客户端</div>"]
+      style 120 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      13["<div style='font-weight: bold'>Workspace Kit</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript packages/server/src/workspace-kit]</div><div style='font-size: 80%; margin-top:10px'>外脑侧 workDir<br />工具：路径安全读写、manifest、InnerBrainEngine<br />生命周期门面（内联于 @utlra/server）</div>"]
+      style 13 fill:#7f8c8d,stroke:#586262,color:#ffffff
+      14["<div style='font-weight: bold'>WebChat Protocol</div><div style='font-size: 70%; margin-top: 0px'>[Container: npm @utlra/webchat-protocol]</div><div style='font-size: 80%; margin-top:10px'>chat-server 与 agent 共享协议类型</div>"]
+      style 14 fill:#5d6d7e,stroke:#414c58,color:#ffffff
+      15["<div style='font-weight: bold'>Agent Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/server]</div><div style='font-size: 80%; margin-top:10px'>外脑 + spawn + Hono API</div>"]
+      style 15 fill:#438dd5,stroke:#2e6295,color:#ffffff
+    end
+
+    115-. "<div>ChatIRChannel +<br />seenTracker.track(mention)</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    116-. "<div>ChatIR 映射 +<br />seenTracker.track(mention)</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    116-. "<div>共享 DTO</div><div style='font-size: 70%'>[npm import]</div>" .->14
+    119-. "<div>REST/WS 类型</div><div style='font-size: 70%'>[npm import]</div>" .->14
+    120-. "<div>客户端类型</div><div style='font-size: 70%'>[npm import]</div>" .->14
+    15-. "<div>外脑 ChatIR</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    15-. "<div>InnerBrainEngine /<br />workspaceStore</div><div style='font-size: 70%'>[npm import]</div>" .->13
+    115-. "<div>ChatIRInboundEvent</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    15-. "<div>StructuredReply</div><div style='font-size: 70%'>[in-process]</div>" .->115
+    117-. "<div>resolve(channel_key) +<br />seenTracker</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    117-. "<div>ChatIRInboundEvent（canonical<br />sid）</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    15-. "<div>postMessage /<br />sendActivity(Typing reaction)</div><div style='font-size: 70%'>[in-process]</div>" .->117
+    118-. "<div>resolve(channel_key) +<br />seenTracker</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    118-. "<div>ChatIRInboundEvent（canonical<br />sid）</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    15-. "<div>postMessage /<br />sendActivity(sendtyping)</div><div style='font-size: 70%'>[in-process]</div>" .->118
+    120-. "<div>REST + WS</div><div style='font-size: 70%'>[HTTPS/WSS]</div>" .->119
+    119-. "<div>线程与消息</div><div style='font-size: 70%'>[HTTP/WS]</div>" .->116
+    116-. "<div>入站/出站映射</div><div style='font-size: 70%'>[HTTP + bridge]</div>" .->15
+    15-. "<div>agent 回复</div><div style='font-size: 70%'>[HTTP + bridge]</div>" .->116
+
+  end
