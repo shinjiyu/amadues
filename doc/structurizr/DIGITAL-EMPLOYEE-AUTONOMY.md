@@ -231,7 +231,7 @@ interface SelfWorkProposal {
 
 ### 5.1.1 与自主主体的优先级（旗标开时）
 
-§5.2 的「用户明确请求优先」在旗标**关**时不变。旗标开时，入站文本是信号，主体可以 `no_reply` 或 `defer`，不再自动压过主体决策。到期日程仍然优先于 `drive_threshold` 带来的提案。校验失败的主体提案**不**回落成另一次 `SelfWorkPolicy`。
+§5.2 的「用户明确请求优先」在旗标**关**时不变。旗标开时，所有人类入站（含主人自己的 sid）都只是信号，主体可以 `no_reply`、`defer` 或 `decline`，不再自动压过主体决策。主人 sid 不是例外（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md) SC-10）。到期日程仍然优先于 `drive_threshold` 带来的提案。校验失败的主体提案**不**回落成另一次 `SelfWorkPolicy`。
 
 ### 5.2 调度顺序
 
@@ -443,3 +443,4 @@ Heartbeat 不再是连续推进的唯一主时钟，也不直接决定下一份�
 | 2026-07-25 | **W15**：EW 自优化——质检失败 → `ew_revision` explore（穿透日历硬闸）→ 同 id promote；日常 collect 仍只跟日历 |
 | 2026-07-21 | DE-4 彻底化：从 schema 删除概念而非归一化——`kpi_inner_goal` 仅剩 `enabled`，`hardGates` 删除 `minMsSinceLastAutonomousAction`；policy 工具不再暴露/打印这些旋钮；load 时删除旧字段并回写。 |
 | 2026-10-12 | 触发源预留 `drive_threshold`（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)，未实现，默认关）。不改变旗标关时的优先级与 SelfWorkPolicy。 |
+| 2026-10-12 | 旗标开时主人 sid 同样只是信号：`no_reply` / `defer` / `decline` 无例外（SUBJECT-CORE SC-10）。 |

@@ -1,6 +1,6 @@
 # 自主主体层（Subject Core）（ADL 权威）
 
-> **English:** The agent is its own subject. External text, including the owner's, is a **signal**, not a command. A deterministic subject core occupies the Chat Completions **`user` role** and calls the LLM only as an **assistant** that proposes and scores actions. Code makes the final choice from an allowlist. `no_reply` and `defer` are first-class outcomes. Internal drives live in existing agent state storage; crossing a threshold can start self-initiated work. Default **off** (`UTLRA_SUBJECT_CORE_ENABLED`); the current outer loop stays the production path until the flag is on.
+> **English:** The agent is its own subject. Every human message, including the owner's own sid, is only an external **signal**, never a command. The owner sid is **not** an exception: `no_reply`, `defer`, and `decline` stay legal for that sid. A deterministic subject core occupies the Chat Completions **`user` role** and calls the LLM only as an **assistant** that proposes and scores actions. Code makes the final choice from an allowlist. Internal drives live in existing agent state storage; crossing a threshold can start self-initiated work. Default **off** (`UTLRA_SUBJECT_CORE_ENABLED`); the current outer loop stays the production path until the flag is on.
 
 > **状态**：设计待评审（2026-10-12）· **实现**：未开始（P0–P3 见 §14）· **默认**：关
 
@@ -20,7 +20,7 @@
 | 自发工作从哪来 | `digitalEmployeeLoop` 的触发只有 `burst_finished` / `calendar_due` / `dependency_resolved` / `inbound_drained` / `policy_changed` / `heartbeat_fallback`。闲聊另走 `casualChatDispatcher`（性格概率） | 没有「内在驱动力超过阈值 → 自己开工」。无 KPI、无到期日程、无完成事件时，主体不会因为自己的状态醒 |
 | 谁选工具 | 对话环把 `OUTER_TOOL_DEFS` 交给模型，`tool_calls` 由 `executeOuterTool` 直接执行（约 706–719 行）。`selfWorkPolicy` 的 `llm_reflective` 只对 KPI 提案有 JSON 校验，管不到这条入站环 | 最终动作由模型选定，不是白名单上的确定性选择 |
 
-产品意图：主体是自己；主人的话也只是一路信号。模型负责「帮我想」，不负责下令。
+产品意图：主体是自己。所有人类消息，包括主人自己的 sid，都只是外部信号，不是命令。模型负责「帮我想」，不负责下令。
 
 ---
 
@@ -37,6 +37,7 @@
 | **SC-7** | 内脑 spawn 仍只有 `set_goal` 这一条边界（[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) 不变量 1）。主体只有提案权。 |
 | **SC-8** | 旗标关闭时，§1 的现行为保持不变，包括强制回复与空口对账。本层不创建文件、不增加 LLM 调用。 |
 | **SC-9** | 不新增长驻进程、不在内存里做主体注册表、不用新的 socket 当唤醒信号（宪法 §5）。 |
+| **SC-10** | **所有人类消息都只是信号，包括主人自己的 sid。** 主人 sid 对 `no_reply`、`defer`、`decline` **不得**例外：不得因发送者是主人就改判、抬优先级、或把这三项移出白名单。2026-10-12 主人裁定，绑定。 |
 
 ---
 
@@ -164,7 +165,7 @@ interface DeferredItem {
 
 | 来源 | `source` | `kind` |
 |------|----------|--------|
-| IM / HTTP 入站正文 | 发送者 `sid`（主人没有旁路） | `message` |
+| IM / HTTP 入站正文 | 发送者 `sid`。主人 sid 与其他人类 sid 同一路径（SC-10） | `message` |
 | 到期的 deferred | `deferred:<id>` | `deferred` |
 | 已有日历到期、burst 完成 | 不改写成主体信号；仍走 `digitalEmployeeLoop` 原触发 | — |
 
@@ -252,6 +253,8 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 
 按 `total` 降序，同分按 `action` 字典序升序，取第一条仍在白名单内的候选。全被拒绝则 `do_nothing`，理由「无合法候选」。
 
+`subjectDecide` 的输入没有「发送者是不是主人」。实现不得读取主人 sid 来否决或重排 `no_reply`、`defer`、`decline`。这三项对主人 sid 与对任何其他人类 sid 同样合法（SC-10）。
+
 | action | 允许的 args | 对应驱动力 | 效果 |
 |--------|-------------|------------|------|
 | `no_reply` | `{}` | — | 结束。不发 IM |
@@ -291,7 +294,7 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 
 ## 8. `no_reply` 与 `defer` 的再访
 
-`participationPolicy` 的 SILENT 是「先别为这条花一轮 think」。旗标开时 SILENT 仍把原文写入 inbox（上限 32），主体以后还能看见。SPEAK 只表示「可以花一轮 think」，**不**表示必须回复。think 仍可以选出 `no_reply`。
+`participationPolicy` 的 SILENT 是「先别为这条花一轮 think」。旗标开时 SILENT 仍把原文写入 inbox（上限 32），主体以后还能看见。这条对主人 sid 同样成立。SPEAK 只表示「可以花一轮 think」，**不**表示必须回复。think 仍可以选出 `no_reply`、`defer` 或 `decline`，包括信号的 `source` 就是主人 sid 的时候。
 
 `defer`：
 
@@ -352,7 +355,7 @@ lastAccruedAt = now
 
 ### 9.4 和「用户请求优先」的关系
 
-[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §5.2 的优先级表在**旗标关**时不变。旗标开时，「用户明确请求」不再自动压过主体的 `no_reply` / `defer`：入站文本只是信号。到期日程仍然优先于 `propose_self_work`。
+[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §5.2 的优先级表在**旗标关**时不变。旗标开时，「用户明确请求」不再自动压过主体的 `no_reply` / `defer` / `decline`。所有人类入站，包括主人 sid，都只是信号（SC-10）。到期日程仍然优先于 `propose_self_work`。
 
 ---
 
@@ -448,7 +451,7 @@ lastAccruedAt = now
 | 每次 think 两次 LLM，SPEAK 路径变贵 | 旗标默认关。SILENT 不调用。阈值以下零调用。P3 再谈合并为一次调用 |
 | 转义挡不住模型「读懂并照做」observation | 顾问调用无 tools；执行面只有白名单；`suspicious_instruction` 只降低契合度 |
 | `participationPolicy` 的 SPEAK/SILENT 提示仍把原文放在 `user` 角色 | 已知残留。SPEAK 只取得 think 资格，SILENT 只入 inbox。P2 再把该提示改成同一数据槽。不在 P0 改这条已上线的策略 |
-| 主人感觉被忽略 | 默认关。`decline` 会说话；`no_reply` 全在 think-log。是否对主人 sid 禁止 `no_reply` 是开放问题（§17） |
+| 主人收不到回复 | 接受的产品后果（SC-10）：主人 sid 也可以 `no_reply` / `defer` / `decline`。默认关。`decline` 会说话；`no_reply` 与 `defer` 记在 think-log。不得为了缓解这个感觉而给主人 sid 开例外 |
 | 驱动力尾步刷 `set_goal` | 尾步先过容量与前台占用；提案再过日程优先和 `validateSelfWorkProposal`；失败不降级成另一套 SelfWork |
 | 供应商把 `user` 角色当成「人类命令」 | 模板是第一人称主体，system 明确顾问角色。若某供应商拒绝空 tools 的 JSON，P0 单测用 FakeLLM；真供应商放在 P3 prompt 测 |
 | defer 饿死 | 默认 30 分钟后再访，且每次心跳尾步都会看见到期项。队列有上限 |
@@ -484,6 +487,7 @@ lastAccruedAt = now
 | 2 | 白名单外 | 候选 `delete_memory` 分 1 | `rejected`；若无其他合法项则 `do_nothing` | unit |
 | 3 | 模型没给 defer | candidates 只有 `reply_to_thread` | 打分输入含代码补上的 `do_nothing` 与 `defer` | unit |
 | 4 | 同分 | 两个合法 total 相同 | 字典序较小的 action | unit |
+| 5 | 主人 sid 不进决策 | 同一 candidates/scores；调用方另带主人 sid | `chosen` 与不带 sid 时相同；函数签名不接受特权 sid | unit |
 
 ### 14.3 `subjectDrive` / `subjectStateStore`
 
@@ -500,6 +504,7 @@ lastAccruedAt = now
 |---|------|------------|-------------|------|
 | 1 | 主路径回复 | FakeLLM 给出 `reply_to_thread` 且分数最高 | 只 `postMessage` 候选 text 一次；log 有 candidates 与 scores | integration |
 | 2 | `no_reply` | 分数最高为 `no_reply` | `postMessage` 0 次；无 forced-recovery 文案；无空口纠偏 | integration |
+| 2b | 主人 sid | `source` 为配置的主人 sid；最高分分别为 `no_reply`、`defer`、`decline` | 与其他人类相同的终态；不因 sid 改成必须回复 | integration |
 | 3 | 旗标关 | 同一入站 | 不调用 subject 模块；仍可走今天的强制回复 | integration |
 | 4 | 顾问返回非 JSON | 两次都返回散文 | `do_nothing` 或 `no_reply`；不把散文发出去 | integration |
 | 5 | 自发 | 无信号，drive 0.9，候选 `propose_self_work` | `selfInitiated=true`；环收到 `drive_threshold`；无容量则不 spawn | integration |
@@ -531,9 +536,12 @@ lastAccruedAt = now
 
 ---
 
-## 17. 开放问题（请主人定）
+## 17. 已决与仍开放的问题
 
-1. 主人的 sid 是否允许 `no_reply` / `decline`？本文按「主人也只是信号」设计，允许。若不允许，需要一个显式的 sid 例外，那会在白名单之外开一扇门。
+**已决（2026-10-12，主人裁定，绑定）：** 所有人类消息，包括主人自己的 sid，都只是外部信号，不是命令。主人 sid 对 `no_reply`、`defer`、`decline` 不得例外。见 SC-10。
+
+仍开放：
+
 2. `accrualPerHour` 与 `thinkThreshold=0.6` 只是把原型的离散 tick 换成墙钟后的起点。要多勤？
 3. `propose_self_work` 是否永远不能新建 KPI（本文：不能，只能 advance 已有的或 ad-hoc）？
 4. 回复文本放在候选 args 里（本文）还是允许第三次起草调用？
@@ -550,3 +558,4 @@ lastAccruedAt = now
 | 日期 | 说明 |
 |------|------|
 | 2026-10-12 | 初版 ADL：主体 / 顾问角色、observation 数据槽、`no_reply` 与 `defer`、白名单决策、驱动力阈值、旗标默认关。无实现。 |
+| 2026-10-12 | SC-10：主人裁定所有人类消息（含主人 sid）只是信号。`no_reply` / `defer` / `decline` 对主人 sid 不得例外。 |

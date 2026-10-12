@@ -815,8 +815,8 @@
                     tags "Outer-Module" "Subject"
                     properties {
                         "path" "packages/server/src/outer/subject/decide.ts"
-                        "horizon.intention" "最终动作不由模型 tool_calls 决定"
-                        "horizon.in" "candidates + scores + drives + allowlist"
+                        "horizon.intention" "最终动作不由模型 tool_calls 决定；主人 sid 不能改判 no_reply/defer/decline"
+                        "horizon.in" "candidates + scores + drives + allowlist；无特权 sid"
                         "horizon.out" "chosen + rejected + reason"
                         "horizon.deps" "无 I/O"
                         "horizon.test.unit" "subject-decide.test.ts"
@@ -829,7 +829,7 @@
                     tags "Outer-Module" "Subject"
                     properties {
                         "path" "packages/server/src/outer/subject/think.ts"
-                        "horizon.intention" "旗标开时取代外脑工具环；旗标关时不存在"
+                        "horizon.intention" "旗标开时取代外脑工具环；旗标关时不存在。所有人类消息含主人 sid 只是信号（SC-10）"
                         "horizon.in" "trigger inbound|heartbeat_tail + signals + now"
                         "horizon.out" "think-log；可选 IM 回复；可选 drive_threshold"
                         "horizon.deps" "subjectSignalSlot; subjectStateStore; subjectDrive; subjectDecide; llmGateway; outerToolExecutor; digitalEmployeeLoop"

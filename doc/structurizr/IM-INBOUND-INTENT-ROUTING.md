@@ -190,7 +190,7 @@ loop 结束后（含 forced reply recovery 之后）：
 
 模块：`emptyPromiseReconcile` → `outer/empty-promise-reconcile.ts`；由 `outerConversationLoop` 在主循环结束后调用。
 
-**自主主体旗标开时**（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)，默认关）：入站不进入本对话环，因此不跑本节纠偏。`no_reply` / `defer` 是主体的合法终态，不是空口承诺。旗标关时本节不变。
+**自主主体旗标开时**（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)，默认关）：入站不进入本对话环，因此不跑本节纠偏。`no_reply` / `defer` / `decline` 是主体的合法终态，不是空口承诺。所有人类消息（含主人自己的 sid）都只是信号，主人 sid 不是必须回复的例外（SC-10）。旗标关时本节不变。
 
 ---
 
@@ -292,3 +292,4 @@ KPI_CREATE_EXPLICIT_RE = /持续|长期|常驻|每天|每日|定期|周期|常�
 | 2026-07-21 | 新增只读状态快指令：`状态/进度` 查询当前快照，`密度/今天` 查询 24h 执行槽位利用率；无 LLM、无副作用、禁止走 brain-inspector。 |
 | 2026-07-25 | §4.2 空口承诺对账：post-loop 强制再跑一轮工具环 + `isToolOutputOk` 软跳过纠偏；不恢复前置短路派发（仍 P7）。 |
 | 2026-10-12 | §4.2：`UTLRA_SUBJECT_CORE_ENABLED=1` 时入站不进对话环，空口纠偏不运行（见 SUBJECT-CORE）。默认关。 |
+| 2026-10-12 | §4.2：主人 sid 同样不构成必须回复；`no_reply` / `defer` / `decline` 无 sid 例外。 |

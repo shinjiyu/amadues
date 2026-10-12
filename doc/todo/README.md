@@ -11,7 +11,7 @@
 | [`memory-blocks-framework.md`](./memory-blocks-framework.md) | **B0–B2 已完成** | Memory Block + keychain + B2 解耦 awaiting/bind |
 | [`outer-brain-web-search-tool.md`](./outer-brain-web-search-tool.md) | **待实现** | 外脑专用 Web Search 工具（与内脑 playwright 分离） |
 | [`resource-awareness-autonomy.md`](./resource-awareness-autonomy.md) | **ADL 已定稿** | 资源感知 + 心跳闲忙判定 + 自主任务（闲聊 / KPI 内脑 goal） |
-| [`subject-core-autonomy.md`](./subject-core-autonomy.md) | **ADL 待评审** | 自主主体：外部输入只是信号；`no_reply` / `defer`；驱动力阈值。权威在 [`SUBJECT-CORE.md`](../structurizr/SUBJECT-CORE.md) |
+| [`subject-core-autonomy.md`](./subject-core-autonomy.md) | **ADL 待评审** | 自主主体：所有人类消息（含主人 sid）只是信号；`no_reply` / `defer` / `decline` 无 sid 例外。权威在 [`SUBJECT-CORE.md`](../structurizr/SUBJECT-CORE.md) |
 | [`chat-ir-presence-typing.md`](./chat-ir-presence-typing.md) | **typing 已完成** | 「正在输入中」全链路：协议 state(start/stop) → chat-server relay/REST → bridge sendActivity → 外脑回复期 typing/idle → web-chat 指示器。presence 在线态待补 |
 | [`inner-brain-exec-kill-resume-stuck.md`](./inner-brain-exec-kill-resume-stuck.md) | **待实现** | EXECUTE/shell_exec 中被杀 → 重启卡住：RUNNING 僵尸行、restart 409、bg job 内存丢失；方案见专篇 |
 | [`framework-benchmark-token-baseline.md`](./framework-benchmark-token-baseline.md) | **可选/CI** | FakeLLM 机制回归；**真实调优见 task-run-observability** |
