@@ -19,6 +19,7 @@
 4. employeeCalendar：missed / 长时间 due 检查
 5. digitalEmployeeLoop.trigger(heartbeat_fallback)（仅补漏）
 6. 可选 legacy heartbeat LLM（不得成为第二派发真相）
+7. **仅旗标开**：`subjectThink` 尾步（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §9.2）。不插入到 0–6 之前，不替代 `heartbeat_fallback`
 ```
 
 | 层 | 问什么 | 典型产出 |
@@ -139,3 +140,4 @@ DyFlow 内脑每 tick 在 DESIGN/RUN 间切换、baseNode 多轮自修（[`DYFLO
 | 2026-06-02 | §0：明确三层 tick；质控不替代宏观战略 WHY+HOW |
 | 2026-06-02 | A′ KPI 完成判定；workspace.dsl 边 + rules |
 | 2026-07-21 | 数字员工修订：heartbeat 降为 watchdog/fallback；正常续派由 burst/calendar/dependency 事件触发。 |
+| 2026-10-12 | §0 步骤 7：旗标开时在监督之后追加 `subjectThink` 尾步（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)）。未实现；步骤 0–6 不改序。 |

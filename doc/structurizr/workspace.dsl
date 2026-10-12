@@ -860,6 +860,37 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.staleBurstReaper -> kuroneko.innerWorker.archiveStore "archive(workDir, abortReason)" "file" {
             tags "file"
         }
+        // 自主主体（SUBJECT-CORE.md）。旗标 UTLRA_SUBJECT_CORE_ENABLED 默认关。
+        kuroneko.agentServer.outerBrainFacade -> kuroneko.agentServer.subjectThink "旗标开且 SPEAK：一次 think，不进工具环" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.participationPolicy -> kuroneko.agentServer.subjectThink "SPEAK=可以想；SILENT=只入 inbox" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.subjectSignalSlot "固定模板 + observation 槽" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.subjectStateStore "读写真相与 defer/inbox" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.subjectDrive "accrue + shouldThink" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.subjectDecide "白名单最终选择" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.llmGateway "user=主体模板；assistant=JSON；tools 空" "HTTPS" {
+            tags "http"
+        }
+        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.outerToolExecutor "仅选中的 reply/decline 文本" "in-process" {
+            tags "import"
+        }
+        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.digitalEmployeeLoop "propose_self_work → drive_threshold" "in-process" {
+            tags "event"
+        }
+        kuroneko.agentServer.outerHeartbeat -> kuroneko.agentServer.subjectThink "监督步骤之后的尾步；不改 0–6 顺序" "in-process" {
+            tags "event"
+        }
     }
 
     views {
@@ -980,6 +1011,12 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         component kuroneko.agentServer "14-L3-Digital-Employee-Loop" {
             title "L3 外脑 — 数字员工容量驱动循环（日程优先 + SelfWorkPolicy）"
             include kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.employeeCalendar kuroneko.agentServer.selfWorkPolicy kuroneko.agentServer.environmentSensorRegistry kuroneko.agentServer.environmentModelFacade kuroneko.agentServer.autonomyJudge kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiManager kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.innerBurstExit kuroneko.agentServer.changeWatcher kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.outerToolExecutor
+            autolayout tb
+        }
+
+        component kuroneko.agentServer "15-L3-Outer-Subject" {
+            title "L3 外脑 — 自主主体（默认关；user=主体，assistant=顾问）"
+            include kuroneko.agentServer.subjectSignalSlot kuroneko.agentServer.subjectStateStore kuroneko.agentServer.subjectDrive kuroneko.agentServer.subjectDecide kuroneko.agentServer.subjectThink kuroneko.agentServer.outerConversationLoop kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.llmGateway
             autolayout tb
         }
 

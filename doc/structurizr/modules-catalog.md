@@ -72,6 +72,11 @@
 | **autonomyJudge** | **容量判定（hard gates）** | `outer/environment/autonomy-judge.ts` | snapshot+policy → hasAvailableCapacity（兼容 idle/busy） |
 | **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
 | **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 找活由 digitalEmployeeLoop / SelfWorkPolicy）** | `outer/casual-chat-dispatcher.ts` | capacity + personality → post_to_im |
+| **subjectSignalSlot** | **⏳ 主体模板：外部原文只进转义 observation 槽** | `outer/subject/signal-slot.ts` | raw → SignalParse + user 模板；见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) |
+| **subjectStateStore** | **⏳ 主体控制状态（目标 / 驱动力 / defer / inbox）** | `outer/subject/state-store.ts` | DATA_ROOT/subject → SubjectState；不进 mem9 |
+| **subjectDrive** | **⏳ 墙钟 accrue + 阈值；超阈值只表示可以想** | `outer/subject/drive.ts` | state+now → shouldThink |
+| **subjectDecide** | **⏳ 白名单最终选择（LLM 分 + 驱动力权重）** | `outer/subject/decide.ts` | candidates+scores → chosen / rejected |
+| **subjectThink** | **⏳ 一次主体 reducer（默认关）。user=主体，assistant=无工具 JSON；no_reply / defer 合法** | `outer/subject/think.ts` | inbound 或心跳尾步 → think-log；可选回复；可选 `drive_threshold` |
 | **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **channelConnectionRegistry** | **IM 多连接 + 飞书热插** | `outer/channel-connection-registry.ts` | connections.json + keychain；N 条 feishu（connector 已注册） |
 | **qrTools** | **URL/文本 → 二维码 PNG 发当前 thread** | `outer/qr-tools.ts` | `qr_generate` 工具；`generateQrPng` 供扫码流（P4a/P4b）附图复用 |
@@ -111,12 +116,14 @@
 | **`14-L3-Digital-Employee-Loop`** | **数字员工主循环：事件触发 → 容量 → Calendar / SelfWorkPolicy → set_goal；heartbeat watchdog** |
 | **`12-L3-Outer-Environment`** | **环境模型：sensor registry / journal / change detector / 消费方** |
 | **`13-L3-Outer-Strategy`** | **【历史视图名】** 战略层已删除；现行见 `14-L3-Digital-Employee-Loop` |
+| **`15-L3-Outer-Subject`** | **自主主体（默认关）：模板 / 状态 / 驱动力 / 白名单决策 / think；不并进已过密的视图 07** |
 
 **KPI 闭环**（实现与 ADL）：见 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)。
 
 **KPI 完成判定**：见 [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md)。  
 **心跳内脑质控**（验收效果 + 卡死/restart 把控）：见 [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)。  
 **资源感知与心跳自主调度**（P0 历史 ADL，勿按文实现；现行为 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)）：见 [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md)。  
+**自主主体**（外部输入只是信号；设计未实现，默认关）：见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md)。  
 **环境模型**（P1 起替代 resourceProbe）：见 [`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)。  
 **战略规划层**（P1 心跳重构）：见 [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)。
 
@@ -282,3 +289,4 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-07-24 | Dashboard 内脑 burst 执行 graph：inspector edges/status + EW workflow_run |
 | 2026-07-25 | Dashboard 主 Tab 精简：Burst/EW/用量/空转/日志/记忆块；旧面进高级 |
 | 2026-07-28 | 内脑 workspace 保留：[`INNER-WORKSPACE-RETENTION.md`](./INNER-WORKSPACE-RETENTION.md)；`innerWorkspaceRetention` + `read_inner_status` historyCap |
+| 2026-10-12 | 自主主体 ADL（未实现）：[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)；模块 `subjectSignalSlot` / `subjectStateStore` / `subjectDrive` / `subjectDecide` / `subjectThink`（⏳）；视图 `15-L3-Outer-Subject`；旗标 `UTLRA_SUBJECT_CORE_ENABLED` 默认关 |

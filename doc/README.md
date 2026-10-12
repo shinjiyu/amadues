@@ -43,6 +43,7 @@
 |------|------|
 | [`architecture.md`](./architecture.md) | 实现向节点图 |
 | [`architecture-adl-ai-attention.md`](./architecture-adl-ai-attention.md) | ADL 与模块视界 |
+| [`structurizr/SUBJECT-CORE.md`](./structurizr/SUBJECT-CORE.md) | 自主主体层（设计，未实现，默认关） |
 | [`agent-data-state-machine.md`](./agent-data-state-machine.md) | 数据即本体、pendings |
 | [`structurizr/`](./structurizr/) | C4 / ADL 权威模型 |
 

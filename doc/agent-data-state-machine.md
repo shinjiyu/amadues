@@ -592,6 +592,15 @@ while (未到 stop_reason):
 
 用户任务的"定时"全部走本架构的 timer pending，**不复用外脑心跳**。
 
+### 9.4 自主主体（外脑，设计未实现）
+
+权威 ADL：[`structurizr/SUBJECT-CORE.md`](structurizr/SUBJECT-CORE.md)。按 §5 扩展，不新增长驻进程：
+
+- **字段**在 agent 级 `DATA_ROOT/subject/`（`state.json`、`inbox.json`、`think-log.jsonl`），不在某个 burst 的 `.brain/`。驱动力比单次 workspace 活得长。
+- **转移**是一次 reducer：入站 Facade 或既有心跳尾步读取状态 → 顾问只出 JSON → 白名单选择 → 写回。`no_reply` / `defer` 不产生 IM。
+- **唤醒**复用已有入站与心跳，不用新的 socket。`defer` 的 `revisitAt` 由下一次已有 tick 看见。
+- 旗标 `UTLRA_SUBJECT_CORE_ENABLED` 默认关。关时本条不改变任何现行为。
+
 ---
 
 ## 10. 路线图
@@ -655,3 +664,4 @@ A：本文档是**架构准则**，绿场里程碑是**业务功能**。两者�
 |------|------|
 | 2026-05-16 | 初版：哲学 + 现状审计 + pendings/ChangeWatcher/Git/LLM round 四大改造方向；明确"不限制 LLM 用 git"；明确"能力扩展 = 字段 + 转移规则"协议。 |
 | 2026-05-16 | 实施 P0–P4、P6 部分：pendings 数据层、AWAITING 模式、异步工具、自动迁移 BLOCKED/SLEEPING、ChangeWatcher、GitBackedBrainFS、外脑 send_directive 数据驱动 resolve。134/137 测试通过（mem9 外部服务失败无关）。 |
+| 2026-10-12 | §9.4 指向自主主体 ADL（设计，未实现）：`DATA_ROOT/subject/` 字段 + 一次 think 转移；默认关。 |

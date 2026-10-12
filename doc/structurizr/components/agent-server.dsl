@@ -99,7 +99,7 @@
                         "horizon.deps" "emptyPromiseReconcile"
                         "horizon.test.unit" "outer-conversation-loop.test.ts; empty-promise-reconcile.test.ts"
                         "horizon.test.integration" "outerConversationLoop.component.integration.test.ts; outer-conversation-loop-assembly.integration.test.ts"
-                        "horizon.note" "方案一不盲派；§4.2 口头承诺须成功派活或改口"
+                        "horizon.note" "方案一不盲派；§4.2 口头承诺须成功派活或改口。UTLRA_SUBJECT_CORE_ENABLED=1 时 Facade 改走 subjectThink，本环不跑（见 SUBJECT-CORE.md）"
                     }
                 }
 
@@ -430,7 +430,7 @@
                     properties {
                         "path" "packages/server/src/outer/digital-employee-loop.ts; packages/server/src/outer/digital-employee-runtime.ts"
                         "horizon.intention" "数字员工一释放容量就找下一件有价值的工作；heartbeat 仅 fallback"
-                        "horizon.in" "burst_finished/calendar_due/dependency_resolved/inbound_drained/policy_changed/heartbeat_fallback"
+                        "horizon.in" "burst_finished/calendar_due/dependency_resolved/inbound_drained/policy_changed/heartbeat_fallback；旗标开时另有 drive_threshold（SUBJECT-CORE.md）"
                         "horizon.out" "dispatch result / sleep reason / action-log"
                         "horizon.deps" "environmentModelFacade; autonomyJudge; employeeCalendar; selfWorkPolicy; outerToolExecutor"
                         "horizon.test.unit" "digital-employee-loop.test.ts"
@@ -765,5 +765,78 @@
                         "horizon.test.unit" "channel-connection-registry.test.ts"
                         "horizon.note" "入站合流/出站路由由 chat-ir FanInChatIRChannel 承担（fan-in-channel.test.ts）；registry 只管连接元数据与生命周期"
                         "horizon.status" "✅ P2+P2b（registry+Fan-in+feishu connector 全落地）"
+                    }
+                }
+
+                // ── 自主主体（设计待评审，未实现；默认关）────────────────
+                subjectSignalSlot = component "Subject Signal Slot" "【主体模板】外部原文只进转义后的 observation 数据槽；解析器无权限" "TypeScript" {
+                    tags "Outer-Module" "Subject"
+                    properties {
+                        "path" "packages/server/src/outer/subject/signal-slot.ts"
+                        "horizon.intention" "固定第一人称模板；外部文本不是指令"
+                        "horizon.in" "raw signal + subject header + task generate|evaluate"
+                        "horizon.out" "SignalParse + system 常量 + user 模板"
+                        "horizon.deps" "无"
+                        "horizon.test.unit" "subject-signal-slot.test.ts"
+                        "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
+                        "horizon.status" "⏳ 设计，未实现"
+                    }
+                }
+
+                subjectStateStore = component "Subject State Store" "【主体状态】DATA_ROOT/subject 的目标、驱动力、defer、inbox；仅本模块写入" "TypeScript" {
+                    tags "Outer-Module" "Subject"
+                    properties {
+                        "path" "packages/server/src/outer/subject/state-store.ts"
+                        "horizon.intention" "主体控制状态落在 agent 级 DATA_ROOT，不进 mem9 / Memory Block / burst .brain"
+                        "horizon.in" "dataRoot + patch"
+                        "horizon.out" "SubjectState；inbox 出队；原子替换"
+                        "horizon.deps" "文件系统"
+                        "horizon.test.unit" "subject-state-store.test.ts"
+                        "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
+                        "horizon.status" "⏳ 设计，未实现"
+                    }
+                }
+
+                subjectDrive = component "Subject Drive" "【驱动力】墙钟 accrue 与阈值判断；超过阈值只表示可以想一次" "TypeScript" {
+                    tags "Outer-Module" "Subject"
+                    properties {
+                        "path" "packages/server/src/outer/subject/drive.ts"
+                        "horizon.intention" "curiosity / social / completion 的纯函数演化"
+                        "horizon.in" "SubjectState + now + observation 计数"
+                        "horizon.out" "accrued drives + shouldThink"
+                        "horizon.deps" "无 I/O"
+                        "horizon.test.unit" "subject-drive.test.ts"
+                        "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
+                        "horizon.status" "⏳ 设计，未实现"
+                    }
+                }
+
+                subjectDecide = component "Subject Decide" "【白名单决策】顾问分数加驱动力权重；代码选择；拒绝名单记审计" "TypeScript" {
+                    tags "Outer-Module" "Subject"
+                    properties {
+                        "path" "packages/server/src/outer/subject/decide.ts"
+                        "horizon.intention" "最终动作不由模型 tool_calls 决定"
+                        "horizon.in" "candidates + scores + drives + allowlist"
+                        "horizon.out" "chosen + rejected + reason"
+                        "horizon.deps" "无 I/O"
+                        "horizon.test.unit" "subject-decide.test.ts"
+                        "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
+                        "horizon.status" "⏳ 设计，未实现"
+                    }
+                }
+
+                subjectThink = component "Subject Think" "【一次主体 reducer】user=主体模板，assistant=无工具 JSON；no_reply 与 defer 是合法终态" "TypeScript" {
+                    tags "Outer-Module" "Subject"
+                    properties {
+                        "path" "packages/server/src/outer/subject/think.ts"
+                        "horizon.intention" "旗标开时取代外脑工具环；旗标关时不存在"
+                        "horizon.in" "trigger inbound|heartbeat_tail + signals + now"
+                        "horizon.out" "think-log；可选 IM 回复；可选 drive_threshold"
+                        "horizon.deps" "subjectSignalSlot; subjectStateStore; subjectDrive; subjectDecide; llmGateway; outerToolExecutor; digitalEmployeeLoop"
+                        "horizon.env" "UTLRA_SUBJECT_CORE_ENABLED"
+                        "horizon.test.unit" "subject-think.test.ts"
+                        "horizon.test.integration" "subjectThink.component.integration.test.ts"
+                        "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
+                        "horizon.status" "⏳ 设计，未实现；默认关"
                     }
                 }
