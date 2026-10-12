@@ -76,7 +76,7 @@
 | **subjectStateStore** | **⏳ 主体控制状态（目标 / 驱动力 / defer / inbox）** | `outer/subject/state-store.ts` | DATA_ROOT/subject → SubjectState；不进 mem9 |
 | **subjectDrive** | **⏳ 墙钟 accrue（0.10/0.06/0.08 每小时，阈值严格大于 0.60）+ 4 小时纯驱动力冷却** | `outer/subject/drive.ts` | state+now → shouldThink |
 | **subjectDecide** | **白名单决策：顾问标量分数加驱动力权重；代码选择；拒绝名单记审计。无主人 sid 特权** | `outer/subject/decide.ts` | candidates+scores → chosen / rejected |
-| **subjectWorkObject** | **self_work 之后的工作对象空间：主体根（身份 / 北极星 / 承诺 / 好奇）× 顾问岔开 × 有趣度；可重访旧题目。替人收尾不进。代码投影执行种类；goalText / expectedOutcome 必须是可做的一步（练、收集、试、对战、做），分析与探讨不派出** | `outer/subject/work-object.ts` | 根 + proposals → execution；顾问写可做的 goalText 与 expectedOutcome |
+| **subjectWorkObject** | **self_work 之后的工作对象空间：主体根（身份 / 北极星 / 承诺 / 好奇）× 顾问岔开 × 有趣度；可重访旧题目。替人收尾不进。代码投影执行种类；goalText 带着选中对象，expectedOutcome 是短的可做动作，不必抄对象全名。分析与探讨不派出** | `outer/subject/work-object.ts` | 根 + proposals → execution；顾问写 goalText 与短的 expectedOutcome |
 | **subjectThink** | **入站 SPEAK 的唯一路径（无旗标）。user=主体，assistant=无工具 JSON；no_reply / defer / wait 对所有人类 sid（含主人）合法，并在同一线程发固定状态回执。propose_self_work 派发前用主体根选工作对象，再请顾问写产物说明** | `outer/subject/think.ts` | inbound 或心跳尾步 → think-log；可选对话回复或状态回执；可选 `drive_threshold` |
 | **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **channelConnectionRegistry** | **IM 多连接 + 飞书热插** | `outer/channel-connection-registry.ts` | connections.json + keychain；N 条 feishu（connector 已注册） |
@@ -298,3 +298,4 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-10-12 | 去掉抽象行动类型空间。`subjectWorkObject` 是 self_work 之后的工作对象空间（SUBJECT-CORE §7A） |
 | 2026-10-12 | 不再按操作派发固定的 expectedOutcome。选点之后 `[TASK:DESCRIBE]` 由顾问写产物说明 |
 | 2026-10-12 | 产物说明改为可做的一步。拆开来想、开放式探讨不派出 |
+| 2026-10-12 | expectedOutcome 不必抄对象全名。短动作可以派出 |

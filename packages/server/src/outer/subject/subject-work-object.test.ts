@@ -53,12 +53,20 @@ describe('subjectWorkObject', () => {
       expectedOutcome: '我想成为宝可梦大师，先去打一场对战。',
     });
     expect(acceptWorkDescription(
-      '{"goalText":"想成为宝可梦大师","expectedOutcome":"我想成为宝可梦大师，先去收集一只精灵的对战记录。"}',
+      '{"goalText":"想成为宝可梦大师","expectedOutcome":"去对战一场"}',
       object,
     )).toEqual({
       ok: true,
-      goalText: '我想成为宝可梦大师，先去收集一只精灵的对战记录。',
-      expectedOutcome: '我想成为宝可梦大师，先去收集一只精灵的对战记录。',
+      goalText: '想成为宝可梦大师',
+      expectedOutcome: '去对战一场',
+    });
+    expect(acceptWorkDescription(
+      '{"goalText":"把想成为宝可梦大师拆开来想","expectedOutcome":"去对战一场"}',
+      object,
+    )).toEqual({
+      ok: true,
+      goalText: '想成为宝可梦大师',
+      expectedOutcome: '去对战一场',
     });
     expect(acceptWorkDescription('{"expectedOutcome":""}', object)).toMatchObject({ ok: false, why: '产物说明是空的' });
     expect(acceptWorkDescription(
@@ -84,7 +92,7 @@ describe('subjectWorkObject', () => {
     expect(acceptWorkDescription(
       '{"expectedOutcome":"写成一段和这件事无关的旧故事"}',
       object,
-    )).toMatchObject({ ok: false, why: '产物说明没有落到这个对象上' });
+    )).toMatchObject({ ok: false, why: '产物说明是在分析' });
   });
 
   it('applies interestingness weights and inverts cost and risk', () => {

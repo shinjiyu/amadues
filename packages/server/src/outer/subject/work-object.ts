@@ -233,7 +233,6 @@ export function acceptWorkDescription(
   if (!outcome) return { ok: false, why: '产物说明是空的' };
   if (isServiceShaped(outcome)) return { ok: false, why: '产物说明是替人收尾' };
   if (isCannedOutcome(outcome)) return { ok: false, why: '产物说明是套话' };
-  if (!outcome.includes(label)) return { ok: false, why: '产物说明没有落到这个对象上' };
   if (isAnalysisShaped(outcome, label)) return { ok: false, why: '产物说明是在分析' };
   if (!hasDoableMove(outcome)) return { ok: false, why: '产物说明不是可做的一步' };
   const refined = typeof record.goalText === 'string' ? record.goalText.trim() : '';
@@ -241,9 +240,8 @@ export function acceptWorkDescription(
     && !isServiceShaped(refined)
     && !isCannedOutcome(refined)
     && !isAnalysisShaped(refined, label)
-    && hasDoableMove(refined)
     ? refined
-    : outcome;
+    : label;
   return { ok: true, goalText, expectedOutcome: outcome };
 }
 

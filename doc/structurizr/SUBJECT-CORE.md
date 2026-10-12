@@ -114,7 +114,7 @@ lease 未过期
 | `defer` | `deferred[]` 追加 open 项，`revisitAt = now + deferRevisitMs` | 无 spawn。有人类入站则发 §8.1 状态回执 |
 | `schedule_revisit` | 改某条 deferred 的 `revisitAt` | 无 spawn。有人类入站则发 §8.1 状态回执 |
 | `reply_to_thread` / `decline` | `social` 减 `decayOnAct`；outbox 式短期记忆 | 经既有回复出口发**被选中的文本**。不再另附状态回执 |
-| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减。派发成功时，选中的工作对象标为 `active` | `digitalEmployeeLoop` reason `drive_threshold`。执行种类由代码投影。`goalText` / `expectedOutcome` 是顾问按选中对象写的可做动作（练、收集、试、对战、做）。空的、替人收尾的、按操作固定的套话，以及拆开来想、开放式探讨这类分析不派出。仍可能被容量或到期日程挡住。有人类入站时另发 §8.1 状态回执 |
+| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减。派发成功时，选中的工作对象标为 `active` | `digitalEmployeeLoop` reason `drive_threshold`。执行种类由代码投影。`goalText` 带着选中对象。`expectedOutcome` 是短的可做动作（练、收集、试、对战、做），不必再抄对象全名。空的、替人收尾的、按操作固定的套话，以及拆开来想、开放式探讨这类分析不派出。仍可能被容量或到期日程挡住。有人类入站时另发 §8.1 状态回执 |
 
 唤醒来源只有已经存在的 reducer：入站 Facade，以及心跳 tick **既有监督顺序之后**的尾步（见 §9）。没有第三个循环。
 
@@ -344,7 +344,7 @@ workScore = Σ(weight × oriented) / Σ(weight)
 | `deliver` | `write_deliverable` |
 | `explore` | `open_question` |
 
-产物说明由顾问在选点之后写。`[TASK:DESCRIBE]` 只把选中对象的 `label`、`kind`、`op` 交给顾问，不把执行种类交给顾问，避免 `open_question` 把话写成探讨。顾问输出 `goalText` 与 `expectedOutcome`。两者都要包含这个 label。`expectedOutcome` 必须是下一步真会做的动作，用上练、收集、试、对战、做、造、打里的一种，并点名这个对象。它不是替人收尾，不是按操作备好的套话（例如「一个仍开放的问题和两条可核对线索」），也不是分析或反思。名字以外出现「拆开来想」「开放式探讨」「分析」「反思」「写成一段话」「搞清」时记 `产物说明是在分析`。点了名却没有这些动作时记 `产物说明不是可做的一步`。不合格就不派发，不改回套话，也不改成一篇分析。`goalText` 只有在同样是可做的一步时才采用顾问的改写；否则用这条 `expectedOutcome`，不用光秃秃的对象名字。对象名字里如果本来有「弄明白」，判断分析时先拿掉名字。闸门上的 `goalText` / `expectedOutcome` 只负责通过字段校验。`kind`、`drive`、`kpiId` 仍走 §7.2。`drive_threshold` 仍只认既有字段；`work.execution` 是代码投影的执行种类，环不据此调用工具。
+产物说明由顾问在选点之后写。`[TASK:DESCRIBE]` 只把选中对象的 `label`、`kind`、`op` 交给顾问，不把执行种类交给顾问，避免 `open_question` 把话写成探讨。顾问输出 `goalText` 与 `expectedOutcome`。`goalText` 带着这个对象：顾问的改写仍包含 label、且不是替人收尾、套话或分析时才采用，否则用 label 本身。`expectedOutcome` 是下一步真会做的动作，用上练、收集、试、对战、做、造、打里的一种。它不必把 label 全文再抄进句子里；选中对象的 id 已经知道，短句「去对战一场」可以派出。它不是替人收尾，不是按操作备好的套话（例如「一个仍开放的问题和两条可核对线索」），也不是分析或反思。出现「拆开来想」「开放式探讨」「分析」「反思」「写成一段话」「搞清」时记 `产物说明是在分析`。没有这些动作时记 `产物说明不是可做的一步`。不合格就不派发，不改回套话，也不改成一篇分析。对象名字里如果本来有「弄明白」，判断分析时先拿掉名字。闸门上的 `goalText` / `expectedOutcome` 只负责通过字段校验。`kind`、`drive`、`kpiId` 仍走 §7.2。`drive_threshold` 仍只认既有字段；`work.execution` 是代码投影的执行种类，环不据此调用工具。
 
 做完的对象标 `done`。`explore` 与 `gather` 会留下一条 `follow_on`，标签是「我还想再看看「…」」，操作仍是 `explore`。派发成功的对象标 `active`，写回 `state.workObjects`。
 
@@ -647,7 +647,7 @@ lastAccruedAt = now
 | 3 | 工具名 | `shell` / `set_goal` / `delete_memory` | 拒绝，理由「工具名不能进入工作对象空间」 | unit |
 | 4 | 没人派活 | 闲着，curiosity 0.9，只有身份、北极星和套话目标 | 选中 `north_star`；收尾句和套话目标不进承诺 | unit |
 | 4d | 具体兴趣 | 承诺「想成为宝可梦大师」，另有几条更弱的宝可梦提案 | 选中该承诺。挂着该承诺且有趣度明显更高的提案可以赢过承诺 | unit |
-| 4e | 产物说明 | 选中对象之后顾问写一步可做的动作（练、收集、试、对战、做）；或写套话、空话、替人收尾、拆开来想、开放式探讨 | 派出这个动作。套话、空话、替人收尾和分析不派发，也不改回按操作固定的句子 | unit |
+| 4e | 产物说明 | 选中对象之后顾问写短动作，例如 goalText「想成为宝可梦大师」、expectedOutcome「去对战一场」；或写套话、空话、替人收尾、拆开来想、开放式探讨 | 短动作派出，goalText 仍带着对象。套话、空话、替人收尾和分析不派发。不要求 expectedOutcome 抄下 label 全文 | unit |
 | 4b | 旧题目 | 高 novelty、低 interestingness 的新问题，对照低 novelty 的北极星 | 北极星赢。novelty 不单独决定 | unit |
 | 4c | 岔开 | 挂着根、interestingness 很高、novelty 不高的 proposal | 岔开的对象赢过北极星 | unit |
 | 5 | 心跳派出 | 无人类消息，完整 `propose_self_work`，顾问写了收尾句和 `shell`，没有 workObjects 时同样选根 | 派出北极星的投影；收尾句和 `shell` 不出现；成功后该对象 `active` | unit |
@@ -722,3 +722,4 @@ lastAccruedAt = now
 | 2026-10-12 | 具体承诺赢过北极星套话。派出的 `goalText` / `expectedOutcome` 带着选中的具体对象。挂着该承诺的更有趣提案可以赢过承诺。无旗标。 |
 | 2026-10-12 | 不再按操作派发固定的 `expectedOutcome`。选点之后由顾问写产物说明；空话、替人收尾和套话不派出。执行种类仍由代码投影。无旗标。 |
 | 2026-10-12 | 产物说明必须是可做的一步（练、收集、试、对战、做、造、打）。拆开来想、开放式探讨这类分析不派出。描述任务不接收执行种类。无旗标。 |
+| 2026-10-12 | `expectedOutcome` 不再要求抄进对象全名。短动作（如「去对战一场」）可以派出；`goalText` 带着选中对象。分析、替人收尾和空话仍不派出。无旗标。 |
