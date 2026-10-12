@@ -1,6 +1,6 @@
 # 自主主体层
 
-> **状态**：**ADL 待评审**（未实现）
+> **状态**：**设计已关闭**（未实现）
 >
 > **权威设计**：[`doc/structurizr/SUBJECT-CORE.md`](../structurizr/SUBJECT-CORE.md)
 
