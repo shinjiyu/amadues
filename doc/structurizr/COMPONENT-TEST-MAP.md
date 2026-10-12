@@ -71,7 +71,7 @@
 | **subjectSignalSlot** | ✅ `subject-signal-slot.test.ts` | — | — | ADL [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §14.1：转义槽、注入不闭合、system 常量 |
 | **subjectStateStore** | ✅ `subject-state-store.test.ts` | — | — | §14.3 原子写、defer 上限 |
 | **subjectDrive** | ✅ `subject-drive.test.ts` | — | — | §14.3：0.10/时、阈值严格大于 0.60、4 小时纯驱动力冷却、inbox 可打断冷却 |
-| **subjectDecide** | ✅ `subject-decide.test.ts` | — | — | §14.2 白名单拒绝、权重、同分字典序；主人 sid 不进入决策（SC-10） |
+| **subjectDecide** | ✅ `subject-decide.test.ts` | — | — | §14.2 白名单拒绝、权重、同分字典序；主人 sid 不进入决策（SC-10）；`reply` / `reply_to_user` → `reply_to_thread`，`message` → `text` |
 | **subjectThink** | ✅ `subject-think.test.ts` | ✅ `subjectThink.component.integration.test.ts` | ⏳ P3 | §14.4：`no_reply` 不发对话回复，但发一条 §8.1 状态回执，且不进入 `runOuterConversationLoop`；心跳空转 `wait` 不发；主人 sid 的状态句与其他人相同；回复只取候选 text；不新建 KPI；无旗标；`drive_threshold` 不绕过日程 |
 | **advanceWorkPackageBuilder** | ✅ 感知 facet（日历+内脑+stall+cursor）+ 简单调配规则 | ✅ RUNNING/日历闸门；bootstrap+ensure；stall→repair；盲派/重复日历指标 | — | [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` + `memory-belief-card.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP + mem9 Belief Card supersede（[`MEMORY-BELIEF-CARD.md`](./MEMORY-BELIEF-CARD.md)） |

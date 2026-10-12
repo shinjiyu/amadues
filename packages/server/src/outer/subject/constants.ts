@@ -30,7 +30,7 @@ export const ADVISOR_SYSTEM =
 export const NO_SIGNAL_LINE = '这一轮我没有观察到外部信号。';
 
 export const GENERATE_TASK =
-  '[TASK:GENERATE] 请帮我列出 3 到 5 个我可以采取的候选行动（必须包含 do_nothing 或 defer）。只输出 JSON：{"candidates":[{"action":"…","args":{},"rationale":"…"}]}';
+  '[TASK:GENERATE] 请帮我列出 3 到 5 个我可以采取的候选行动（必须包含 do_nothing 或 defer）。action 只能是 no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work。回复必须写成 reply_to_thread，不要写成 reply 或 reply_to_user。reply_to_thread 与 decline 的正文只写在 args.text，不要写 args.message。只输出 JSON：{"candidates":[{"action":"reply_to_thread","args":{"text":"…"},"rationale":"…"},{"action":"do_nothing","args":{},"rationale":"…"}]}';
 
 export const EVALUATE_TASK =
   '[TASK:EVALUATE] 请从我的目标出发给每个候选打 0 到 1 分。只输出 JSON：{"scores":[{"action":"…","score":0.0,"reason":"…"}]}';

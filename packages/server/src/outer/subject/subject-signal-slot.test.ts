@@ -33,7 +33,12 @@ describe('subjectSignalSlot', () => {
     const slotAt = prompt.user.indexOf('<observation');
     expect(slotAt).toBeGreaterThan(0);
     expect(taskAt).toBeGreaterThan(slotAt);
-    expect(prompt.user.slice(taskAt)).not.toContain('你好');
+    const task = prompt.user.slice(taskAt);
+    expect(task).not.toContain('你好');
+    expect(task).toContain('args.text');
+    expect(task).toContain('不要写 args.message');
+    expect(task).toContain('必须写成 reply_to_thread');
+    expect(task).toContain('不要写成 reply 或 reply_to_user');
   });
 
   it('escapes a closing observation tag so the slot cannot end early', () => {
