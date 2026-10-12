@@ -1,7 +1,6 @@
 import { ALLOWED_ACTIONS, DRIVE_WEIGHT } from './constants.js';
-import { hasExplicitDims, materializeCandidate, orientDims, projectDecision } from './space.js';
 import { clamp01 } from './text.js';
-import type { Candidate, Decision, ScoreDims, ScoreRow, SubjectDrives } from './types.js';
+import type { Candidate, Decision, ScoreRow, SubjectDrives } from './types.js';
 
 const ALLOWED = new Set<string>(ALLOWED_ACTIONS);
 
@@ -112,9 +111,10 @@ export function normalizeCandidateArgs(action: string, args: Record<string, unkn
 }
 
 function prepareCandidate(candidate: Candidate): Candidate {
-  materializeCandidate(candidate);
-  let args = normalizeCandidateArgs(candidate.action, candidate.args);
-  if (candidate.action === 'propose_self_work') args = normalizeProposeSelfWorkArgs(args);
+  const action = candidate.action.trim();
+  let args = normalizeCandidateArgs(action, candidate.args);
+  if (action === 'propose_self_work') args = normalizeProposeSelfWorkArgs(args);
+  if (candidate.action !== action) candidate.action = action;
   if (candidate.args !== args) candidate.args = args;
   return candidate;
 }
@@ -127,20 +127,15 @@ export function parseCandidates(text: string): Candidate[] {
   const out: Candidate[] = [];
   for (const row of list) {
     if (!row || typeof row !== 'object') continue;
-    const typeRaw = (row as { type?: unknown }).type;
-    const actionRaw = (row as { action?: unknown }).action;
-    const hinted = typeof typeRaw === 'string' && typeRaw.trim()
-      ? typeRaw
-      : typeof actionRaw === 'string' ? actionRaw : '';
-    if (!hinted.trim()) continue;
+    const action = (row as { action?: unknown }).action;
+    if (typeof action !== 'string' || !action.trim()) continue;
     const argsRaw = (row as { args?: unknown }).args;
     const args = argsRaw && typeof argsRaw === 'object' && !Array.isArray(argsRaw)
       ? (argsRaw as Record<string, unknown>)
       : {};
     const rationale = (row as { rationale?: unknown }).rationale;
     out.push(prepareCandidate({
-      type: typeof typeRaw === 'string' ? typeRaw : undefined,
-      action: typeof actionRaw === 'string' && actionRaw.trim() ? actionRaw : hinted,
+      action,
       args,
       rationale: typeof rationale === 'string' ? rationale : undefined,
     }));
@@ -155,72 +150,26 @@ export function ensureDoNothingAndDefer(candidates: Candidate[]): Candidate[] {
   return next;
 }
 
-function readDims(row: object): ScoreDims | undefined {
-  const dims: ScoreDims = {};
-  let any = false;
-  for (const key of ['alignment', 'novelty', 'cost', 'risk', 'socialPressure', 'completionPressure'] as const) {
-    const raw = (row as Record<string, unknown>)[key];
-    const numeric = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
-    if (!Number.isFinite(numeric)) continue;
-    dims[key] = clamp01(numeric);
-    any = true;
-  }
-  return any ? dims : undefined;
-}
-
-interface StoredScore {
-  scalar: number;
-  dims?: ScoreDims;
-  explicit: boolean;
-}
-
-function rememberScore(byAction: Map<string, StoredScore>, raw: string, stored: StoredScore): void {
-  const projected = projectDecision(raw);
-  const concrete = projected?.action ?? raw.trim();
-  const alias = projected !== null && raw.trim() !== concrete;
-  if (alias && byAction.has(concrete)) return;
-  byAction.set(concrete, stored);
-  if (raw.trim() !== concrete) byAction.set(raw.trim(), stored);
-}
-
 export function parseScores(text: string, actions: string[]): ScoreRow[] {
   const parsed = extractJsonObject(text);
-  const byAction = new Map<string, StoredScore>();
+  const byAction = new Map<string, number>();
   if (parsed && typeof parsed === 'object') {
     const list = (parsed as { scores?: unknown }).scores;
     if (Array.isArray(list)) {
       for (const row of list) {
         if (!row || typeof row !== 'object') continue;
-        const named = (row as { type?: unknown; action?: unknown }).type ?? (row as { action?: unknown }).action;
-        if (typeof named !== 'string' || !named.trim()) continue;
+        const action = (row as { action?: unknown }).action;
+        if (typeof action !== 'string') continue;
         const score = (row as { score?: unknown }).score;
         const numeric = typeof score === 'number' ? score : Number(score);
-        const dims = readDims(row);
-        rememberScore(byAction, named, {
-          scalar: clamp01(Number.isFinite(numeric) ? numeric : 0),
-          dims,
-          explicit: hasExplicitDims(dims),
-        });
+        byAction.set(action.trim(), clamp01(Number.isFinite(numeric) ? numeric : 0));
       }
     }
   }
   return actions.map((action) => {
     const name = action.trim();
-    const projected = projectDecision(name);
-    const key = projected?.action ?? name;
-    const stored = byAction.get(key) ?? byAction.get(name);
-    return {
-      action: key,
-      score: stored?.scalar ?? 0,
-      dims: stored?.dims,
-    };
+    return { action: name, score: byAction.get(name) ?? 0 };
   });
-}
-
-export function pointScore(row: ScoreRow | undefined): number {
-  if (!row) return 0;
-  if (hasExplicitDims(row.dims)) return orientDims(row.dims, row.score);
-  return clamp01(row.score);
 }
 
 export function decide(input: {
@@ -230,16 +179,7 @@ export function decide(input: {
   driveWeight?: number;
 }): Decision {
   const weight = input.driveWeight ?? DRIVE_WEIGHT;
-  const scoreOf = new Map<string, ScoreRow>();
-  for (const row of input.scores) {
-    const projected = projectDecision(row.action);
-    const concrete = projected?.action ?? row.action.trim();
-    const alias = projected !== null && row.action.trim() !== concrete;
-    if (!(alias && scoreOf.has(concrete))) scoreOf.set(concrete, { ...row, action: concrete });
-    if (row.action.trim() !== concrete && !scoreOf.has(row.action.trim())) {
-      scoreOf.set(row.action.trim(), row);
-    }
-  }
+  const scoreOf = new Map(input.scores.map((row) => [row.action.trim(), clamp01(row.score)]));
   const rejected: Decision['rejected'] = [];
   const ranked: Array<{ candidate: Candidate; total: number }> = [];
 
@@ -249,7 +189,7 @@ export function decide(input: {
       rejected.push({ action: candidate.action, why: '不在行动白名单内' });
       continue;
     }
-    const llmScore = pointScore(scoreOf.get(candidate.action) ?? (candidate.type ? scoreOf.get(candidate.type) : undefined));
+    const llmScore = scoreOf.get(candidate.action) ?? 0;
     const driveName = driveOf(candidate.action, candidate.args);
     const drive = driveName ? input.drives[driveName] : 0;
     ranked.push({ candidate, total: llmScore + weight * drive });

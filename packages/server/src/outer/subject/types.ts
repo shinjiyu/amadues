@@ -1,12 +1,10 @@
+import type { WorkObject } from './work-object.js';
+
 export interface SubjectGoal {
   id: string;
   text: string;
   keywords: string[];
   priority: number;
-  /** Absent on legacy rows. Load fills it from the life graph. */
-  layer?: 'identity' | 'north_star' | 'mission' | 'commitment' | 'constraint' | 'success_signal';
-  relatesTo?: string[];
-  relation?: 'serves' | 'constrains' | 'evidences' | 'commits';
 }
 
 export interface SubjectDrives {
@@ -76,21 +74,11 @@ export interface SubjectState {
   shortTerm: Array<{ at: string; action: string; result: string }>;
   deferred: DeferredItem[];
   lease: { owner: string; until: string } | null;
-}
-
-export interface ScoreDims {
-  alignment?: number;
-  novelty?: number;
-  cost?: number;
-  risk?: number;
-  socialPressure?: number;
-  completionPressure?: number;
+  /** Work-object graph. Absent on older files; load treats that as empty. */
+  workObjects?: WorkObject[];
 }
 
 export interface Candidate {
-  /** Abstract kind. Set before projection. Legacy rows may omit it until materialize. */
-  type?: string;
-  /** Concrete whitelist action after projection. */
   action: string;
   args: Record<string, unknown>;
   rationale?: string;
@@ -100,7 +88,6 @@ export interface ScoreRow {
   action: string;
   score: number;
   reason?: string;
-  dims?: ScoreDims;
 }
 
 export interface Decision {
@@ -122,8 +109,6 @@ export interface ThinkLogRecord {
   scores: ScoreRow[];
   rejected: Array<{ action: string; why: string }>;
   chosen: string;
-  /** Abstract type of the chosen candidate, when projection ran. */
-  abstractType?: string;
   reason: string;
   selfInitiated: boolean;
   result: string;

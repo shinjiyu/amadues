@@ -43,6 +43,7 @@ export const L3_COMPONENTS = {
     { id: 'subjectStateStore', name: 'Subject State Store', path: 'packages/server/src/outer/subject/state-store.ts' },
     { id: 'subjectDrive', name: 'Subject Drive', path: 'packages/server/src/outer/subject/drive.ts' },
     { id: 'subjectDecide', name: 'Subject Decide', path: 'packages/server/src/outer/subject/decide.ts' },
+    { id: 'subjectWorkObject', name: 'Subject Work Object', path: 'packages/server/src/outer/subject/work-object.ts' },
     { id: 'subjectThink', name: 'Subject Think', path: 'packages/server/src/outer/subject/think.ts' },
     { id: 'knowledgeRetrieval', name: 'Knowledge Retrieval', path: 'packages/server/src/outer/knowledge-retrieval.ts' },
     { id: 'threadOrchestrator', name: 'Thread Orchestrator', path: 'packages/server/src/outer/thread-orchestrator.ts' },

@@ -811,15 +811,29 @@
                     }
                 }
 
-                subjectDecide = component "Subject Decide" "【决策空间】抽象类型 × 目标图 × 多维分数；代码选点后按闭表投影到白名单" "TypeScript" {
+                subjectDecide = component "Subject Decide" "【白名单决策】顾问分数加驱动力权重；代码选择；拒绝名单记审计" "TypeScript" {
                     tags "Outer-Module" "Subject"
                     properties {
                         "path" "packages/server/src/outer/subject/decide.ts"
-                        "horizon.intention" "顾问只填抽象类型和分数维；代码选点并投影。工具名不在投影表内就拒绝。主人 sid 不能改判"
+                        "horizon.intention" "最终动作不由模型 tool_calls 决定；主人 sid 不能改判 no_reply/defer/decline"
                         "horizon.in" "candidates + scores + drives + allowlist；无特权 sid"
                         "horizon.out" "chosen + rejected + reason"
                         "horizon.deps" "无 I/O"
                         "horizon.test.unit" "subject-decide.test.ts"
+                        "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
+                        "horizon.status" "✅ 已实现"
+                    }
+                }
+
+                subjectWorkObject = component "Subject Work Object" "【工作对象空间】self_work 之后：对象图 × 抽象操作 × 有趣度；投影到执行种类" "TypeScript" {
+                    tags "Outer-Module" "Subject"
+                    properties {
+                        "path" "packages/server/src/outer/subject/work-object.ts"
+                        "horizon.intention" "顾问只在 schema 内提议对象和操作；代码按有趣度选点。shell、set_goal、delete_memory 不投影"
+                        "horizon.in" "workObjects + goals + observations + curiosity + idle"
+                        "horizon.out" "选中对象的 execution、goalText、expectedOutcome"
+                        "horizon.deps" "无 I/O"
+                        "horizon.test.unit" "subject-work-object.test.ts"
                         "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"
                         "horizon.status" "✅ 已实现"
                     }
@@ -832,7 +846,7 @@
                         "horizon.intention" "入站 SPEAK 的唯一生产路径；取代外脑工具环与强制回复，不设旗标。所有人类消息含主人 sid 只是信号（SC-10）。非聊天终态发固定状态回执（SC-11）"
                         "horizon.in" "trigger inbound|heartbeat_tail + signals + now"
                         "horizon.out" "think-log；可选对话回复；有人类入站时的状态回执；可选 drive_threshold"
-                        "horizon.deps" "subjectSignalSlot; subjectStateStore; subjectDrive; subjectDecide; llmGateway; outerToolExecutor; digitalEmployeeLoop"
+                        "horizon.deps" "subjectSignalSlot; subjectStateStore; subjectDrive; subjectDecide; subjectWorkObject; llmGateway; outerToolExecutor; digitalEmployeeLoop"
                         "horizon.test.unit" "subject-think.test.ts"
                         "horizon.test.integration" "subjectThink.component.integration.test.ts"
                         "horizon.adl" "doc/structurizr/SUBJECT-CORE.md"

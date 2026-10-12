@@ -11,6 +11,14 @@ import {
 } from './constants.js';
 import { decayDrive, accrue, heartbeatShouldThink } from './drive.js';
 import { decide, driveOf, ensureDoNothingAndDefer, parseCandidates, parseScores, readProposeSelfWork } from './decide.js';
+import {
+  activateWorkObject,
+  parseWorkProposals,
+  projectWorkObject,
+  selectWorkPoint,
+  workScore,
+  type WorkObject,
+} from './work-object.js';
 import { alignmentOf, buildSubjectUserMessage, escapeObservation, parseSignal } from './signal-slot.js';
 import { reactionFor, statusText } from './status-ack.js';
 import {
@@ -40,6 +48,16 @@ export interface SubjectProposalDispatch {
   goalText: string;
   expectedOutcome: string;
   drive: 'curiosity' | 'completion';
+  /** Present only when the proposal carried work objects and one was selected. */
+  work?: {
+    id: string;
+    kind: string;
+    label: string;
+    op: string;
+    source: string;
+    execution: string;
+    score: number;
+  };
 }
 
 export interface SubjectDispatchResult {
@@ -406,10 +424,36 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
   } else if (chosen.action === 'propose_self_work') {
     const ready = readProposeSelfWork(chosen.args);
     let dispatched: SubjectDispatchResult = { dispatched: false, reason: ready.ok ? 'no_dispatcher' : ready.why };
+    let selectedWork: WorkObject | null = null;
     if (ready.ok && input.dispatchProposal) {
-      const proposal = {
+      let goalText = truncateCodePoints(ready.proposal.goalText, 500);
+      let expectedOutcome = ready.proposal.expectedOutcome;
+      let work: SubjectProposalDispatch['work'];
+      if (Array.isArray(chosen.args.workObjects)) {
+        const parsed = parseWorkProposals(chosen.args.workObjects, (hint) => newId(hint, nowMs));
+        const idle = !signals.some((signal) => signal.kind === 'message');
+        const point = selectWorkPoint(parsed.accepted, state.drives.curiosity, idle);
+        if (point) {
+          const projected = projectWorkObject(point);
+          goalText = truncateCodePoints(projected.goalText, 500);
+          expectedOutcome = projected.expectedOutcome;
+          selectedWork = point;
+          work = {
+            id: point.id,
+            kind: point.kind,
+            label: point.label,
+            op: point.op,
+            source: point.source,
+            execution: projected.execution,
+            score: workScore(point.dims),
+          };
+        }
+      }
+      const proposal: SubjectProposalDispatch = {
         ...ready.proposal,
-        goalText: truncateCodePoints(ready.proposal.goalText, 500),
+        goalText,
+        expectedOutcome,
+        ...(work ? { work } : {}),
       };
       try {
         dispatched = await input.dispatchProposal(proposal);
@@ -419,7 +463,16 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
     }
     proposalDispatched = dispatched.dispatched;
     result = dispatched.reason;
-    if (ready.ok && proposalDispatched) state = decayDrive(state, ready.proposal.drive);
+    if (ready.ok && proposalDispatched) {
+      state = decayDrive(state, ready.proposal.drive);
+      if (selectedWork) {
+        const existing = state.workObjects ?? [];
+        const merged = existing.some((row) => row.id === selectedWork.id)
+          ? existing
+          : [...existing, selectedWork];
+        state = { ...state, workObjects: activateWorkObject(merged, selectedWork.id) };
+      }
+    }
     else if (ready.ok) {
       state = {
         ...state,
@@ -516,7 +569,6 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
     scores,
     rejected: decision.rejected,
     chosen: chosen.action,
-    abstractType: chosen.type,
     reason: decision.reason,
     selfInitiated,
     result: String(result),

@@ -103,6 +103,7 @@ lease 未过期
   → 顾问生成候选（assistant）
   → 顾问打分（assistant）
   → subjectDecide 白名单选择
+  → 若选中 `propose_self_work` 且 args 带 `workObjects`，按 §7A 选一个工作对象并投影到执行种类
   → execute 只做选中项允许的副作用
   → 释放 lease，追加 think-log
 ```
@@ -113,7 +114,7 @@ lease 未过期
 | `defer` | `deferred[]` 追加 open 项，`revisitAt = now + deferRevisitMs` | 无 spawn。有人类入站则发 §8.1 状态回执 |
 | `schedule_revisit` | 改某条 deferred 的 `revisitAt` | 无 spawn。有人类入站则发 §8.1 状态回执 |
 | `reply_to_thread` / `decline` | `social` 减 `decayOnAct`；outbox 式短期记忆 | 经既有回复出口发**被选中的文本**。不再另附状态回执 |
-| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减 | `digitalEmployeeLoop` reason `drive_threshold`；仍可能被容量或到期日程挡住。有人类入站时另发 §8.1 状态回执 |
+| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减。带 `workObjects` 且派发成功时，选中对象标为 `active` | `digitalEmployeeLoop` reason `drive_threshold`。有工作对象时，派出的 `goalText` / `expectedOutcome` 来自 §7A 的投影，不是工具名。仍可能被容量或到期日程挡住。有人类入站时另发 §8.1 状态回执 |
 
 唤醒来源只有已经存在的 reducer：入站 Facade，以及心跳 tick **既有监督顺序之后**的尾步（见 §9）。没有第三个循环。
 
@@ -145,6 +146,7 @@ interface SubjectState {
   shortTerm: Array<{ at: string; action: string; result: string }>; // 最近 10 条
   deferred: DeferredItem[];
   lease: { owner: string; until: string } | null; // 持有 120_000 ms
+  workObjects?: WorkObject[]; // 可缺；缺则当作空。形状见 §7A
 }
 
 interface DeferredItem {
@@ -161,13 +163,9 @@ interface DeferredItem {
 }
 ```
 
-`state.json` 不存在时，用 §17 的常数创建，并立刻把 `lastAccruedAt` 写成创建时刻（不追补停机前的时间）。没有「旗标关闭则不创建」的模式。`goals` 种入的是一棵分层关系图，不是一条口号。层从身份到可核对信号：
+`state.json` 不存在时，用 §17 的常数创建，并立刻把 `lastAccruedAt` 写成创建时刻（不追补停机前的时间）。没有「旗标关闭则不创建」的模式。`goals` 是一条目标种子。
 
-`identity` → `north_star` → `mission` → `commitment`，旁边是 `constraint`，底下是 `success_signal`。边上的 `relation` 只有 `serves`、`constrains`、`commits`、`evidences`。节点用 `relatesTo` 指向别的 id。关系比句子重要：改一句文案不改变它服务谁、受谁约束。
-
-种子节点：`g-identity`、`g-north`、`g-mission`（文案仍是「把正在做的事做完」）、`g-commit`、`g-constraint-signal`（任何人类消息包括主人都只是信号）、`g-constraint-kpi`（可以开工，不能新建永久 KPI）、`g-signal-done`。
-
-`DATA_ROOT/outer/goal.md` 去掉首尾空白后非空时，**追加** `{ id: "g-outer", layer: "mission", relation: "serves", relatesTo: ["g-north"], priority: 0.8 }`，不替换整棵图。读到旧的单条 `g-default` / `g-outer` 时，`mergeGoalGraph` 补上缺的层，已有 id 的文本和优先级保留。
+`DATA_ROOT/outer/goal.md` 去掉首尾空白后非空时，种子是 `{ id: "g-outer", text: 截断到 500 码位, keywords: [], priority: 0.8 }`。否则是 `{ id: "g-default", text: 「把正在做的事做完」, keywords: [], priority: 0.5 }`。
 
 不从正文自动抽 keyword。之后目标文本、优先级和边只能由人改 `state.json`。白名单里没有 `adjust_goal`，顾问也不能写这个文件。
 
@@ -220,7 +218,7 @@ interface SignalParse {
 
 没有信号时加一句固定话：「这一轮我没有观察到外部信号。」
 
-生成任务句与打分任务句的正文以 `packages/server/src/outer/subject/constants.ts` 的 `GENERATE_TASK` / `EVALUATE_TASK` 为准。白名单名单由 `ALLOWED_ACTIONS` 拼进句子。顾问先写抽象 `type`，并按六维打分；落地动作仍是投影表。槽位约束保持不变：`express` / `reply_to_thread` / `decline` 的正文只写 `args.text`；`self_work` / `propose_self_work` 的 `drive`、`kind`、`goalText`、`expectedOutcome` 必须非空。
+生成任务句与打分任务句的正文以 `packages/server/src/outer/subject/constants.ts` 的 `GENERATE_TASK` / `EVALUATE_TASK` 为准。白名单名单由 `ALLOWED_ACTIONS` 拼进句子。回复必须写成 `reply_to_thread`，正文只写 `args.text`。`propose_self_work` 的 `drive`、`kind`、`goalText`、`expectedOutcome` 必须非空。自己找工作时，对象写在 `args.workObjects`，打分句不负责给工作对象打分：interestingness 由 §7A 的代码计算。
 
 转义：`& < > " '` 做 XML 转义；原文里大小写不敏感的 `</observation` 先替换成全角括号形式再转义，避免提前闭合数据槽。转义之后模型仍然**读得到**原文。隔离的含义是：原文不在 system、不在任务句、不能变成 `tool_calls`。
 
@@ -238,35 +236,6 @@ interface SignalParse {
 ---
 
 ## 7. 决策
-
-### 7.0 决策空间
-
-决策空间是三样东西的积，不是一条任务清单加三个驱动力标量。
-
-1. **目标关系图**（§5）。header 里每个节点带层、`relation` 和 `relatesTo`。契合度仍然只看 keyword，不让顾问改图。
-2. **抽象类型**。顾问只能提议这些类型，或提议已经投影过的白名单名。类型不是工具名：`observe`、`think`、`act`、`defer`、`silence`、`express`、`self_work`、`decline`、`revisit`、`wait`。
-3. **多维分数**。每一维都是 0 到 1，由代码按固定权重合成一个点。维：`alignment`、`novelty`、`cost`、`risk`、`socialPressure`、`completionPressure`。`cost` 和 `risk` 越高，点越低；其余越高，点越高。权重是 1、0.6、0.8、1、0.7、0.9。缺的维用标量 `score` 填充。只有标量、没有任何维时，标量本身就是这一点，以免旧的单分候选被改写。
-
-代码选点。顾问只填类型、槽位和维。选中之后才投影。投影是一张闭表，同样的类型永远落到同一个白名单动作：
-
-| 抽象类型 | 白名单动作 | 含义 |
-|----------|------------|------|
-| `silence` | `no_reply` | 不接话 |
-| `observe` | `do_nothing` | 看过，不对外动作 |
-| `think` | `wait` | 想留在这一轮，仍不说话 |
-| `act` | `do_nothing` | 抽象的「做」不是工具调用 |
-| `defer` | `defer` | 延后 |
-| `wait` | `wait` | 等待 |
-| `express` | `reply_to_thread` | 对话正文仍只取 `args.text` |
-| `decline` | `decline` | 拒绝正文 |
-| `revisit` | `schedule_revisit` | 只改 open 延后项 |
-| `self_work` | `propose_self_work` | 再走既有字段校验和 `drive_threshold` |
-
-`act` 与 `observe` 都落到 `do_nothing`，这是确定的，不是模糊：抽象步不调用工具。要对世界做功，类型必须是 `self_work`。`delete_memory`、`set_goal`、`shell`、`reply` 不在类型里，也不在白名单里，投影函数返回空，记 `why: 不在行动白名单内`。模型在 `type` 里写工具名不会被执行。
-
-投影之后的候选才进入 §7.2 的驱动力加权和既有校验（空回复、不完整 `propose_self_work`、无 open 项的 `schedule_revisit`、无 active KPI）。SC-10 与 SC-11 不变：投影结果对主人 sid 没有例外；非聊天终态仍发固定状态回执。没有第二套运行模式。
-
-审计里的候选带 `type`（抽象）和 `action`（投影后）。`think-log` 的 `abstractType` 是选中点的类型，`chosen` 仍是白名单动作。
 
 ### 7.1 两次顾问调用
 
@@ -334,6 +303,43 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 不保存拼好的完整 prompt（模板是固定的，可从状态和 observation 重放）。每条 observation 在日志里最多保留转义后 2000 个码位。整行 UTF-8 超过 65536 字节时，从最旧的 observation 起删槽，直到不超；`chosen`、`scores`、`rejected`、`reason`、`drivesBefore`、`drivesAfter` 不删。被截或被删的槽记 `truncated: true`。日志不回读进 prompt。
 
 ---
+
+## 7A. 工作对象空间
+
+行动白名单到 `propose_self_work` 为止。那只是闸门：字段完整才允许自己找活。闸门之后才有工作对象空间，让主体在没人派活时挑一件值得做的事。没有第二套行动类型，也没有旗标。
+
+空间是三样东西的积：
+
+1. **对象图**。种类只有 `theme`、`entity`、`evidence`、`deliverable`、`question`。对象之间用 `relatesTo` 指向别的 id。来源只有 `goal`、`observation`、`residue`、`curiosity`、`follow_on`、`proposal`。
+2. **抽象操作**。`gather`、`compare`、`synthesize`、`verify`、`deliver`、`explore`。操作不是工具名。
+3. **有趣度**。每一维都是 0 到 1。维是 `interestingness`、`novelty`、`valueToMissions`、`cost`、`risk`。权重是 1.2、0.8、1、0.7、0.9。`cost` 和 `risk` 越高，点越低；其余越高，点越高。合成：
+
+```text
+workScore = Σ(weight × oriented) / Σ(weight)
+```
+
+闲着（本轮没有 `kind=message` 的信号）且对象来源是 `curiosity` 时，选点再加 `0.15 × curiosity`。同分按 id 字典序。
+
+顾问可以在 `propose_self_work.args.workObjects` 里提议对象和操作，只能用上面的种类和操作。代码解析、打分、选点。`shell`、`set_goal`、`set_kpi`、`delete_memory`、`reply`、`reply_to_user`、`send_directive` 记 `工具名不能进入工作对象空间`，不投影。
+
+选中之后才投影。闭表把操作落到执行种类，不是工具名：
+
+| 操作 | 执行种类 | 派出的 expectedOutcome |
+|------|----------|------------------------|
+| `gather` | `collect_notes` | 一批可引用的材料，每条带来源 |
+| `compare` | `compare_notes` | 一张差异表，至少两个对象 |
+| `synthesize` | `synthesis` | 一段把材料收成判断的说明 |
+| `verify` | `check_claims` | 核对过的结论，以及仍不成立的点 |
+| `deliver` | `write_deliverable` | 一份可交出的产物 |
+| `explore` | `open_question` | 一个仍开放的问题和两条可核对线索 |
+
+投影替换本轮派出的 `goalText`（对象的 label）和 `expectedOutcome`。`kind`、`drive`、`kpiId` 仍走 §7.2 的校验。没有 `workObjects` 时，不改这两项，也不附带 `work`。`drive_threshold` 仍只认既有字段；`work` 是附带的执行元数据，环不据此调用工具。
+
+种子不等人派活。目标文本变成 `theme` / `explore`；observation 变成 `question` / `gather`；已完成对象的残留变成 follow-on 问句。闲着且 `curiosity > 0.6` 时，若图里还没有 `curiosity` 来源，补一条问句：「什么是我还没核对、但和当前目标有关的缺口」。人没有指定这件工作时，高好奇心仍能选中它。
+
+做完的对象标 `done`。`explore` 与 `gather` 会留下一条 `follow_on` 问句，操作仍是 `explore`。派发成功的对象标 `active`，写回 `state.workObjects`。
+
+SC-10 与 SC-11 不变：工作对象不因主人 sid 改判；非聊天终态的状态回执仍按选中的白名单动作发。
 
 ## 8. `no_reply` 与 `defer` 的再访
 
@@ -520,7 +526,17 @@ lastAccruedAt = now
 | **In** | `trigger` + 本轮信号 + `now` + `callLlm` 注入口 |
 | **Out** | think-log 记录；可能的 IM 回复；可能的 `drive_threshold` 触发 |
 | **计划路径** | `packages/server/src/outer/subject/think.ts` |
-| **Deps** | 上列四模块、`llmGateway`、`outerToolExecutor`（仅回复出口）、`digitalEmployeeLoop` |
+| **Deps** | 上列模块、`subjectWorkObject`、`llmGateway`、`outerToolExecutor`（仅回复出口）、`digitalEmployeeLoop` |
+
+### 11.6 `subjectWorkObject`
+
+| 属性 | 值 |
+|------|-----|
+| **职责** | `propose_self_work` 通过字段校验之后，在对象图里按有趣度选点，并投影到执行种类 |
+| **In** | `workObjects` 提案，或目标 / observation / 残留 / curiosity / 是否闲着 |
+| **Out** | 选中对象的 `execution`、`goalText`、`expectedOutcome`；拒绝的工具名 |
+| **计划路径** | `packages/server/src/outer/subject/work-object.ts` |
+| **Deps** | 无 I/O、无 LLM |
 
 `outerConversationLoop` 不再被 Facade 调用。不把本层的分支写进它的 ReAct 循环内部，避免「想完又掉进工具选择」。也没有旗标处的二选一：SPEAK 只有 `subjectThink`。
 
@@ -613,6 +629,16 @@ lastAccruedAt = now
 | 5 | 自发 | 无人类消息，drive 0.9，候选 `propose_self_work` | `selfInitiated=true`；环收到 `drive_threshold`；无容量则不 spawn；不发状态回执 | integration |
 | 6 | 日程优先 | 同时有 due commitment | 派日程，提案被延后，驱动力不减 | integration |
 
+### 14.5 `subjectWorkObject`
+
+| # | 场景 | horizon.in | horizon.out | 层级 |
+|---|------|------------|-------------|------|
+| 1 | 抽象操作先于投影 | `explore` | 执行种类 `open_question`，不是操作名本身 | unit |
+| 2 | 有趣度 | 高 interestingness、低 cost/risk，对照高 cost/risk | 前者分数更高；cost 与 risk 反向 | unit |
+| 3 | 工具名 | `shell` / `set_goal` / `delete_memory` | 拒绝，理由「工具名不能进入工作对象空间」 | unit |
+| 4 | 没人派活 | 闲着，curiosity 0.9，只有目标种子和一条平淡 observation | 选中 curiosity 问句，执行种类 `open_question` | unit |
+| 5 | 心跳派出 | 无人类消息，完整 `propose_self_work` 带两个对象加一个 `shell` | 派出更有趣对象的投影；`shell` 不出现；成功后该对象 `active` | unit |
+
 计划文件名见 [`COMPONENT-TEST-MAP.md`](./COMPONENT-TEST-MAP.md)。P0–P2 的单测与 `subjectThink` 组件测已在仓库里。P3 真供应商 prompt 测仍未做。无 LLM 时注入的 `defer` 与 `do_nothing` 同分，字典序选 `defer`（§7.2），所以 §14.4 第 4 条的「散文」用例落到 defer 的状态句，而不是 `do_nothing`。
 
 ---
@@ -677,4 +703,5 @@ lastAccruedAt = now
 | 2026-10-12 | 生成任务句写明 `args.text`。`reply_to_thread` / `decline` 在 `text` 为空时接受 `args.message` 作为别名。 |
 | 2026-10-12 | 生成与打分任务句列出封闭白名单，并写明回复 action 是 `reply_to_thread`、正文是 `args.text`。发明的 `reply` 仍拒绝，不并入白名单。 |
 | 2026-10-12 | `propose_self_work` 的封闭字段写进生成/打分任务句。别名补全后缺正文则作废；空的 `schedule_revisit` 作废。完整提案才进 `drive_threshold`。 |
-| 2026-10-12 | 决策空间改为目标关系图 × 抽象类型 × 多维分数。投影表把类型落到既有白名单。工具名不能绕过投影。无旗标。 |
+| 2026-10-12 | 决策空间曾写成目标关系图 × 抽象行动类型 × 多维行动分数。该层已删除，不留旗标，也不留双路径。 |
+| 2026-10-12 | 工作对象空间（§7A）是 `self_work` 之后的决策空间：对象图 × 抽象操作 × 有趣度，投影到执行种类。行动白名单保持标量打分。 |

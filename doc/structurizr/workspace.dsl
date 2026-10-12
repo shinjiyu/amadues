@@ -877,6 +877,9 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.agentServer.subjectThink -> kuroneko.agentServer.subjectDecide "白名单最终选择" "in-process" {
             tags "import"
         }
+        kuroneko.agentServer.subjectThink -> kuroneko.agentServer.subjectWorkObject "self_work 之后选工作对象" "in-process" {
+            tags "import"
+        }
         kuroneko.agentServer.subjectThink -> kuroneko.agentServer.llmGateway "user=主体模板；assistant=JSON；tools 空" "HTTPS" {
             tags "http"
         }
@@ -1014,7 +1017,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
         component kuroneko.agentServer "15-L3-Outer-Subject" {
             title "L3 外脑 — 自主主体（唯一入站 SPEAK；user=主体，assistant=顾问）"
-            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.subjectSignalSlot kuroneko.agentServer.subjectStateStore kuroneko.agentServer.subjectDrive kuroneko.agentServer.subjectDecide kuroneko.agentServer.subjectThink kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.llmGateway kuroneko.agentServer.outerToolExecutor
+            include kuroneko.agentServer.outerBrainFacade kuroneko.agentServer.subjectSignalSlot kuroneko.agentServer.subjectStateStore kuroneko.agentServer.subjectDrive kuroneko.agentServer.subjectDecide kuroneko.agentServer.subjectWorkObject kuroneko.agentServer.subjectThink kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.llmGateway kuroneko.agentServer.outerToolExecutor
             autolayout tb
         }
 
