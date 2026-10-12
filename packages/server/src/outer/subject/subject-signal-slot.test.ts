@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { ADVISOR_SYSTEM, DEFAULT_IDENTITY } from './constants.js';
+import { ADVISOR_SYSTEM, DEFAULT_GOAL_TEXT, DEFAULT_IDENTITY } from './constants.js';
 import { buildSubjectUserMessage, escapeObservation, parseSignal } from './signal-slot.js';
 import type { SubjectSignal } from './types.js';
 
 const header = {
   identity: DEFAULT_IDENTITY,
-  goals: [{ id: 'g-default', text: '把正在做的事做完', keywords: [], priority: 0.5 }],
+  goals: [{ id: 'g-default', text: DEFAULT_GOAL_TEXT, keywords: [], priority: 0.5 }],
   drives: { curiosity: 0.3, social: 0.3, completion: 0.3 },
   shortTerm: [],
   deferredCount: 0,
@@ -47,6 +47,9 @@ describe('subjectSignalSlot', () => {
     expect(task).toContain('interestingness');
     expect(task).toContain('explore');
     expect(task).toContain('不要写 shell');
+    expect(task).toContain('北极星');
+    expect(task).toContain('旧题目');
+    expect(task).toContain('不要写帮人收尾');
   });
 
   it('escapes a closing observation tag so the slot cannot end early', () => {
@@ -81,6 +84,8 @@ describe('subjectSignalSlot', () => {
     expect(prompt.user).toContain('不要把 reply_to_thread 写成 reply');
     expect(prompt.user).toContain('缺 goalText、expectedOutcome、drive 或 kind 的 propose_self_work 打 0');
     expect(prompt.user).toContain('工作对象的 interestingness 由代码算');
+    expect(prompt.user).toContain('替人收尾');
+    expect(prompt.user).toContain('旧题目可以高分');
     expect(prompt.user).toContain('没有 deferredId 的 schedule_revisit 打 0');
     expect(prompt.user).toContain('no_reply、defer、wait、do_nothing、decline、reply_to_thread、schedule_revisit、propose_self_work');
   });

@@ -121,11 +121,11 @@ describe('subjectDecide', () => {
       candidates: [
         {
           action: 'propose_self_work',
-          args: { goal: '看看仓库', expected_outcome: '一条笔记', type: 'ad-hoc' },
+          args: { goal: '我还想再看看的旧题目', expected_outcome: '一段我自己的看法', type: 'ad-hoc' },
         },
         {
           action: 'propose_self_work',
-          args: { goal_text: '推进一章', outcome: '三千字', kpi_id: 'kpi-1', kind: 'kpi_advance' },
+          args: { goal_text: '把那件旧事再想深一点', outcome: '一个更清楚的判断', kpi_id: 'kpi-1', kind: 'kpi_advance' },
         },
         { action: 'propose_self_work', args: { drive: 'social' } },
         { action: 'delete_memory', args: { goal: '删掉', action: '全部删掉' } },
@@ -134,15 +134,15 @@ describe('subjectDecide', () => {
     expect(rows[0]?.args).toMatchObject({
       drive: 'curiosity',
       kind: 'ad_hoc',
-      goalText: '看看仓库',
-      expectedOutcome: '一条笔记',
+      goalText: '我还想再看看的旧题目',
+      expectedOutcome: '一段我自己的看法',
     });
     expect(rows[1]?.args).toMatchObject({
       drive: 'completion',
       kind: 'kpi_advance',
       kpiId: 'kpi-1',
-      goalText: '推进一章',
-      expectedOutcome: '三千字',
+      goalText: '把那件旧事再想深一点',
+      expectedOutcome: '一个更清楚的判断',
     });
     expect(rows[2]?.args.goalText).toBeUndefined();
     expect(rows[2]?.args.drive).toBe('social');
@@ -159,7 +159,7 @@ describe('subjectDecide', () => {
       drives: { curiosity: 0.9, social: 0.1, completion: 0.2 },
     });
     expect(chosen.chosen?.action).toBe('propose_self_work');
-    expect(chosen.chosen?.args.goalText).toBe('看看仓库');
+    expect(chosen.chosen?.args.goalText).toBe('我还想再看看的旧题目');
   });
 
   it('does not accept a privileged sid', () => {

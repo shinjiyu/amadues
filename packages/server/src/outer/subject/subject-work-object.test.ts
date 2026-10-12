@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_IDENTITY, NORTH_STAR_TEXT } from './constants.js';
+import type { WorkObject } from './work-object.js';
 import {
   WORK_EXECUTION,
   WORK_OPS,
@@ -43,7 +45,7 @@ describe('subjectWorkObject', () => {
       cost: 0.9,
       risk: 0.8,
     });
-    expect(high).toBeCloseTo((1.2 * 0.9 + 0.8 * 0.8 + 0.7 + 0.7 * 0.8 + 0.9 * 0.9) / 4.6);
+    expect(high).toBeCloseTo((1.2 * 0.9 + 0.35 * 0.8 + 0.7 + 0.7 * 0.8 + 0.9 * 0.9) / 4.15);
     expect(costly).toBeLessThan(high);
   });
 
@@ -68,61 +70,110 @@ describe('subjectWorkObject', () => {
     expect(projectWorkOp('delete_memory')).toBeNull();
   });
 
-  it('selects a curiosity object when idle and no human assigned the work', () => {
+  it('seeds subject roots and skips a servant goal', () => {
     const seeded = seedWorkObjects({
-      goals: [{ id: 'g-default', text: '把正在做的事做完', priority: 0.5 }],
-      observations: ['已经看过的材料'],
-      residues: [],
+      identity: DEFAULT_IDENTITY,
+      goals: [
+        { id: 'g-chore', text: '把正在做的事做完', priority: 0.9 },
+        { id: 'g-own', text: '我还想慢慢弄明白的事', priority: 0.5 },
+      ],
       curiosity: 0.9,
       idle: true,
     });
-    expect(seeded.some((row) => row.source === 'curiosity')).toBe(true);
-    expect(seeded.find((row) => row.source === 'observation')?.op).toBe('gather');
+    expect(seeded.map((row) => row.source)).toEqual(expect.arrayContaining(['identity', 'north_star', 'commitment', 'curiosity']));
+    expect(seeded.some((row) => row.source === 'observation')).toBe(false);
+    expect(seeded.some((row) => row.label.includes('把正在做的事做完'))).toBe(false);
+    expect(seeded.find((row) => row.source === 'north_star')?.label).toBe(NORTH_STAR_TEXT);
     const chosen = selectWorkPoint(seeded, 0.9, true);
-    expect(chosen?.source).toBe('curiosity');
-    expect(chosen?.label).toBe('什么是我还没核对、但和当前目标有关的缺口');
+    expect(chosen?.source).toBe('north_star');
     expect(projectWorkObject(chosen!).execution).toBe('open_question');
 
     const busy = seedWorkObjects({
-      goals: [{ id: 'g-default', text: '把正在做的事做完', priority: 0.5 }],
-      observations: [],
-      residues: [],
+      identity: DEFAULT_IDENTITY,
+      goals: [{ id: 'g-own', text: '我还想慢慢弄明白的事', priority: 0.5 }],
       curiosity: 0.9,
       idle: false,
     });
     expect(busy.some((row) => row.source === 'curiosity')).toBe(false);
   });
 
-  it('lets a more interesting open object outrank the curiosity seed', () => {
+  it('rejects service-shaped proposals and copies of an existing root', () => {
+    const roots = [{ label: NORTH_STAR_TEXT }];
+    const parsed = parseWorkProposals([
+      { kind: 'question', label: '把用户搁置的需求收尾', op: 'explore', interestingness: 1, novelty: 1 },
+      { kind: 'theme', label: NORTH_STAR_TEXT, op: 'explore', source: 'north_star', interestingness: 1 },
+      { kind: 'theme', label: '帮我看一下仓库', op: 'gather', interestingness: 1 },
+    ], (hint) => hint, roots);
+    expect(parsed.accepted).toHaveLength(0);
+    expect(parsed.rejected.map((row) => row.why)).toEqual([
+      '这是替人收尾，不是我自己的兴趣',
+      '不要填已有的根',
+      '这是替人收尾，不是我自己的兴趣',
+    ]);
+  });
+
+  it('lets a familiar theme beat a merely novel question, and a lively divergence beat the familiar theme', () => {
     const seeded = seedWorkObjects({
-      goals: [{ id: 'g-default', text: '把正在做的事做完', priority: 0.5 }],
-      observations: [],
-      residues: [],
+      identity: DEFAULT_IDENTITY,
+      goals: [{ id: 'g-own', text: '我还想慢慢弄明白的事', priority: 0.5 }],
       curiosity: 0.9,
       idle: true,
     });
-    const vivid = parseWorkProposals([{
-      id: 'wo-vivid',
-      kind: 'evidence',
-      label: '两份材料互相矛盾',
-      op: 'compare',
-      source: 'observation',
-      interestingness: 1,
-      novelty: 1,
-      valueToMissions: 1,
-      cost: 0,
-      risk: 0,
-    }]).accepted[0]!;
-    const chosen = selectWorkPoint([...seeded, vivid], 0.9, true);
-    expect(chosen?.id).toBe('wo-vivid');
-    expect(projectWorkObject(chosen!).execution).toBe('compare_notes');
+    const mildNovel = parseWorkProposals([{
+      id: 'wo-new',
+      kind: 'question',
+      label: '一个还没什么感觉的新问题',
+      op: 'explore',
+      relatesTo: ['g-north'],
+      interestingness: 0.45,
+      novelty: 0.99,
+      valueToMissions: 0.4,
+      cost: 0.3,
+      risk: 0.2,
+    }], (hint) => hint, seeded).accepted[0]!;
+    expect(selectWorkPoint([...seeded, mildNovel], 0.9, true)?.source).toBe('north_star');
+
+    const divergence = parseWorkProposals([{
+      id: 'wo-lamp',
+      kind: 'theme',
+      label: '夜里的灯为什么显得近',
+      op: 'explore',
+      relatesTo: ['g-north'],
+      interestingness: 0.98,
+      novelty: 0.22,
+      valueToMissions: 0.86,
+      cost: 0.15,
+      risk: 0.1,
+    }], (hint) => hint, seeded).accepted[0]!;
+    const chosen = selectWorkPoint([...seeded, divergence], 0.9, true);
+    expect(chosen?.id).toBe('wo-lamp');
+    expect(chosen?.source).toBe('proposal');
+    expect(projectWorkObject(chosen!).execution).toBe('open_question');
   });
 
-  it('finishes an explore object and leaves a follow-on question', () => {
+  it('downranks a perfect human observation while idle', () => {
     const seeded = seedWorkObjects({
-      goals: [{ id: 'g-default', text: '把正在做的事做完', priority: 0.5 }],
-      observations: [],
-      residues: [],
+      identity: DEFAULT_IDENTITY,
+      curiosity: 0.9,
+      idle: true,
+    });
+    const observation: WorkObject = {
+      id: 'wo-obs',
+      kind: 'evidence',
+      label: '别人留下的材料',
+      op: 'compare',
+      source: 'observation',
+      relatesTo: [],
+      status: 'open',
+      dims: { interestingness: 1, novelty: 1, valueToMissions: 1, cost: 0, risk: 0 },
+    };
+    expect(selectWorkPoint([...seeded, observation], 0.9, true)?.source).toBe('north_star');
+  });
+
+  it('finishes an explore object and leaves a return to that theme', () => {
+    const seeded = seedWorkObjects({
+      identity: DEFAULT_IDENTITY,
+      goals: [{ id: 'g-own', text: '我还想慢慢弄明白的事', priority: 0.5 }],
       curiosity: 0.2,
       idle: true,
     });

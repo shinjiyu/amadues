@@ -15,6 +15,7 @@ import {
   activateWorkObject,
   parseWorkProposals,
   projectWorkObject,
+  seedWorkObjects,
   selectWorkPoint,
   workScore,
   type WorkObject,
@@ -429,25 +430,40 @@ export async function runSubjectThink(input: RunSubjectThinkInput): Promise<RunS
       let goalText = truncateCodePoints(ready.proposal.goalText, 500);
       let expectedOutcome = ready.proposal.expectedOutcome;
       let work: SubjectProposalDispatch['work'];
-      if (Array.isArray(chosen.args.workObjects)) {
-        const parsed = parseWorkProposals(chosen.args.workObjects, (hint) => newId(hint, nowMs));
-        const idle = !signals.some((signal) => signal.kind === 'message');
-        const point = selectWorkPoint(parsed.accepted, state.drives.curiosity, idle);
-        if (point) {
-          const projected = projectWorkObject(point);
-          goalText = truncateCodePoints(projected.goalText, 500);
-          expectedOutcome = projected.expectedOutcome;
-          selectedWork = point;
-          work = {
-            id: point.id,
-            kind: point.kind,
-            label: point.label,
-            op: point.op,
-            source: point.source,
-            execution: projected.execution,
-            score: workScore(point.dims),
-          };
-        }
+      const idle = !signals.some((signal) => signal.kind === 'message');
+      const seeds = seedWorkObjects({
+        identity: state.identity,
+        goals: state.goals,
+        curiosity: state.drives.curiosity,
+        idle,
+        familiar: state.workObjects ?? [],
+        idOf: (hint) => newId(hint, nowMs),
+      });
+      const parsed = parseWorkProposals(
+        Array.isArray(chosen.args.workObjects) ? chosen.args.workObjects : [],
+        (hint) => newId(hint, nowMs),
+        seeds,
+      );
+      const pool = [...seeds];
+      for (const row of parsed.accepted) {
+        if (pool.some((seed) => seed.id === row.id || seed.label === row.label)) continue;
+        pool.push(row);
+      }
+      const point = selectWorkPoint(pool, state.drives.curiosity, idle);
+      if (point) {
+        const projected = projectWorkObject(point);
+        goalText = truncateCodePoints(projected.goalText, 500);
+        expectedOutcome = projected.expectedOutcome;
+        selectedWork = point;
+        work = {
+          id: point.id,
+          kind: point.kind,
+          label: point.label,
+          op: point.op,
+          source: point.source,
+          execution: projected.execution,
+          score: workScore(point.dims),
+        };
       }
       const proposal: SubjectProposalDispatch = {
         ...ready.proposal,

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { FakeImChannel } from '../../testing/fake-im-channel.js';
 import { createTestDataRoot } from '../../testing/temp-data-root.js';
-import { HOUR_MS } from './constants.js';
+import { HOUR_MS, NORTH_STAR_TEXT } from './constants.js';
 import { loadInbox, loadState, saveState, subjectDir } from './state-store.js';
 import { rememberInbound, runSubjectThink } from './think.js';
 import type { SubjectSignal } from './types.js';
@@ -291,13 +291,15 @@ describe('subjectThink', () => {
     });
     expect(result.action).toBe('propose_self_work');
     expect(result.speechPosted).toBe(false);
-    expect(proposals).toEqual([{
+    expect(proposals).toMatchObject([{
       kind: 'ad_hoc',
       kpiId: undefined,
-      goalText: '看看仓库',
-      expectedOutcome: '一条笔记',
+      goalText: NORTH_STAR_TEXT,
+      expectedOutcome: '一个仍开放的问题和两条可核对线索',
       drive: 'curiosity',
+      work: { source: 'north_star', execution: 'open_question' },
     }]);
+    expect(JSON.stringify(proposals[0])).not.toContain('看看仓库');
     expect(im.outbox).toHaveLength(1);
     expect(im.outbox[0]?.body.disposition).toBe('status');
     expect(im.outbox[0]?.body.text).toBe('〔状态〕不在这里接话，我按自己的安排去做。');
@@ -331,13 +333,15 @@ describe('subjectThink', () => {
     });
     expect(result.action).toBe('propose_self_work');
     expect(result.speechPosted).toBe(false);
-    expect(proposals).toEqual([{
+    expect(proposals).toMatchObject([{
       kind: 'ad_hoc',
       kpiId: undefined,
-      goalText: '看看仓库',
-      expectedOutcome: '一条笔记',
+      goalText: NORTH_STAR_TEXT,
+      expectedOutcome: '一个仍开放的问题和两条可核对线索',
       drive: 'curiosity',
+      work: { source: 'north_star', execution: 'open_question' },
     }]);
+    expect(JSON.stringify(proposals[0])).not.toContain('看看仓库');
     expect(loadState(root.dataRoot, now).drives.curiosity).toBeCloseTo(0.35);
     root.cleanup();
   });
@@ -366,20 +370,21 @@ describe('subjectThink', () => {
         return { dispatched: true, reason: 'self_work_dispatched' };
       },
       callLlm: scripted(
-        '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"看看仓库","expectedOutcome":"一条笔记","workObjects":[{"id":"wo-dull","kind":"question","label":"已经看过的材料","op":"gather","source":"observation","interestingness":0.1,"novelty":0.1,"valueToMissions":0.1,"cost":0.9,"risk":0.9},{"id":"wo-gap","kind":"question","label":"什么是我还没核对的缺口","op":"explore","source":"curiosity","interestingness":0.95,"novelty":0.8,"valueToMissions":0.7,"cost":0.2,"risk":0.1},{"kind":"question","label":"跑命令","op":"shell","interestingness":1}]}}]}',
+        '{"candidates":[{"action":"propose_self_work","args":{"drive":"curiosity","kind":"ad_hoc","goalText":"看看仓库","expectedOutcome":"一条笔记","workObjects":[{"id":"wo-chore","kind":"question","label":"把用户搁置的需求收尾","op":"explore","interestingness":1,"novelty":0.2,"valueToMissions":1,"cost":0,"risk":0},{"id":"wo-mild","kind":"question","label":"一个还没什么感觉的新问题","op":"explore","relatesTo":["g-north"],"interestingness":0.45,"novelty":0.99,"valueToMissions":0.4,"cost":0.3,"risk":0.2},{"kind":"question","label":"跑命令","op":"shell","interestingness":1}]}}]}',
         '{"scores":[{"action":"propose_self_work","score":1},{"action":"do_nothing","score":0},{"action":"defer","score":0}]}',
       ),
     });
     expect(result.action).toBe('propose_self_work');
     expect(result.statusPosted).toBe(false);
     expect(proposals).toHaveLength(1);
-    expect(proposals[0]?.goalText).toBe('什么是我还没核对的缺口');
+    expect(proposals[0]?.goalText).toBe(NORTH_STAR_TEXT);
     expect(proposals[0]?.expectedOutcome).toBe('一个仍开放的问题和两条可核对线索');
-    expect(proposals[0]?.work).toMatchObject({ op: 'explore', execution: 'open_question', source: 'curiosity' });
+    expect(proposals[0]?.work).toMatchObject({ op: 'explore', execution: 'open_question', source: 'north_star' });
     expect(JSON.stringify(proposals[0])).not.toContain('shell');
+    expect(JSON.stringify(proposals[0])).not.toContain('收尾');
     const saved = loadState(root.dataRoot, now);
-    expect(saved.workObjects?.find((row) => row.id === 'wo-gap')?.status).toBe('active');
-    expect(saved.workObjects?.some((row) => row.op === 'gather' && row.status === 'active')).toBe(false);
+    expect(saved.workObjects?.find((row) => row.source === 'north_star')?.status).toBe('active');
+    expect(saved.workObjects?.some((row) => row.label.includes('收尾'))).toBe(false);
     const log = fs.readFileSync(path.join(subjectDir(root.dataRoot), 'think-log.jsonl'), 'utf8');
     expect(log).not.toContain('abstractType');
     root.cleanup();

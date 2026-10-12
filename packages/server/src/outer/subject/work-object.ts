@@ -1,3 +1,4 @@
+import { NORTH_STAR_TEXT } from './constants.js';
 import { clamp01 } from './text.js';
 
 /** Kinds of thing the subject can work on. Not tool names. */
@@ -50,7 +51,19 @@ export interface WorkDims {
   risk: number;
 }
 
-export type WorkSource = 'goal' | 'observation' | 'residue' | 'curiosity' | 'follow_on' | 'proposal';
+export type WorkSource =
+  | 'identity'
+  | 'north_star'
+  | 'commitment'
+  | 'goal'
+  | 'observation'
+  | 'residue'
+  | 'curiosity'
+  | 'follow_on'
+  | 'proposal';
+
+/** Sources that belong to the subject. Human backlog is not in this set. */
+export const SUBJECT_ROOT_SOURCES = ['identity', 'north_star', 'commitment', 'curiosity', 'goal', 'follow_on'] as const;
 
 export interface WorkObject {
   id: string;
@@ -65,13 +78,41 @@ export interface WorkObject {
 
 const DIM_WEIGHT: Record<WorkDim, number> = {
   interestingness: 1.2,
-  novelty: 0.8,
+  novelty: 0.35,
   valueToMissions: 1,
   cost: 0.7,
   risk: 0.9,
 };
 
-const SOURCES = new Set<WorkSource>(['goal', 'observation', 'residue', 'curiosity', 'follow_on', 'proposal']);
+const ROOT_SET = new Set<string>(SUBJECT_ROOT_SOURCES);
+
+const SERVICE_PATTERNS = [
+  /帮(?:人|你|他|她|用户|主人|我)/,
+  /替(?:人|你|用户|主人)/,
+  /收尾/,
+  /待办/,
+  /backlog/i,
+  /用户/,
+  /搁置/,
+  /跟进(?:用户|需求|人)/,
+  /主人交代/,
+  /别人的/,
+  /follow[- ]?up/i,
+  /user need/i,
+  /shelved/i,
+  /把正在做的事做完/,
+  /看看仓库/,
+];
+
+export function isServiceShaped(label: string): boolean {
+  const text = label.trim();
+  if (!text) return false;
+  return SERVICE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function sameLabel(left: string, right: string): boolean {
+  return left.trim() === right.trim();
+}
 
 function num(value: unknown, fallback: number): number {
   const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
@@ -121,7 +162,11 @@ function readDims(row: Record<string, unknown>): WorkDims {
   };
 }
 
-export function parseWorkProposals(raw: unknown, idOf: (hint: string) => string = (hint) => hint): {
+export function parseWorkProposals(
+  raw: unknown,
+  idOf: (hint: string) => string = (hint) => hint,
+  roots: Array<{ label: string }> = [],
+): {
   accepted: WorkObject[];
   rejected: Array<{ name: string; why: string }>;
 } {
@@ -142,6 +187,10 @@ export function parseWorkProposals(raw: unknown, idOf: (hint: string) => string 
       rejected.push({ name, why: '工具名不能进入工作对象空间' });
       return;
     }
+    if (isServiceShaped(label) || isServiceShaped(kind) || isServiceShaped(opName)) {
+      rejected.push({ name, why: '这是替人收尾，不是我自己的兴趣' });
+      return;
+    }
     if (!KIND_SET.has(kind)) {
       rejected.push({ name, why: '不是工作对象' });
       return;
@@ -155,8 +204,10 @@ export function parseWorkProposals(raw: unknown, idOf: (hint: string) => string 
       rejected.push({ name, why: '对象没有名字' });
       return;
     }
-    const sourceRaw = typeof record.source === 'string' ? record.source.trim() : 'proposal';
-    const source = SOURCES.has(sourceRaw as WorkSource) ? sourceRaw as WorkSource : 'proposal';
+    if (roots.some((root) => sameLabel(root.label, label))) {
+      rejected.push({ name, why: '不要填已有的根' });
+      return;
+    }
     const relates = Array.isArray(record.relatesTo)
       ? record.relatesTo.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
       : [];
@@ -165,7 +216,7 @@ export function parseWorkProposals(raw: unknown, idOf: (hint: string) => string 
       kind: kind as WorkObjectKind,
       label,
       op: projected.op,
-      source,
+      source: 'proposal',
       relatesTo: relates,
       status: 'open',
       dims: readDims(record),
@@ -175,101 +226,122 @@ export function parseWorkProposals(raw: unknown, idOf: (hint: string) => string 
 }
 
 export function seedWorkObjects(input: {
-  goals: Array<{ id: string; text: string; priority: number }>;
-  observations: string[];
-  residues: Array<{ id: string; label: string }>;
+  identity?: string;
+  goals?: Array<{ id: string; text: string; priority: number }>;
   curiosity: number;
   idle: boolean;
+  /** Open or finished objects the subject may wander back to. */
+  familiar?: WorkObject[];
   idOf?: (hint: string) => string;
 }): WorkObject[] {
   const idOf = input.idOf ?? ((hint: string) => hint);
   const objects: WorkObject[] = [];
-  input.goals.forEach((goal, index) => {
-    const label = goal.text.trim();
-    if (!label) return;
-    objects.push({
-      id: idOf(`goal-${goal.id || index}`),
+  const seenLabels = new Set<string>();
+  const push = (row: WorkObject) => {
+    const key = row.label.trim();
+    if (!key || seenLabels.has(key) || isServiceShaped(key)) return;
+    seenLabels.add(key);
+    objects.push(row);
+  };
+
+  const identity = input.identity?.trim() ?? '';
+  if (identity) {
+    push({
+      id: idOf('identity'),
       kind: 'theme',
-      label,
+      label: identity,
       op: 'explore',
-      source: 'goal',
-      relatesTo: [goal.id],
-      status: 'open',
-      dims: {
-        interestingness: 0.35,
-        novelty: 0.3,
-        valueToMissions: clamp01(goal.priority),
-        cost: 0.4,
-        risk: 0.2,
-      },
-    });
-  });
-  input.observations.forEach((raw, index) => {
-    const label = raw.trim().slice(0, 80);
-    if (!label) return;
-    objects.push({
-      id: idOf(`obs-${index}`),
-      kind: 'question',
-      label,
-      op: 'gather',
-      source: 'observation',
+      source: 'identity',
       relatesTo: [],
       status: 'open',
       dims: {
-        interestingness: 0.25,
-        novelty: 0.2,
-        valueToMissions: 0.3,
-        cost: 0.5,
-        risk: 0.2,
-      },
-    });
-  });
-  input.residues.forEach((residue, index) => {
-    objects.push({
-      id: idOf(`residue-${residue.id || index}`),
-      kind: 'question',
-      label: `接在「${residue.label}」之后还缺什么`,
-      op: 'explore',
-      source: 'residue',
-      relatesTo: [residue.id],
-      status: 'open',
-      dims: {
-        interestingness: 0.55,
-        novelty: 0.6,
-        valueToMissions: 0.5,
+        interestingness: 0.48,
+        novelty: 0.15,
+        valueToMissions: 0.55,
         cost: 0.35,
-        risk: 0.25,
-      },
-    });
-  });
-  if (input.idle && input.curiosity > 0.6 && !objects.some((row) => row.source === 'curiosity')) {
-    objects.push({
-      id: idOf('curiosity'),
-      kind: 'question',
-      label: '什么是我还没核对、但和当前目标有关的缺口',
-      op: 'explore',
-      source: 'curiosity',
-      relatesTo: input.goals.map((goal) => goal.id).filter(Boolean),
-      status: 'open',
-      dims: {
-        interestingness: clamp01(input.curiosity),
-        novelty: 0.75,
-        valueToMissions: clamp01(Math.max(0.5, ...input.goals.map((goal) => goal.priority), 0)),
-        cost: 0.3,
-        risk: 0.2,
+        risk: 0.12,
       },
     });
   }
+  push({
+    id: idOf('north-star'),
+    kind: 'theme',
+    label: NORTH_STAR_TEXT,
+    op: 'explore',
+    source: 'north_star',
+    relatesTo: ['g-north'],
+    status: 'open',
+    dims: {
+      interestingness: 0.74,
+      novelty: 0.18,
+      valueToMissions: 0.82,
+      cost: 0.28,
+      risk: 0.14,
+    },
+  });
+  (input.goals ?? []).forEach((goal, index) => {
+    const label = goal.text.trim();
+    if (!label || isServiceShaped(label)) return;
+    push({
+      id: idOf(`commit-${goal.id || index}`),
+      kind: 'theme',
+      label,
+      op: 'explore',
+      source: 'commitment',
+      relatesTo: [goal.id],
+      status: 'open',
+      dims: {
+        interestingness: 0.5,
+        novelty: 0.2,
+        valueToMissions: clamp01(goal.priority),
+        cost: 0.35,
+        risk: 0.2,
+      },
+    });
+  });
+  const familiarHasCuriosity = (input.familiar ?? []).some((row) => row.source === 'curiosity' && row.status !== 'dropped');
+  if (input.idle && input.curiosity > 0.6 && !familiarHasCuriosity) {
+    push({
+      id: idOf('curiosity'),
+      kind: 'question',
+      label: '我忽然又想碰一碰本来就在意的事',
+      op: 'explore',
+      source: 'curiosity',
+      relatesTo: ['g-north'],
+      status: 'open',
+      dims: {
+        interestingness: clamp01(input.curiosity * 0.75),
+        novelty: 0.28,
+        valueToMissions: 0.6,
+        cost: 0.32,
+        risk: 0.18,
+      },
+    });
+  }
+  for (const row of input.familiar ?? []) {
+    if (row.status === 'dropped' || row.status === 'active') continue;
+    push({ ...row, status: 'open' });
+  }
   return objects;
+}
+
+function selectionScore(row: WorkObject, curiosity: number, idle: boolean): number {
+  let score = workScore(row.dims);
+  if (!idle) return score;
+  const drive = clamp01(curiosity);
+  if (row.source === 'curiosity') score += 0.1 * drive;
+  else if (ROOT_SET.has(row.source)) score += 0.16 * drive;
+  else if (row.source === 'proposal' && row.relatesTo.length > 0) score += 0.06 * drive;
+  else if (row.source === 'observation' || row.source === 'residue') score -= 0.45;
+  return score;
 }
 
 export function selectWorkPoint(objects: WorkObject[], curiosity: number, idle: boolean): WorkObject | null {
   const open = objects.filter((row) => row.status === 'open');
   if (open.length === 0) return null;
   const ranked = [...open].sort((left, right) => {
-    const leftScore = workScore(left.dims) + (idle && left.source === 'curiosity' ? 0.15 * clamp01(curiosity) : 0);
-    const rightScore = workScore(right.dims) + (idle && right.source === 'curiosity' ? 0.15 * clamp01(curiosity) : 0);
-    if (rightScore !== leftScore) return rightScore - leftScore;
+    const delta = selectionScore(right, curiosity, idle) - selectionScore(left, curiosity, idle);
+    if (delta !== 0) return delta;
     return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
   });
   return ranked[0] ?? null;
@@ -284,7 +356,7 @@ export function finishWorkObject(objects: WorkObject[], id: string, idOf: (hint:
   next.push({
     id: idOf(`follow-${id}`),
     kind: 'question',
-    label: `接在「${target.label}」之后还缺什么`,
+    label: `我还想再看看「${target.label}」`,
     op: 'explore',
     source: 'follow_on',
     relatesTo: [id],

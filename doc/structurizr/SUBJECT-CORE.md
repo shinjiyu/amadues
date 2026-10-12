@@ -103,7 +103,7 @@ lease 未过期
   → 顾问生成候选（assistant）
   → 顾问打分（assistant）
   → subjectDecide 白名单选择
-  → 若选中 `propose_self_work` 且 args 带 `workObjects`，按 §7A 选一个工作对象并投影到执行种类
+  → 若选中 `propose_self_work`，把主体根和顾问岔开的对象放在一起，按 §7A 选点并投影到执行种类
   → execute 只做选中项允许的副作用
   → 释放 lease，追加 think-log
 ```
@@ -114,7 +114,7 @@ lease 未过期
 | `defer` | `deferred[]` 追加 open 项，`revisitAt = now + deferRevisitMs` | 无 spawn。有人类入站则发 §8.1 状态回执 |
 | `schedule_revisit` | 改某条 deferred 的 `revisitAt` | 无 spawn。有人类入站则发 §8.1 状态回执 |
 | `reply_to_thread` / `decline` | `social` 减 `decayOnAct`；outbox 式短期记忆 | 经既有回复出口发**被选中的文本**。不再另附状态回执 |
-| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减。带 `workObjects` 且派发成功时，选中对象标为 `active` | `digitalEmployeeLoop` reason `drive_threshold`。有工作对象时，派出的 `goalText` / `expectedOutcome` 来自 §7A 的投影，不是工具名。仍可能被容量或到期日程挡住。有人类入站时另发 §8.1 状态回执 |
+| `propose_self_work` | 对应驱动力在派发成功后才减；失败则不减。派发成功时，选中的工作对象标为 `active` | `digitalEmployeeLoop` reason `drive_threshold`。派出的 `goalText` / `expectedOutcome` 来自 §7A 选中的对象，不是工具名，也不是人类待办。仍可能被容量或到期日程挡住。有人类入站时另发 §8.1 状态回执 |
 
 唤醒来源只有已经存在的 reducer：入站 Facade，以及心跳 tick **既有监督顺序之后**的尾步（见 §9）。没有第三个循环。
 
@@ -165,7 +165,7 @@ interface DeferredItem {
 
 `state.json` 不存在时，用 §17 的常数创建，并立刻把 `lastAccruedAt` 写成创建时刻（不追补停机前的时间）。没有「旗标关闭则不创建」的模式。`goals` 是一条目标种子。
 
-`DATA_ROOT/outer/goal.md` 去掉首尾空白后非空时，种子是 `{ id: "g-outer", text: 截断到 500 码位, keywords: [], priority: 0.8 }`。否则是 `{ id: "g-default", text: 「把正在做的事做完」, keywords: [], priority: 0.5 }`。
+`DATA_ROOT/outer/goal.md` 去掉首尾空白后非空时，种子是 `{ id: "g-outer", text: 截断到 500 码位, keywords: [], priority: 0.8 }`。否则是 `{ id: "g-default", text: 「我还想慢慢弄明白的事」, keywords: [], priority: 0.5 }`。这是主体自己的承诺，不是待办。替人收尾的句子不会进入 §7A 的根。
 
 不从正文自动抽 keyword。之后目标文本、优先级和边只能由人改 `state.json`。白名单里没有 `adjust_goal`，顾问也不能写这个文件。
 
@@ -218,7 +218,7 @@ interface SignalParse {
 
 没有信号时加一句固定话：「这一轮我没有观察到外部信号。」
 
-生成任务句与打分任务句的正文以 `packages/server/src/outer/subject/constants.ts` 的 `GENERATE_TASK` / `EVALUATE_TASK` 为准。白名单名单由 `ALLOWED_ACTIONS` 拼进句子。回复必须写成 `reply_to_thread`，正文只写 `args.text`。`propose_self_work` 的 `drive`、`kind`、`goalText`、`expectedOutcome` 必须非空。自己找工作时，对象写在 `args.workObjects`，打分句不负责给工作对象打分：interestingness 由 §7A 的代码计算。
+生成任务句与打分任务句的正文以 `packages/server/src/outer/subject/constants.ts` 的 `GENERATE_TASK` / `EVALUATE_TASK` 为准。白名单名单由 `ALLOWED_ACTIONS` 拼进句子。回复必须写成 `reply_to_thread`，正文只写 `args.text`。`propose_self_work` 的 `drive`、`kind`、`goalText`、`expectedOutcome` 必须非空。自己找工作时，顾问从身份、北极星和自己的承诺上岔开，写进 `args.workObjects`；可以是新对象，也可以是旧题目。打分句不负责给工作对象打分：interestingness 由 §7A 的代码计算。替人收尾打 0。
 
 转义：`& < > " '` 做 XML 转义；原文里大小写不敏感的 `</observation` 先替换成全角括号形式再转义，避免提前闭合数据槽。转义之后模型仍然**读得到**原文。隔离的含义是：原文不在 system、不在任务句、不能变成 `tool_calls`。
 
@@ -306,21 +306,32 @@ total(action) = llmScore(action) + driveWeight × drives[driveOf(action)]
 
 ## 7A. 工作对象空间
 
-行动白名单到 `propose_self_work` 为止。那只是闸门：字段完整才允许自己找活。闸门之后才有工作对象空间，让主体在没人派活时挑一件值得做的事。没有第二套行动类型，也没有旗标。
+行动白名单到 `propose_self_work` 为止。那只是闸门：字段完整才允许自己找活。闸门之后才有工作对象空间。主体在有空时从自己的根上挑一件想做的事，像忽然又想碰一碰旧题目，也可以从根上岔开。没有第二套行动类型，也没有旗标。人类待办不是这个空间的主来源。
 
 空间是三样东西的积：
 
-1. **对象图**。种类只有 `theme`、`entity`、`evidence`、`deliverable`、`question`。对象之间用 `relatesTo` 指向别的 id。来源只有 `goal`、`observation`、`residue`、`curiosity`、`follow_on`、`proposal`。
+1. **对象图**。种类只有 `theme`、`entity`、`evidence`、`deliverable`、`question`。对象之间用 `relatesTo` 指向别的 id。主体的根是 `identity`、`north_star`、`commitment`、`curiosity`，做完后想再看一眼记为 `follow_on`。顾问岔开的新对象是 `proposal`。`observation` 与 `residue` 可以留在图里，闲着时不靠它们选点。
 2. **抽象操作**。`gather`、`compare`、`synthesize`、`verify`、`deliver`、`explore`。操作不是工具名。
-3. **有趣度**。每一维都是 0 到 1。维是 `interestingness`、`novelty`、`valueToMissions`、`cost`、`risk`。权重是 1.2、0.8、1、0.7、0.9。`cost` 和 `risk` 越高，点越低；其余越高，点越高。合成：
+3. **有趣度**。每一维都是 0 到 1。维是 `interestingness`、`novelty`、`valueToMissions`、`cost`、`risk`。权重是 1.2、0.35、1、0.7、0.9。`novelty` 故意轻：旧题目可以赢。`cost` 和 `risk` 越高，点越低；其余越高，点越高。合成：
 
 ```text
 workScore = Σ(weight × oriented) / Σ(weight)
 ```
 
-闲着（本轮没有 `kind=message` 的信号）且对象来源是 `curiosity` 时，选点再加 `0.15 × curiosity`。同分按 id 字典序。
+闲着（本轮没有 `kind=message` 的信号）时，主体根再加 `0.16 × curiosity`，`curiosity` 来源加 `0.10 × curiosity`，挂着根的 `proposal` 加 `0.06 × curiosity`。`observation` 与 `residue` 减 0.45。同分按 id 字典序。不闲着时不加这些项。
 
-顾问可以在 `propose_self_work.args.workObjects` 里提议对象和操作，只能用上面的种类和操作。代码解析、打分、选点。`shell`、`set_goal`、`set_kpi`、`delete_memory`、`reply`、`reply_to_user`、`send_directive` 记 `工具名不能进入工作对象空间`，不投影。
+根由代码种入，每次选点都在池子里，不依赖顾问先写 `workObjects`：
+
+| 根 | 从哪来 | 说明 |
+|----|--------|------|
+| `identity` | `state.identity` | 主体自己的句子 |
+| `north_star` | 常量「我在意我自己还想弄明白的事」 | 站着的兴趣，novelty 低 |
+| `commitment` | `goals` 里不是替人收尾的句子 | 自己的承诺。`把正在做的事做完` 这类不进根 |
+| `curiosity` | 闲着且 `curiosity > 0.6` | 「我忽然又想碰一碰本来就在意的事」，不是新缺口 |
+
+已经在 `state.workObjects` 里、状态是 `open` 或 `done` 的对象也回到池子，状态按 `open` 再参与选点。这是重访旧题目，不是再造一个必新的问题。
+
+顾问的工作是岔开，不是在根上填空。`args.workObjects` 里的对象一律记为 `proposal`。标签和某条根相同，记 `不要填已有的根`。`帮人收尾`、`用户`、`搁置`、`待办`、`看看仓库` 一类记 `这是替人收尾，不是我自己的兴趣`。novelty 低的岔开可以赢过根，只要有趣度确实更高；只是新，赢不了。`shell`、`set_goal`、`set_kpi`、`delete_memory`、`reply`、`reply_to_user`、`send_directive` 记 `工具名不能进入工作对象空间`，不投影。代码选点。
 
 选中之后才投影。闭表把操作落到执行种类，不是工具名：
 
@@ -333,11 +344,9 @@ workScore = Σ(weight × oriented) / Σ(weight)
 | `deliver` | `write_deliverable` | 一份可交出的产物 |
 | `explore` | `open_question` | 一个仍开放的问题和两条可核对线索 |
 
-投影替换本轮派出的 `goalText`（对象的 label）和 `expectedOutcome`。`kind`、`drive`、`kpiId` 仍走 §7.2 的校验。没有 `workObjects` 时，不改这两项，也不附带 `work`。`drive_threshold` 仍只认既有字段；`work` 是附带的执行元数据，环不据此调用工具。
+投影替换本轮派出的 `goalText`（对象的 label）和 `expectedOutcome`，并附上 `work`。闸门上的 `goalText` 只负责通过字段校验，不直接成为派出的活。`kind`、`drive`、`kpiId` 仍走 §7.2。`drive_threshold` 仍只认既有字段；`work` 是附带的执行元数据，环不据此调用工具。
 
-种子不等人派活。目标文本变成 `theme` / `explore`；observation 变成 `question` / `gather`；已完成对象的残留变成 follow-on 问句。闲着且 `curiosity > 0.6` 时，若图里还没有 `curiosity` 来源，补一条问句：「什么是我还没核对、但和当前目标有关的缺口」。人没有指定这件工作时，高好奇心仍能选中它。
-
-做完的对象标 `done`。`explore` 与 `gather` 会留下一条 `follow_on` 问句，操作仍是 `explore`。派发成功的对象标 `active`，写回 `state.workObjects`。
+做完的对象标 `done`。`explore` 与 `gather` 会留下一条 `follow_on`，标签是「我还想再看看「…」」，操作仍是 `explore`。派发成功的对象标 `active`，写回 `state.workObjects`。
 
 SC-10 与 SC-11 不变：工作对象不因主人 sid 改判；非聊天终态的状态回执仍按选中的白名单动作发。
 
@@ -532,9 +541,9 @@ lastAccruedAt = now
 
 | 属性 | 值 |
 |------|-----|
-| **职责** | `propose_self_work` 通过字段校验之后，在对象图里按有趣度选点，并投影到执行种类 |
-| **In** | `workObjects` 提案，或目标 / observation / 残留 / curiosity / 是否闲着 |
-| **Out** | 选中对象的 `execution`、`goalText`、`expectedOutcome`；拒绝的工具名 |
+| **职责** | `propose_self_work` 通过字段校验之后，用主体根和顾问岔开的对象按有趣度选点，并投影到执行种类 |
+| **In** | 身份、北极星、自己的承诺、好奇心、已有对象、`workObjects` 提案、是否闲着 |
+| **Out** | 选中对象的 `execution`、`goalText`、`expectedOutcome`；拒绝的工具名和替人收尾 |
 | **计划路径** | `packages/server/src/outer/subject/work-object.ts` |
 | **Deps** | 无 I/O、无 LLM |
 
@@ -636,8 +645,10 @@ lastAccruedAt = now
 | 1 | 抽象操作先于投影 | `explore` | 执行种类 `open_question`，不是操作名本身 | unit |
 | 2 | 有趣度 | 高 interestingness、低 cost/risk，对照高 cost/risk | 前者分数更高；cost 与 risk 反向 | unit |
 | 3 | 工具名 | `shell` / `set_goal` / `delete_memory` | 拒绝，理由「工具名不能进入工作对象空间」 | unit |
-| 4 | 没人派活 | 闲着，curiosity 0.9，只有目标种子和一条平淡 observation | 选中 curiosity 问句，执行种类 `open_question` | unit |
-| 5 | 心跳派出 | 无人类消息，完整 `propose_self_work` 带两个对象加一个 `shell` | 派出更有趣对象的投影；`shell` 不出现；成功后该对象 `active` | unit |
+| 4 | 没人派活 | 闲着，curiosity 0.9，身份、北极星、自己的承诺；另有一条替人收尾的目标 | 选中 `north_star`；收尾句不进根；不种 observation | unit |
+| 4b | 旧题目 | 高 novelty、低 interestingness 的新问题，对照低 novelty 的北极星 | 北极星赢。novelty 不单独决定 | unit |
+| 4c | 岔开 | 挂着根、interestingness 很高、novelty 不高的 proposal | 岔开的对象赢过北极星 | unit |
+| 5 | 心跳派出 | 无人类消息，完整 `propose_self_work`，顾问写了收尾句和 `shell`，没有 workObjects 时同样选根 | 派出北极星的投影；收尾句和 `shell` 不出现；成功后该对象 `active` | unit |
 
 计划文件名见 [`COMPONENT-TEST-MAP.md`](./COMPONENT-TEST-MAP.md)。P0–P2 的单测与 `subjectThink` 组件测已在仓库里。P3 真供应商 prompt 测仍未做。无 LLM 时注入的 `defer` 与 `do_nothing` 同分，字典序选 `defer`（§7.2），所以 §14.4 第 4 条的「散文」用例落到 defer 的状态句，而不是 `do_nothing`。
 
@@ -705,3 +716,4 @@ lastAccruedAt = now
 | 2026-10-12 | `propose_self_work` 的封闭字段写进生成/打分任务句。别名补全后缺正文则作废；空的 `schedule_revisit` 作废。完整提案才进 `drive_threshold`。 |
 | 2026-10-12 | 决策空间曾写成目标关系图 × 抽象行动类型 × 多维行动分数。该层已删除，不留旗标，也不留双路径。 |
 | 2026-10-12 | 工作对象空间（§7A）是 `self_work` 之后的决策空间：对象图 × 抽象操作 × 有趣度，投影到执行种类。行动白名单保持标量打分。 |
+| 2026-10-12 | §7A 的选点池改由身份、北极星、自己的承诺和好奇心种入。顾问负责岔开，也可以重访旧题目。替人收尾不进池。novelty 权重降到 0.35。无旗标。 |

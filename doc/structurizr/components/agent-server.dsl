@@ -825,11 +825,11 @@
                     }
                 }
 
-                subjectWorkObject = component "Subject Work Object" "【工作对象空间】self_work 之后：对象图 × 抽象操作 × 有趣度；投影到执行种类" "TypeScript" {
+                subjectWorkObject = component "Subject Work Object" "【工作对象空间】self_work 之后：主体根 × 岔开 × 有趣度；可重访旧题目" "TypeScript" {
                     tags "Outer-Module" "Subject"
                     properties {
                         "path" "packages/server/src/outer/subject/work-object.ts"
-                        "horizon.intention" "顾问只在 schema 内提议对象和操作；代码按有趣度选点。shell、set_goal、delete_memory 不投影"
+                        "horizon.intention" "根来自身份、北极星、自己的承诺和好奇心。顾问负责岔开或重访，不填空，也不写替人收尾。代码选点"
                         "horizon.in" "workObjects + goals + observations + curiosity + idle"
                         "horizon.out" "选中对象的 execution、goalText、expectedOutcome"
                         "horizon.deps" "无 I/O"

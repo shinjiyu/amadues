@@ -168,14 +168,14 @@ describe('DigitalEmployeeLoop', () => {
     const result = await loop.trigger('drive_threshold', {
       subjectProposal: {
         kind: 'ad_hoc',
-        goalText: '看看仓库',
-        expectedOutcome: '一条笔记',
+        goalText: '我还想再看看的旧题目',
+        expectedOutcome: '一段我自己的看法',
         drive: 'curiosity',
       },
     });
     expect(result.subjectProposalDispatched).toBe(true);
     expect(result.reason).toBe('self_work_dispatched');
-    expect(dispatchAdHoc).toHaveBeenCalledWith({ goalText: '看看仓库', expectedOutcome: '一条笔记' });
+    expect(dispatchAdHoc).toHaveBeenCalledWith({ goalText: '我还想再看看的旧题目', expectedOutcome: '一段我自己的看法' });
     expect(propose).not.toHaveBeenCalled();
   });
 

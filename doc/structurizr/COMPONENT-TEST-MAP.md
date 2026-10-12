@@ -72,8 +72,8 @@
 | **subjectStateStore** | ✅ `subject-state-store.test.ts` | — | — | §14.3 原子写、defer 上限 |
 | **subjectDrive** | ✅ `subject-drive.test.ts` | — | — | §14.3：0.10/时、阈值严格大于 0.60、4 小时纯驱动力冷却、inbox 可打断冷却 |
 | **subjectDecide** | ✅ `subject-decide.test.ts` | — | — | §14.2 白名单、同分字典序；SC-10；`reply` 拒绝；`message` → `text`；`propose_self_work` 字段补全 |
-| **subjectWorkObject** | ✅ `subject-work-object.test.ts` | — | — | §7A / §14.5：抽象操作先于投影、有趣度、工具名拒绝、闲时选中非人派的 curiosity 对象 |
-| **subjectThink** | ✅ `subject-think.test.ts` | ✅ `subjectThink.component.integration.test.ts` | ⏳ P3 | §14.4：`no_reply` 不发对话回复，但发一条 §8.1 状态回执，且不进入 `runOuterConversationLoop`；心跳空转 `wait` 不发；主人 sid 的状态句与其他人相同；回复只取候选 text；不新建 KPI；无旗标；`drive_threshold` 不绕过日程；不完整 `propose_self_work` 不派发；空 `schedule_revisit` 让给完整提案；闲时把更有趣的工作对象投影后派出 |
+| **subjectWorkObject** | ✅ `subject-work-object.test.ts` | — | — | §7A / §14.5：抽象操作先于投影、有趣度、工具名拒绝、主体根、替人收尾拒绝、旧题目可赢、岔开可赢 |
+| **subjectThink** | ✅ `subject-think.test.ts` | ✅ `subjectThink.component.integration.test.ts` | ⏳ P3 | §14.4：`no_reply` 不发对话回复，但发一条 §8.1 状态回执，且不进入 `runOuterConversationLoop`；心跳空转 `wait` 不发；主人 sid 的状态句与其他人相同；回复只取候选 text；不新建 KPI；无旗标；`drive_threshold` 不绕过日程；不完整 `propose_self_work` 不派发；空 `schedule_revisit` 让给完整提案；闲时派出主体根，不派出收尾句 |
 | **advanceWorkPackageBuilder** | ✅ 感知 facet（日历+内脑+stall+cursor）+ 简单调配规则 | ✅ RUNNING/日历闸门；bootstrap+ensure；stall→repair；盲派/重复日历指标 | — | [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` + `memory-belief-card.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP + mem9 Belief Card supersede（[`MEMORY-BELIEF-CARD.md`](./MEMORY-BELIEF-CARD.md)） |
 | completionNotify | ✅ `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) + ingest R4.7 + scheduled report allowlist + **pending-scheduled-report** | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1）；ingest≠notify；日历 EW 报告附件；微信缺 token 挂起冲刷 |
