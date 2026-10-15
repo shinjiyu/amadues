@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/amadues-logo.jpg" alt="amadues" width="320" />
+</p>
+
 # Amadues
 
 > **Language:** [中文](./README.md) · English (this page)
