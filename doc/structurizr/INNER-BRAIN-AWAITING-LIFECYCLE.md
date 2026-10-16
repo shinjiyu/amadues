@@ -1,5 +1,8 @@
 # 内脑 AWAITING 生命周期与恢复（ADL 权威）
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** Inner bursts pause in **AWAITING** when `pendings.json` waits on timers or humans. Recovery is **not** only `changeWatcher` polling: it requires **registry↔workspace reconciliation**, **deterministic IM resolve**, and **startup bootstrap**. Complements [`INNER-BRAIN-RESUME.md`](./INNER-BRAIN-RESUME.md) (RUNNING on agent restart).
 
 > **配套层**：本文管「**该醒怎么醒**」；[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 的 R3–R5 管「不合理等待与僵尸怎么收口」；[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) 管「等待期间员工还能做什么」。三者边界互补。

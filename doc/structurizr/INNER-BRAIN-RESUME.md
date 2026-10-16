@@ -1,5 +1,7 @@
 # 外脑重启与内脑恢复 / Inner brain resume on agent restart
 
+> **⚠️ 2026-10-16**：`changeWatcher` 与 `kpiAdvancer` 已标待删除，见 [`WORKSHOP.md`](./WORKSHOP.md)。重启后把残留 RUNNING 标成 STOPPED 这条留下。等待中的工人留在台上，不另 spawn。
+
 > **⚠️ 2026-06-07**：启动 **auto-resume**（`innerBrainStartupResume`）已删除。见 [`INNER-BRAIN-STARTUP-RESUME-REMOVED.md`](./INNER-BRAIN-STARTUP-RESUME-REMOVED.md)。下文历史描述中 auto-spawn 部分已过时。
 
 > **English:** On **agentServer** restart, stale `RUNNING` rows are **marked STOPPED** only. **AWAITING** uses **changeWatcher**; KPI uses **kpiAdvancer**; manual **`POST /api/inner-brains/:id/restart`**.

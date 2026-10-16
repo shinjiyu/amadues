@@ -1,0 +1,1 @@
+Resolve the headless Chromium / Chrome for Testing executable path once, write it to a file (for example reports/chrome.path), and reuse that path for every screenshot. Do not invent new shot_* wrappers when the path is wrong — fix the path.

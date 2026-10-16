@@ -1,8 +1,8 @@
 import Collatz.Conjecture
 
 /-!
-Exploration scratchpad: lemmas / small facts that MUST remain compilable.
-Formal RSI assault may APPEND concrete reachability facts; gate = `lake build`.
+Plan-serving lemmas only. Concrete `ReachesOne n` enumerations are **not** proof progress.
+See `ProofPlan.md`.
 -/
 
 namespace Collatz.Exploration
@@ -10,130 +10,75 @@ namespace Collatz.Exploration
 theorem step_even (k : Nat) : Collatz.step (2 * k) = k := by
   simp [Collatz.step]
 
+theorem step_odd (k : Nat) : Collatz.step (2 * k + 1) = 3 * (2 * k + 1) + 1 := by
+  have h : (2 * k + 1) % 2 = 1 := by omega
+  simp [Collatz.step, h]
+
 theorem step_one : Collatz.step 1 = 4 := by
   simp [Collatz.step]
 
 theorem iterate_zero (n : Nat) : Collatz.iterate 0 n = n := rfl
 
-/-- Tiny verified seed: 1 reaches 1 in 0 steps. -/
+theorem iterate_succ (k n : Nat) :
+    Collatz.iterate (k + 1) n = Collatz.step (Collatz.iterate k n) := rfl
+
+theorem iterate_step (j n : Nat) :
+    Collatz.iterate (j + 1) n = Collatz.iterate j (Collatz.step n) := by
+  induction j generalizing n with
+  | zero => rfl
+  | succ j ih =>
+    calc
+      Collatz.iterate (j + 2) n
+          = Collatz.step (Collatz.iterate (j + 1) n) := rfl
+      _ = Collatz.step (Collatz.iterate j (Collatz.step n)) := by rw [ih]
+      _ = Collatz.iterate (j + 1) (Collatz.step n) := rfl
+
+theorem iterate_add (i j n : Nat) :
+    Collatz.iterate (i + j) n = Collatz.iterate i (Collatz.iterate j n) := by
+  induction i generalizing n with
+  | zero => simp [Collatz.iterate]
+  | succ i ih =>
+    calc
+      Collatz.iterate (i + 1 + j) n
+          = Collatz.step (Collatz.iterate (i + j) n) := by
+            rw [Nat.add_assoc, Nat.add_comm 1 j, ← Nat.add_assoc]
+            rfl
+      _ = Collatz.step (Collatz.iterate i (Collatz.iterate j n)) := by rw [ih]
+      _ = Collatz.iterate (i + 1) (Collatz.iterate j n) := rfl
+
+theorem reaches_iterate {n k : Nat} (h : Collatz.ReachesOne (Collatz.iterate k n)) :
+    Collatz.ReachesOne n := by
+  obtain ⟨i, hi⟩ := h
+  refine ⟨i + k, ?_⟩
+  simpa [iterate_add] using hi
+
+theorem even_reaches {k : Nat} (h : Collatz.ReachesOne k) : Collatz.ReachesOne (2 * k) := by
+  obtain ⟨i, hi⟩ := h
+  refine ⟨i + 1, ?_⟩
+  have : Collatz.iterate (i + 1) (2 * k) = Collatz.iterate i k := by
+    rw [iterate_step, step_even]
+  rw [this, hi]
+
 theorem one_reaches_one : Collatz.ReachesOne 1 := by
   refine ⟨0, ?_⟩
   simp [Collatz.iterate]
 
-theorem step_2 : Collatz.step 2 = 1 := by decide
-theorem reaches_2 : Collatz.ReachesOne 2 := ⟨1, by decide⟩
-theorem reaches_4 : Collatz.ReachesOne 4 := ⟨2, by decide⟩
+/-- plan lemma --/
+theorem after_odd_is_even (k : Nat) :
+    (3 * (2 * k + 1) + 1) % 2 = 0 := by omega
 
-/-- assault append --/
-theorem step_3 : Collatz.step 3 = 10 := by decide
-theorem reaches_8 : Collatz.ReachesOne 8 := ⟨3, by decide⟩
-theorem reaches_16 : Collatz.ReachesOne 16 := ⟨4, by decide⟩
-
-/-- assault append --/
-theorem step_5 : Collatz.step 5 = 16 := by decide
-theorem reaches_5 : Collatz.ReachesOne 5 := ⟨5, by decide⟩
-theorem reaches_32 : Collatz.ReachesOne 32 := ⟨5, by decide⟩
-
-/-- assault append --/
-theorem step_6 : Collatz.step 6 = 3 := by decide
-theorem reaches_6 : Collatz.ReachesOne 6 := ⟨8, by decide⟩
-theorem reaches_10 : Collatz.ReachesOne 10 := ⟨6, by decide⟩
-
-/-- assault append --/
-theorem step_7 : Collatz.step 7 = 22 := by decide
-theorem reaches_3 : Collatz.ReachesOne 3 := ⟨7, by decide⟩
-theorem reaches_20 : Collatz.ReachesOne 20 := ⟨7, by decide⟩
-
-/-- assault append --/
-theorem step_9 : Collatz.step 9 = 28 := by decide
-
-theorem reaches_9 : Collatz.ReachesOne 9 := ⟨19, by decide⟩
-
-theorem reaches_28 : Collatz.ReachesOne 28 := ⟨18, by decide⟩
-
-/-- assault append --/
-theorem step_11 : Collatz.step 11 = 34 := by decide
-
-theorem reaches_40 : Collatz.ReachesOne 40 := ⟨8, by decide⟩
-
-theorem reaches_21 : Collatz.ReachesOne 21 := ⟨7, by decide⟩
-
-/-- assault append --/
-theorem step_12 : Collatz.step 12 = 6 := by decide
-theorem step_13 : Collatz.step 13 = 40 := by decide
-theorem reaches_13 : Collatz.ReachesOne 13 := ⟨9, by decide⟩
-
-/-- assault append --/
-theorem step_17 : Collatz.step 17 = 52 := by decide
-theorem reaches_17 : Collatz.ReachesOne 17 := ⟨12, by decide⟩
-theorem reaches_52 : Collatz.ReachesOne 52 := ⟨11, by decide⟩
-
-/-- assault append --/
-theorem step_19 : Collatz.step 19 = 58 := by decide
-theorem reaches_19 : Collatz.ReachesOne 19 := ⟨20, by decide⟩
-theorem reaches_58 : Collatz.ReachesOne 58 := ⟨19, by decide⟩
-
-/-- assault append --/
-theorem step_14 : Collatz.step 14 = 7 := by decide
-theorem step_25 : Collatz.step 25 = 76 := by decide
-theorem reaches_14 : Collatz.ReachesOne 14 := ⟨17, by decide⟩
-
-/-- assault append --/
-theorem step_24 : Collatz.step 24 = 12 := by decide
-theorem reaches_24 : Collatz.ReachesOne 24 := ⟨10, by decide⟩
-theorem reaches_76 : Collatz.ReachesOne 76 := ⟨22, by decide⟩
-
-/-- assault append --/
-theorem step_26 : Collatz.step 26 = 13 := by decide
-theorem reaches_26 : Collatz.ReachesOne 26 := ⟨10, by decide⟩
-theorem reaches_34 : Collatz.ReachesOne 34 := ⟨13, by decide⟩
-
-/-- assault append --/
-theorem step_33 : Collatz.step 33 = 100 := by decide
-theorem reaches_100 : Collatz.ReachesOne 100 := ⟨25, by decide⟩
-theorem reaches_11 : Collatz.ReachesOne 11 := ⟨14, by decide⟩
-
-/-- assault append --/
-theorem reaches_7 : Collatz.ReachesOne 7 := ⟨16, by decide⟩
-
-/-- assault append --/
-theorem reaches_12 : Collatz.ReachesOne 12 := ⟨9, by decide⟩
-
-/-- assault append --/
-theorem step_15 : Collatz.step 15 = 46 := by decide
-theorem reaches_15 : Collatz.ReachesOne 15 := ⟨17, by decide⟩
-theorem reaches_46 : Collatz.ReachesOne 46 := ⟨16, by decide⟩
-
-/-- assault append --/
-theorem step_18 : Collatz.step 18 = 9 := by decide
-theorem reaches_18 : Collatz.ReachesOne 18 := ⟨20, by decide⟩
-theorem reaches_22 : Collatz.ReachesOne 22 := ⟨15, by decide⟩
-
-/-- assault append --/
-theorem step_23 : Collatz.step 23 = 70 := by decide
-theorem reaches_23 : Collatz.ReachesOne 23 := ⟨15, by decide⟩
-
-/-- assault append --/
-theorem step_27 : Collatz.step 27 = 82 := by decide
-theorem step_30 : Collatz.step 30 = 15 := by decide
-theorem reaches_30 : Collatz.ReachesOne 30 := ⟨18, by decide⟩
-
-/-- assault append --/
-theorem step_29 : Collatz.step 29 = 88 := by decide
-theorem reaches_29 : Collatz.ReachesOne 29 := ⟨18, by decide⟩
-theorem reaches_88 : Collatz.ReachesOne 88 := ⟨17, by decide⟩
-
-/-- assault append --/
-theorem reaches_25 : Collatz.ReachesOne 25 := ⟨23, by decide⟩
-
-/-- assault append --/
-theorem step_31 : Collatz.step 31 = 94 := by decide
-theorem reaches_64 : Collatz.ReachesOne 64 := ⟨6, by decide⟩
-theorem reaches_48 : Collatz.ReachesOne 48 := ⟨11, by decide⟩
-
-/-- assault append --/
-theorem step_35 : Collatz.step 35 = 106 := by decide
-theorem reaches_35 : Collatz.ReachesOne 35 := ⟨22, by decide⟩
-theorem reaches_106 : Collatz.ReachesOne 106 := ⟨21, by decide⟩
+/-- Two steps from odd n = 2k+1 give (3n+1)/2, which is ≥ n: no 2-step descent. -/
+theorem two_step_no_descent (k : Nat) :
+    Collatz.iterate 2 (2 * k + 1) = (3 * (2 * k + 1) + 1) / 2
+    ∧ ¬ ((3 * (2 * k + 1) + 1) / 2 < 2 * k + 1) := by
+  have h1 : Collatz.step (2 * k + 1) = 3 * (2 * k + 1) + 1 := step_odd k
+  have h2 : (3 * (2 * k + 1) + 1) % 2 = 0 := after_odd_is_even k
+  have hstep2 : Collatz.step (3 * (2 * k + 1) + 1) = (3 * (2 * k + 1) + 1) / 2 := by
+    simp [Collatz.step, h2]
+  refine ⟨by simp [Collatz.iterate, h1, hstep2], ?_⟩
+  have : 3 * (2 * k + 1) + 1 = 2 * (3 * k + 2) := by omega
+  rw [this]
+  simp
+  omega
 
 end Collatz.Exploration

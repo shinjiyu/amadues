@@ -1,0 +1,21 @@
+{
+  "place": "office_lobby",
+  "clock": "2026-09-22T16:00:00+08:00",
+  "ambient": {
+    "noise": "low",
+    "motion": "none",
+    "new_events_since_last_sense": []
+  },
+  "people_in_view": [
+    {
+      "id": "p1",
+      "approx_distance_m": 4.2,
+      "facing": "away",
+      "recognized": null,
+      "note": "familiar silhouette; not approaching"
+    }
+  ],
+  "pending_commitments": [],
+  "unfinished_threads": [],
+  "hard_alerts": []
+}

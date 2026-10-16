@@ -1,5 +1,8 @@
 # KPI 管理器（ADL 权威）
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** **KPI Manager** owns KPI truth, multi-burst hygiene, AWAITING review, and R3–R7. **Strategy Planner is removed.** Day-to-day work-finding is owned by [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) (`digitalEmployeeLoop` / Calendar / SelfWorkPolicy). Physical spawn remains `set_goal` → `innerSpawner`.
 
 > 取代：[`KPI-ADVANCEMENT.md`](./KPI-ADVANCEMENT.md) 中的 leaf/首拆/单 burst 复用语义；[`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)（删除）；[`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md) 中 dispatcher 选 KPI 的独立层。

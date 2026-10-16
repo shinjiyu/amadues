@@ -1,5 +1,8 @@
 # 战略规划层
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **⚠️ 历史文档，非现行权威。**
 > - 2026-06-07：`strategyPlanner` / `strategyStore` / `dispatchByStrategy` 已删除；见 [`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md)。
 > - 2026-07-21：自主找活改由 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) 的 `SelfWorkPolicy`（只有提案权，可测试、可替换）；心跳降为 watchdog。

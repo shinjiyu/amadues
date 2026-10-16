@@ -1,0 +1,1 @@
+Always call GET http://127.0.0.1:11588/health before bpy edits. If the bridge is down, do not fake a frog with pure three.js primitives as the final mesh — stop and say the bridge is unreachable. Use POST /exec with JSON {"code":"...","undo":true}. Export GLB with an absolute path under the current work directory.

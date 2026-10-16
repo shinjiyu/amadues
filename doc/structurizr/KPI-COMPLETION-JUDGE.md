@@ -1,5 +1,8 @@
 # KPI 完成判定（ADL）
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** Heartbeat watchdog and completion tools **must judge whether each active KPI is complete**—not only whether bursts are stuck. Programmatic sweep (`kpiCompletionJudge`) + LLM tools (`view_kpi` / `achieve_kpi`) form one pipeline. Autonomic continuation is owned by [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md), not by strategyPlanner.
 
 与 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)、[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)、[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 互补。旧 [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) 仅历史对照。

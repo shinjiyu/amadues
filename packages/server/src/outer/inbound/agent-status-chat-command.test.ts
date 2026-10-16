@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import type { TaskRecord } from '../inner-brain-registry.js';
-import type { KpiRecord } from '../kpi-registry.js';
 import {
   formatActivityDensityReply,
   formatProgressReply,
@@ -23,23 +22,6 @@ function task(overrides: Partial<TaskRecord> = {}): TaskRecord {
     ticks: 6,
     kpiId: 'kpi-a',
     ...overrides,
-  };
-}
-
-function kpi(): KpiRecord {
-  return {
-    kpiId: 'kpi-a',
-    description: '小说运营',
-    createdBy: 'human:alice',
-    createdAt: '2026-07-20T00:00:00.000Z',
-    status: 'active',
-    kind: 'ongoing',
-    momentum: 2,
-    bursts: ['ib-run'],
-    consecutiveIdleBursts: 0,
-    isLeaf: true,
-    cadence: { type: 'once' },
-    burstRunHistory: [],
   };
 }
 
@@ -81,29 +63,28 @@ describe('agent status chat reply formatting', () => {
         kpiId: undefined,
       }),
     ],
-    kpis: [kpi()],
     maxRunningInnerBrains: 3,
     now: NOW,
   };
 
-  it('progress reply contains capacity, active KPI, running, waiting and recent result', () => {
+  it('progress reply lists running, waiting and recent result', () => {
     const result = tryHandleAgentStatusChatCommand({ content: '状态', ...snapshot });
-    expect(result.handled).toBe(true);
+    if (!result.handled) throw new Error('expected handled');
     expect(result.kind).toBe('progress');
     expect(result.text).toContain('当前进度');
     expect(result.text).toContain('执行槽：1/3');
-    expect(result.text).toContain('小说运营');
     expect(result.text).toContain('完成小说第三章修订');
     expect(result.text).toContain('等待确认书名');
     expect(result.text).toContain('整理竞品资料');
   });
 
   it('density reply contains 24h slot utilization and event counts', () => {
-    const text = tryHandleAgentStatusChatCommand({ content: '密度', ...snapshot }).text;
+    const density = tryHandleAgentStatusChatCommand({ content: '密度', ...snapshot });
+    if (!density.handled) throw new Error('expected handled');
+    const text = density.text;
     expect(text).toContain('过去 24 小时');
     expect(text).toContain('执行密度');
     expect(text).toContain('完成 1');
-    expect(text).toContain('最活跃 KPI');
   });
 
   it('ordinary chat is not handled', () => {

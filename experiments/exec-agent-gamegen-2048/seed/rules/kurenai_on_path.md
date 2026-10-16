@@ -1,0 +1,1 @@
+kurenai and cocos must be callable via PATH. Prefer `kurenai context|host|publish|logs|asset` for project ops; fall back to `cocos` when kurenai cannot cover a step. Always pass `--project` with the Candidate absolute path when cwd ambiguity is possible. Parse JSON stdout from kurenai.

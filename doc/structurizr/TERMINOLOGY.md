@@ -1,8 +1,8 @@
 # 架构名词表（权威）
 
-> **English:** Canonical vocabulary for Kuroneko outer/inner autonomy. **One concept → one term.** Prefer code-aligned names (`burst`, `KPI`, `commitment`) over informal synonyms (`sprint`).
+> **English:** Canonical vocabulary. Dispatch terms as of 2026-10-16 are in [`WORKSHOP.md`](./WORKSHOP.md): workshop, bench, worker, bench log, remainder, executable task, timer manager.
 >
-> **适用范围**：`doc/structurizr/` 及外脑/内脑产品叙述。代码里遗留标识符（如 `buildKpiSprintGoal`、`kpi_sprint_in_progress`）见 §3，**文档叙述不得再发明同义新词**。
+> **2026-10-16**：派活名词以车间为准。下表里的 KPI、SelfWork、digitalEmployeeLoop、work package、charter（作为长期职责的本轮章程）标为待删除，代码里的标识符还在。工人 / 工作台对应现在代码里的一次执行和它的 workspace。
 
 ---
 
@@ -10,15 +10,18 @@
 
 | 权威词 | 含义 | 禁止再用（同义混用） | 代码锚点 |
 |--------|------|----------------------|----------|
-| **KPI** | 长期目标身份；可挂多轮执行 | 「绩效目标」作另一套系统（已合并） | `KpiRecord` / `set_kpi` |
-| **burst** | **一次**内脑执行：派发 → instance + workspace → 终态（DONE / AWAITING / ERROR / …） | **sprint**、KPI sprint、一轮 sprint、内脑 sprint | `instanceId`、`InnerBrainRegistry`、`set_goal`、`burstRunHistory` |
-| **instance** | burst 的运行时身份（常与 workspace 1:1） | 与 burst 混称「任务」且不区分 KPI | `ib-…` |
-| **workspace** | 该 burst 的磁盘工作区 | — | `task-ib-…` |
-| **charter / 本轮章程** | 本发 burst 的窄目标文案（可验收） | 把整份 KPI Duty 当成本轮 goal | `goal.md`、窄 work package |
-| **work package** | 有边界的本轮工作描述（expectedOutcome + 预算） | 「一小步 sprint」 | SelfWork / advance allocator |
-| **commitment / 日历承诺** | 未来必须兑现的日程条目 | 「日历工具」若指另一套存储 | `employeeCalendar` / Scheduler task |
-| **SelfWork** | 无 due 时，围绕 KPI 的自主提案 | 与 burst 本身混淆 | `SelfWorkPolicy` |
-| **digitalEmployeeLoop** | 容量主循环：due 优先 → SelfWork → 唯一 `set_goal` | 「心跳派活」作主时钟 | `digital-employee-loop.ts` |
+| **车间** | 共享工作环境；浏览器和登录会话记在这里 | 不要叫成 KPI 或数字员工 | 尚无单独模块 |
+| **工人** | 一次可执行任务的执行，坐一张空台 | 新叙述不用 burst | 代码里仍是一次 `set_goal` / `instanceId` |
+| **工作台** | 这名工人独占来写的目录，带一份工作日志 | 新叙述不用 workspace 当派活名词 | `task-ib-…` |
+| **余量** | 每个决策轮给工人看的车间资源剩余 | 不是 `hasAvailableCapacity` 找活闸门 | 尚无单独模块 |
+| **KPI** | **【待删除】** 长期目标身份 | 车间不再记长期职责账 | `KpiRecord` / `set_kpi`（代码仍在） |
+| **burst** | **【改称工人】** 代码标识符仍在 | **sprint**、KPI sprint | `instanceId`、`set_goal` |
+| **workspace** | **【改称工作台】** | — | `task-ib-…` |
+| **charter / 本轮章程** | **【待删除】** 作为 KPI 本轮目标的用法 | 可执行任务由外脑拆好再派 | `goal.md` |
+| **work package** | **【待删除】** 找活调配用的工作包 | 见 WORKSHOP.md | advance allocator |
+| **commitment / 定时** | **【改写】** 到点派一名工人 | 不替台上等待计时，不进入容量找活 | `employeeCalendar` |
+| **SelfWork** | **【待删除】** 空闲时围绕 KPI 提案 | 车间没有这条活的来源 | `SelfWorkPolicy` |
+| **digitalEmployeeLoop** | **【待删除】** 有容量就找下一件活 | 同上 | `digital-employee-loop.ts` |
 | **Executable Workflow（EW）** | 已冻结、可逐步验收的**确定性工作流**契约；Skills 是其一种载体 | 把 EW 叫成「又一个 skill」 | [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) |
 | **HarnessSpec（H）** | 内脑一次可寻址的 harness 快照（nodes/skills/EW/assets） | 把单条 skill 或进程状态叫 H | [`HARNESS-RSI.md`](./HARNESS-RSI.md) |
 | **harness analyze** | 周期读轨迹出 soft findings（类 pstune analyze） | 仅失败才复盘；无 gate 直接改 active | 同上 §4.1 |

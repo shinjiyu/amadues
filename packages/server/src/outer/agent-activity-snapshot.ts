@@ -10,8 +10,6 @@ import type {
   TaskStatus,
   TaskStatusTransition,
 } from './inner-brain-registry.js';
-import type { KpiRecord } from './kpi-registry.js';
-
 export const DEFAULT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const TERMINAL_STATUSES = new Set<TaskStatus>(['DONE', 'STOPPED', 'ERROR', 'ABORTED']);
 const FAILED_STATUSES = new Set<TaskStatus>(['ERROR', 'ABORTED']);
@@ -31,7 +29,7 @@ export interface ActivityTaskSummary {
 }
 
 export interface AgentProgressSnapshot {
-  activeKpis: Array<Pick<KpiRecord, 'kpiId' | 'description' | 'momentum'>>;
+  activeKpis: Array<{ kpiId: string; description: string; momentum?: number }>;
   running: ActivityTaskSummary[];
   blocked: ActivityTaskSummary[];
   awaiting: ActivityTaskSummary[];
@@ -70,8 +68,7 @@ export interface AgentActivitySnapshot {
 
 export interface BuildAgentActivitySnapshotInput {
   tasks: TaskRecord[];
-  kpis: KpiRecord[];
-  maxRunningInnerBrains: number;
+  maxRunningInnerBrains?: number;
   now?: Date;
   windowMs?: number;
 }
@@ -152,19 +149,13 @@ function taskDurations(task: TaskRecord, windowStart: number, nowMs: number): Ta
   return estimateLegacyDurations(task, windowStart, nowMs);
 }
 
-function summarizeTask(
-  task: TaskRecord,
-  kpiById: Map<string, KpiRecord>,
-  nowMs: number,
-): ActivityTaskSummary {
+function summarizeTask(task: TaskRecord, nowMs: number): ActivityTaskSummary {
   const end = TERMINAL_STATUSES.has(task.status) ? terminalAt(task, nowMs) : nowMs;
-  const kpi = task.kpiId ? kpiById.get(task.kpiId) : undefined;
   return {
     instanceId: task.instanceId,
     goal: task.goal,
     status: task.status,
     kpiId: task.kpiId,
-    kpiDescription: kpi?.description,
     startedAt: task.startedAt,
     finishedAt: task.finishedAt ?? task.abortedAt,
     elapsedMs: Math.max(0, end - toMs(task.startedAt, end)),
@@ -181,8 +172,8 @@ export function buildAgentActivitySnapshot(
   const nowMs = now.getTime();
   const windowMs = Math.max(1, input.windowMs ?? DEFAULT_ACTIVITY_WINDOW_MS);
   const windowStart = nowMs - windowMs;
-  const maxSlots = Math.max(0, input.maxRunningInnerBrains);
-  const kpiById = new Map(input.kpis.map((kpi) => [kpi.kpiId, kpi]));
+  const maxSlots =
+    input.maxRunningInnerBrains == null ? 1 : Math.max(0, input.maxRunningInnerBrains);
 
   const running = input.tasks.filter((task) => task.status === 'RUNNING');
   const blocked = input.tasks.filter((task) => task.status === 'BLOCKED');
@@ -195,7 +186,6 @@ export function buildAgentActivitySnapshot(
   let executionMs = 0;
   let awaitingMs = 0;
   let estimatedTaskCount = 0;
-  const executionByKpi = new Map<string, number>();
 
   for (const task of input.tasks) {
     const durations = taskDurations(task, windowStart, nowMs);
@@ -203,12 +193,6 @@ export function buildAgentActivitySnapshot(
     awaitingMs += durations.awaitingMs;
     if (durations.estimated && durations.executionMs + durations.awaitingMs > 0) {
       estimatedTaskCount++;
-    }
-    if (task.kpiId && durations.executionMs > 0) {
-      executionByKpi.set(
-        task.kpiId,
-        (executionByKpi.get(task.kpiId) ?? 0) + durations.executionMs,
-      );
     }
   }
 
@@ -224,26 +208,16 @@ export function buildAgentActivitySnapshot(
 
   const denominator = windowMs * maxSlots;
   const density = denominator > 0 ? Math.min(1, executionMs / denominator) : 0;
-  const topKpis = [...executionByKpi.entries()]
-    .map(([kpiId, duration]) => ({
-      kpiId,
-      description: kpiById.get(kpiId)?.description ?? kpiId,
-      executionMs: duration,
-    }))
-    .sort((a, b) => b.executionMs - a.executionMs)
-    .slice(0, 3);
+  const topKpis: KpiActivitySummary[] = [];
 
   return {
     capturedAt: now.toISOString(),
     progress: {
-      activeKpis: input.kpis
-        .filter((kpi) => kpi.status === 'active')
-        .map(({ kpiId, description, momentum }) => ({ kpiId, description, momentum }))
-        .sort((a, b) => b.momentum - a.momentum),
-      running: running.map((task) => summarizeTask(task, kpiById, nowMs)),
-      blocked: blocked.map((task) => summarizeTask(task, kpiById, nowMs)),
-      awaiting: awaiting.map((task) => summarizeTask(task, kpiById, nowMs)),
-      recentTerminal: terminal.map((task) => summarizeTask(task, kpiById, nowMs)),
+      activeKpis: [],
+      running: running.map((task) => summarizeTask(task, nowMs)),
+      blocked: blocked.map((task) => summarizeTask(task, nowMs)),
+      awaiting: awaiting.map((task) => summarizeTask(task, nowMs)),
+      recentTerminal: terminal.map((task) => summarizeTask(task, nowMs)),
       runningSlots: running.length,
       freeSlots: Math.max(0, maxSlots - running.length),
       maxRunningInnerBrains: maxSlots,

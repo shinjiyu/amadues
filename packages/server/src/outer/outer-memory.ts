@@ -16,6 +16,8 @@
  *   - 未配置 MEM9_API_KEY 时，对话读操作返回空；未配置 DRIVE9_API_KEY 时，tasks 仅驻留内存
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { Mem9Client } from '../mem9/mem9-client.js';
 import { getDrive9Client } from '../drive9/drive9-client.js';
 import { formatAgentTimestampShort } from '../agent-time.js';
@@ -375,12 +377,10 @@ export class OuterMemoryStore {
 
       const messages: Array<{ role: string; content: string }> = [];
 
-      const { buildCompletionMessageFromWorkspace } = await import('./completion-notify.js');
-      const { message: completionBody } = buildCompletionMessageFromWorkspace(workDir, {
-        audience: 'verbose',
-      });
+      const benchLog = path.join(workDir, '.brain', 'bench-log.md');
+      const completionBody = fs.existsSync(benchLog) ? fs.readFileSync(benchLog, 'utf8') : '';
       if (completionBody.trim()) {
-        messages.push({ role: 'assistant', content: `[内脑任务完成报告]\n${completionBody}` });
+        messages.push({ role: 'assistant', content: completionBody });
       }
 
       if (messages.length === 0) return;

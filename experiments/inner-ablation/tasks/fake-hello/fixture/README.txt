@@ -1,0 +1,1 @@
+ablation smoke fixture

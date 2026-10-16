@@ -2,8 +2,8 @@
 
 本软件系统的 **ADL 权威** 为同目录上一级的 [`workspace.dsl`](../workspace.dsl)。
 
-- **L1**：用户仅经 IM（Discord、本地 WebChat）；运维经监控台观察内外脑与 KPI。
-- **L2**：`agentServer` 外脑进程 + `innerWorker` 子进程 + 共享库（Chat IR、Workspace Kit）。
-- **L3**：外脑模块见 [`modules-catalog.md`](../modules-catalog.md)；**数字员工自主工作**见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](../DIGITAL-EMPLOYEE-AUTONOMY.md)；**确定性工作流（Executable Workflow ⊃ Skills）**见 [`EXECUTABLE-WORKFLOW.md`](../EXECUTABLE-WORKFLOW.md)；**内脑 Harness-RSI（自改/升级/回退）**见 [`HARNESS-RSI.md`](../HARNESS-RSI.md)；KPI 治理见 [`KPI-MANAGER-LAYER.md`](../KPI-MANAGER-LAYER.md)；KPI 闭环见 [`KPI-CLOSED-LOOP.md`](../KPI-CLOSED-LOOP.md)；记忆边界见 [`MEMORY-STORAGE-BOUNDARY.md`](../MEMORY-STORAGE-BOUNDARY.md)；测试对照见 [`COMPONENT-TEST-MAP.md`](../COMPONENT-TEST-MAP.md)。
+- **L1**：用户经 IM 说话。外脑把抽象请求拆成可执行任务，派进车间。
+- **L2**：`agentServer` 外脑进程 + `innerWorker` 工人子进程 + 共享库（Chat IR、Workspace Kit）。
+- **L3**：派活权威是 [`WORKSHOP.md`](../WORKSHOP.md)（2026-10-16）。OKR、KPI、闲时找活、离台再唤醒已标待删除，代码尚未删。模块表见 [`modules-catalog.md`](../modules-catalog.md)。确定性工作流见 [`EXECUTABLE-WORKFLOW.md`](../EXECUTABLE-WORKFLOW.md)（其中接到 KPI / 闲时找活的三块待删除）。内脑 Harness-RSI 见 [`HARNESS-RSI.md`](../HARNESS-RSI.md)（**其 P5 自改写已被否定**，推导见 [`HARNESS-RSI-NEGATIVE-RESULTS.md`](../HARNESS-RSI-NEGATIVE-RESULTS.md)，替代设计见 [`TOOL-MDL-GROWTH.md`](../TOOL-MDL-GROWTH.md)，落地证据见 [`TOOL-MDL-GROWTH-RESULTS.md`](../TOOL-MDL-GROWTH-RESULTS.md)）。记忆边界见 [`MEMORY-STORAGE-BOUNDARY.md`](../MEMORY-STORAGE-BOUNDARY.md)。测试对照见 [`COMPONENT-TEST-MAP.md`](../COMPONENT-TEST-MAP.md)。
 
 工具链：[`TOOLCHAIN.md`](../TOOLCHAIN.md)（`validate` / `inspect` / `local` / 代码 diff）。

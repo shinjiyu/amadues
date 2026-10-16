@@ -528,6 +528,12 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.innerWorker.piMonoScheduler -> kuroneko.innerWorker.controllerFsm "tick()" "in-process" {
             tags "import"
         }
+        kuroneko.innerWorker.piMonoScheduler -> kuroneko.innerWorker.innerRuntimeFactory "createInnerRuntime" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.singleNodeBaseline -> kuroneko.innerWorker.runner "runLocalDag（一节点）" "in-process" {
+            tags "import"
+        }
 
         // ── DyFlow engine ────────────────────────────────────────────────
         kuroneko.innerWorker.controllerFsm -> kuroneko.innerWorker.designer "mode=DESIGN" "in-process" {
@@ -596,6 +602,44 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "import"
         }
         kuroneko.innerWorker.harnessW15Dedup -> kuroneko.innerWorker.harnessPointer "active covering workflow?" "in-process" {
+            tags "import"
+        }
+
+        // ── 工具 MDL 自生长（内核冻结；造工具=压缩题）─────────────────────────
+        kuroneko.innerWorker.reactKernel -> kuroneko.innerWorker.toolIndex "读 tools/ 构建词汇表（M2）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.reactKernel -> kuroneko.innerWorker.actionLog "append TraceRecord（M3/M10）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.toolIndex -> kuroneko.innerWorker.toolManifest "解析校验（M7/M9）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.traceMiner -> kuroneko.innerWorker.actionLog "读语料" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.traceMiner -> kuroneko.innerWorker.toolIndex "重编码用当前库（M8）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.mdlAccount -> kuroneko.innerWorker.toolIndex "文法代价" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.mdlAccount -> kuroneko.innerWorker.actionLog "语料代价" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.growthCycle -> kuroneko.innerWorker.traceMiner "候选生成（机械）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.growthCycle -> kuroneko.innerWorker.toolReplayGate "重放验收（M5）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.growthCycle -> kuroneko.innerWorker.mdlAccount "ΔL 收录/退役（M4/M6）" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.growthCycle -> kuroneko.innerWorker.toolLibrary "写 tools/ · .mdl.json" "in-process" {
+            tags "import"
+        }
+        kuroneko.innerWorker.toolLibrary -> kuroneko.innerWorker.toolManifest "manifest 契约" "in-process" {
             tags "import"
         }
 
@@ -947,38 +991,50 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             autolayout tb
         }
 
+        component kuroneko.innerWorker "09e-L3-Exec-Agent" {
+            title "L3 内脑 — 最小 exec agent（pi-ai + 全量消息，工具只有 exec）"
+            include kuroneko.innerWorker.execAgent
+            autolayout tb
+        }
+
+        component kuroneko.innerWorker "09d-L3-Tool-MDL-Growth" {
+            title "L3 内脑 — 工具 MDL 自生长（冻结 ReAct 内核 + 离线文法归纳长工具）"
+            include kuroneko.innerWorker.reactKernel kuroneko.innerWorker.toolIndex kuroneko.innerWorker.toolManifest kuroneko.innerWorker.actionLog kuroneko.innerWorker.traceMiner kuroneko.innerWorker.mdlAccount kuroneko.innerWorker.toolReplayGate kuroneko.innerWorker.toolLibrary kuroneko.innerWorker.growthCycle
+            autolayout tb
+        }
+
         container kuroneko "10-L2-KPI-Closed-Loop" {
-            title "KPI 闭环（agentServer ↔ innerWorker + 共享 workDir）"
+            title "【待删除】KPI 闭环（见 WORKSHOP.md）"
             include kuroneko.agentServer kuroneko.innerWorker
             autolayout tb
         }
 
         component kuroneko.agentServer "10b-L3-Outer-KPI" {
-            title "L3 外脑 — KPI 调度与 onExit"
+            title "【待删除】L3 外脑 — KPI 调度与 onExit"
             include kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiManager kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiFailureCircuit kuroneko.agentServer.kpiSpawnCapacity kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.kpiCompletionJudge kuroneko.agentServer.innerBrainKpiReuse kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.workspaceInbox kuroneko.agentServer.innerSpawner kuroneko.agentServer.innerBurstExit
             autolayout tb
         }
 
         component kuroneko.agentServer "11-L3-Outer-Autonomy" {
-            title "L3 外脑 — 数字员工自主工作（容量+日程+创造性提案；心跳 watchdog）"
+            title "【待删除】L3 外脑 — 数字员工自主工作"
             include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.employeeCalendar kuroneko.agentServer.selfWorkPolicy kuroneko.agentServer.kpiCompletionJudge kuroneko.agentServer.resourceProbe kuroneko.agentServer.llmUsageTracker kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.agentPersonality kuroneko.agentServer.autonomyJudge kuroneko.agentServer.casualChatDispatcher kuroneko.agentServer.performanceGoalEngine kuroneko.agentServer.outerToolExecutor kuroneko.agentServer.participationPolicy kuroneko.agentServer.kpiRegistry kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.threadOrchestrator kuroneko.agentServer.llmGateway kuroneko.agentServer.outerConversationLoop
             autolayout tb
         }
 
         component kuroneko.agentServer "12-L3-Outer-Environment" {
-            title "L3 外脑 — 环境模型（sensor registry / journal / change detector / 消费方）"
+            title "【待删除】L3 外脑 — 环境模型"
             include kuroneko.agentServer.environmentSensorRegistry kuroneko.agentServer.environmentModelFacade kuroneko.agentServer.environmentJournal kuroneko.agentServer.environmentChangeDetector kuroneko.agentServer.kpiSpawnCapacity kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.autonomyJudge kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.employeeCalendar kuroneko.agentServer.selfWorkPolicy kuroneko.agentServer.kpiManager kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.llmUsageJournal kuroneko.agentServer.threadOrchestrator
             autolayout tb
         }
 
         component kuroneko.agentServer "13-L3-Outer-KPI-Manager" {
-            title "L3 外脑 — KPI 治理（R3–R7/reap；advance 兼容 fallback）"
+            title "【待删除】L3 外脑 — KPI 治理"
             include kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.environmentSensorRegistry kuroneko.agentServer.environmentModelFacade kuroneko.agentServer.kpiSpawnCapacity kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.kpiManager kuroneko.agentServer.kpiAdvancer kuroneko.agentServer.kpiFailureCircuit kuroneko.agentServer.casualChatDispatcher kuroneko.agentServer.kpiRegistry kuroneko.agentServer.environmentJournal kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.awaitingInboundResolver kuroneko.agentServer.outerToolExecutor kuroneko.innerWorker.archiveStore
             autolayout tb
         }
 
         component kuroneko.agentServer "14-L3-Digital-Employee-Loop" {
-            title "L3 外脑 — 数字员工容量驱动循环（日程优先 + SelfWorkPolicy）"
+            title "【待删除】L3 外脑 — 数字员工容量驱动循环"
             include kuroneko.agentServer.digitalEmployeeLoop kuroneko.agentServer.employeeCalendar kuroneko.agentServer.selfWorkPolicy kuroneko.agentServer.environmentSensorRegistry kuroneko.agentServer.environmentModelFacade kuroneko.agentServer.autonomyJudge kuroneko.agentServer.autonomyPolicyStore kuroneko.agentServer.kpiRegistry kuroneko.agentServer.kpiManager kuroneko.agentServer.innerBrainRegistry kuroneko.agentServer.innerBurstExit kuroneko.agentServer.changeWatcher kuroneko.agentServer.outerHeartbeat kuroneko.agentServer.outerToolExecutor
             autolayout tb
         }

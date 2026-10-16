@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>六足直播 · 模型</title>
+  <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }</script>
+</head>
+<body style="margin:0;background:#111">
+  <script src="./layout.js"></script>
+  <script type="module">
+    import * as THREE from 'three';
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.01, 50);
+    camera.position.set(0.6, 0.6, 0.6);
+    camera.lookAt(0, 0, 0);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x333333, 1.2));
+
+    const s = HexLayout.bodySize();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(s.x, s.y, s.z), new THREE.MeshStandardMaterial({ color: 0x66aa66 }));
+    scene.add(body);
+
+    const yaws = HexLayout.legYaw();
+    HexLayout.legMounts().forEach((m, i) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.02), new THREE.MeshStandardMaterial({ color: 0xcccccc }));
+      leg.geometry.translate(0.08, 0, 0);
+      leg.position.set(m.x, m.y, m.z);
+      leg.rotation.y = -yaws[i];
+      body.add(leg);
+    });
+
+    renderer.setAnimationLoop(() => renderer.render(scene, camera));
+  </script>
+</body>
+</html>

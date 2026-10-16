@@ -4,7 +4,6 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { InnerBrainRegistry } from './inner-brain-registry.js';
-import { KpiRegistry } from './kpi-registry.js';
 import {
   collectPeerWorkspaceIds,
   readDeliverableRelativePaths,
@@ -77,7 +76,7 @@ describe('workspace-inbox', () => {
     expect(catalog.peers[0]?.files[0]?.summary).toContain('chapter one');
   });
 
-  it('collectPeerWorkspaceIds returns same-KPI siblings only', () => {
+  it('collectPeerWorkspaceIds returns every other bench', () => {
     const dataRoot = mkTmp();
     dirs.push(dataRoot);
     const workspaces = path.join(dataRoot, 'workspaces');
@@ -89,7 +88,6 @@ describe('workspace-inbox', () => {
     for (const d of [wsA, wsB, wsOther]) fs.mkdirSync(d, { recursive: true });
 
     const registry = new InnerBrainRegistry(dataRoot);
-    const kpiRegistry = new KpiRegistry(dataRoot);
 
     registry.register({
       instanceId: 'a1',
@@ -122,19 +120,12 @@ describe('workspace-inbox', () => {
       deliverableCount: 3,
     });
 
-    const kpi = kpiRegistry.create({ description: 'novel', createdBy: 'u' });
-    kpiRegistry.attachBurst(kpi.kpiId, 'a1');
-    kpiRegistry.attachBurst(kpi.kpiId, 'b1');
-
     const ids = collectPeerWorkspaceIds({
       registry,
       excludeWorkspaceId: 'task-ib-b',
-      kpiId: kpi.kpiId,
-      kpiRegistry,
     });
 
-    expect(ids).toEqual(['task-ib-a']);
-    expect(ids).not.toContain('task-ib-other');
+    expect(ids).toEqual(['task-ib-a', 'task-ib-other']);
   });
 
   it('summarizeTextFile truncates long text', () => {

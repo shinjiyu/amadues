@@ -1,5 +1,8 @@
 # 数字员工：容量驱动的自主工作与日程表（ADL 权威）
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** Model the agent as a digital employee. Waiting for a human, a time, or an external event blocks only the dependent work; it does **not** make the whole employee or KPI busy. Whenever execution capacity is available, the employee first honors due calendar commitments, then proposes a valuable, non-duplicate action for an active KPI. Burst completion and calendar due events drive the loop immediately; heartbeat is a watchdog and recovery fallback.
 
 > **状态**：P0–P3 已实现（见 §10）。本文取代“心跳是自主推进主发动机”“KPI cadence”“长 `wait_timer` 充当周期任务”的调度语义。

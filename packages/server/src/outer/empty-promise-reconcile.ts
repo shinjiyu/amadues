@@ -3,7 +3,7 @@
  * @see doc/structurizr/IM-INBOUND-INTENT-ROUTING.md §4.2
  */
 import { classifyImInboundIntent } from './inbound/im-intent-classifier.js';
-import { isSetGoalDispatched } from './inner-brain-kpi-reuse.js';
+import { isSetGoalDispatched } from './worker-dispatched.js';
 import { isToolOutputOk } from './outer-tool-audit.js';
 
 export interface OuterToolResultSnap {
@@ -14,10 +14,8 @@ export interface OuterToolResultSnap {
 /** 算「已动手」的派活/登记类工具（成功输出才算） */
 export const WORK_ACTION_TOOLS = new Set([
   'set_goal',
-  'advance_kpi',
   'workflow_run',
   'workflow_promote',
-  'set_kpi',
   'schedule_commitment',
   'send_directive',
   'start_self_update',
@@ -39,8 +37,6 @@ export function isUserWorkRequest(text: string): boolean {
   const intent = classifyImInboundIntent(t);
   if (
     intent.kind === 'ad_hoc_task' ||
-    intent.kind === 'kpi_create' ||
-    intent.kind === 'kpi_update' ||
     intent.kind === 'task_followup'
   ) {
     return true;
@@ -63,10 +59,6 @@ export function isSuccessfulWorkAction(toolName: string, output: string): boolea
     case 'workflow_run':
     case 'start_self_update':
       return isSetGoalDispatched(output) || output.includes('已启动受控 self-update');
-    case 'advance_kpi':
-      return output.includes('KPI 推进成功') || isSetGoalDispatched(output);
-    case 'set_kpi':
-      return output.includes('KPI 已创建');
     case 'schedule_commitment':
       return /已(?:创建|更新|存在)日历承诺/.test(output);
     case 'workflow_promote':

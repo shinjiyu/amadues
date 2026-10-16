@@ -32,6 +32,7 @@ import { runLocalDag } from './runner.js';
 import type { RunnerResult } from './runner.js';
 import { readLocalDag, clearLocalDag } from './local-dag-store.js';
 import { listActivePendings } from '../pendings/index.js';
+import { waitOnBench } from './bench-wait.js';
 import type { NodeDefDrive9Store } from '../../drive9/node-def-drive9-store.js';
 import type { EnvSnapshot } from './node-abstractor.js';
 import type { PlanReferenceDeps } from './designer-tools.js';
@@ -370,8 +371,20 @@ export function createDyflowController(
           return { hadWork: true };
         }
 
-        case 'AWAITING':
-          return { hadWork: false };
+        case 'AWAITING': {
+          const waited = await waitOnBench(workDir);
+          if (!waited.continue) return { hadWork: false };
+          for (const note of waited.notes) {
+            memory.appendFact(note);
+          }
+          writeState({
+            mode: 'DESIGN',
+            designStreak: 0,
+            harnessRsiRound: state.harnessRsiRound ?? 0,
+            reason: 'bench-wait-done',
+          });
+          return { hadWork: true };
+        }
 
         case 'DONE':
         case 'ERROR':
@@ -416,7 +429,7 @@ function archiveDagHistory(memory: MemoryStore, dag: LocalDag, res: RunnerResult
   } catch { /* 归档失败不阻断主流程 */ }
 }
 
-function seedGoalIntoMemory(workDir: string, memory: MemoryStore): void {
+export function seedGoalIntoMemory(workDir: string, memory: MemoryStore): void {
   if (memory.read().goal) return;
   try {
     const goalPath = path.join(workDir, '.brain', 'goal.md');

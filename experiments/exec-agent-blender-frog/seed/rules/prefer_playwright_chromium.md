@@ -1,0 +1,1 @@
+On macOS for this machine: do not start screenshot attempts with `which google-chrome` or Safari+selenium. Prefer Playwright Chromium already under `~/Library/Caches/ms-playwright/` or a one-time install into `/tmp/pw`. Save the working launch recipe under `reports/chrome.path` or reuse `/tmp/shot.js`.

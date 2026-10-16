@@ -4,13 +4,14 @@
 
 | 文档 | 状态 | 说明 |
 |------|------|------|
+| [`../structurizr/WORKSHOP.md`](../structurizr/WORKSHOP.md) | **实现中** | 定时派工、上班读日志、留台等待、交付不发固定句已接线。资源余量账本还没有 |
 | [`memory-belief-reconciliation.md`](./memory-belief-reconciliation.md) | **MVP 已完成** | 用户取消/完成 → belief 对账 + tasks/mem9 降权 |
 | [`inner-brain-awaiting-lifecycle.md`](./inner-brain-awaiting-lifecycle.md) | **P0+P1 已完成** | AWAITING：reconcile、IM resolver、bootstrap、周期对账、组件测 |
 | [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md) | **已完成** | resolved pending spill（去掉 600 字硬截断） |
 | [`cross-agent-research-and-keychain.md`](./cross-agent-research-and-keychain.md) | **R1+R2 已完成** | 研究共享：Attributor write_skill + 重试/BLOCK 兜底 |
 | [`memory-blocks-framework.md`](./memory-blocks-framework.md) | **B0–B2 已完成** | Memory Block + keychain + B2 解耦 awaiting/bind |
 | [`outer-brain-web-search-tool.md`](./outer-brain-web-search-tool.md) | **待实现** | 外脑专用 Web Search 工具（与内脑 playwright 分离） |
-| [`resource-awareness-autonomy.md`](./resource-awareness-autonomy.md) | **ADL 已定稿** | 资源感知 + 心跳闲忙判定 + 自主任务（闲聊 / KPI 内脑 goal） |
+| [`resource-awareness-autonomy.md`](./resource-awareness-autonomy.md) | **被车间取代** | 闲时找活。现行见 [`WORKSHOP.md`](../structurizr/WORKSHOP.md)，模块标待删除 |
 | [`chat-ir-presence-typing.md`](./chat-ir-presence-typing.md) | **typing 已完成** | 「正在输入中」全链路：协议 state(start/stop) → chat-server relay/REST → bridge sendActivity → 外脑回复期 typing/idle → web-chat 指示器。presence 在线态待补 |
 | [`inner-brain-exec-kill-resume-stuck.md`](./inner-brain-exec-kill-resume-stuck.md) | **待实现** | EXECUTE/shell_exec 中被杀 → 重启卡住：RUNNING 僵尸行、restart 409、bg job 内存丢失；方案见专篇 |
 | [`framework-benchmark-token-baseline.md`](./framework-benchmark-token-baseline.md) | **可选/CI** | FakeLLM 机制回归；**真实调优见 task-run-observability** |

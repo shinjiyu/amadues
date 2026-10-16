@@ -5,7 +5,6 @@ import path from 'node:path';
 
 import type { InnerBrainEngine } from '../workspace-kit/index.js';
 
-import { KpiRegistry } from '../outer/kpi-registry.js';
 import { InnerBrainRegistry, type TaskRecord } from '../outer/inner-brain-registry.js';
 import { countDeliverables } from '../outer/inner-burst-exit.js';
 import { createTestDataRoot, type TestDataRoot } from './temp-data-root.js';
@@ -13,12 +12,9 @@ import { FakeImChannel } from './fake-im-channel.js';
 import { writeSyntheticWorkspace, type SyntheticWorkspaceOpts } from './workspace-factory.js';
 
 export interface AgentStackFixture extends TestDataRoot {
-  kpiRegistry: KpiRegistry;
   innerBrainRegistry: InnerBrainRegistry;
   im: FakeImChannel;
-  createKpi(description: string): string;
   simulateBurstExit(
-    kpiId: string,
     opts: SyntheticWorkspaceOpts & {
       verdict?: 'success' | 'partial' | 'failed';
       stoppedBy?: 'idle' | 'max_ticks' | 'stop_signal';
@@ -34,19 +30,14 @@ export interface AgentStackFixture extends TestDataRoot {
 
 export function createAgentStackFixture(): AgentStackFixture {
   const root = createTestDataRoot('kuroneko-agent-stack-');
-  const kpiRegistry = new KpiRegistry(root.dataRoot);
   const innerBrainRegistry = new InnerBrainRegistry(root.dataRoot);
   const im = new FakeImChannel();
 
   return {
     ...root,
-    kpiRegistry,
     innerBrainRegistry,
     im,
-    createKpi(description) {
-      return kpiRegistry.create({ description, createdBy: 'test:harness' }).kpiId;
-    },
-    simulateBurstExit(kpiId, opts) {
+    simulateBurstExit(opts) {
       const instanceId = innerBrainRegistry.generateInstanceId();
       const workspaceId = `task-${instanceId}`;
       const workDir = path.join(root.workspacesDir, workspaceId);
@@ -64,11 +55,9 @@ export function createAgentStackFixture(): AgentStackFixture {
         status: asyncWaiting ? 'AWAITING' : 'DONE',
         startedAt: new Date().toISOString(),
         finishedAt: asyncWaiting ? undefined : new Date().toISOString(),
-        kpiId,
         deliverableCount: deliverables.length,
       };
       innerBrainRegistry.register(task);
-      kpiRegistry.attachBurst(kpiId, instanceId);
 
       return {
         instanceId,

@@ -1,9 +1,10 @@
 /**
- * Post-ATTRIBUTE Harness-RSI cycle (P4).
+ * Post-ATTRIBUTE Harness-RSI cycle (P4/P5).
  * Primary: cadence analyze → revise → gate → upgrade.
  * Auxiliary: hard fail may enter immediately.
+ * P5/H13: loopTree H requires diagnosis-driven patches (no cosmetic bumps).
  *
- * ADL: doc/structurizr/HARNESS-RSI.md §4 / §8 P4 / H3 / H8 / H9
+ * ADL: doc/structurizr/HARNESS-RSI.md §4 / §8 / H3 / H8 / H9 / H12 / H13
  */
 
 import type { HarnessSpecStore } from './harness-spec-store.js';
@@ -13,6 +14,7 @@ import { reviseHarness } from './harness-revise.js';
 import { gateHarness } from './harness-gate.js';
 import { requestHarnessRestart } from './harness-restart.js';
 import { analyzeHarness } from './harness-analyze.js';
+import { isCosmeticLoopPatchSet } from './harness-loop-patch.js';
 import type { HarnessPatch } from './harness-types.js';
 
 export const HARNESS_RSI_MAX_ROUNDS = 2;
@@ -26,7 +28,7 @@ export interface HarnessRsiCycleInput {
   analyzeInterval?: number;
   forceAnalyze?: boolean;
   store?: HarnessSpecStore;
-  /** P5: optional patches for revise (loop source evolution) */
+  /** P5: diagnosis-driven patches (H13) */
   patches?: HarnessPatch[];
 }
 
@@ -57,14 +59,24 @@ export function maybeApplyHarnessRsiCycle(
     interval: input.analyzeInterval,
   });
 
-  // P5: patches themselves are substantive (H12); do not require soft findings to apply them.
-  if (!analysis.shouldRevise && !input.patches?.length) {
-    return { applied: false, reason: analysis.reason };
-  }
-
   const store = input.store ?? createHarnessSpecStore(workDir);
   const ptr = createHarnessPointer(workDir, store);
   const before = ptr.readActive();
+  const parentActive = before ? store.get(before.harnessId) : null;
+
+  // H13: with loopTree, soft findings alone are not enough — need diagnosis patches.
+  if (parentActive?.refs.loopTreeId && !input.patches?.length) {
+    return { applied: false, reason: 'h13_need_diagnosis_patches' };
+  }
+
+  if (input.patches?.length && isCosmeticLoopPatchSet(input.patches)) {
+    return { applied: false, reason: 'h13_cosmetic_patches' };
+  }
+
+  // Patches from diagnosis are substantive (H12/H13); soft findings optional.
+  if (!analysis.shouldRevise && !input.patches?.length) {
+    return { applied: false, reason: analysis.reason };
+  }
 
   let draft;
   try {
@@ -74,7 +86,7 @@ export function maybeApplyHarnessRsiCycle(
         ...(analysis.diagnosis
           ? { diagnosis: analysis.diagnosis }
           : input.patches?.length
-            ? { diagnosis: 'loop_source_patches' }
+            ? { diagnosis: 'loop_source_diagnosis_patches' }
             : {}),
         ...(input.patches?.length ? { patches: input.patches } : {}),
       },

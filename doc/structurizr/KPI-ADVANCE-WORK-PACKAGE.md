@@ -1,5 +1,8 @@
 # KPI「推进」：感知驱动的资源调配（ADL）
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** **Advance is resource allocation**, not a new domain state-machine. The fix is to give the allocator **rich, machine-readable perception** of calendar and inner-brain resources, then apply simple dispatch rules. Complex Work-Package lease graphs are **not** the primary design. Complements [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)、[`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)、[`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md).
 >
 > **状态**：P0–P3 已落地。

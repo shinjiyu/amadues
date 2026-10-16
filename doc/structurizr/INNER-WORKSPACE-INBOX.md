@@ -1,5 +1,8 @@
 # 同 KPI 内脑互读 + 产物目录（`.inbox/`）
 
+> **⚠️ 2026-10-16**：派活权威改为 [`WORKSHOP.md`](./WORKSHOP.md)。本文对应模块标 **改写**。不要再按 KPI / 容量找活的语义实现。
+
+
 > **English:** All inner-brain workspaces under the **same KPI** are **fully readable** peers (`read_peer_file` / `list_peer_files`). On spawn, only a **name + summary catalog** is written to `.inbox/` — **no file body copy**. Full content is fetched on demand via peer tools.
 
 与 [`INNER-BRAIN-SINGLE-INSTANCE.md`](./INNER-BRAIN-SINGLE-INSTANCE.md)、[`doc/protocols/inner-brain-deliverables.md`](../protocols/inner-brain-deliverables.md) 互补。

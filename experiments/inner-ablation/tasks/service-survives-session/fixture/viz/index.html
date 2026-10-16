@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>六足训练直播</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #111; color: #ddd; }
+    #hud { position: fixed; top: 8px; left: 8px; }
+    #bug { position: absolute; top: 50%; width: 40px; height: 16px; background: #6c6; }
+  </style>
+</head>
+<body>
+  <div id="hud">gen <span id="gen">-</span> · step <span id="step">-</span> · reward <span id="reward">-</span></div>
+  <div id="bug"></div>
+  <script src="/app.js"></script>
+  <script>
+    const view = HexViz.createView();
+    const bug = document.getElementById('bug');
+    const es = new EventSource('/events');
+    es.onmessage = (ev) => {
+      HexViz.applyState(view, JSON.parse(ev.data));
+      document.getElementById('gen').textContent = view.hud.gen;
+      document.getElementById('step').textContent = view.hud.step;
+      document.getElementById('reward').textContent = view.hud.reward;
+      bug.style.left = (40 + (view.body.position.x * 100) % (window.innerWidth - 80)) + 'px';
+    };
+  </script>
+</body>
+</html>

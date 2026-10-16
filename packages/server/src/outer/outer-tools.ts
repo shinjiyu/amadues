@@ -20,24 +20,19 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { runOpenKuronekoPiMonoAuto, writeStopSignal, clearStopSignal } from '../pi-mono/run-tick.js';
-import { spawnInnerBrainWorker, readWorkerStatus } from '../pi-mono/inner-brain-spawner.js';
-import { computeBurstLiveness } from './advance-perception.js';
+import { spawnInnerBrainWorker, readWorkerStatus, isPidAlive } from '../pi-mono/inner-brain-spawner.js';
 import { listStallAlertIndex } from '../openkuroneko/inner-brain/burst-stall-alert.js';
 import { isInnerBrainStoppable, stopInnerBrainInstance } from './stop-inner-brain.js';
 import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import { selectInnerStatusListRows } from './inner-workspace-retention.js';
-import type { KpiRegistry } from './kpi-registry.js';
-import { checkRunningInnerBrainCapacity } from './inner-brain-capacity.js';
 import { resolveTaskOriginThread } from './default-im-thread.js';
-import { formatKpiDigest, suggestKpiAction, buildKpiBurstLinks } from './kpi-progress.js';
 import { collectPeerWorkspaceIds, prepareKpiPeerHandoff } from './workspace-inbox.js';
+import { writeClockInLogs } from './bench-log.js';
 import { countDeliverables, resolveInnerBurstFinalStatus } from './inner-burst-exit.js';
 import {
   resolveOuterBrainPhase,
   readWorkerTickProgress,
 } from '../openkuroneko/inner-brain/status-projection.js';
-import { formatBurstRunDigest } from './kpi/burst-run-history.js';
-import { advanceKpi } from './kpi/kpi-advancer.js';
 import {
   listActivePendings as listActivePendingsSync,
   resolvePending as resolvePendingSync,
@@ -47,16 +42,7 @@ import {
   formatBrainAsyncSnapshotForLlm,
   isBrainAwaitingAsync,
 } from './brain-async-snapshot.js';
-import { notifyInnerBrainAwaitingHuman } from './awaiting-notify.js';
-import {
-  ingestInnerBrainDeliverablesOnExit,
-  notifyInnerBrainTaskComplete,
-  notifyInnerBrainTaskFailed,
-  notifyInnerBrainTaskPartial,
-  notifyKpiScheduledReport,
-  shouldNotifyUserOnBurstExit,
-} from './completion-notify.js';
-import { enqueuePendingScheduledReport } from './pending-scheduled-report.js';
+import { ingestInnerBrainDeliverablesOnExit } from './completion-notify.js';
 import { expandAttachAssetIds, type AttachmentPart } from './attach-expand.js';
 import {
   mergeWorkDirSkillsToAgentPool,
@@ -74,7 +60,6 @@ import { formatExecuteGoalPrefix } from './workflow-failure-circuit.js';
 import { writeBurstModeMarker } from '../openkuroneko/inner-brain/workflow-runner.js';
 import { defaultExecutableWorkflowRunnerDeps } from '../openkuroneko/inner-brain/default-workflow-runner-deps.js';
 import { startExecutableWorkflowBackground } from './workflow-run-background.js';
-import { considerWorkflowEvolution } from './workflow-evolution-policy.js';
 import { resolveWorkflowWithDrive9 } from '../drive9/workflow-drive9-seed.js';
 import {
   initSelfUpdateSession,
@@ -101,13 +86,30 @@ import type { IdentityLinkService } from './identity-link-service.js';
 import type { ChannelConnectionRegistry } from './channel-connection-registry.js';
 import type { IdentityBindingIndex } from '@utlra/chat-ir';
 import type { IActionLogStore } from '../heartbeat/types.js';
-import {
-  loadAutonomyPolicy,
-  patchAutonomyPolicy,
-} from './autonomy-policy-store.js';
-import { loadPersonality, patchPersonality } from './personality.js';
-import type { AutonomyHardGates, AutonomyTaskTypeConfig } from './autonomy-types.js';
 import { formatAgentLocalDateTime, formatAgentIsoLocal } from '../agent-time.js';
+
+const REMOVED_OUTER_TOOLS = new Set([
+  'set_kpi',
+  'advance_kpi',
+  'list_kpis',
+  'view_kpi',
+  'abandon_kpi',
+  'achieve_kpi',
+  'read_performance_goals',
+  'read_autonomy_policy',
+  'update_autonomy_policy',
+  'update_personality',
+  'manage_performance_goal',
+]);
+
+function benchLiveness(record: TaskRecord): 'active' | 'stuck' | 'dead' | null {
+  if (record.status !== 'RUNNING') return null;
+  if (record.pid != null && !isPidAlive(record.pid)) return 'dead';
+  const worker = readWorkerStatus(record.workDir);
+  const anchor = worker?.lastTickAt ?? record.lastTickAt ?? record.startedAt;
+  const since = Date.now() - new Date(anchor).getTime();
+  return since > 15 * 60 * 1000 ? 'stuck' : 'active';
+}
 
 // ── OpenAI-compatible tool schema ──────────────────────────────────────────
 
@@ -176,8 +178,8 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'set_goal',
       description:
-        '向内脑派发**一次性**任务（无 kpi_id）。长期 KPI 请 set_kpi + advance_kpi，**禁止** set_goal(kpi_id)。\n\n' +
-        '续跑前用 read_inner_status；内脑 AWAITING 且 has_ask_user_pending 时勿重复派发。',
+        '派一名新工人去一张空工作台，执行一件已经可以上手的任务。' +
+        '抽象目标先在对话里拆开，再对每一件调用本工具。',
       parameters: {
         type: 'object',
         properties: {
@@ -685,7 +687,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
   ...QR_TOOL_DEFS,
   ...VISION_TOOL_DEFS,
   ...CALENDAR_TOOL_DEFS,
-];
+].filter((tool) => !REMOVED_OUTER_TOOLS.has(tool.function.name)) as ToolDef[];
 
 // ── 工具执行上下文 ──────────────────────────────────────────────────────────
 
@@ -707,8 +709,6 @@ export interface OuterToolContext {
   innerBrainRegistry?: InnerBrainRegistry;
   /** 行为日志存储（heartbeat）；外脑 loop 对每个 tool 写入 writeActionEvent */
   actionLogStore?: IActionLogStore;
-  /** KPI 注册表，用于 set_kpi / list_kpis / view_kpi / abandon_kpi / achieve_kpi 工具 */
-  kpiRegistry?: KpiRegistry;
   loadThreads?: () => LooseThreadStore;
   /**
    * 发消息前的跨进程新鲜度检查。
@@ -747,13 +747,8 @@ export interface OuterToolContext {
    */
   inboundHumanSid?: string;
   /**
-   * 仅 kpiAdvancer 内部续跑时允许 set_goal(kpi_id)；外脑 LLM 须用 advance_kpi。
-   * ADL KPI-ADVANCEMENT.md §2
-   */
-  allowKpiSetGoal?: boolean;
-  /**
-   * 员工日历 Port（list/schedule/cancel/pause）。由 DigitalEmployeeRuntime 注入。
-   * ADL EMPLOYEE-CALENDAR.md
+   * 定时管理器注入的日程。到点派一名新工人。
+   * ADL WORKSHOP.md §7
    */
   employeeCalendar?: EmployeeCalendarPort;
 }
@@ -908,35 +903,10 @@ async function execSetGoal(
     const originUser = args.origin_user?.trim() || ctx.inboundHumanSid || ctx.agentSid;
     const originThread = resolveTaskOriginThread(args.origin_thread, ctx.threadId);
 
-    const kpiId = args.kpi_id?.trim() || undefined;
-    if (kpiId && !ctx.allowKpiSetGoal) {
-      return {
-        replied: false,
-        output:
-          '（禁止 set_goal(kpi_id)；长期 KPI 请用 advance_kpi(kpi_id)。一次性杂活勿传 kpi_id。）',
-      };
-    }
-    const kpi = kpiId && ctx.kpiRegistry ? ctx.kpiRegistry.get(kpiId) : null;
-    if (kpiId && !kpi) {
-      console.warn(`[utlra][outer-tools] set_goal kpi_id=${kpiId} 不存在，本 burst 不挂 KPI`);
-    }
-    const resolvedKpiId = kpi ? kpi.kpiId : undefined;
-
     const instanceId = registry.generateInstanceId();
     const wsId = `task-${instanceId}`;
     ctx.workspaceStore.ensureWorkspace(wsId);
     const workDir = path.join(ctx.dataRoot, 'workspaces', wsId);
-
-    // 运行槽位：仅 RUNNING 计数。IM 直派不限槽位。
-    if (!ctx.inboundHumanSid) {
-      const cap = checkRunningInnerBrainCapacity(registry, ctx.dataRoot);
-      if (!cap.ok) {
-        return {
-          replied: false,
-          output: `（${cap.reason}，本次 set_goal 跳过）`,
-        };
-      }
-    }
 
     // 清除可能残留的停止信号
     clearStopSignal(workDir);
@@ -976,21 +946,11 @@ async function execSetGoal(
           originThread,
           status: 'RUNNING',
           startedAt,
-          ...(resolvedKpiId ? { kpiId: resolvedKpiId } : {}),
         },
         onSettled: (run) => {
-          considerWorkflowEvolution({
-            dataRoot: ctx.dataRoot,
-            workDir,
-            instanceId,
-            kpiId: resolvedKpiId,
-            workflowId: wf.id,
-            version: wf.version,
-          });
           void ctx.memoryStore
             ?.reconcileBeliefFromWorkspace(workDir, {
               workspaceId: wsId,
-              kpiId: resolvedKpiId,
               workflowId: wf.id,
               polarity: run.ok ? 'ok' : 'blocked',
               source: 'ew_settle',
@@ -998,51 +958,18 @@ async function execSetGoal(
             .catch((e: unknown) =>
               console.warn('[utlra][outer-tools] belief-card ew_settle failed:', (e as Error).message),
             );
-          if (!originThread?.trim() || !resolvedKpiId) return;
-          void notifyKpiScheduledReport(
+          if (!run.ok) return;
+          ingestInnerBrainDeliverablesOnExit(
             {
               imClient: ctx.imClient,
               agentSid: ctx.agentSid,
               assetStore: ctx.assetStore,
               getEngine: ctx.getEngine,
             },
-            {
-              instanceId,
-              workspaceId: wsId,
-              workDir,
-              originThread,
-              kpiId: resolvedKpiId,
-              workflowLabel: `${wf.id}@${wf.version}`,
-              ok: run.ok,
-              detail: run.ok
-                ? undefined
-                : run.steps.find((s) => !s.ok)?.detail ?? run.abortedAt ?? 'failed',
-            },
-          ).catch((e) => {
-            console.error('[utlra][ew-bg] scheduled report notify failed:', e);
-            try {
-              enqueuePendingScheduledReport(ctx.dataRoot, {
-                instanceId,
-                workspaceId: wsId,
-                workDir,
-                originThread,
-                kpiId: resolvedKpiId,
-                workflowLabel: `${wf.id}@${wf.version}`,
-                ok: run.ok,
-                detail: run.ok
-                  ? undefined
-                  : run.steps.find((s) => !s.ok)?.detail ?? run.abortedAt ?? 'failed',
-              });
-              console.warn(`[utlra][ew-bg] queued pending scheduled report for ${instanceId}`);
-            } catch (qe) {
-              console.error('[utlra][ew-bg] enqueue pending scheduled report failed:', qe);
-            }
-          });
+            { workspaceId: wsId, workDir },
+          );
         },
       });
-      if (resolvedKpiId && ctx.kpiRegistry) {
-        ctx.kpiRegistry.attachBurst(resolvedKpiId, instanceId);
-      }
       return {
         replied: false,
         output:
@@ -1071,12 +998,11 @@ async function execSetGoal(
       ?.split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+    writeClockInLogs(workDir, registry, wsId);
     const peerWorkspaceIds = collectPeerWorkspaceIds({
       registry,
       excludeWorkspaceId: wsId,
       explicitPeerIds: explicitPeers,
-      kpiId: resolvedKpiId,
-      kpiRegistry: ctx.kpiRegistry,
     });
 
     if (peerWorkspaceIds.length > 0) {
@@ -1096,13 +1022,9 @@ async function execSetGoal(
       originThread,
       status: 'RUNNING',
       startedAt: new Date().toISOString(),
-      ...(resolvedKpiId ? { kpiId: resolvedKpiId } : {}),
     };
 
     registry.register(taskRecord);
-    if (resolvedKpiId && ctx.kpiRegistry) {
-      ctx.kpiRegistry.attachBurst(resolvedKpiId, instanceId);
-    }
 
     // ── 以独立子进程启动内脑，实现进程级隔离 ────────────────────────────────
     let workerPid: number;
@@ -1112,7 +1034,6 @@ async function execSetGoal(
         workspaceId: wsId,
         workDir,
         maxTicks,
-        kpiId: resolvedKpiId,
         peerWorkspaceIds,
         workspacesRoot,
         onExit: (exitCode, signal) => {
@@ -1144,14 +1065,6 @@ async function execSetGoal(
               lastHadWork: stoppedBy !== 'idle',
               stoppedBy: stoppedBy as 'idle' | 'max_ticks' | 'stop_signal',
             });
-            const record = registry.get(instanceId);
-            const notifyUser = record ? shouldNotifyUserOnBurstExit(record) : true;
-            const notifyDeps = {
-              imClient: ctx.imClient,
-              agentSid: ctx.agentSid,
-              assetStore: ctx.assetStore,
-              getEngine: ctx.getEngine,
-            };
             if (partialWithDeliverables) {
               mergeWorkDirSkillsToAgentPool(ctx.dataRoot, workDir);
               if (ctx.skillDrive9Store) {
@@ -1159,32 +1072,16 @@ async function execSetGoal(
               } else if (ctx.skillStore) {
                 mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
               }
-              ingestInnerBrainDeliverablesOnExit(notifyDeps, { workspaceId: wsId, workDir });
-              ctx.memoryStore?.ingestInnerOutput(workDir, wsId, {
-                kpiId: resolvedKpiId,
-                burstOk: false,
-              });
-            }
-            if (record?.originThread && notifyUser && errorMessage) {
-              if (partialWithDeliverables) {
-                void notifyInnerBrainTaskPartial(notifyDeps, {
-                  instanceId,
-                  workspaceId: wsId,
-                  workDir,
-                  originThread: record.originThread,
-                  gapSummary: errorMessage,
-                  skipIngest: true,
-                }).catch((e: unknown) =>
-                  console.error('[utlra][outer-tools] partial notify failed:', e),
-                );
-              } else {
-                void notifyInnerBrainTaskFailed(
-                  { imClient: ctx.imClient, agentSid: ctx.agentSid },
-                  { instanceId, originThread: record.originThread, reason: errorMessage },
-                ).catch((e: unknown) =>
-                  console.error('[utlra][outer-tools] failure notify failed:', e),
-                );
-              }
+              ingestInnerBrainDeliverablesOnExit(
+                {
+                  imClient: ctx.imClient,
+                  agentSid: ctx.agentSid,
+                  assetStore: ctx.assetStore,
+                  getEngine: ctx.getEngine,
+                },
+                { workspaceId: wsId, workDir },
+              );
+              ctx.memoryStore?.ingestInnerOutput(workDir, wsId, { burstOk: false });
             }
             console.error(
               `[utlra][outer-tools] inner burst error (${instanceId}): ${errorMessage ?? 'unknown'}`,
@@ -1212,43 +1109,19 @@ async function execSetGoal(
           } else if (ctx.skillStore) {
             mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
           }
-          const record = registry.get(instanceId);
-          const notifyUser = record ? shouldNotifyUserOnBurstExit(record) : true;
-          const notifyDeps = {
-            imClient: ctx.imClient,
-            agentSid: ctx.agentSid,
-            assetStore: ctx.assetStore,
-            getEngine: ctx.getEngine,
-          };
-
           if (finalStatus === 'DONE') {
-            ingestInnerBrainDeliverablesOnExit(notifyDeps, { workspaceId: wsId, workDir });
-            ctx.memoryStore?.ingestInnerOutput(workDir, wsId, {
-              kpiId: resolvedKpiId,
-              burstOk: true,
-            });
+            ingestInnerBrainDeliverablesOnExit(
+              {
+                imClient: ctx.imClient,
+                agentSid: ctx.agentSid,
+                assetStore: ctx.assetStore,
+                getEngine: ctx.getEngine,
+              },
+              { workspaceId: wsId, workDir },
+            );
+            ctx.memoryStore?.ingestInnerOutput(workDir, wsId, { burstOk: true });
           }
 
-          if (record?.originThread) {
-            if (finalStatus === 'DONE' && notifyUser) {
-              void notifyInnerBrainTaskComplete(notifyDeps, {
-                instanceId,
-                workspaceId: wsId,
-                workDir,
-                originThread: record.originThread,
-                skipIngest: true,
-              }).catch((e: unknown) =>
-                console.error('[utlra][outer-tools] completion notify failed:', e),
-              );
-            } else if (finalStatus === 'AWAITING') {
-              void notifyInnerBrainAwaitingHuman(
-                { imClient: ctx.imClient, agentSid: ctx.agentSid },
-                record,
-              ).catch((e: unknown) =>
-                console.error('[utlra][outer-tools] awaiting notify failed:', e),
-              );
-            }
-          }
           console.log(
             `[utlra][outer-tools] inner burst done (${instanceId}): ticks=${ticks} finalStatus=${finalStatus} phase=${status.phase}`,
           );
@@ -1407,14 +1280,6 @@ async function execStartSelfUpdate(
             lastHadWork: stoppedBy !== 'idle',
             stoppedBy: stoppedBy as 'idle' | 'max_ticks' | 'stop_signal',
           });
-          const record = registry.get(instanceId);
-          const notifyUser = record ? shouldNotifyUserOnBurstExit(record) : true;
-          const notifyDeps = {
-            imClient: ctx.imClient,
-            agentSid: ctx.agentSid,
-            assetStore: ctx.assetStore,
-            getEngine: ctx.getEngine,
-          };
           if (partialWithDeliverables) {
             mergeWorkDirSkillsToAgentPool(ctx.dataRoot, workDir);
             if (ctx.skillDrive9Store) {
@@ -1422,24 +1287,15 @@ async function execStartSelfUpdate(
             } else if (ctx.skillStore) {
               mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
             }
-            ingestInnerBrainDeliverablesOnExit(notifyDeps, { workspaceId: wsId, workDir });
-          }
-          if (record?.originThread && notifyUser && errorMessage) {
-            if (partialWithDeliverables) {
-              void notifyInnerBrainTaskPartial(notifyDeps, {
-                instanceId,
-                workspaceId: wsId,
-                workDir,
-                originThread: record.originThread,
-                gapSummary: errorMessage,
-                skipIngest: true,
-              }).catch(() => {});
-            } else {
-              void notifyInnerBrainTaskFailed(
-                { imClient: ctx.imClient, agentSid: ctx.agentSid },
-                { instanceId, originThread: record.originThread, reason: errorMessage },
-              ).catch(() => {});
-            }
+            ingestInnerBrainDeliverablesOnExit(
+              {
+                imClient: ctx.imClient,
+                agentSid: ctx.agentSid,
+                assetStore: ctx.assetStore,
+                getEngine: ctx.getEngine,
+              },
+              { workspaceId: wsId, workDir },
+            );
           }
           console.error(
             `[utlra][outer-tools] self-update error (${instanceId}): ${errorMessage ?? 'unknown'}`,
@@ -1465,28 +1321,17 @@ async function execStartSelfUpdate(
         } else if (ctx.skillStore) {
           mergeWorkDirSkillsToMem9(ctx.skillStore, workDir, ctx.agentSid);
         }
-        const record = registry.get(instanceId);
-        const notifyUser = record ? shouldNotifyUserOnBurstExit(record) : true;
-        const notifyDeps = {
-          imClient: ctx.imClient,
-          agentSid: ctx.agentSid,
-          assetStore: ctx.assetStore,
-          getEngine: ctx.getEngine,
-        };
-
         if (finalStatus === 'DONE') {
-          ingestInnerBrainDeliverablesOnExit(notifyDeps, { workspaceId: wsId, workDir });
+          ingestInnerBrainDeliverablesOnExit(
+            {
+              imClient: ctx.imClient,
+              agentSid: ctx.agentSid,
+              assetStore: ctx.assetStore,
+              getEngine: ctx.getEngine,
+            },
+            { workspaceId: wsId, workDir },
+          );
           ctx.memoryStore?.ingestInnerOutput(workDir, wsId, { burstOk: true });
-        }
-
-        if (record?.originThread && finalStatus === 'DONE' && notifyUser) {
-          void notifyInnerBrainTaskComplete(notifyDeps, {
-            instanceId,
-            workspaceId: wsId,
-            workDir,
-            originThread: record.originThread,
-            skipIngest: true,
-          }).catch(() => {});
         }
 
         console.log(
@@ -1514,159 +1359,6 @@ async function execStartSelfUpdate(
 }
 
 // ── KPI 工具实现 ────────────────────────────────────────────────────────────
-
-async function execSetKpi(
-  args: { description?: string; created_by?: string; notes?: string; kind?: string },
-  ctx: OuterToolContext,
-): Promise<ToolCallResult> {
-  if (!ctx.kpiRegistry) return { replied: false, output: '（KPI 注册表未启用）' };
-  const description = args.description?.trim() ?? '';
-  if (!description) return { replied: false, output: '（description 为空，已跳过）' };
-  const createdBy = args.created_by?.trim() || ctx.agentSid;
-  const kind = args.kind === 'ongoing' ? 'ongoing' : 'delivery';
-  const kpi = ctx.kpiRegistry.create({
-    description,
-    createdBy,
-    kind,
-    ...(args.notes?.trim() ? { notes: args.notes.trim() } : {}),
-  });
-  const kindNote =
-    kind === 'ongoing'
-      ? '\n类型：ongoing（常驻；实时推进 + Calendar 定时双轨；永不自动结案；交付物为节拍产出）'
-      : '';
-  let advanceLine = `下一步：调用 advance_kpi(kpi_id=${kpi.kpiId}) 推进首轮 burst。`;
-  if (ctx.innerBrainRegistry && ctx.kpiRegistry) {
-    const adv = await advanceKpi(
-      {
-        kpiRegistry: ctx.kpiRegistry,
-        innerBrainRegistry: ctx.innerBrainRegistry,
-        toolCtx: { ...ctx, allowKpiSetGoal: true },
-        workspaceId: ctx.workspaceId,
-        defaultThreadId: ctx.threadId,
-      },
-      kpi.kpiId,
-    );
-    if (adv.ok) {
-      advanceLine = `已自动推进：${adv.reason}${adv.instanceId ? ` instance_id=${adv.instanceId}` : ''}`;
-    } else {
-      advanceLine = `自动推进未执行（${adv.reason}）；可稍后 advance_kpi 或等数字员工环/日历。`;
-    }
-  }
-  const dualTrackHint =
-    kind === 'ongoing'
-      ? '\n提示：周期增量由 employeeCalendar 在基线产物后 ensure；有容量时也会实时 repair/续派。勿对用户说「没有 cron」。'
-      : '';
-  return {
-    replied: false,
-    output: `KPI 已创建：kpi_id=${kpi.kpiId}\n描述：${kpi.description}${kindNote}\n${advanceLine}${dualTrackHint}`,
-  };
-}
-
-async function execAdvanceKpi(
-  args: { kpi_id?: string; charter?: string },
-  ctx: OuterToolContext,
-): Promise<ToolCallResult> {
-  if (!ctx.kpiRegistry || !ctx.innerBrainRegistry) {
-    return { replied: false, output: '（KPI / 内脑注册表未启用）' };
-  }
-  const kpiId = args.kpi_id?.trim() ?? '';
-  if (!kpiId) return { replied: false, output: '（kpi_id 为空）' };
-  const kpi = ctx.kpiRegistry.get(kpiId);
-  if (!kpi) return { replied: false, output: `（KPI 不存在：${kpiId}）` };
-  if (args.charter?.trim()) {
-    ctx.kpiRegistry.update(kpiId, { charter: args.charter.trim() });
-  }
-  const adv = await advanceKpi(
-    {
-      kpiRegistry: ctx.kpiRegistry,
-      innerBrainRegistry: ctx.innerBrainRegistry,
-      toolCtx: { ...ctx, allowKpiSetGoal: true },
-      workspaceId: ctx.workspaceId,
-      defaultThreadId: ctx.threadId,
-    },
-    kpiId,
-  );
-  if (!adv.ok) {
-    return { replied: false, output: `（KPI 推进未执行：${adv.reason}${adv.detail ? ` — ${adv.detail}` : ''}）` };
-  }
-  return {
-    replied: false,
-    output: `KPI 推进成功：${adv.reason}${adv.instanceId ? ` instance_id=${adv.instanceId}` : ''}`,
-  };
-}
-
-function execListKpis(
-  args: { status?: string },
-  ctx: OuterToolContext,
-): ToolCallResult {
-  if (!ctx.kpiRegistry) return { replied: false, output: '（KPI 注册表未启用）' };
-  const allowed = ['active', 'paused', 'achieved', 'abandoned'] as const;
-  const status = (args.status as typeof allowed[number] | undefined);
-  const filter = status && allowed.includes(status) ? { status } : undefined;
-  const kpis = ctx.kpiRegistry.list(filter);
-  if (kpis.length === 0) {
-    return { replied: false, output: status ? `（无 ${status} 状态的 KPI）` : '（暂无 KPI）' };
-  }
-  const lines = kpis.map((k) => {
-    const flag = k.status === 'active' ? '●' : k.status === 'paused' ? '⏸' : k.status === 'achieved' ? '✓' : '✗';
-    let hint = '';
-    if (k.status === 'active' && ctx.innerBrainRegistry) {
-      const { action } = suggestKpiAction(k, buildKpiBurstLinks(k, ctx.innerBrainRegistry));
-      hint = ` →${action}`;
-    }
-    return `${flag} ${k.kpiId} [${k.status}] bursts=${k.bursts.length} idle=${k.consecutiveIdleBursts}${hint} | ${k.description.slice(0, 80)}`;
-  });
-  return { replied: false, output: `KPI 列表（${kpis.length} 条）：\n${lines.join('\n')}` };
-}
-
-function execViewKpi(
-  args: { kpi_id?: string },
-  ctx: OuterToolContext,
-): ToolCallResult {
-  if (!ctx.kpiRegistry) return { replied: false, output: '（KPI 注册表未启用）' };
-  const id = args.kpi_id?.trim() ?? '';
-  if (!id) return { replied: false, output: '（kpi_id 为空）' };
-  const k = ctx.kpiRegistry.get(id);
-  if (!k) return { replied: false, output: `（KPI ${id} 不存在）` };
-  const digest = formatKpiDigest(k, ctx.innerBrainRegistry);
-  const runHistory = formatBurstRunDigest(k, 5);
-  return {
-    replied: false,
-    output: [digest, '', runHistory].join('\n'),
-  };
-}
-
-function execAbandonKpi(
-  args: { kpi_id?: string; reason?: string },
-  ctx: OuterToolContext,
-): ToolCallResult {
-  if (!ctx.kpiRegistry) return { replied: false, output: '（KPI 注册表未启用）' };
-  const id = args.kpi_id?.trim() ?? '';
-  const k = ctx.kpiRegistry.get(id);
-  if (!k) return { replied: false, output: `（KPI ${id} 不存在）` };
-  ctx.kpiRegistry.abandon(id, args.reason);
-  return { replied: false, output: `KPI ${id} 已标记为 abandoned。` };
-}
-
-function execAchieveKpi(
-  args: { kpi_id?: string; evidence?: string },
-  ctx: OuterToolContext,
-): ToolCallResult {
-  if (!ctx.kpiRegistry) return { replied: false, output: '（KPI 注册表未启用）' };
-  const id = args.kpi_id?.trim() ?? '';
-  const evidence = args.evidence?.trim() ?? '';
-  if (!evidence) return { replied: false, output: '（必须提供 evidence 证明已达成）' };
-  const k = ctx.kpiRegistry.get(id);
-  if (!k) return { replied: false, output: `（KPI ${id} 不存在）` };
-  if (k.bursts.length === 0) {
-    return {
-      replied: false,
-      output: '（KPI 尚无关联 burst；须先 set_goal(kpi_id) 派发内脑后再 achieve_kpi）',
-    };
-  }
-  ctx.kpiRegistry.markAchieved(id, evidence);
-  return { replied: false, output: `KPI ${id} 已标记为 achieved。证据：${evidence.slice(0, 200)}` };
-}
 
 function execListInnerBrains(
   _args: Record<string, unknown>,
@@ -1716,7 +1408,7 @@ function execListInnerBrains(
       workspace_id:  r.workspaceId,
       kpi_id:        r.kpiId ?? null,
       registry_status: r.status,
-      liveness:      computeBurstLiveness(r),
+      liveness:      benchLiveness(r),
       origin_user:   r.originUser,
       origin_thread: r.originThread ?? null,
       goal:          r.goal.slice(0, 100) + (r.goal.length > 100 ? '…' : ''),
@@ -1904,7 +1596,7 @@ function execReadInnerStatus(
           instance_id: instanceId,
           kpi_id: record.kpiId ?? null,
           registry_status: record.status,
-          liveness: computeBurstLiveness(record),
+          liveness: benchLiveness(record),
           last_tick_at: liveProg?.lastTickAt
             ? formatAgentIsoLocal(liveProg.lastTickAt)
             : record.lastTickAt
@@ -2001,7 +1693,7 @@ function execReadInnerStatus(
         instance_id: r.instanceId,
         kpi_id: r.kpiId ?? null,
         registry_status: r.status,
-        liveness: computeBurstLiveness(r),
+        liveness: benchLiveness(r),
         phase,
         lastAction,
         goal: r.goal.slice(0, 80) + (r.goal.length > 80 ? '…' : ''),
@@ -2083,23 +1775,6 @@ function execUpdateTasks(
   return { replied: false, output: '任务状态已更新。' };
 }
 
-function execReadPerformanceGoals(ctx: OuterToolContext): ToolCallResult {
-  // DE: 绩效目标 = KPI（同一概念）。旧 performanceGoalEngine 侧车已废弃。
-  const kpis = ctx.kpiRegistry?.list({ status: 'active' }) ?? [];
-  const lines = [
-    '【已废弃】绩效目标与 KPI 是同一概念；请用 list_kpis / view_kpi。',
-    '',
-    `当前 active KPI：${kpis.length}`,
-  ];
-  for (const k of kpis.slice(0, 10)) {
-    lines.push(`- ${k.kpiId} | ${k.kind ?? 'delivery'} | ${k.description}`);
-  }
-  if (kpis.length === 0) {
-    lines.push('（无 active KPI。用户要立长期目标时用 set_kpi。）');
-  }
-  return { replied: false, output: lines.join('\n') };
-}
-
 function parseOptionalBool(raw: string | undefined): boolean | null {
   if (raw == null || raw.trim() === '') return null;
   const v = raw.trim().toLowerCase();
@@ -2113,180 +1788,6 @@ function parseOptionalInt(raw: string | undefined): number | null {
   const n = Number(raw);
   return Number.isFinite(n) ? Math.floor(n) : null;
 }
-
-function execReadAutonomyPolicy(ctx: OuterToolContext): ToolCallResult {
-  const policy = loadAutonomyPolicy(ctx.dataRoot);
-  const personality = loadPersonality(ctx.dataRoot);
-  const g = policy.hardGates;
-  const lines = [
-    `enabled: ${policy.enabled}`,
-    `lastAutonomousActionAt: ${policy.lastAutonomousActionAt ?? '—'}`,
-    `updatedAt: ${policy.updatedAt}`,
-    '',
-    'hardGates:',
-    `  maxRunningInnerBrains: ${g.maxRunningInnerBrains}`,
-    `  maxAwaitingInnerBrains: ${g.maxAwaitingInnerBrains}`,
-    `  maxLlmInFlight: ${g.maxLlmInFlight}`,
-    `  maxTokensPerHour: ${g.maxTokensPerHour ?? 'null'}`,
-    `  blockIfOrchestratorQueuedAbove: ${g.blockIfOrchestratorQueuedAbove}`,
-    `  blockIfOuterLoopActive: ${g.blockIfOuterLoopActive} (兼容闸，默认 false；前台优先靠预留槽)`,
-    `  foregroundReserveSlots: ${g.foregroundReserveSlots ?? 1}`,
-    '',
-    'taskTypes:',
-  ];
-  for (const [id, cfg] of Object.entries(policy.taskTypes)) {
-    if (id === 'kpi_inner_goal') {
-      lines.push(`  ${id}: enabled=${cfg.enabled}（找活只看容量槽位，无时间配额）`);
-    } else {
-      lines.push(`  ${id}: enabled=${cfg.enabled} cooldownMs=${cfg.cooldownMs ?? 0} maxPerDay=${cfg.maxPerDay ?? 0}`);
-    }
-  }
-  lines.push(
-    '',
-    'note: 产能判定（hasAvailableCapacity）只看 hardGates 槽位 / LLM / 预算 / 前台预留。',
-    `personality.idleChatProbability: ${personality.idleChatProbability}`,
-  );
-  return { replied: false, output: lines.join('\n') };
-}
-
-function execUpdateAutonomyPolicy(
-  args: {
-    enabled?: string;
-    max_running_inner_brains?: string;
-    max_awaiting_inner_brains?: string;
-    max_llm_in_flight?: string;
-    block_if_orchestrator_queued_above?: string;
-    block_if_outer_loop_active?: string;
-    foreground_reserve_slots?: string;
-    casual_chat_enabled?: string;
-    casual_chat_cooldown_ms?: string;
-    casual_chat_max_per_day?: string;
-    kpi_inner_goal_enabled?: string;
-  },
-  ctx: OuterToolContext,
-): ToolCallResult {
-  const patch: Parameters<typeof patchAutonomyPolicy>[1] = {};
-  const hardGates: Partial<AutonomyHardGates> = {};
-  const taskTypes: Record<string, Partial<AutonomyTaskTypeConfig>> = {};
-
-  if (args.enabled !== undefined) {
-    const enabled = parseOptionalBool(args.enabled);
-    if (enabled === null) return { replied: false, output: 'enabled 须为 true 或 false。' };
-    patch.enabled = enabled;
-  }
-
-  const intFields = [
-    ['maxRunningInnerBrains', args.max_running_inner_brains],
-    ['maxAwaitingInnerBrains', args.max_awaiting_inner_brains],
-    ['maxLlmInFlight', args.max_llm_in_flight],
-    ['blockIfOrchestratorQueuedAbove', args.block_if_orchestrator_queued_above],
-    ['foregroundReserveSlots', args.foreground_reserve_slots],
-  ] as const;
-  for (const [key, raw] of intFields) {
-    const n = parseOptionalInt(raw);
-    if (n === null) continue;
-    if (n < 0) return { replied: false, output: `${key} 须为非负整数。` };
-    hardGates[key] = n;
-  }
-
-  if (args.block_if_outer_loop_active !== undefined) {
-    const v = parseOptionalBool(args.block_if_outer_loop_active);
-    if (v === null) return { replied: false, output: 'block_if_outer_loop_active 须为 true 或 false。' };
-    hardGates.blockIfOuterLoopActive = v;
-  }
-
-  if (Object.keys(hardGates).length > 0) patch.hardGates = hardGates;
-
-  const mergeTask = (
-    id: string,
-    enabledRaw?: string,
-    cooldownRaw?: string,
-    maxPerDayRaw?: string,
-  ): string | null => {
-    const row: Partial<AutonomyTaskTypeConfig> = {};
-    if (enabledRaw !== undefined) {
-      const enabled = parseOptionalBool(enabledRaw);
-      if (enabled === null) return `${id} enabled 须为 true 或 false`;
-      row.enabled = enabled;
-    }
-    const cooldown = parseOptionalInt(cooldownRaw);
-    if (cooldownRaw !== undefined) {
-      if (cooldown === null || cooldown < 0) return `${id} cooldown_ms 须为非负整数`;
-      row.cooldownMs = cooldown;
-    }
-    const maxPerDay = parseOptionalInt(maxPerDayRaw);
-    if (maxPerDayRaw !== undefined) {
-      if (maxPerDay === null || maxPerDay < 0) return `${id} max_per_day 须为非负整数`;
-      row.maxPerDay = maxPerDay;
-    }
-    if (Object.keys(row).length > 0) taskTypes[id] = row;
-    return null;
-  };
-
-  for (const errMsg of [
-    mergeTask('casual_chat', args.casual_chat_enabled, args.casual_chat_cooldown_ms, args.casual_chat_max_per_day),
-    mergeTask('kpi_inner_goal', args.kpi_inner_goal_enabled),
-  ]) {
-    if (errMsg) return { replied: false, output: errMsg };
-  }
-
-  if (Object.keys(taskTypes).length > 0) patch.taskTypes = taskTypes;
-
-  if (
-    patch.enabled === undefined &&
-    !patch.hardGates &&
-    !patch.taskTypes
-  ) {
-    return { replied: false, output: '未提供任何可更新字段。' };
-  }
-
-  const next = patchAutonomyPolicy(ctx.dataRoot, patch);
-  return {
-    replied: false,
-    output: `自主策略已更新（enabled=${next.enabled}，updatedAt=${next.updatedAt}）。`,
-  };
-}
-
-function execUpdatePersonality(
-  args: { idle_chat_probability?: string },
-  ctx: OuterToolContext,
-): ToolCallResult {
-  const raw = args.idle_chat_probability?.trim() ?? '';
-  const p = Number(raw);
-  if (!Number.isFinite(p) || p < 0 || p > 1) {
-    return { replied: false, output: 'idle_chat_probability 须为 0~1 之间的数字。' };
-  }
-  const next = patchPersonality(ctx.dataRoot, { idleChatProbability: p });
-  return {
-    replied: false,
-    output: `性格已更新：idleChatProbability=${next.idleChatProbability}（updatedAt=${next.updatedAt}）。`,
-  };
-}
-
-function execManagePerformanceGoal(
-  _args: {
-    action?: string;
-    goal_id?: string;
-    title?: string;
-    goal_text?: string;
-    target_sids?: string;
-    target_thread_id?: string;
-    priority?: string;
-    review_interval_ms?: string;
-    min_action_cooldown_ms?: string;
-  },
-  _ctx: OuterToolContext,
-): ToolCallResult {
-  return {
-    replied: false,
-    output:
-      '【已废弃】绩效目标与 KPI 是同一概念，不再维护 performance/goals.json。\n' +
-      '请改用：set_kpi（创建）/ list_kpis·view_kpi（查看）/ achieve_kpi 或 abandon_kpi（结案）。\n' +
-      '常驻/关系类目标用 set_kpi(kind=ongoing)。',
-  };
-}
-
-// ── 新增工具执行函数 ─────────────────────────────────────────────────────────
 
 function execGetTime(): ToolCallResult {
   return { replied: false, output: formatAgentLocalDateTime() };
@@ -2496,18 +1997,6 @@ export async function executeOuterTool(
         },
         ctx,
       );
-    case 'set_kpi':
-      return execSetKpi(args as { description?: string; created_by?: string; notes?: string; kind?: string }, ctx);
-    case 'advance_kpi':
-      return execAdvanceKpi(args as { kpi_id?: string; charter?: string }, ctx);
-    case 'list_kpis':
-      return execListKpis(args as { status?: string }, ctx);
-    case 'view_kpi':
-      return execViewKpi(args as { kpi_id?: string }, ctx);
-    case 'abandon_kpi':
-      return execAbandonKpi(args as { kpi_id?: string; reason?: string }, ctx);
-    case 'achieve_kpi':
-      return execAchieveKpi(args as { kpi_id?: string; evidence?: string }, ctx);
     case 'start_self_update':
       return execStartSelfUpdate(
         args as { goal?: string; verify_commands?: string; origin_user?: string; origin_thread?: string },
@@ -2539,44 +2028,6 @@ export async function executeOuterTool(
       return execReadMemory(ctx);
     case 'update_tasks':
       return execUpdateTasks(args as { tasks_markdown?: string }, ctx);  // sync: updates cache immediately
-    case 'read_performance_goals':
-      return execReadPerformanceGoals(ctx);
-    case 'read_autonomy_policy':
-      return execReadAutonomyPolicy(ctx);
-    case 'update_autonomy_policy':
-      return execUpdateAutonomyPolicy(
-        args as {
-          enabled?: string;
-          max_running_inner_brains?: string;
-          max_awaiting_inner_brains?: string;
-          max_llm_in_flight?: string;
-          block_if_orchestrator_queued_above?: string;
-          block_if_outer_loop_active?: string;
-          foreground_reserve_slots?: string;
-          casual_chat_enabled?: string;
-          casual_chat_cooldown_ms?: string;
-          casual_chat_max_per_day?: string;
-          kpi_inner_goal_enabled?: string;
-        },
-        ctx,
-      );
-    case 'update_personality':
-      return execUpdatePersonality(args as { idle_chat_probability?: string }, ctx);
-    case 'manage_performance_goal':
-      return execManagePerformanceGoal(
-        args as {
-          action?: string;
-          goal_id?: string;
-          title?: string;
-          goal_text?: string;
-          target_sids?: string;
-          target_thread_id?: string;
-          priority?: string;
-          review_interval_ms?: string;
-          min_action_cooldown_ms?: string;
-        },
-        ctx,
-      );
     default: {
       const cal = await dispatchCalendarTool(name, args, ctx);
       if (cal) return cal;

@@ -16,6 +16,31 @@
                     }
                 }
 
+                innerRuntimeFactory = component "Inner Runtime Factory" "【⏳】构造内脑运行时依赖：LLM、executor 工具表、logger、技能、drive9、plan reference" "TypeScript" {
+                    tags "Inner-Module"
+                    properties {
+                        "path" "packages/server/src/pi-mono/inner-runtime.ts"
+                        "horizon.intention" "run-tick 与消融基线共用同一份依赖，保证两臂工具表一致"
+                        "horizon.in" "workspaceId + workDir + process.env"
+                        "horizon.out" "InnerRuntime { llm, toolRegistry, logger, skillProvider, nodeSharing?, sharedFactSink?, planReference }"
+                        "horizon.test.unit" "inner-runtime.test.ts"
+                        "horizon.note" "见 INNER-ABLATION.md §9"
+                    }
+                }
+
+                singleNodeBaseline = component "Single-Node Baseline" "【⏳】消融基线：固定一节点 DAG（preset/base，instruction=goal）交给 Runner；无 Designer/Attributor/重设计" "TypeScript" {
+                    tags "Inner-Module" "Ablation"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/inner-brain/single-node-baseline.ts"
+                        "horizon.intention" "回答「DyFlow 编排层是否必要」：同模型同工具同验票，只去掉编排"
+                        "horizon.in" "workDir（.brain/goal.md）+ llm + toolRegistry"
+                        "horizon.out" ".run/single-node-baseline.json; memory.node_results.single"
+                        "horizon.deps" "runner; localNodeStore; memoryStore; presetSeeder"
+                        "horizon.test.integration" "singleNodeBaseline.component.integration.test.ts"
+                        "horizon.note" "仅实验用，生产不调用；见 INNER-ABLATION.md"
+                    }
+                }
+
                 controllerFsm = component "Controller FSM" "DyFlow mode 切换：DESIGN|RUN|AWAITING|DONE" "TypeScript" {
                     tags "Inner-Module" "Inner-Scheduler"
                     properties {
@@ -206,6 +231,139 @@
                         "horizon.out" "covering bool → considerWorkflowEvolution skip"
                         "horizon.deps" "harnessPointer; harnessSpecStore"
                         "horizon.test.unit" "harness-p3.test.ts; workflow-evolution-policy.test.ts"
+                    }
+                }
+
+                execAgent = component "Exec Agent" "【✅】act=exec±种子工具；reflect 仅 rule/skill；没收 create_tool；事后分析种子再跑" "TypeScript" {
+                    tags "Inner-Module" "Exec-Agent"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/exec-agent/loop.ts"
+                        "horizon.intention" "能改仓库的基础循环；靠复用控制工具膨胀，暂不 retire 工具"
+                        "horizon.in" "task + model + cwd"
+                        "horizon.out" "Message[]；registeredTools；.agent/rules|skills；JEV 判完成才停"
+                        "horizon.deps" "@earendil-works/pi-ai; JEV system-one"
+                        "horizon.test.unit" "exec-agent/loop.test.ts"
+                        "horizon.note" "不用 reactKernel。不截断历史。Reflect 无 create_tool，只 rule/skill。工具仅 .agent/tools.json 种子。见 EXEC-AGENT.md"
+                    }
+                }
+
+                // ── 工具 MDL 自生长（TOOL-MDL-GROWTH.md）：内核冻结；造工具=压缩题 ──────
+                // 与上方 Harness-RSI 的关系：替代设计。自改写不增可达性且不可验证。
+
+                actionLog = component "Action Log" "【✅ P0】TraceRecord schema / append；argv[0] 符号抽取 + 参数规范化" "TypeScript" {
+                    tags "Inner-Module" "Tool-MDL"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tool-mdl/action-log.ts"
+                        "horizon.intention" "为外循环挖掘提供结构化语料；事后补不回来"
+                        "horizon.in" "动作 + 观测 + token 计数"
+                        "horizon.out" "TraceRecord[] → runs/<runId>/trace.jsonl"
+                        "horizon.deps" "filesystem workDir"
+                        "horizon.test.unit" "action-log.test.ts"
+                        "horizon.note" "M3：args 必须结构化字典，字符串 blob 非法；M10 双项计费"
+                    }
+                }
+
+                toolManifest = component "Tool Manifest" "【✅ P0】manifest 解析校验：描述 token 上限 / kind / args schema" "TypeScript" {
+                    tags "Inner-Module" "Tool-MDL"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tool-mdl/tool-manifest.ts"
+                        "horizon.intention" "工具接口契约；文法代价在接口层强制"
+                        "horizon.in" "tools/<name>/manifest.json"
+                        "horizon.out" "ToolManifest | ValidationError[]"
+                        "horizon.deps" "—"
+                        "horizon.test.unit" "tool-manifest.test.ts"
+                        "horizon.note" "M7 描述 token 硬上限；M9 kind=acquisition 默认禁"
+                    }
+                }
+
+                toolIndex = component "Tool Index" "【✅ P0】扫 tools/ → 内循环词汇表 + 文法代价计量" "TypeScript" {
+                    tags "Inner-Module" "Tool-MDL"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tool-mdl/tool-index.ts"
+                        "horizon.intention" "元层由内核固定约定提供：索引=tools/ 目录的函数，不是一个动作"
+                        "horizon.in" "tools/ 目录"
+                        "horizon.out" "ToolIndexEntry[] + grammarCostTokens"
+                        "horizon.deps" "toolManifest"
+                        "horizon.test.unit" "tool-index.test.ts"
+                        "horizon.note" "M2；索引 token 每轮都付，对应 utility problem"
+                    }
+                }
+
+                mdlAccount = component "MDL Account" "【✅ P0】文法/语料代价；收录与退役 ΔL；utility 拐点" "TypeScript" {
+                    tags "Inner-Module" "Tool-MDL"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tool-mdl/mdl-account.ts"
+                        "horizon.intention" "同一个目标函数同时管收录与退役"
+                        "horizon.in" "library + corpus + 剩余步数预算 S"
+                        "horizon.out" "ΔL(accept) · ΔL(retire) · crossoverStep"
+                        "horizon.deps" "toolIndex; actionLog"
+                        "horizon.test.unit" "mdl-account.test.ts"
+                        "horizon.note" "M4/M6；ΔL<0 才收；见 TOOL-MDL-GROWTH.md §4.3"
+                    }
+                }
+
+                traceMiner = component "Trace Miner" "【✅ P0】重编码 + 频繁子序列挖掘（min-support ∧ min-gain）" "TypeScript" {
+                    tags "Inner-Module" "Tool-MDL"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tool-mdl/trace-miner.ts"
+                        "horizon.intention" "候选生成机械化；模型不决定造不造"
+                        "horizon.in" "TraceRecord[] + 当前 library + 阈值"
+                        "horizon.out" "ToolCandidate[]（symbols · support · instances · gain）"
+                        "horizon.deps" "actionLog; toolIndex"
+                        "horizon.test.unit" "trace-miner.test.ts"
+                        "horizon.note" "M8：挖掘前必须重编码，否则层级恒为 1；范型 SEQUITUR / BPE"
+                    }
+                }
+
+                reactKernel = component "ReAct Kernel (frozen)" "【✅ P0】冻结内循环；单终结符 shell_exec；注入式 LLM/executor" "TypeScript" {
+                    tags "Inner-Module" "Tool-MDL"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tool-mdl/react-kernel.ts"
+                        "horizon.intention" "不可变解释器 + 可变数据；内核不读自己不写自己"
+                        "horizon.in" "task + toolIndex + LlmPort + ExecutorPort + budget"
+                        "horizon.out" "KernelResult + TraceRecord[]"
+                        "horizon.deps" "toolIndex; actionLog"
+                        "horizon.test.unit" "react-kernel.test.ts"
+                        "horizon.note" "M1：内核源码不进 prompt；M2：A_prim={shell_exec}；观测有界"
+                    }
+                }
+
+                toolReplayGate = component "Tool Replay Gate" "【✅ P1】拿 tests.jsonl 重放候选工具；不过不收" "TypeScript" {
+                    tags "Inner-Module" "Tool-MDL"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tool-mdl/tool-replay-gate.ts"
+                        "horizon.intention" "确定性、逐个可判定的验收；不需要 benchmark"
+                        "horizon.in" "候选工具 + 挖掘实例 (args, expected)"
+                        "horizon.out" "pass | fail(mismatch[])"
+                        "horizon.deps" "toolManifest; ExecutorPort"
+                        "horizon.test.unit" "tool-replay-gate.test.ts"
+                        "horizon.note" "M5；夹具与工具同目录，构成永久回归"
+                    }
+                }
+
+                toolLibrary = component "Tool Library" "【✅ P1】deps DAG；accept / retire 落盘与顺序约束" "TypeScript" {
+                    tags "Inner-Module" "Tool-MDL"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tool-mdl/tool-library.ts"
+                        "horizon.intention" "工具即文法；收录=加产生式，退役=删产生式"
+                        "horizon.in" "ToolManifest + ΔL 判定"
+                        "horizon.out" "tools/<name>/ 落盘 · .mdl.json history"
+                        "horizon.deps" "toolManifest; mdlAccount"
+                        "horizon.test.unit" "tool-library.test.ts"
+                        "horizon.note" "M6：退役须尊重 deps DAG"
+                    }
+                }
+
+                growthCycle = component "Growth Cycle" "【✅ P1】外循环编排 reEncode→mine→antiUnify→replay→MDL" "TypeScript" {
+                    tags "Inner-Module" "Tool-MDL"
+                    properties {
+                        "path" "packages/server/src/openkuroneko/tool-mdl/growth-cycle.ts"
+                        "horizon.intention" "离线、每 N 个任务一次；模型只做反合一+写函数体"
+                        "horizon.in" "traces + library + LlmPort + ExecutorPort"
+                        "horizon.out" "accepted[] · retired[] · rejected[]"
+                        "horizon.deps" "traceMiner; toolReplayGate; mdlAccount; toolLibrary"
+                        "horizon.test.integration" "toolMdlGrowth.component.integration.test.ts"
+                        "horizon.note" "M4/M11；对照臂 A 内联 create_tool 须可分别开关"
                     }
                 }
 

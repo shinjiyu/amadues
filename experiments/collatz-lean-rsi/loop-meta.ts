@@ -1,3 +1,3 @@
 /** P5 loop-meta: RSI patches this file; gate ≠ Collatz truth. */
-export const assaultEpoch = 4;
-export const lastNote = "ok-r3";
+export const assaultEpoch = 10;
+export const lastNote = "ok-r10";

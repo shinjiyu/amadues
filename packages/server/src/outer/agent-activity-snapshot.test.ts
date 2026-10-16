@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import type { TaskRecord } from './inner-brain-registry.js';
-import type { KpiRecord } from './kpi-registry.js';
 import {
   buildAgentActivitySnapshot,
   DEFAULT_ACTIVITY_WINDOW_MS,
@@ -27,23 +26,6 @@ function task(
   };
 }
 
-function kpi(kpiId: string, description: string): KpiRecord {
-  return {
-    kpiId,
-    description,
-    createdBy: 'human:alice',
-    createdAt: '2026-07-20T00:00:00.000Z',
-    status: 'active',
-    kind: 'ongoing',
-    momentum: 0,
-    bursts: [],
-    consecutiveIdleBursts: 0,
-    isLeaf: true,
-    cadence: { type: 'once' },
-    burstRunHistory: [],
-  };
-}
-
 describe('buildAgentActivitySnapshot', () => {
   it('builds current progress without reading workspace details', () => {
     const snapshot = buildAgentActivitySnapshot({
@@ -60,7 +42,6 @@ describe('buildAgentActivitySnapshot', () => {
           errorMessage: 'boom',
         }),
       ],
-      kpis: [kpi('kpi-a', '小说运营')],
       maxRunningInnerBrains: 3,
       now: NOW,
     });
@@ -69,7 +50,7 @@ describe('buildAgentActivitySnapshot', () => {
     expect(snapshot.progress.blocked.map((item) => item.instanceId)).toEqual(['blocked']);
     expect(snapshot.progress.awaiting.map((item) => item.instanceId)).toEqual(['wait']);
     expect(snapshot.progress.recentTerminal.map((item) => item.instanceId)).toEqual(['done', 'error']);
-    expect(snapshot.progress.activeKpis[0]?.description).toBe('小说运营');
+    expect(snapshot.progress.activeKpis).toEqual([]);
     expect(snapshot.progress.runningSlots).toBe(1);
     expect(snapshot.progress.freeSlots).toBe(2);
   });
@@ -105,7 +86,6 @@ describe('buildAgentActivitySnapshot', () => {
           ],
         }),
       ],
-      kpis: [kpi('kpi-a', '小说运营'), kpi('kpi-b', '工具建设')],
       maxRunningInnerBrains: 2,
       now: NOW,
     });
@@ -116,11 +96,7 @@ describe('buildAgentActivitySnapshot', () => {
     expect(snapshot.activity.density).toBeCloseTo(5 / 48);
     expect(snapshot.activity.completed).toBe(1);
     expect(snapshot.activity.failed).toBe(1);
-    expect(snapshot.activity.topKpis[0]).toMatchObject({
-      kpiId: 'kpi-a',
-      description: '小说运营',
-      executionMs: 3 * 60 * 60 * 1000,
-    });
+    expect(snapshot.activity.topKpis).toEqual([]);
     expect(snapshot.activity.estimatedTaskCount).toBe(0);
   });
 
@@ -132,7 +108,6 @@ describe('buildAgentActivitySnapshot', () => {
         }),
         task('legacy-await', 'AWAITING', '2026-07-21T11:00:00.000Z'),
       ],
-      kpis: [],
       maxRunningInnerBrains: 1,
       now: NOW,
     });
@@ -149,7 +124,6 @@ describe('buildAgentActivitySnapshot', () => {
     );
     const full = buildAgentActivitySnapshot({
       tasks,
-      kpis: [],
       maxRunningInnerBrains: 1,
       now: NOW,
     });
@@ -157,7 +131,6 @@ describe('buildAgentActivitySnapshot', () => {
 
     const zero = buildAgentActivitySnapshot({
       tasks,
-      kpis: [],
       maxRunningInnerBrains: 0,
       now: NOW,
     });

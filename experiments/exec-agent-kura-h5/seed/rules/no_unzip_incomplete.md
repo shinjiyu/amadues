@@ -1,0 +1,1 @@
+Never unzip a zip that is still growing. Wait until file size is stable for several seconds, or size >= Content-Length from HEAD, before the first unzip. Incomplete zips fail with "End-of-central-directory" — do not retry unzip in a loop; fix the download first.

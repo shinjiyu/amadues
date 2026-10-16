@@ -1,0 +1,1 @@
+Do not run `npx playwright install chromium` (or similar multi-minute downloads) as a single foreground exec — it often hits the 120s spawn timeout (ETIMEDOUT) and leaves a half-ready tree. If Chromium is missing: install in the smallest possible command, verify the executable path exists, then screenshot in a separate short exec. Prefer reusing a prior cache.

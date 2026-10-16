@@ -8,8 +8,6 @@
  *  - **去重降级**：显式 KPI 但已有近似 active KPI → kpi_update。
  *  - **一次性即 ad-hoc**：IM 不铸 delivery KPI；kpi_create 只产 ongoing。
  */
-import { isSimilarKpiDescription } from './kpi-description-similarity.js';
-
 export interface ExistingWorkRef {
   kind: 'burst' | 'kpi';
   id: string;
@@ -19,9 +17,7 @@ export interface ExistingWorkRef {
 export type ImInboundIntent =
   | { kind: 'chat_only' }
   | { kind: 'task_followup'; ref: ExistingWorkRef; note: string }
-  | { kind: 'ad_hoc_task'; goal: string }
-  | { kind: 'kpi_update'; kpiId: string; note: string }
-  | { kind: 'kpi_create'; description: string; ongoing: true; confirmed: boolean };
+  | { kind: 'ad_hoc_task'; goal: string };
 
 /** 分类上下文（由 inboundKpiRouter 按 origin 过滤后注入）；纯函数靠它感知既有任务 */
 export interface ImClassifyContext {
@@ -89,11 +85,8 @@ export function classifyImInboundIntent(
   const explicitKpi = hasExplicitKpiSignal(t);
   const isFollowup = FOLLOWUP_RE.test(t);
 
-  // 2. 去重降级：显式 KPI 但已有近似 active KPI → kpi_update（不重复 create）
-  if (explicitKpi && ctx.activeKpis?.length) {
-    const dup = ctx.activeKpis.find((k) => isSimilarKpiDescription(k.description, t));
-    if (dup) return { kind: 'kpi_update', kpiId: dup.kpiId, note: text.trim() };
-  }
+  // 长期/周期请求留在对话里，由外脑拆成可执行任务再派工人。
+  if (explicitKpi) return { kind: 'chat_only' };
 
   // 3. 跟进既有任务（且非显式新 KPI）→ task_followup；无既有任务则 chat_only
   if (isFollowup && !explicitKpi) {
@@ -101,11 +94,6 @@ export function classifyImInboundIntent(
       return { kind: 'task_followup', ref: ctx.followupRef, note: text.trim() };
     }
     return { kind: 'chat_only' };
-  }
-
-  // 4. 高置信显式长期/周期 → kpi_create（仅 ongoing；P1 显式即视为已确认，确认闸 P3）
-  if (explicitKpi) {
-    return { kind: 'kpi_create', description: text.trim(), ongoing: true, confirmed: true };
   }
 
   // 5. 高置信一次性杂活 → ad_hoc_task

@@ -7,7 +7,6 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { addPending, readPendings } from '../openkuroneko/pendings/index.js';
-import { ChangeWatcher } from '../pi-mono/change-watcher.js';
 import { InnerBrainRegistry, type TaskRecord } from './inner-brain-registry.js';
 import { resolveAwaitingInboundFromIm } from './awaiting-inbound-resolver.js';
 import type { ImInboundEvent } from './outer-brain.js';
@@ -51,7 +50,7 @@ describe('component: awaitingInboundResolver', () => {
     return { workDir, record };
   }
 
-  it('人 IM 回复 → resolve pending → changeWatcher tick spawn（主路径）', async () => {
+  it('人 IM 回复写入台上的等待项', async () => {
     root = createTestDataRoot('awaiting-res-comp-');
     reg = new InnerBrainRegistry(root.dataRoot);
     const { workDir, record } = setupAwaitingAskUser('ib-resolver-chain');
@@ -72,18 +71,6 @@ describe('component: awaitingInboundResolver', () => {
     const pending = readPendings(path.join(workDir, '.brain'))[0];
     expect(pending?.status).toBe('resolved');
     expect((pending?.result as { reply?: string })?.reply).toBe('SUB=full-cookie-value');
-
-    const spawned: TaskRecord[] = [];
-    const watcher = new ChangeWatcher({
-      registry: reg,
-      spawnTask: (t) => {
-        spawned.push(t);
-        return { ok: true };
-      },
-    });
-    await watcher.bootstrap();
-
-    expect(spawned).toHaveLength(1);
-    expect(spawned[0]!.instanceId).toBe('ib-resolver-chain');
+    expect(reg.get(record.instanceId)?.status).toBe('AWAITING');
   });
 });

@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { classifyImInboundIntent, isKpiQueryIntent } from './im-intent-classifier.js';
 
 describe('im-intent-classifier', () => {
-  it('长期情报 → kpi_create ongoing', () => {
+  it('长期情报留在对话里，不在入站层建任务', () => {
     const r = classifyImInboundIntent('建立台湾情报常态收集，每天中午和晚上汇报');
-    expect(r.kind).toBe('kpi_create');
-    if (r.kind === 'kpi_create') expect(r.ongoing).toBe(true);
+    expect(r.kind).toBe('chat_only');
   });
 
   it('一次性杂活 → ad_hoc', () => {
@@ -55,22 +54,17 @@ describe('im-intent-classifier', () => {
     if (r.kind === 'task_followup') expect(r.ref.id).toBe('ib-x');
   });
 
-  it('显式 KPI 但已有近似 active KPI → kpi_update（去重）', () => {
+  it('长期请求即使带上下文也留在对话里', () => {
     const ctx = {
       activeKpis: [{ kpiId: 'kpi-tw', description: '台湾情报常态收集，每天中午晚上汇报' }],
     };
     const r = classifyImInboundIntent('继续做台湾情报常态收集，每天汇报', ctx);
-    expect(r.kind).toBe('kpi_update');
-    if (r.kind === 'kpi_update') expect(r.kpiId).toBe('kpi-tw');
+    expect(r.kind).toBe('chat_only');
   });
 
-  it('kpi_create 仅产 ongoing', () => {
+  it('长期监控留在对话里', () => {
     const r = classifyImInboundIntent('建立长期监控机制，每天汇报简报');
-    expect(r.kind).toBe('kpi_create');
-    if (r.kind === 'kpi_create') {
-      expect(r.ongoing).toBe(true);
-      expect(r.confirmed).toBe(true);
-    }
+    expect(r.kind).toBe('chat_only');
   });
 
   // ── D8 回归：裸「一下」不得触发 ad_hoc_task ──

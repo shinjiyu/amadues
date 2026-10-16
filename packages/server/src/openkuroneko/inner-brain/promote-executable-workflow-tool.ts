@@ -7,20 +7,13 @@ import type { Tool } from '../tools/index.js';
 import { ExecutableWorkflowStore } from '../../outer/executable-workflow-store.js';
 import { promoteWorkflow, type PromoteWorkflowInput } from '../../outer/workflow-promote.js';
 import { suggestPromoteFromWorkspace } from '../../outer/workflow-promote-suggest.js';
-import { kpiWorkflowTag } from '../../outer/workflow-for-kpi.js';
 import type { WorkflowKind, WorkflowStep } from '../../outer/executable-workflow-types.js';
 import { WORKFLOW_KINDS } from '../../outer/executable-workflow-types.js';
-import {
-  listEvolutionProposals,
-  markEvolutionStatus,
-} from '../../outer/workflow-evolution-store.js';
 
 export interface PromoteExecutableWorkflowToolOpts {
   workDir: string;
   /** agent DATA_ROOT（workflows/ 挂在此下） */
   dataRoot: string;
-  /** 可选：打 tag kpi:{id}，供 SelfWork execute 命中 */
-  kpiId?: string;
 }
 
 /** workDir = DATA_ROOT/workspaces/<id> → DATA_ROOT */
@@ -99,11 +92,6 @@ export function createPromoteExecutableWorkflowTool(
       const tags = tagsRaw
         ? tagsRaw.split(/[,;]/).map((t) => t.trim()).filter(Boolean)
         : [];
-      if (opts.kpiId?.trim()) {
-        const tag = kpiWorkflowTag(opts.kpiId);
-        if (!tags.includes(tag)) tags.push(tag);
-      }
-
       const baseId = String(args['base_workflow_id'] ?? '').trim();
       const baseVer = String(args['base_workflow_version'] ?? '').trim();
       const revisionReason = String(args['revision_reason'] ?? '').trim();
@@ -188,16 +176,6 @@ export function createPromoteExecutableWorkflowTool(
 
       try {
         const wf = promoteWorkflow(store, draft!, { workDir: opts.workDir });
-        if (baseId) {
-          for (const p of [
-            ...listEvolutionProposals(opts.dataRoot, 'pending'),
-            ...listEvolutionProposals(opts.dataRoot, 'dispatched'),
-          ]) {
-            if (p.workflowId === baseId || p.workflowId === workflowId) {
-              markEvolutionStatus(opts.dataRoot, p.id, 'done');
-            }
-          }
-        }
         return {
           ok: true,
           output: `promoted ${wf.id}@${wf.version} (${wf.kind}, ${wf.steps.length} steps, tags=${wf.tags.join(',') || '—'})`,

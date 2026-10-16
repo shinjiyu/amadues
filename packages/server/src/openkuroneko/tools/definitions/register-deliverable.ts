@@ -10,6 +10,7 @@ import path from 'node:path';
 
 import { getWorkDir } from './workdir-guard.js';
 import type { Tool } from '../index.js';
+import { appendBenchLog } from '../../../outer/bench-log.js';
 
 const DELIVERABLES_FILENAME = 'deliverables.json';
 
@@ -34,6 +35,10 @@ export const registerDeliverableTool: Tool = {
     relative_path: {
       type: 'string',
       description: '相对于工作目录的文件路径',
+    },
+    note: {
+      type: 'string',
+      description: '一句话说明这份交付是什么。写入本工作台日志。',
     },
   },
   required: ['relative_path'],
@@ -64,6 +69,9 @@ export const registerDeliverableTool: Tool = {
 
     if (!list.includes(normalized)) list.push(normalized);
     fs.writeFileSync(fp, JSON.stringify(list), 'utf8');
+
+    const note = String(args['note'] ?? '').trim() || '已登记';
+    appendBenchLog(workDir, `交付 ${normalized} — ${note}`);
 
     return { ok: true, output: `已登记产物：${normalized}（共 ${list.length} 项）` };
   },

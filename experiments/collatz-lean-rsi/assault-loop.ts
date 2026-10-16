@@ -1,13 +1,13 @@
 /**
- * Formal Collatz RSI assault — Zhipu proposes Exploration.lean; lake build gates; harness RSI cycles.
- * ADL: doc/structurizr/COLLATZ-LEAN-RSI.md §6 C
+ * Collatz proof assault — **task goal = prove 3n+1** (`Collatz.conjecture` without sorry).
+ * RSI is an orthogonal sidecar (H13): only runs when the loop tooling is broken.
+ *
+ * ADL: doc/structurizr/COLLATZ-LEAN-RSI.md
  *
  * Usage (repo root):
  *   set -a && source deploy/agent/env/collatz-lean.env && set +a
  *   export PATH="$HOME/.elan/toolchains/leanprover--lean4---v4.14.0/bin:$HOME/tools/node/bin:$PATH"
  *   npx --yes tsx experiments/collatz-lean-rsi/assault-loop.ts --rounds=5
- *
- * Does NOT claim to prove 3n+1. Success = compile-clean exploration growth under harness RSI.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -21,11 +21,15 @@ import { maybeApplyHarnessRsiCycle } from '../../packages/server/src/openkuronek
 import { createHarnessSpecStore } from '../../packages/server/src/openkuroneko/inner-brain/harness-spec-store.ts';
 import { createHarnessPointer } from '../../packages/server/src/openkuroneko/inner-brain/harness-pointer.ts';
 import { createNodeSkillStore } from '../../packages/server/src/openkuroneko/inner-brain/node-skill-store.ts';
-import { readAnalyzeCadence } from '../../packages/server/src/openkuroneko/inner-brain/harness-analyze.ts';
 import {
-  createHarnessLoopTreeStore,
-  resolveActiveLoopEntry,
-} from '../../packages/server/src/openkuroneko/inner-brain/harness-loop-tree.ts';
+  collectHarnessFindings,
+  readAnalyzeCadence,
+} from '../../packages/server/src/openkuroneko/inner-brain/harness-analyze.ts';
+import { createHarnessLoopTreeStore } from '../../packages/server/src/openkuroneko/inner-brain/harness-loop-tree.ts';
+import {
+  collectProofStallSignals,
+  proposeLoopPatches,
+} from '../../packages/server/src/openkuroneko/inner-brain/harness-loop-patch.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const workDir = here;
@@ -33,7 +37,9 @@ const repoRoot = path.resolve(here, '../..');
 const LEAN_NODE = 'local/lean-build';
 const EXPL = path.join(workDir, 'Collatz', 'Exploration.lean');
 const CONJ = path.join(workDir, 'Collatz', 'Conjecture.lean');
-const JOURNAL = path.join(workDir, '.brain', 'assault-journal.jsonl');
+const PLAN = path.join(workDir, 'ProofPlan.md');
+const JOURNAL = path.join(workDir, '.brain', 'proof-journal.jsonl');
+const LAST_REJECTED = path.join(workDir, '.brain', 'last-rejected-lean.log');
 const LOOP_META = 'loop-meta.ts';
 const LOOP_META_ABS = path.join(workDir, LOOP_META);
 
@@ -93,6 +99,18 @@ function writeStamp(ok: boolean, detail: string): void {
   );
 }
 
+function hashText(s: string): string {
+  return createHash('sha256').update(s).digest('hex').slice(0, 16);
+}
+
+function conjectureHasSorry(src: string): boolean {
+  // Any tactic-level sorry in the goal file means the proof is still open.
+  const stripped = src
+    .replace(/\/-!?[\s\S]*?-\//g, '')
+    .replace(/--[^\n]*/g, '');
+  return /\bsorry\b/.test(stripped);
+}
+
 function ensureSeed(): void {
   fs.mkdirSync(path.join(workDir, '.brain', 'harness', 'fixtures'), { recursive: true });
   const gate = path.join(workDir, '.brain', 'harness', 'fixtures', 'gate.json');
@@ -104,6 +122,7 @@ function ensureSeed(): void {
           expects: [
             { fileExists: 'Collatz/Conjecture.lean' },
             { fileExists: 'Collatz/Exploration.lean' },
+            { fileExists: 'ProofPlan.md' },
             { fileExists: '.brain/lean-build.ok' },
           ],
         },
@@ -115,18 +134,21 @@ function ensureSeed(): void {
   if (!fs.existsSync(LOOP_META_ABS)) {
     fs.writeFileSync(
       LOOP_META_ABS,
-      `/** P5 loop-meta: RSI patches this file; gate ≠ Collatz truth. */\nexport const assaultEpoch = 0;\n`,
+      `/** Loop entry pointer only — not a proof metric (H13). */\nexport const assaultEpoch = 0;\n`,
       'utf8',
     );
+  }
+  if (!fs.existsSync(PLAN)) {
+    throw new Error('ProofPlan.md missing — required for prove-collatz goal');
   }
   const skills = createNodeSkillStore(workDir);
   if (skills.readIndex(LEAN_NODE).length === 0) {
     skills.writeSkill(LEAN_NODE, {
       category: 'lean',
-      title: 'Collatz Lean craft',
-      tags: ['collatz', 'lean'],
+      title: 'Prove Collatz (3n+1)',
+      tags: ['collatz', 'prove'],
       content:
-        'Keep lake build green. Prefer lemmas in Exploration.lean. Gate=compile not truth.',
+        'GOAL: prove Collatz.conjecture with no sorry. Maintain ProofPlan.md. Exploration only for plan-serving lemmas. RSI is separate tooling repair.',
     });
   }
 
@@ -151,6 +173,7 @@ function ensureSeed(): void {
         assetPaths: [
           'Collatz/Conjecture.lean',
           'Collatz/Exploration.lean',
+          'ProofPlan.md',
           '.brain/lean-build.ok',
         ],
         loopTreeId: tree.treeId,
@@ -164,181 +187,171 @@ function ensureSeed(): void {
   }
 }
 
-function buildLoopMetaPatch(epoch: number, extra?: string): { path: string; action: 'write'; content: string } {
-  const note = extra ? `\nexport const lastNote = ${JSON.stringify(extra)};\n` : '\n';
-  return {
-    path: LOOP_META,
-    action: 'write',
-    content: `/** P5 loop-meta: RSI patches this file; gate ≠ Collatz truth. */\nexport const assaultEpoch = ${epoch};${note}`,
-  };
+function extractFence(text: string, name: string): string | null {
+  const re = new RegExp('```' + name + '\\s*([\\s\\S]*?)```', 'i');
+  const m = text.match(re);
+  return m ? m[1]!.trim() : null;
 }
 
-function nextLoopMetaPatch(round: number, ok: boolean): { path: string; action: 'write'; content: string } {
-  const store = createHarnessSpecStore(workDir);
-  const activeId = createHarnessPointer(workDir, store).readActive()?.harnessId;
-  const refs = activeId ? store.get(activeId)?.refs : undefined;
-  let cur = 0;
-  const entry = resolveActiveLoopEntry(workDir, refs ?? null);
-  if (entry) {
-    const m = fs.readFileSync(entry, 'utf8').match(/assaultEpoch\s*=\s*(\d+)/);
-    if (m) cur = Number(m[1]);
-  }
-  return buildLoopMetaPatch(Math.max(cur + 1, round), ok ? `ok-r${round}` : `fail-r${round}`);
-}
-
-function extractLeanBlock(text: string): string | null {
-  const m = text.match(/```lean\s*([\s\S]*?)```/i) ?? text.match(/```\s*([\s\S]*?)```/);
-  if (!m) return null;
-  return m[1]!.trim();
-}
-
-/** Append-only: keep current Exploration body; insert new theorems before `end`. */
-function mergeAppend(current: string, addition: string): string {
+/** Append plan-serving Exploration theorems only (no decide-enumeration spam). */
+function mergeExploration(current: string, addition: string): string {
   let add = addition.trim();
-  // strip wrappers if model returned a full file / repeated assault markers
   add = add
     .replace(/^import\s+Collatz\.Conjecture\s*/m, '')
     .replace(/^namespace\s+Collatz\.Exploration\s*/m, '')
     .replace(/^end\s+Collatz\.Exploration\s*/m, '')
     .replace(/\/--\s*assault append\s*--\/\s*/gi, '')
     .trim();
-  if (!add) throw new Error('empty addition');
-  // refuse dangerous tactics that usually don't close on Collatz here
-  if (/\b(induction|omega|linarith|ring|aesop|sorry)\b/.test(add)) {
-    throw new Error('addition uses forbidden tactic (induction/omega/sorry/…)');
+  if (!add) throw new Error('empty exploration addition');
+  // Ban bulk concrete ReachesOne N via decide — that is not a proof strategy
+  if (/\breaches_\d+\b/.test(add) && /\bdecide\b/.test(add)) {
+    throw new Error('rejected: decide-enumeration of reaches_N is not proof progress');
   }
-  if (!/\btheorem\b/.test(add)) throw new Error('addition has no theorem');
-  // drop duplicate theorem names already present
+  if (/\bstep_\d+\b/.test(add) && /\bdecide\b/.test(add) && !/\b(∀|forall|→|->)\b/.test(add)) {
+    throw new Error('rejected: concrete step_N decide facts without generality');
+  }
+  if (!/\btheorem\b|\blemma\b/.test(add)) throw new Error('exploration addition has no theorem/lemma');
   const existing = new Set(
-    [...current.matchAll(/\btheorem\s+([A-Za-z0-9_']+)/g)].map((m) => m[1]!),
+    [...current.matchAll(/\b(?:theorem|lemma)\s+([A-Za-z0-9_']+)/g)].map((m) => m[1]!),
   );
   const kept: string[] = [];
-  for (const block of add.split(/(?=^\s*theorem\s+)/m)) {
+  for (const block of add.split(/(?=^\s*(?:theorem|lemma)\s+)/m)) {
     const t = block.trim();
     if (!t) continue;
-    const name = t.match(/^\s*theorem\s+([A-Za-z0-9_']+)/)?.[1];
+    const name = t.match(/^\s*(?:theorem|lemma)\s+([A-Za-z0-9_']+)/)?.[1];
     if (name && existing.has(name)) continue;
     if (name) existing.add(name);
     kept.push(t);
   }
-  if (kept.length === 0) throw new Error('all proposed theorems already exist');
+  if (kept.length === 0) throw new Error('no new plan-serving lemmas');
   const marker = 'end Collatz.Exploration';
   const idx = current.lastIndexOf(marker);
   if (idx < 0) throw new Error('Exploration.lean missing end marker');
-  return `${current.slice(0, idx).trimEnd()}\n\n/-- assault append --/\n${kept.join('\n')}\n\n${marker}\n`;
+  return `${current.slice(0, idx).trimEnd()}\n\n/-- plan lemma --/\n${kept.join('\n')}\n\n${marker}\n`;
 }
 
-function collatzStep(n: number): number {
-  return n % 2 === 0 ? Math.floor(n / 2) : 3 * n + 1;
+interface ProofProposal {
+  plan?: string;
+  explorationAdd?: string;
+  conjecture?: string;
+  raw: string;
 }
 
-function collatzStepsToOne(n: number): number {
-  let x = n;
-  let k = 0;
-  while (x !== 1) {
-    x = collatzStep(x);
-    k += 1;
-    if (k > 10_000) throw new Error(`Collatz runaway for n=${n}`);
-  }
-  return k;
-}
-
-/** Deterministic compile-safe append for next unused positive n (LLM fallback). */
-function computeNextLemmas(exploration: string): string {
-  const claimed = new Set<number>();
-  for (const m of exploration.matchAll(/\breaches_(\d+)\b/g)) claimed.add(Number(m[1]));
-  for (const m of exploration.matchAll(/\bone_reaches_one\b/g)) claimed.add(1);
-  let n = 1;
-  while (claimed.has(n)) n += 1;
-  const steps = collatzStepsToOne(n);
-  const next = collatzStep(n);
-  return [
-    `theorem step_${n} : Collatz.step ${n} = ${next} := by decide`,
-    `theorem reaches_${n} : Collatz.ReachesOne ${n} := ⟨${steps}, by decide⟩`,
-  ].join('\n');
-}
-
-async function zhipuPropose(exploration: string, conjecture: string, lastLog: string): Promise<string> {
+async function zhipuProve(
+  plan: string,
+  conjecture: string,
+  exploration: string,
+  lastLog: string,
+): Promise<ProofProposal> {
   const apiKey = process.env.ZHIPU_API_KEY?.trim();
-  if (!apiKey) throw new Error('ZHIPU_API_KEY missing (source deploy/agent/env/collatz-lean.env)');
+  if (!apiKey) throw new Error('ZHIPU_API_KEY missing');
   const baseUrl = (process.env.ZHIPU_BASE_URL ?? 'https://open.bigmodel.cn/api/coding/paas/v4').replace(
     /\/$/,
     '',
   );
   const model = process.env.ZHIPU_MODEL ?? 'glm-5.1';
-  const maxTokens = Math.min(4096, Math.max(512, Number(process.env.ZHIPU_MAX_TOKENS ?? 2048)));
+  const maxTokens = Math.min(8192, Math.max(1024, Number(process.env.ZHIPU_MAX_TOKENS ?? 4096)));
 
   const system = [
-    'You formalize tiny Collatz facts in Lean 4.14 (no mathlib).',
-    'APPEND-ONLY: output 1–3 NEW theorems to insert into Collatz/Exploration.lean.',
-    'Allowed proofs ONLY: `rfl`, `decide`, `simp [Collatz.step]`, `simp [Collatz.iterate]`, or `⟨k, by decide⟩` for ReachesOne.',
-    'Forbidden: induction, omega, linarith, ring, aesop, sorry, rewriting Conjecture.lean, claiming full proof.',
-    'Prefer concrete Nat facts, e.g. `theorem reaches_8 : Collatz.ReachesOne 8 := ⟨3, by decide⟩`.',
-    'Do not repeat existing theorem names.',
-    'Do NOT emit `/-- assault append --/` markers, import, namespace, or end.',
-    'Wrap the addition in a ```lean fence (theorems only).',
-    'No KPI / x_eval / scoring rubrics.',
+    'You are a mathematician-engineer whose ONLY task goal is to PROVE the Collatz (3n+1) conjecture in Lean 4.14.',
+    'NO mathlib — do not use Nat.even_or_odd, Mathlib.*, or any import beyond this project.',
+    'Target: remove every `sorry` from Collatz/Conjecture.lean — especially prove `odd_descent`.',
+    'Harness-RSI / lake green / lemma counts are NOT success. Finite ReachesOne n facts are NOT a proof.',
+    'Each turn you MUST advance the proof strategy:',
+    '1) ALWAYS emit ```proofplan``` — concrete approach + open subgoals that block removing sorry.',
+    '2) Focus on proving `odd_descent` (or a correct lemma that implies it). Even/1 cases are already done.',
+    '3) Optionally rewrite Collatz/Conjecture.lean; keep structure if it still helps.',
+    'Lean craft notes:',
+    '- NO mathlib. Use omega for parity/`n=2*(n/2)`.',
+    '- For odd step: prove `(2*k+1)%2=1` with omega, then `simp [step, h]`.',
+    '- Prefer small correct lemmas over a giant induction that does not typecheck.',
+    'Allowed: simp, rfl, refine, intro, cases, induction, have, exact, omega.',
+    'Forbidden as progress: reaches_N/step_N via decide; claiming victory because lake builds; mixing RSI into the goal.',
+    'Output fences (include only what you change; proofplan is required every turn):',
+    '```proofplan',
+    '```lean-exploration',
+    '```lean-conjecture',
+    'You may keep sorry temporarily IF ProofPlan lists the exact blocker subgoal.',
   ].join('\n');
 
   const user = [
-    '## Existing Exploration.lean (do not repeat these theorems)',
+    '## ProofPlan.md',
+    '```md',
+    plan.slice(0, 6000),
+    '```',
+    '',
+    '## Collatz/Conjecture.lean',
     '```lean',
-    exploration.slice(0, 5000),
+    conjecture.slice(0, 12000),
     '```',
     '',
-    '## Conjecture context (open; may keep sorry)',
+    '## Collatz/Exploration.lean (excerpt)',
     '```lean',
-    conjecture.slice(0, 1500),
+    exploration.slice(0, 3500),
     '```',
     '',
-    '## Last lake build errors (fix any)',
+    '## Last lake errors / rejected Lean (H14: do not drop this after a green rebuild)',
     '```',
-    lastLog.slice(-2000),
+    lastLog.slice(-2500),
     '```',
     '',
-    'Propose 1–3 NEW small theorems that will typecheck.',
+    'Advance the proof of 3n+1. Primary blocker: prove `odd_descent` (remove its sorry).',
   ].join('\n');
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0.2,
-      thinking: { type: process.env.ZHIPU_THINKING === 'enabled' ? 'enabled' : 'disabled' },
-    }),
-  });
-  const raw = (await res.json().catch(() => ({}))) as {
-    error?: { message?: string };
-    choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
+  const ZHIPU_EMPTY_RETRY = 1;
+  let text = '';
+  let lastHttp = '';
+  for (let attempt = 0; attempt <= ZHIPU_EMPTY_RETRY; attempt++) {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        max_tokens: maxTokens,
+        temperature: attempt === 0 ? 0.25 : 0.4,
+        thinking: { type: process.env.ZHIPU_THINKING === 'enabled' ? 'enabled' : 'disabled' },
+      }),
+    });
+    const raw = (await res.json().catch(() => ({}))) as {
+      error?: { message?: string };
+      choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
+    };
+    if (!res.ok) {
+      lastHttp = `ZHIPU HTTP ${res.status}: ${raw.error?.message ?? res.statusText}`;
+      continue;
+    }
+    const content = raw.choices?.[0]?.message?.content;
+    text =
+      typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content.map((p) => p?.text ?? '').join('')
+          : '';
+    if (text.trim()) break;
+  }
+  if (!text.trim()) throw new Error(lastHttp || 'empty ZHIPU content');
+  return {
+    raw: text.trim(),
+    ...(extractFence(text, 'proofplan') ? { plan: extractFence(text, 'proofplan')! } : {}),
+    ...(extractFence(text, 'lean-exploration')
+      ? { explorationAdd: extractFence(text, 'lean-exploration')! }
+      : {}),
+    ...(extractFence(text, 'lean-conjecture')
+      ? { conjecture: extractFence(text, 'lean-conjecture')! }
+      : {}),
   };
-  if (!res.ok) throw new Error(`ZHIPU HTTP ${res.status}: ${raw.error?.message ?? res.statusText}`);
-  const content = raw.choices?.[0]?.message?.content;
-  const text =
-    typeof content === 'string'
-      ? content
-      : Array.isArray(content)
-        ? content.map((p) => p?.text ?? '').join('')
-        : '';
-  if (!text.trim()) throw new Error('empty ZHIPU content');
-  return text.trim();
 }
 
 function appendJournal(row: Record<string, unknown>): void {
   fs.mkdirSync(path.dirname(JOURNAL), { recursive: true });
   fs.appendFileSync(JOURNAL, `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`);
-}
-
-function hashFile(p: string): string {
-  return createHash('sha256').update(fs.readFileSync(p)).digest('hex').slice(0, 16);
 }
 
 async function main(): Promise<void> {
@@ -348,92 +361,132 @@ async function main(): Promise<void> {
   const interval = argNum('interval', 1);
   ensureSeed();
 
-  let lastLog = '';
-  let rsiRound = 0;
-  console.log(`[assault] workDir=${workDir} rounds=${rounds}`);
+    let lastLog = fs.existsSync(LAST_REJECTED) ? fs.readFileSync(LAST_REJECTED, 'utf8') : '';
+  console.log(
+    `[prove-collatz] goal=prove Collatz.conjecture (no sorry) | RSI=sidecar only | rounds=${rounds}`,
+  );
 
   for (let i = 1; i <= rounds; i++) {
-    console.log(`\n══ assault round ${i}/${rounds} ══`);
-    const before = fs.readFileSync(EXPL, 'utf8');
-    const beforeHash = hashFile(EXPL);
-    const conj = fs.readFileSync(CONJ, 'utf8');
-    let proposedRaw = '';
-    let next = before;
-    let source: 'zhipu' | 'compute' = 'zhipu';
+    console.log(`\n══ proof round ${i}/${rounds} ══`);
+    const planBefore = fs.readFileSync(PLAN, 'utf8');
+    const conjBefore = fs.readFileSync(CONJ, 'utf8');
+    const explBefore = fs.readFileSync(EXPL, 'utf8');
+    const sorryBefore = conjectureHasSorry(conjBefore);
+
+    let proposal: ProofProposal;
     try {
-      proposedRaw = await zhipuPropose(before, conj, lastLog);
-      const extracted = extractLeanBlock(proposedRaw);
-      if (!extracted) throw new Error('no ```lean block in model output');
-      next = mergeAppend(before, extracted);
+      proposal = await zhipuProve(planBefore, conjBefore, explBefore, lastLog);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[assault] propose failed → compute fallback:', msg.slice(0, 160));
-      source = 'compute';
-      proposedRaw = computeNextLemmas(before);
-      next = mergeAppend(before, proposedRaw);
+      console.error('[proof] propose failed:', msg.slice(0, 240));
+      appendJournal({ round: i, track: 'proof', ok: false, stage: 'propose', error: msg.slice(0, 500) });
+      // RSI sidecar still may run on tooling fail signals
+      runRsiSidecar(false, lastLog, interval, i);
+      continue;
     }
 
-    fs.writeFileSync(EXPL, next, 'utf8');
-    let build = lakeBuild();
-    lastLog = build.log;
-    writeStamp(build.ok, build.log);
-    console.log(
-      `[lake build] exit=${build.exitCode} ok=${build.ok} source=${source} explHash ${beforeHash}→${hashFile(EXPL)}`,
-    );
-
-    if (!build.ok && source === 'zhipu') {
-      console.warn('[assault] zhipu build failed — retry compute fallback');
-      fs.writeFileSync(EXPL, before, 'utf8');
-      source = 'compute';
-      proposedRaw = computeNextLemmas(before);
-      next = mergeAppend(before, proposedRaw);
-      fs.writeFileSync(EXPL, next, 'utf8');
-      build = lakeBuild();
-      lastLog = build.log;
-      writeStamp(build.ok, build.log);
-      console.log(
-        `[lake build] exit=${build.exitCode} ok=${build.ok} source=${source} explHash ${beforeHash}→${hashFile(EXPL)}`,
-      );
+    if (!proposal.plan && !proposal.explorationAdd && !proposal.conjecture) {
+      console.warn('[proof] empty proposal (no fences) — no proof progress');
+      appendJournal({ round: i, track: 'proof', ok: false, stage: 'empty_proposal' });
+      runRsiSidecar(true, lastLog, interval, i);
+      continue;
     }
 
-    if (!build.ok) {
-      const failDir = path.join(workDir, '.brain', 'assault-failed');
-      fs.mkdirSync(failDir, { recursive: true });
-      fs.writeFileSync(path.join(failDir, `r${i}.lean`), next);
-      fs.writeFileSync(path.join(failDir, `r${i}.log`), build.log.slice(-4000));
-      fs.writeFileSync(EXPL, before, 'utf8');
-      writeStamp(false, build.log);
-      console.warn('[assault] build failed — reverted Exploration.lean');
-    } else if (next !== before) {
-      createNodeSkillStore(workDir).writeSkill(LEAN_NODE, {
-        category: 'lean',
-        title: `Assault round ${i} exploration`,
-        tags: ['collatz', 'assault', `r${i}`, source],
-        content: `Round ${i} Exploration update via ${source} (hash ${hashFile(EXPL)}). Keep lake green; conjecture may stay open.`,
-      });
+    // Apply proposal in layers: plan always; each Lean file gated on its own lake build
+    if (proposal.plan) {
+      fs.writeFileSync(PLAN, proposal.plan.endsWith('\n') ? proposal.plan : `${proposal.plan}\n`, 'utf8');
     }
+
+    let explKept = false;
+    let rejectLog = '';
+    if (proposal.explorationAdd) {
+      try {
+        fs.writeFileSync(EXPL, mergeExploration(explBefore, proposal.explorationAdd), 'utf8');
+        const b = lakeBuild();
+        if (b.ok) {
+          explKept = true;
+          lastLog = b.log;
+          writeStamp(true, b.log);
+          console.log('[proof] exploration lemmas kept');
+        } else {
+          lastLog = b.log;
+          rejectLog = rejectLog || b.log;
+          fs.writeFileSync(EXPL, explBefore, 'utf8');
+          console.warn('[proof] exploration rejected by lake — reverted');
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn('[proof] exploration rejected:', msg);
+        fs.writeFileSync(EXPL, explBefore, 'utf8');
+      }
+    }
+
+    let conjKept = false;
+    if (proposal.conjecture) {
+      fs.writeFileSync(CONJ, proposal.conjecture.endsWith('\n') ? proposal.conjecture : `${proposal.conjecture}\n`, 'utf8');
+      const b = lakeBuild();
+      lastLog = b.log;
+      if (b.ok) {
+        conjKept = true;
+        writeStamp(true, b.log);
+        console.log('[proof] conjecture update kept');
+      } else {
+        rejectLog = b.log;
+        fs.writeFileSync(CONJ, conjBefore, 'utf8');
+        writeStamp(false, b.log);
+        console.warn('[proof] conjecture rejected by lake — reverted (ProofPlan kept)');
+      }
+    }
+
+    // Ensure stamp reflects current tree
+    const finalBuild = lakeBuild();
+    // H14_KEEP_REJECT_LOG: green rebuild must not hide rejected Lean.
+    lastLog = rejectLog || finalBuild.log || lastLog;
+    if (rejectLog) {
+      fs.mkdirSync(path.dirname(LAST_REJECTED), { recursive: true });
+      fs.writeFileSync(LAST_REJECTED, rejectLog, 'utf8');
+    }
+    writeStamp(finalBuild.ok, lastLog);
+    console.log(`[lake build] exit=${finalBuild.exitCode} ok=${finalBuild.ok}`);
+
+    const leanKept = finalBuild.ok;
+    const conjAfter = fs.readFileSync(CONJ, 'utf8');
+    const planAfter = fs.readFileSync(PLAN, 'utf8');
+    const explAfter = fs.readFileSync(EXPL, 'utf8');
+    const sorryAfter = conjectureHasSorry(conjAfter);
+    const proved = leanKept && !sorryAfter;
+    const proofProgress = {
+      lakeOk: leanKept,
+      conjectureSorry: sorryAfter,
+      sorryCleared: conjKept && sorryBefore && !sorryAfter,
+      planChanged: hashText(planBefore) !== hashText(planAfter),
+      conjectureChanged: conjKept && hashText(conjBefore) !== hashText(conjAfter),
+      explorationChanged: explKept && hashText(explBefore) !== hashText(explAfter),
+      proved,
+    };
+    console.log('[proof.progress]', proofProgress);
 
     writeRunContext(workDir, {
-      burstId: `assault-r${i}`,
+      burstId: `prove-r${i}`,
       designedAt: new Date().toISOString(),
       finishedAt: new Date().toISOString(),
-      ok: build.ok,
-      ...(build.ok ? {} : { failedAt: 'lake-build' }),
+      ok: leanKept,
+      ...(leanKept ? {} : { failedAt: 'lake-build' }),
       nodes: [
         {
           nodeInstId: 'lean-build',
           ref: LEAN_NODE,
-          ok: build.ok,
+          ok: leanKept,
           entries: [
             {
-              toolName: 'zhipu_propose',
+              toolName: 'prove_collatz',
               args: { round: i },
-              result: { ok: true, output: proposedRaw.slice(0, 800) },
+              result: { ok: proved, output: JSON.stringify(proofProgress).slice(0, 800) },
             },
             {
               toolName: 'lake_build',
               args: { command: 'lake build' },
-              result: { ok: build.ok, output: build.log.slice(0, 1200) },
+              result: { ok: leanKept, output: lastLog.slice(0, 1200) },
             },
           ],
         },
@@ -441,44 +494,66 @@ async function main(): Promise<void> {
       results: [],
     });
 
-    // P5: every round patches loop-meta inside loopTree (tree diff required — H12).
-    const patches = [nextLoopMetaPatch(i, build.ok)];
-    const rsi = maybeApplyHarnessRsiCycle(workDir, {
-      runOk: build.ok,
-      rsiRound: 0,
-      analyzeInterval: interval,
-      patches,
-    });
-    if (rsi.applied && 'upgraded' in rsi && rsi.upgraded) rsiRound += 1;
-    else if (rsi.applied && 'restartRequested' in rsi && rsi.restartRequested) rsiRound = 0;
+    appendJournal({ round: i, track: 'proof', ...proofProgress });
 
-    const activeId = createHarnessPointer(workDir).readActive()?.harnessId;
-    const activeRefs = activeId ? createHarnessSpecStore(workDir).get(activeId)?.refs : undefined;
-    const entryAbs = resolveActiveLoopEntry(workDir, activeRefs ?? null);
-    if (entryAbs && activeRefs?.loopTreeId) {
-      const fromTree = fs.readFileSync(entryAbs, 'utf8');
-      fs.writeFileSync(LOOP_META_ABS, fromTree, 'utf8');
+    // Orthogonal RSI sidecar — must not be read as proof success
+    const rsi = runRsiSidecar(leanKept, lastLog, interval, i);
+    console.log('[rsi.sidecar]', rsi);
+
+    if (proved) {
+      console.log('\n[prove-collatz] SUCCESS: conjecture has no sorry and lake is green');
+      break;
     }
-    console.log('[harness.rsi]', rsi);
-    console.log('[state]', {
-      active: activeId,
-      loopTreeId: activeRefs?.loopTreeId ?? null,
-      loopEntry: entryAbs ? fs.readFileSync(entryAbs, 'utf8').trim() : null,
-      cadence: readAnalyzeCadence(workDir).attributeCount,
-      rsiRound,
-    });
-    appendJournal({
-      round: i,
-      ok: build.ok,
-      explHash: hashFile(EXPL),
-      changed: next !== before,
-      source,
-      loopTreeId: activeRefs?.loopTreeId ?? null,
-      rsi,
-    });
   }
 
-  console.log(`\n[assault] done — journal ${JOURNAL}`);
+  const finalSorry = conjectureHasSorry(fs.readFileSync(CONJ, 'utf8'));
+  console.log(
+    `\n[prove-collatz] done — conjectureSorry=${finalSorry} journal=${JOURNAL}`,
+  );
+}
+
+function runRsiSidecar(
+  runOk: boolean,
+  lastLog: string,
+  interval: number,
+  round: number,
+): unknown {
+  const findings = collectHarnessFindings(workDir, runOk);
+  const activeBefore = createHarnessPointer(workDir).readActive();
+  const refsBefore = activeBefore
+    ? createHarnessSpecStore(workDir).get(activeBefore.harnessId)?.refs
+    : undefined;
+  const stall = collectProofStallSignals(workDir);
+  const proposal =
+    refsBefore?.loopTreeId != null
+      ? proposeLoopPatches({
+          workDir,
+          findings,
+          loopTreeId: refsBefore.loopTreeId,
+          signals: [
+            lastLog,
+            runOk ? '' : 'lake_build_failed',
+            stall.summary,
+            stall.spinning ? 'h14_proof_stall' : '',
+          ],
+        })
+      : null;
+  if (proposal) console.log('[rsi] loop repair:', proposal.rationale);
+  const rsi = maybeApplyHarnessRsiCycle(workDir, {
+    runOk,
+    rsiRound: 0,
+    analyzeInterval: interval,
+    ...(proposal?.patches.length ? { patches: proposal.patches, forceAnalyze: true } : {}),
+  });
+  appendJournal({
+    round,
+    track: 'rsi',
+    repair: proposal?.addresses ?? null,
+    rsi,
+    cadence: readAnalyzeCadence(workDir).attributeCount,
+    note: 'orthogonal_to_proof_goal',
+  });
+  return rsi;
 }
 
 main().catch((e) => {

@@ -1,0 +1,15 @@
+[
+  {
+    "name": "bridge_health",
+    "description": "GET Blender MCP bridge /health JSON",
+    "command": "curl -sS --max-time 5 \"${BLENDER_MCP_BRIDGE:-http://127.0.0.1:11588}/health\""
+  },
+  {
+    "name": "bridge_exec",
+    "description": "POST bpy snippet to Blender /exec (arg: code)",
+    "command": "python3 -c \"import json,os,urllib.request;b=os.environ.get('BLENDER_MCP_BRIDGE','http://127.0.0.1:11588');d=json.dumps({'code':os.environ.get('code',''),'undo':True}).encode();r=urllib.request.Request(b+'/exec',data=d,headers={'Content-Type':'application/json'});print(urllib.request.urlopen(r,timeout=110).read().decode())\"",
+    "parameters": {
+      "code": "Python for bpy; last expression is the result"
+    }
+  }
+]

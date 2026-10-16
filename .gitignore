@@ -62,3 +62,22 @@ packages/server/ou_battle_log.json
 
 .local/
 
+
+# P2 实验产物
+experiments/minimal-react-mdl/.run/
+experiments/minimal-react-mdl/.run-staged/
+experiments/minimal-react-mdl/.run-deepswe/
+experiments/exec-agent-run/
+experiments/exec-agent-kura-h5/work/
+experiments/exec-agent-kura-h5/live/
+experiments/exec-agent-blender-frog/work/
+experiments/exec-agent-blender-frog/live/
+experiments/exec-agent-blender-frog/saved/
+experiments/exec-agent-gamegen-2048/live/
+experiments/minimal-react-mdl/.cache-deepswe/
+
+experiments/situated-probe/.run/
+
+__pycache__/
+*.pyc
+experiments/inner-ablation/runs/round1/.bin/

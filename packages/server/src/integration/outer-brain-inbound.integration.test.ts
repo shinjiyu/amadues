@@ -57,11 +57,6 @@ describe('integration: outer brain inbound assembly', () => {
 
   it('状态/密度快指令无 LLM 也能直接回复，且不落入 LLM 降级', async () => {
     const threadId = `thread:dm:status-${Date.now()}`;
-    fx.kpiRegistry.create({
-      description: '持续创作小说',
-      createdBy: 'human:alice',
-      kind: 'ongoing',
-    });
     fx.innerBrainRegistry.register({
       instanceId: 'ib-status-run',
       workspaceId: 'task-ib-status-run',

@@ -1,0 +1,1 @@
+Do not run large asset downloads in a foreground exec that can hit the 120s spawn timeout. Prefer background curl (nohup / curl -C -) plus a short poll of file size. Killing a mid-download curl leaves a partial zip and triggers unzip thrash.

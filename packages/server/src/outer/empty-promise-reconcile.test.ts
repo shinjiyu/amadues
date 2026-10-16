@@ -32,7 +32,6 @@ describe('emptyPromiseReconcile', () => {
     expect(
       isSuccessfulWorkAction('set_goal', '已创建新内脑实例并启动任务。instance_id=ib-1'),
     ).toBe(true);
-    expect(isSuccessfulWorkAction('advance_kpi', 'KPI 推进成功：kpi_sprint_dispatched')).toBe(true);
     expect(isSuccessfulWorkAction('reply_to_user', '已发送消息')).toBe(false);
   });
 

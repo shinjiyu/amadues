@@ -1,5 +1,8 @@
 # 环境模型（ADL 权威）
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** Pluggable **environment sensors** + **time-aware journal** + **derived metrics** replace the flat `ResourceSnapshot` of [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md). Consumers: `digitalEmployeeLoop` / `selfWorkPolicy` / `autonomyJudge` / heartbeat watchdog — **not** the deleted strategy layer ([`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) is historical only).
 
 > 与 `workspace.dsl` 视图 **`12-L3-Outer-Environment`**、**`14-L3-Digital-Employee-Loop`** 同步。详见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)。

@@ -6,7 +6,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
-import type { KpiRegistry } from './kpi-registry.js';
 import { buildPeerWorkspaceEntries } from '../openkuroneko/tools/peer-workspace.js';
 
 const DEFAULT_SUMMARY_MAX_CHARS = 280;
@@ -15,8 +14,6 @@ export interface CollectPeerOpts {
   registry: InnerBrainRegistry;
   excludeWorkspaceId: string;
   explicitPeerIds?: string[];
-  kpiId?: string;
-  kpiRegistry?: KpiRegistry;
 }
 
 export interface PeerCatalogFile {
@@ -52,14 +49,7 @@ export function collectPeerWorkspaceIds(opts: CollectPeerOpts): string[] {
 
   for (const id of opts.explicitPeerIds ?? []) add(id);
 
-  // 同 KPI：默认全部 sibling workspace 完全互读
-  if (opts.kpiId && opts.kpiRegistry) {
-    const kpi = opts.kpiRegistry.get(opts.kpiId);
-    for (const instanceId of kpi?.bursts ?? []) {
-      const row = opts.registry.get(instanceId);
-      if (row) add(row.workspaceId);
-    }
-  }
+  for (const row of opts.registry.list()) add(row.workspaceId);
 
   return out;
 }

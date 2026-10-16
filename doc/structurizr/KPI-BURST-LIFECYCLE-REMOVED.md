@@ -1,5 +1,8 @@
 # 已移除：KPI Burst Hooks 与 Registry Lifecycle Reconcile
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** Removed failed, unguarded onExit self-spawn layers. Since 2026-07-21, the target model is the guarded [`digitalEmployeeLoop`](./DIGITAL-EMPLOYEE-AUTONOMY.md): burst completion emits a capacity-release trigger, then the shared loop re-checks environment, calendar, dependencies, value, dedupe and hard gates. This does **not** resurrect `scheduleNextKpiBurst`.
 
 **状态**：2026-06-07 起代码已删除；本文档替代原 hook/reconcile ADL 职责说明。

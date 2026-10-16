@@ -1,0 +1,1 @@
+Playable rules live in game code. Adapter must expose `gameReady`, `getGameState`, `injectGameState` without shadowing true state or hard-coding answers. Keep `data.md` and `state_injection_api.md` in sync. Run `node check-evaluation-contract.mjs` when present before claiming done.

@@ -1,5 +1,8 @@
 # 内脑 IM 通知边界（ADL 权威）
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** Separate **completion**, **awaiting-human**, and **progress** IM channels; deduplicate notifications; stop false `awaitingInboundResolver` wakes from agent-forwarded messages. Complements [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md), [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md), [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md).
 
 > **动机（2026-06-06 生产事故）**：Shiro global 线程同一阻塞结果连发；Kuroneko/Gin 的 `✅`/`⚠️` 完成转发被误当人类回复 → changeWatcher 重唤醒 → 再 BLOCK。KPI active 长期显示为「阻塞/跟进」而非「等人类」或「已部分推进」。

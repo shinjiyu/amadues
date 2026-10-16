@@ -1,0 +1,1 @@
+When writing `index.html` with a shell heredoc (`cat > index.html <<'EOF'`), end the command right after the closing `EOF`. Do not append `echo done` or other shell noise — it gets appended into the HTML file and breaks the module script.

@@ -1,5 +1,8 @@
 # 外脑心跳：数字员工监督与恢复兜底（ADL）
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** Outer heartbeat is the digital employee's **manager check-in and watchdog**, not the main engine that keeps work moving. It supervises burst/KPI effectiveness, liveness, stuck/restart, missed calendar commitments, and recovers lost dispatch events. Normal continuation is event-driven by `digitalEmployeeLoop`; milestone validation stays inside the inner brain.
 
 与 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)（容量驱动自主工作）、[`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)（感知）、[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md)（KPI 治理）、[`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md)（完成判定）互补。旧 [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) 已删除实现，仅供历史对照。

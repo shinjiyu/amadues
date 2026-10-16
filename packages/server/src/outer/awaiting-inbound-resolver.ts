@@ -64,11 +64,13 @@ export function isAgentMirrorSender(senderSid: string): boolean {
 function awaitingOnThread(registry: InnerBrainRegistry, threadId: string): TaskRecord[] {
   return registry
     .list()
-    .filter(
-      (t) =>
-        (t.status === 'AWAITING' || t.status === 'BLOCKED') &&
-        t.originThread === threadId,
-    )
+    .filter((t) => {
+      if (t.originThread !== threadId) return false;
+      if (t.status !== 'RUNNING' && t.status !== 'AWAITING' && t.status !== 'BLOCKED') return false;
+      const brainDir = path.join(t.workDir, '.brain');
+      if (!fs.existsSync(path.join(brainDir, 'pendings.json'))) return false;
+      return listActivePendings(brainDir).some((pending) => pending.kind === 'ask_user');
+    })
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
 }
 

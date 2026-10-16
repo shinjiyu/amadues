@@ -11,7 +11,8 @@ import type { InnerBrainRegistry, TaskRecord } from './inner-brain-registry.js';
 import type { ExecutableWorkflowStore } from './executable-workflow-store.js';
 import type { WorkflowRef } from './executable-workflow-types.js';
 import { appendAutonomyActionLog } from './autonomy-action-log.js';
-import { DEFAULT_MAX_CONSECUTIVE_FAILURES } from './kpi/kpi-failure-circuit.js';
+
+const DEFAULT_MAX_CONSECUTIVE_FAILURES = 3;
 
 const FAILURE: ReadonlySet<string> = new Set(['ERROR', 'ABORTED', 'STOPPED']);
 const SUCCESS: ReadonlySet<string> = new Set(['DONE']);

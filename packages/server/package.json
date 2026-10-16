@@ -18,6 +18,7 @@
     "benchmark:framework:bump": "node --import tsx/esm src/benchmark/run-framework-benchmark.ts --bump"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "^0.86.1",
     "@hono/node-server": "^1.13.0",
     "@utlra/chat-ir": "*",
     "@utlra/discord-bridge": "*",

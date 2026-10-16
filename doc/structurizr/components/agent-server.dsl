@@ -115,9 +115,10 @@
                     }
                 }
 
-                outerToolExecutor = component "Outer Tool Executor" "【工具执行】reply_to_user / set_goal（KPI 单实例复用 + peer catalog）/ list_brains / read_inner_status / KPI 等" "TypeScript" {
+                outerToolExecutor = component "Outer Tool Executor" "【改写】【工具执行】reply_to_user / set_goal（KPI 单实例复用 + peer catalog）/ list_brains / read_inner_status / KPI 等" "TypeScript" {
                     tags "Outer-Module" "Conversation" "KPI"
                     properties {
+                        "horizon.status" "改写 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/outer-tools.ts"
                         "horizon.intention" "执行 LLM 返回的每个 tool_call"
                         "horizon.in" "tool name + args"
@@ -167,9 +168,10 @@
                     }
                 }
 
-                innerBrainKpiReuse = component "Inner Brain KPI Reuse" "【set_goal 判定】isSetGoalDispatched；canonical 复用已删（KPI-MANAGER-LAYER.md）" "TypeScript" {
+                innerBrainKpiReuse = component "Inner Brain KPI Reuse" "【待删除】【set_goal 判定】isSetGoalDispatched；canonical 复用已删（KPI-MANAGER-LAYER.md）" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle" "KPI"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/inner-brain-kpi-reuse.ts"
                         "horizon.intention" "autonomy/heartbeat 识别 set_goal 是否成功派发"
                         "horizon.in" "set_goal tool output string"
@@ -180,9 +182,10 @@
                     }
                 }
 
-                workspaceInbox = component "Workspace Inbox" "【同 KPI 互读】collectPeerWorkspaceIds + writePeerCatalog（名字/摘要）；spawn 注入 INNER_PEER_WORKSPACE_IDS" "TypeScript" {
+                workspaceInbox = component "Workspace Inbox" "【改写】【同 KPI 互读】collectPeerWorkspaceIds + writePeerCatalog（名字/摘要）；spawn 注入 INNER_PEER_WORKSPACE_IDS" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle" "KPI"
                     properties {
+                        "horizon.status" "改写 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/workspace-inbox.ts"
                         "horizon.intention" "同 KPI sibling workspace 完全互读；spawn 只写 .inbox/ 目录，不传正文"
                         "horizon.in" "innerBrainRegistry + kpiRegistry + explicit peer_workspace_ids"
@@ -229,9 +232,10 @@
                     }
                 }
 
-                imIntentClassifier = component "IM Intent Classifier" "【入站意图】上下文感知分类：默认 chat_only / task_followup / ad_hoc / kpi_update / kpi_create(ongoing,confirm)；正则兜底 + (P6) LLM" "TypeScript" {
+                imIntentClassifier = component "IM Intent Classifier" "【改写】【入站意图】上下文感知分类：默认 chat_only / task_followup / ad_hoc / kpi_update / kpi_create(ongoing,confirm)；正则兜底 + (P6) LLM" "TypeScript" {
                     tags "Outer-Module" "Inbound"
                     properties {
+                        "horizon.status" "改写 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/inbound/im-intent-classifier.ts"
                         "horizon.intention" "模糊默认 chat；显式长期才 KPI；跟进既有任务不新建（见 IM-INBOUND-INTENT-ROUTING.md）"
                         "horizon.in" "IM 文本 + 轻量上下文（active KPI / 在跑 burst / 最近 thread）"
@@ -241,9 +245,10 @@
                     }
                 }
 
-                inboundKpiRouter = component "Inbound Context Assembler" "【方案一·只读】装配本人 active KPI + 在跑 burst → renderInboundHint 注入对话环；前置层不派发（派发交对话环 LLM 工具）" "TypeScript" {
+                inboundKpiRouter = component "Inbound Context Assembler" "【待删除】【方案一·只读】装配本人 active KPI + 在跑 burst → renderInboundHint 注入对话环；前置层不派发（派发交对话环 LLM 工具）" "TypeScript" {
                     tags "Outer-Module" "Inbound"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/inbound/inbound-kpi-router.ts"
                         "horizon.intention" "前置层零副作用，只提供上下文；create/dispatch/followup 全由对话环 LLM 用工具决定（消除误判不可恢复）"
                         "horizon.in" "kpiRegistry / innerBrainRegistry（只读）+ originUser + threadId"
@@ -254,9 +259,10 @@
                     }
                 }
 
-                agentStatusChatCommand = component "Agent Status Chat Command" "【只读快指令】状态/进度 → 当前快照；密度/今天 → 过去 24h 执行槽位利用率；无 LLM" "TypeScript" {
+                agentStatusChatCommand = component "Agent Status Chat Command" "【改写】【只读快指令】状态/进度 → 当前快照；密度/今天 → 过去 24h 执行槽位利用率；无 LLM" "TypeScript" {
                     tags "Outer-Module" "Inbound" "Monitoring"
                     properties {
+                        "horizon.status" "改写 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/inbound/agent-status-chat-command.ts; packages/server/src/outer/agent-activity-snapshot.ts"
                         "horizon.intention" "手机/微信中快速查看当前进度与 24h 工作密度；不打开 Dashboard、不扫描 brain-inspector"
                         "horizon.in" "整句聊天命令 + innerBrainRegistry + kpiRegistry + AutonomyPolicy + now"
@@ -268,9 +274,10 @@
                     }
                 }
 
-                awaitingInboundResolver = component "Awaiting Inbound Resolver" "【IM 必达】人消息 → 同 thread 的 ask_user pending → resolved；拒 agent-mirror/通知 echo" "TypeScript" {
+                awaitingInboundResolver = component "Awaiting Inbound Resolver" "【改写】【IM 必达】人消息 → 同 thread 的 ask_user pending → resolved；拒 agent-mirror/通知 echo" "TypeScript" {
                     tags "Outer-Module" "Inbound" "Inner-Lifecycle"
                     properties {
+                        "horizon.status" "改写 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/awaiting-inbound-resolver.ts"
                         "horizon.intention" "宪法 IMWatcher 的确定性实现；不依赖 LLM 调 send_directive"
                         "horizon.in" "ChatIRInboundEvent(human) + innerBrainRegistry"
@@ -282,9 +289,10 @@
                     }
                 }
 
-                imNotifyDedup = component "IM Notify Dedup" "【通知去重】awaiting_human / complete fingerprint → .run/im-notify-ledger.json" "TypeScript" {
+                imNotifyDedup = component "IM Notify Dedup" "【待删除】【通知去重】awaiting_human / complete fingerprint → .run/im-notify-ledger.json" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/im-notify-dedup.ts"
                         "horizon.intention" "防同一阻塞/完成连发 IM"
                         "horizon.in" "workDir + kind + fingerprint"
@@ -294,9 +302,10 @@
                     }
                 }
 
-                awaitingNotify = component "Awaiting Notify" "【等待人类】onExit AWAITING + ask_user pending → ⏸ IM（dedup）" "TypeScript" {
+                awaitingNotify = component "Awaiting Notify" "【待删除】【等待人类】onExit AWAITING + ask_user pending → ⏸ IM（dedup）" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/awaiting-notify.ts"
                         "horizon.intention" "替代 pushLoop BLOCK 与 legacy output BLOCK onExit"
                         "horizon.in" "TaskRecord + workDir + imClient"
@@ -307,9 +316,10 @@
                     }
                 }
 
-                completionNotify = component "Completion Notify" "【完成/部分/失败通知】DONE→✅；partial ERROR→⚠️+附件；crash→❌" "TypeScript" {
+                completionNotify = component "Completion Notify" "【改写】【完成/部分/失败通知】DONE→✅；partial ERROR→⚠️+附件；crash→❌" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
+                        "horizon.status" "改写 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/completion-notify.ts; openkuroneko/burst/completion-report.ts"
                         "horizon.intention" "onExit 主路径：结果摘要 + 产出附件，不堆 milestones/reflexion 过程"
                         "horizon.in" "TaskRecord + workDir(.brain + deliverables + output COMPLETE)"
@@ -333,9 +343,10 @@
                     }
                 }
 
-                changeWatcher = component "Change Watcher" "【AWAITING 唤醒】tick：unconsumed resolved → markConsumed → spawn" "TypeScript" {
+                changeWatcher = component "Change Watcher" "【待删除】【AWAITING 唤醒】tick：unconsumed resolved → markConsumed → spawn" "TypeScript" {
                     tags "Outer-Module" "Inner-Lifecycle"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/pi-mono/change-watcher.ts"
                         "horizon.intention" "pendings 到期/解封后 spawn；spawn 前消费 resolved 防重唤醒"
                         "horizon.in" "innerBrainRegistry AWAITING|BLOCKED 列表"
@@ -347,9 +358,10 @@
                 }
 
                 // ── KPI ─────────────────────────────────────────────────
-                kpiRegistry = component "KPI Registry" "【KPI 元数据】set_kpi、bursts、charter、burstRunHistory" "TypeScript" {
+                kpiRegistry = component "KPI Registry" "【待删除】【KPI 元数据】set_kpi、bursts、charter、burstRunHistory" "TypeScript" {
                     tags "Outer-Module" "KPI"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/kpi-registry.ts"
                         "horizon.intention" "长期 KPI 元数据与 burst 关联"
                         "horizon.in" "set_kpi / attachBurst"
@@ -358,9 +370,10 @@
                     }
                 }
 
-                kpiManager = component "KPI Manager" "【KPI 治理】KPI 真相 + R3–R7 + burst 卫生；心跳 advance 降为兼容 fallback" "TypeScript" {
+                kpiManager = component "KPI Manager" "【待删除】【KPI 治理】KPI 真相 + R3–R7 + burst 卫生；心跳 advance 降为兼容 fallback" "TypeScript" {
                     tags "Outer-Module" "KPI" "Heartbeat"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/kpi/kpi-manager.ts"
                         "horizon.intention" "治理 KPI 生命周期；不独占空闲找活、日程或正常续派时钟"
                         "horizon.in" "EnvironmentSnapshot + kpiRegistry + innerBrainRegistry + SelfWork outcome"
@@ -371,9 +384,10 @@
                     }
                 }
 
-                kpiAdvancer = component "KPI Advancer" "【KPI burst 执行】advance_kpi / IM / Ops → set_goal(kpi_id)；心跳改由 kpiManager 调用" "TypeScript" {
+                kpiAdvancer = component "KPI Advancer" "【待删除】【KPI burst 执行】advance_kpi / IM / Ops → set_goal(kpi_id)；心跳改由 kpiManager 调用" "TypeScript" {
                     tags "Outer-Module" "KPI" "Heartbeat"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/kpi/kpi-advancer.ts"
                         "horizon.intention" "IM/Ops/兼容 heartbeat 的 KPI set_goal 执行器；正常续派由 digitalEmployeeLoop 触发"
                         "horizon.in" "kpiRegistry + innerBrainRegistry + (心跳) EnvironmentSnapshot.facets"
@@ -385,9 +399,10 @@
                     }
                 }
 
-                kpiFailureCircuit = component "KPI Failure Circuit" "【R7 路线级熔断】单路线连败 → blockedRoutes（KPI 保持 active）；多路线/无 goal 系统性 → pause + IM + action-log" "TypeScript" {
+                kpiFailureCircuit = component "KPI Failure Circuit" "【待删除】【R7 路线级熔断】单路线连败 → blockedRoutes（KPI 保持 active）；多路线/无 goal 系统性 → pause + IM + action-log" "TypeScript" {
                     tags "Outer-Module" "KPI" "Heartbeat"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/kpi/kpi-failure-circuit.ts"
                         "horizon.intention" "同路线三连败只停该路线换方向；系统性失败才暂停整个职责（DIGITAL-EMPLOYEE-AUTONOMY.md §6.3）"
                         "horizon.in" "kpiRegistry(active) + innerBrainRegistry burst goal/状态 + 阈值"
@@ -398,9 +413,10 @@
                     }
                 }
 
-                kpiCompletionJudge = component "KPI Completion Judge" "【KPI 完成判定】心跳 sweep + digest；suggestKpiAction=achieved → markAchieved" "TypeScript" {
+                kpiCompletionJudge = component "KPI Completion Judge" "【待删除】【KPI 完成判定】心跳 sweep + digest；suggestKpiAction=achieved → markAchieved" "TypeScript" {
                     tags "Outer-Module" "KPI" "Heartbeat"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/kpi-completion-judge.ts"
                         "horizon.intention" "程序化 KPI 结案（onExit 不再 autoAchieve）"
                         "horizon.in" "kpiRegistry + innerBrainRegistry"
@@ -412,9 +428,10 @@
                 }
 
                 // ── 心跳 / 自主调度 ─────────────────────────────────────
-                outerHeartbeat = component "Outer Heartbeat" "【Watchdog】质控+完成判定+死亡/失约检测+自主循环补漏；非正常续派主时钟" "TypeScript" {
+                outerHeartbeat = component "Outer Heartbeat" "【待删除】【Watchdog】质控+完成判定+死亡/失约检测+自主循环补漏；非正常续派主时钟" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Heartbeat"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/outer-heartbeat.ts"
                         "horizon.intention" "经理巡检与漏事件恢复；正常工作交接由 digitalEmployeeLoop 事件驱动"
                         "horizon.in" "HeartbeatDeps + EnvironmentSnapshot + registry/KPI/Calendar trail"
@@ -425,9 +442,10 @@
                     }
                 }
 
-                digitalEmployeeLoop = component "Digital Employee Loop" "【容量驱动主循环】多触发 coalesce → 可用容量 → 到期日程优先 → 自主提案 → set_goal" "TypeScript" {
+                digitalEmployeeLoop = component "Digital Employee Loop" "【待删除】【容量驱动主循环】多触发 coalesce → 可用容量 → 到期日程优先 → 自主提案 → set_goal" "TypeScript" {
                     tags "Outer-Module" "Autonomy"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/digital-employee-loop.ts; packages/server/src/outer/digital-employee-runtime.ts"
                         "horizon.intention" "数字员工一释放容量就找下一件有价值的工作；heartbeat 仅 fallback"
                         "horizon.in" "burst_finished/calendar_due/dependency_resolved/inbound_drained/policy_changed/heartbeat_fallback"
@@ -439,9 +457,10 @@
                     }
                 }
 
-                employeeCalendar = component "Employee Calendar" "【数字员工日程表】once/interval/cron 持久化承诺；due/missed；到期不占等待 worker" "TypeScript" {
+                employeeCalendar = component "Employee Calendar" "【改写】【数字员工日程表】once/interval/cron 持久化承诺；due/missed；到期不占等待 worker" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Scheduler"
                     properties {
+                        "horizon.status" "改写 · 见 WORKSHOP.md"
                         "path" "packages/server/src/scheduler/employee-calendar.ts; packages/server/src/openkuroneko/scheduled-tasks/"
                         "horizon.intention" "复用现有 Scheduler/TaskScheduler，统一业务日程真相；到期触发主循环"
                         "horizon.in" "CalendarCommitment CRUD + wall clock + capacity result"
@@ -453,9 +472,10 @@
                     }
                 }
 
-                selfWorkPolicy = component "Self Work Policy" "【可测试创造性】4 策略角度轮询 + llm_reflective + AbTest 灰度 + 提案校验（去重/依赖/冲突/路线熔断）+ 指标 JSONL" "TypeScript" {
+                selfWorkPolicy = component "Self Work Policy" "【待删除】【可测试创造性】4 策略角度轮询 + llm_reflective + AbTest 灰度 + 提案校验（去重/依赖/冲突/路线熔断）+ 指标 JSONL" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "KPI"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/self-work-policy.ts; packages/server/src/outer/self-work-strategies.ts; packages/server/src/outer/self-work-llm-policy.ts; packages/server/src/outer/self-work-metrics.ts"
                         "horizon.intention" "空闲容量的创造性找活；策略可注入/A-B；只有提案权"
                         "horizon.in" "active KPI + EnvironmentSnapshot + Calendar + pending dependencies + blockedRoutes + burst history"
@@ -468,9 +488,10 @@
                     }
                 }
 
-                performanceGoalEngine = component "Performance Goal Engine" "【长期绩效目标】审阅 scorecard；心跳注入 performanceBlock" "TypeScript" {
+                performanceGoalEngine = component "Performance Goal Engine" "【待删除】【长期绩效目标】审阅 scorecard；心跳注入 performanceBlock" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "KPI"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/performance-goals/engine.ts"
                         "horizon.intention" "自驱动绩效目标 LLM 审阅"
                         "horizon.in" "PerformanceGoalStore + mem9 context"
@@ -504,9 +525,10 @@
                     }
                 }
 
-                resourceProbe = component "Resource Probe" "【资源感知 P0 简版】扁平 ResourceSnapshot；P1 起被 environmentSensorRegistry 替代" "TypeScript" {
+                resourceProbe = component "Resource Probe" "【待删除】【资源感知 P0 简版】扁平 ResourceSnapshot；P1 起被 environmentSensorRegistry 替代" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Transitional"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/resource-probe.ts"
                         "horizon.intention" "心跳 tick 前只读采集系统负载（过渡期）"
                         "horizon.in" "innerBrainRegistry; llmUsageTracker; threadOrchestrator; participation-state"
@@ -517,9 +539,10 @@
                 }
 
                 // ── 环境模型（替代 resourceProbe） ────────────────────
-                environmentSensorRegistry = component "Environment Sensor Registry" "【传感器注册表】tick 调度 + 扇入 facets → EnvironmentSnapshot；同 outerToolExecutor / autonomy handler 模式" "TypeScript" {
+                environmentSensorRegistry = component "Environment Sensor Registry" "【待删除】【传感器注册表】tick 调度 + 扇入 facets → EnvironmentSnapshot；同 outerToolExecutor / autonomy handler 模式" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/environment/sensor-registry.ts; environment-sensors.ts"
                         "horizon.intention" "可插拔环境感知；新增维度=新增 handler，不动判定/策略组件"
                         "horizon.in" "EnvironmentSensor[] + SensorContext（注入只读 deps）"
@@ -531,9 +554,10 @@
                     }
                 }
 
-                environmentJournal = component "Environment Journal" "【环境日志】内存 ring buffer + current.json 覆盖 + events.jsonl + hourly.jsonl（按月/年轮转）" "TypeScript" {
+                environmentJournal = component "Environment Journal" "【待删除】【环境日志】内存 ring buffer + current.json 覆盖 + events.jsonl + hourly.jsonl（按月/年轮转）" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment" "Observability"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/environment/journal.ts"
                         "horizon.intention" "三层时间尺度留存；环境模型记忆"
                         "horizon.in" "EnvironmentSnapshot（每 tick）+ EnvironmentEvent[]（事件驱动）"
@@ -544,9 +568,10 @@
                     }
                 }
 
-                environmentChangeDetector = component "Environment Change Detector" "【派生指标 + 显著事件】hysteresis / warmUp / rate / streak / zScore；deterministic" "TypeScript" {
+                environmentChangeDetector = component "Environment Change Detector" "【待删除】【派生指标 + 显著事件】hysteresis / warmUp / rate / streak / zScore；deterministic" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/environment/change-detector.ts"
                         "horizon.intention" "把环境数据变成决策可读的诊断"
                         "horizon.in" "prev/next snapshot + sensor.detectEvents/derive"
@@ -556,9 +581,10 @@
                     }
                 }
 
-                environmentModelFacade = component "Environment Model Facade" "【环境模型门面】collectEnvironmentSnapshot / toResourceSnapshot / getSharedEnvironment" "TypeScript" {
+                environmentModelFacade = component "Environment Model Facade" "【待删除】【环境模型门面】collectEnvironmentSnapshot / toResourceSnapshot / getSharedEnvironment" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/environment/index.ts"
                         "horizon.intention" "一次 tick 采集 + journal 留存；适配 legacy ResourceSnapshot"
                         "horizon.in" "CollectEnvironmentDeps + EnvironmentSensorRegistry + EnvironmentJournal"
@@ -569,9 +595,10 @@
                     }
                 }
 
-                kpiSpawnCapacity = component "KPI Spawn Capacity" "【执行容量】读 EnvironmentSnapshot.facets + hardGates → canSpawn / hasAvailableCapacity（自适应前台预留）" "TypeScript" {
+                kpiSpawnCapacity = component "KPI Spawn Capacity" "【待删除】【执行容量】读 EnvironmentSnapshot.facets + hardGates → canSpawn / hasAvailableCapacity（自适应前台预留）" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment" "KPI"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/environment/kpi-spawn-capacity.ts"
                         "horizon.intention" "R6 环境 busy 时阻止 spawn；数字员工容量：前台活跃扣预留槽而非全停"
                         "horizon.in" "EnvironmentSnapshot.facets + AutonomyPolicy.hardGates(foregroundReserveSlots)"
@@ -582,9 +609,10 @@
                     }
                 }
 
-                staleBurstReaper = component "Stale Burst Reaper" "【逻辑并入 kpiManager】纯函数 selectStaleAwaiting + reap" "TypeScript" {
+                staleBurstReaper = component "Stale Burst Reaper" "【待删除】【逻辑并入 kpiManager】纯函数 selectStaleAwaiting + reap" "TypeScript" {
                     tags "Outer-Module" "KPI" "Inner-Lifecycle"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/kpi/stale-burst-reaper.ts"
                         "horizon.intention" "R5 僵尸清理；由 kpiManager.reapStaleBursts 调用"
                         "horizon.test.unit" "stale-burst-reaper.test.ts"
@@ -616,7 +644,7 @@
                         "horizon.out" "tombstone marks（cold + quota 两类）"
                         "horizon.deps" "nodeDefDrive9Store"
                         "horizon.test.unit" "node-def-eviction.test.ts"
-                        "horizon.note" "scoreEntry + runNodeDefEviction：cold(importCount==0 && ageDays>coldDays) → quota(按 score 升序至 floor(max*(1-headroom)))；见 INNER-NODE-LIFECYCLE.md §7"
+                        "horizon.note" "模块留下。触发不再挂 KPI 心跳，见 WORKSHOP.md §11。scoreEntry + runNodeDefEviction：cold(importCount==0 && ageDays>coldDays) → quota(按 score 升序至 floor(max*(1-headroom)))；见 INNER-NODE-LIFECYCLE.md §7"
                     }
                 }
 
@@ -660,9 +688,10 @@
                     }
                 }
 
-                workflowEvolutionPolicy = component "Workflow Evolution Policy" "【✅】质检失败 → ew_revision 提案；SelfWork 优先 explore" "TypeScript" {
+                workflowEvolutionPolicy = component "Workflow Evolution Policy" "【待删除】【✅】质检失败 → ew_revision 提案；SelfWork 优先 explore" "TypeScript" {
                     tags "Outer-Module" "Executable-Workflow" "Digital-Employee"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/workflow-evolution-policy.ts"
                         "horizon.intention" "Agent 自优化 EW：只提案不写契约"
                         "horizon.in" "outcome · kpiId · workflowRef"
@@ -686,9 +715,10 @@
                     }
                 }
 
-                autonomyPolicyStore = component "Autonomy Policy Store" "【闲忙规则】policy.json + policy-rubric.md；聊天 tools 可改" "TypeScript" {
+                autonomyPolicyStore = component "Autonomy Policy Store" "【待删除】【闲忙规则】policy.json + policy-rubric.md；聊天 tools 可改" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/environment/autonomy-policy-store.ts"
                         "horizon.intention" "可配置 hardGates + 自然语言 rubric"
                         "horizon.in" "read / patch / replace rubric"
@@ -699,9 +729,10 @@
                     }
                 }
 
-                autonomyJudge = component "Autonomy Judge" "【容量判定】hard gates → hasAvailableCapacity；等待依赖不等于 RUNNING" "TypeScript" {
+                autonomyJudge = component "Autonomy Judge" "【待删除】【容量判定】hard gates → hasAvailableCapacity；等待依赖不等于 RUNNING" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Environment"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/environment/autonomy-judge.ts"
                         "horizon.intention" "环境快照 + hardGates 判断剩余执行容量；前台预留而非无条件全停"
                         "horizon.in" "ResourceSnapshot + AutonomyPolicy"
@@ -712,9 +743,10 @@
                     }
                 }
 
-                agentPersonality = component "Agent Personality" "【性格参数】personality.json：idleChatProbability 等；与 soul.md 并列" "TypeScript" {
+                agentPersonality = component "Agent Personality" "【待删除】【性格参数】personality.json：idleChatProbability 等；与 soul.md 并列" "TypeScript" {
                     tags "Outer-Module" "Autonomy" "Conversation"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/personality.ts"
                         "horizon.intention" "定时器闲聊分支 Bernoulli 概率 p；各 agent DATA_ROOT 独立"
                         "horizon.in" "read / patch personality.json"
@@ -725,9 +757,10 @@
                     }
                 }
 
-                casualChatDispatcher = component "Casual Chat Dispatcher" "【idle 闲聊】性格概率 proactive IM；KPI spawn 由 kpiManager 负责" "TypeScript" {
+                casualChatDispatcher = component "Casual Chat Dispatcher" "【待删除】【idle 闲聊】性格概率 proactive IM；KPI spawn 由 kpiManager 负责" "TypeScript" {
                     tags "Outer-Module" "Autonomy"
                     properties {
+                        "horizon.status" "待删除 · 见 WORKSHOP.md"
                         "path" "packages/server/src/outer/casual-chat-dispatcher.ts"
                         "horizon.intention" "verdict=idle 且无 KPI 相关 burst 在途 → 按 idleChatProbability 起草并 post_to_im"
                         "horizon.in" "AutonomyVerdict(idle) + policy + personality + kpiRegistry（仅 defer 判定）"

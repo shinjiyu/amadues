@@ -1,5 +1,8 @@
 # KPI Burst 结果评估（ADL · 历史评估器 + 现行反馈边界）
 
+> **⚠️ 2026-10-16**：本文不再是派活权威。现行模型见 [`WORKSHOP.md`](./WORKSHOP.md)。本文描述的模块已标 **待删除**（代码尚未删）。不要按本文继续实现。
+
+
 > **English:** On **KPI-linked** burst exit, outer brain may assemble outcome evidence. **Unguarded** `scheduleNextKpiBurst` / onExit auto-spawn is **removed**. Continuation is owned by [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md).
 
 > 取代 per-burst `reflexion.json` / `reflexionTrail` / `scheduleReflexionBurst`。

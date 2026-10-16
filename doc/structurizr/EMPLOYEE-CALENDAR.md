@@ -1,5 +1,8 @@
 # 外脑日历（Employee Calendar）一等工具设计（ADL）
 
+> **⚠️ 2026-10-16**：派活权威改为 [`WORKSHOP.md`](./WORKSHOP.md)。本文对应模块标 **改写**。不要再按 KPI / 容量找活的语义实现。
+
+
 > **English:** Calendar is a **first-class outer commitment store + tool surface**, not a KPI-only backend ensure. Chat can schedule appointments and one-shots; the digital-employee loop remains the **sole due-execution path**. Complements [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §3、[`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md).
 >
 > **状态**：设计权威；**C1–C4 已落地**（Port upsert/list/cancel/pause、对话工具、due 经 loop、ensure 统一 upsert、tool_call 白名单）。

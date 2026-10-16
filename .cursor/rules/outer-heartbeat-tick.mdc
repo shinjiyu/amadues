@@ -1,5 +1,5 @@
 ---
-description: 数字员工自主循环与心跳 watchdog — 容量、日程、自主提案、KPI 治理（改调度必读）
+description: 车间派活已取代 KPI / 闲时找活。改这些文件前先读 WORKSHOP.md，不要按旧心跳续派。
 globs:
   - packages/server/src/outer/outer-heartbeat.ts
   - packages/server/src/outer/kpi-completion-judge.ts
@@ -9,65 +9,17 @@ globs:
   - packages/server/src/outer/digital-employee-loop.ts
   - packages/server/src/outer/self-work-policy.ts
   - packages/server/src/scheduler/**
+  - doc/structurizr/WORKSHOP.md
   - doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md
   - doc/structurizr/KPI-COMPLETION-JUDGE.md
   - doc/structurizr/DIGITAL-EMPLOYEE-AUTONOMY.md
 alwaysApply: false
 ---
 
-# 外脑心跳 tick（ADL 权威）
+# 车间派活（这些文件已标待删除或改写）
 
-改 `outerHeartbeat` / autonomy / KPI 调度前，**先读** Structurizr 专篇，再动代码。
+先读 [`WORKSHOP.md`](doc/structurizr/WORKSHOP.md)。代码还在，不要给 OKR、KPI、闲时找活、离台再唤醒加功能。
 
-## ADL 专篇（必须同步）
+留下的派活只有两条：外脑把用户的话拆成可执行任务再派工人；定时管理器到点派一名工人。工人自己碰上的等待留在台上，并有超时。
 
-| 文档 | 职责 |
-|------|------|
-| [`DIGITAL-EMPLOYEE-AUTONOMY.md`](doc/structurizr/DIGITAL-EMPLOYEE-AUTONOMY.md) | 容量驱动主循环、Calendar、SelfWorkPolicy、等待依赖边界 |
-| [`OUTER-HEARTBEAT-OVERSIGHT.md`](doc/structurizr/OUTER-HEARTBEAT-OVERSIGHT.md) | watchdog：验收、卡死/restart、missed、fallback |
-| [`KPI-MANAGER-LAYER.md`](doc/structurizr/KPI-MANAGER-LAYER.md) | KPI 真相、R3–R7、burst 卫生 |
-| [`KPI-COMPLETION-JUDGE.md`](doc/structurizr/KPI-COMPLETION-JUDGE.md) | **KPI 完成判定**：`sweep` / `achieve_kpi` |
-
-Structurizr：`components/agent-server.dsl`（`digitalEmployeeLoop`、`employeeCalendar`、`selfWorkPolicy`、`outerHeartbeat`）+ `workspace.dsl` 边与视图 `11`/`14`。
-
-## 单 tick 顺序（硬约束）
-
-```text
-正常主路径（非 heartbeat）：
-burst_finished / calendar_due / dependency_resolved
-→ digitalEmployeeLoop single-flight
-→ environmentModel + hasAvailableCapacity
-→ due Calendar 优先；否则 SelfWorkPolicy
-→ validate → 唯一 set_goal
-
-heartbeat watchdog：
-死亡检测 → completion sweep → 环境/质控 → R3–R7/reap
-→ Calendar missed → digitalEmployeeLoop(heartbeat_fallback)
-```
-
-## 三层勿混
-
-| 层 | 判什么 |
-|----|--------|
-| Milestone | 内脑 Attributor |
-| Burst | `is_post_complete`、deliverables |
-| **KPI** | `registry.status=achieved`；规则见 `suggestKpiAction` + [`KPI-COMPLETION-JUDGE.md`](doc/structurizr/KPI-COMPLETION-JUDGE.md) |
-
-监督类 / 未 post_complete → **不** auto achieved。
-
-## 改代码时的检查清单
-
-- [ ] 动 tick 顺序 → 更新 `OUTER-HEARTBEAT-OVERSIGHT.md` §0 + `workspace.dsl` 边
-- [ ] 动容量/等待/日程/自主提案 → 更新 `DIGITAL-EMPLOYEE-AUTONOMY.md`
-- [ ] 动 KPI 结案规则 → 更新 `KPI-COMPLETION-JUDGE.md` + `kpi-progress.ts` + `kpi-completion-judge.test.ts`
-- [ ] 更新 `modules-catalog.md`、`COMPONENT-TEST-MAP.md`
-- [ ] 心跳 prompt 与 ADL 一致（`buildHeartbeatSystemPrompt`）
-
-## 禁止
-
-- 把等待某项依赖解释成整个 KPI/员工忙碌
-- 用长 `wait_timer` 代替 Calendar，或另造第二份 cron 真相
-- heartbeat 绕过 `digitalEmployeeLoop` 直接制造第二派发路径
-- SelfWorkPolicy 直接 spawn（它只有提案权）
-- 跳过 Structurizr 只改 `outer-heartbeat.ts` prompt
-- 对已 `achieved` KPI 再 `set_goal`
+`employeeCalendar` 改成定时管理器。`DIGITAL-EMPLOYEE-AUTONOMY.md`、`KPI-MANAGER-LAYER.md`、`KPI-COMPLETION-JUDGE.md`、`OUTER-HEARTBEAT-OVERSIGHT.md` 只留对照。

@@ -1,20 +1,18 @@
-# Collatz（3n+1）· Lean · Harness-RSI 最小 loop
+# Collatz（3n+1）· 证明任务 + RSI 旁路
 
-开放猜想 + `lake build` 工艺门控。ADL：[`doc/structurizr/COLLATZ-LEAN-RSI.md`](../../doc/structurizr/COLLATZ-LEAN-RSI.md)
+**任务目标：证明 `Collatz.conjecture`（无 `sorry`）。**  
+Harness-RSI 只修 loop 工具故障，**不算**证明进展。
 
-## 依赖
-
-- Lean 4.14 + `lake`（本机：`~/.elan/toolchains/leanprover--lean4---v4.14.0/bin`）
-- Node（仓库已有 `~/tools/node`）
-- 可选：`deploy/agent/env/collatz-lean.env`（智谱，已 gitignore）
+ADL：[`doc/structurizr/COLLATZ-LEAN-RSI.md`](../../doc/structurizr/COLLATZ-LEAN-RSI.md)
 
 ## 跑
 
 ```bash
 export PATH="$HOME/.elan/toolchains/leanprover--lean4---v4.14.0/bin:$HOME/tools/node/bin:$PATH"
+set -a && source ../../deploy/agent/env/collatz-lean.env && set +a
 cd experiments/collatz-lean-rsi
-lake build                          # 应绿；conjecture 可 sorry
-npx --yes tsx run-loop.ts --rounds=3 --interval=1
+lake build
+npx --yes tsx assault-loop.ts --rounds=5
 ```
 
-无工具链时可用 `--dry-lake`。`--interval=1` 便于试点观察 cadence（默认 harness 为 3）。
+日志：`.brain/proof-journal.jsonl`（`track=proof|rsi` 分开）。

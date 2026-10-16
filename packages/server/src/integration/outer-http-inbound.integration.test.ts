@@ -55,7 +55,6 @@ describe('integration: outer http inbound assembly', () => {
         loadThreads: fx.loadThreads,
         dataRoot: fx.dataRoot,
         innerBrainRegistry: fx.innerBrainRegistry,
-        kpiRegistry: fx.kpiRegistry,
       },
       { loadThreads: fx.loadThreads, saveThreads: fx.saveThreads },
       {

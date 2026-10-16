@@ -23,7 +23,6 @@ import {
   type LooseThreadStore,
 } from '@utlra/chat-ir';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
-import type { KpiRegistry } from './kpi-registry.js';
 import { loadInnerLlmEnvFromProcess } from '../llm/inner-llm-step.js';
 import {
   isHumanSender,
@@ -44,9 +43,7 @@ import {
 } from './inbound-policy.js';
 import { retrieveComprehensiveKnowledge } from './knowledge-retrieval.js';
 import { runOuterConversationLoop } from './outer-conversation-loop.js';
-import { assembleInboundContext, renderInboundHint } from './inbound/inbound-kpi-router.js';
 import { tryHandleAgentStatusChatCommand } from './inbound/agent-status-chat-command.js';
-import { loadAutonomyPolicy } from './environment/autonomy-policy-store.js';
 import { resolveAgentSid, resolveWorkspaceId } from './outer-tools.js';
 import type { EmployeeCalendarPort } from '../scheduler/employee-calendar.js';
 import { MessageRecordSchema } from '@utlra/chat-ir';
@@ -152,8 +149,6 @@ export interface OuterBrainDeps {
   repoRoot?: string;
   /** 多内脑任务注册表（可选，传入时外脑工具获得多内脑管理能力） */
   innerBrainRegistry?: InnerBrainRegistry;
-  /** KPI 注册表（可选，传入时启用 set_kpi / list_kpis / view_kpi 等工具） */
-  kpiRegistry?: KpiRegistry;
   /** 外脑记忆层（支持 mem9 云端存储） */
   memoryStore?: OuterMemoryStore;
   /** 技能语义存储层（mem9 shared:skills 命名空间） */
@@ -458,8 +453,6 @@ export class OuterBrain {
       const command = tryHandleAgentStatusChatCommand({
         content,
         tasks: innerBrainRegistry.list(),
-        kpis: this.deps.kpiRegistry?.list() ?? [],
-        maxRunningInnerBrains: loadAutonomyPolicy(dataRoot).hardGates.maxRunningInnerBrains,
       });
       if (command.handled) {
         await imClient.postMessage(threadId, {
@@ -567,12 +560,7 @@ export class OuterBrain {
     const senderIsAgent =
       /^(idp:)?agent:/i.test(senderSid) || registry.get(senderSid)?.kind === 'agent';
 
-    const agentContext = resolveParticipationAgentContextFromEnv(
-      process.env,
-      this.deps.kpiRegistry
-        ? this.deps.kpiRegistry.list({ status: 'active' }).map((k) => k.description)
-        : undefined,
-    );
+    const agentContext = resolveParticipationAgentContextFromEnv(process.env);
 
     const { shouldReply, reason } = await decideOuterShouldReply({
       threadId,
@@ -605,7 +593,6 @@ export class OuterBrain {
       freshCheck,
       actionLogStore: this.deps.actionLogStore,
       innerBrainRegistry,
-      kpiRegistry: this.deps.kpiRegistry,
       loadThreads,
       memoryStore: this.deps.memoryStore,
       skillStore: this.deps.skillStore,
@@ -621,20 +608,6 @@ export class OuterBrain {
       inboundHumanSid: isHumanSender(senderSid) ? senderSid : undefined,
       employeeCalendar: this.deps.getEmployeeCalendar?.(),
     };
-
-    // ── Step 3.4: IM 入站上下文（只读；方案一：前置层不派发，派发交对话环 LLM 工具）──
-    // ADL IM-INBOUND-INTENT-ROUTING.md §4：装配本人 active KPI + 在跑 burst → inboundHint 注入对话环。
-    // 不再短路 / 不再 dispatchAdHocBurst·kpiRegistry.create·advanceKpi（副作用全部移交 set_goal/set_kpi/advance_kpi/send_directive 工具）。
-    let inboundHint = '';
-    if (isHumanSender(senderSid) && this.deps.kpiRegistry) {
-      const inboundCtx = assembleInboundContext({
-        kpiRegistry: this.deps.kpiRegistry,
-        innerBrainRegistry: toolCtxBase.innerBrainRegistry,
-        defaultThreadId: threadId,
-        originUser: senderSid,
-      });
-      inboundHint = renderInboundHint(inboundCtx);
-    }
 
     // ── Step 3.5: agent 链话题自然结束检查 ──────────────────────────────────
     // 当消息来自另一个 agent 且链已有一定深度时，用 LLM 判断话题是否已充分讨论。
@@ -692,9 +665,7 @@ export class OuterBrain {
       ? memBlock + (knowledgeContext ? '\n\n---\n\n' + knowledgeContext : '')
       : knowledgeContext;
     // 方案一：入站只读上下文（active KPI / 在跑 burst）注入对话环，供 LLM 自行决定是否用工具派发
-    const fullContext = inboundHint
-      ? inboundHint + (baseContext ? '\n\n---\n\n' + baseContext : '')
-      : baseContext;
+    const fullContext = baseContext;
 
     const result = await withTypingActivity(imClient, threadId, () => runOuterConversationLoop({
       env: llmEnv,

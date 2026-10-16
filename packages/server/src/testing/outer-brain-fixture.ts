@@ -13,7 +13,6 @@ import {
 import { FilesystemRepositoryStore, FilesystemWorkspaceStore } from '../workspace-kit/index.js';
 import { OuterBrain } from '../outer/outer-brain.js';
 import { InnerBrainRegistry } from '../outer/inner-brain-registry.js';
-import { KpiRegistry } from '../outer/kpi-registry.js';
 import { createTestDataRoot, type TestDataRoot } from './temp-data-root.js';
 import { FakeImChannel } from './fake-im-channel.js';
 import { createNoopEngine } from './agent-stack-fixture.js';
@@ -30,7 +29,6 @@ export interface OuterBrainFixture extends TestDataRoot {
   saveThreads: (data: LooseThreadStore) => void;
   agentSid: string;
   innerBrainRegistry: InnerBrainRegistry;
-  kpiRegistry: KpiRegistry;
 }
 
 export function createOuterBrainFixture(agentSid = 'agent:test-outer'): OuterBrainFixture {
@@ -87,7 +85,6 @@ export function createOuterBrainFixture(agentSid = 'agent:test-outer'): OuterBra
   });
 
   const innerBrainRegistry = new InnerBrainRegistry(root.dataRoot);
-  const kpiRegistry = new KpiRegistry(root.dataRoot);
 
   const brain = new OuterBrain({
     imClient: im,
@@ -100,7 +97,6 @@ export function createOuterBrainFixture(agentSid = 'agent:test-outer'): OuterBra
     loadThreads,
     dataRoot: root.dataRoot,
     innerBrainRegistry,
-    kpiRegistry,
   });
 
   return {
@@ -116,6 +112,5 @@ export function createOuterBrainFixture(agentSid = 'agent:test-outer'): OuterBra
     saveThreads,
     agentSid,
     innerBrainRegistry,
-    kpiRegistry,
   };
 }

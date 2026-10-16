@@ -1,5 +1,7 @@
 ﻿# 确定性工作流（Executable Workflow）
 
+> **⚠️ 2026-10-16**：派活见 [`WORKSHOP.md`](./WORKSHOP.md)。`workflowForKpi`、`workflowEvolutionPolicy`、`workflowEvolutionStore` 待删除。工作流的注册、冻结和按步骤执行留下，不再由 KPI 或闲时找活触发。
+
 > **English:** **Executable Workflow** is the frozen, stepwise-checkable contract for *running known playbooks*. It is a **superset** of Skills (markdown SOPs are one kind). Explore mode may invent; **execute mode must not redesign**.
 
 > **状态**：2026-07-23 ADL 定稿 · **P0–P4 ✅**（含 browser/frozen 真跑 · drive9 seed · ATTRIBUTE promote）  

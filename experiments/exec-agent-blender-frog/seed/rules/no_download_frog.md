@@ -1,0 +1,1 @@
+Do not download a finished frog.glb from the web or copy an external example as the deliverable. The mesh must be created through the Blender bridge in this run (or clearly rebuilt via /exec in this run).

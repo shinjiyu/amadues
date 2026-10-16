@@ -9,8 +9,20 @@ import type { InnerBrainEngine } from '../workspace-kit/index.js';
 import { summarizeDyflowForList, isDyflowWorkDir, buildWorkflowRunView } from '../openkuroneko/inner-brain/dyflow-inspector.js';
 import { resolveOuterBrainPhase } from '../openkuroneko/inner-brain/status-projection.js';
 import { isPidAlive, readWorkerStatus } from '../pi-mono/inner-brain-spawner.js';
-import { computeBurstLiveness } from './advance-perception.js';
 import type { TaskRecord } from './inner-brain-registry.js';
+
+const STUCK_THRESHOLD_MS = 15 * 60 * 1000;
+
+function computeBurstLiveness(
+  record: Pick<TaskRecord, 'status' | 'pid' | 'startedAt' | 'lastTickAt' | 'workDir'>,
+  now = Date.now(),
+): 'active' | 'stuck' | 'dead' | null {
+  if (record.status !== 'RUNNING') return null;
+  if (record.pid != null && !isPidAlive(record.pid)) return 'dead';
+  const worker = readWorkerStatus(record.workDir);
+  const anchor = worker?.lastTickAt ?? record.lastTickAt ?? record.startedAt;
+  return now - new Date(anchor).getTime() > STUCK_THRESHOLD_MS ? 'stuck' : 'active';
+}
 
 export type InnerBrainInstanceRow = {
   instance_id: string;

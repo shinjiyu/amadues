@@ -3,6 +3,8 @@
 > **English:** **Inner-only** harness recursive self-improvement: the DyFlow worker **periodically analyzes** run logs/traces for suboptimal harness, writes versioned **H′**, **gates**, then **upgrades** the active pointer or **rolls back**. Hard failure is an **auxiliary** trigger, not the primary one. Outer brain does **not** RSI — it only spawns/stops.
 
 > **状态**：2026-09-16 ADL 修订（**P5 Loop-Source**：revise 改 loop 全量代码）· P4 实现 ✅ · P5 设计 ⏳  
+> ⚠️ **P5（revise 改 loop 全量源码）已被否定**：推导与实证见 [`HARNESS-RSI-NEGATIVE-RESULTS.md`](./HARNESS-RSI-NEGATIVE-RESULTS.md)（自改写不增加可达性 N1；其正确性无法被可付地认证 N3）。替代设计见 [`TOOL-MDL-GROWTH.md`](./TOOL-MDL-GROWTH.md)。本篇 P0–P4 仍有效。
+
 > **关联**：[`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) · [`DYFLOW-ATTRIBUTION.md`](./DYFLOW-ATTRIBUTION.md) · [`INNER-NODE-SKILLS.md`](./INNER-NODE-SKILLS.md) · [`BATTLE-TUNE-LOOP.md`](./BATTLE-TUNE-LOOP.md)（**analyze → gate → active** 范型）· [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) · [`COLLATZ-LEAN-RSI.md`](./COLLATZ-LEAN-RSI.md) · [`TERMINOLOGY.md`](./TERMINOLOGY.md)
 
 ---
@@ -177,6 +179,7 @@ interface HarnessPatch {
 |---------|------|--------------|------|
 | **harnessSpecStore** | HarnessSpec CRUD + contentHash | `inner-brain/harness-spec-store.ts` | ✅ P0 |
 | **harnessLoopTree** | tree 物化 / 读 manifest / 应用 patches（COW） | `inner-brain/harness-loop-tree.ts` | ✅ P5 |
+| **harnessLoopPatch** | findings → 可选 patches（无问题则空；H13/H14） | `inner-brain/harness-loop-patch.ts` | ✅ |
 | **harnessPointer** | `active.json` + history；upgrade / rollback | `inner-brain/harness-pointer.ts` | ✅ P0 |
 | **harnessAnalyze** | 读轨迹 → soft findings；管 cadence | `inner-brain/harness-analyze.ts` | ✅ P4 |
 | **harnessRevise** | findings + **当前 tree** → patches → H′（H6；H11；H12） | `inner-brain/harness-revise.ts` | ✅ P5 |
@@ -222,6 +225,8 @@ interface HarnessPatch {
 | **H10** | 执行面（runner / 最小 loop / baseNode 实现解析）**必须**加载 active H 的 `loopTree`（若 H 声明了 `loopTreeId`）；禁止 upgrade 后仍只跑仓库未快照路径 |
 | **H11** | patches 的 `path` 归一化后必须落在 `loopRoots` 内；拒绝 `..`、绝对路径、出树写入 |
 | **H12** | **无 loopTree diff（且无 workflowRef/localNode 等实质 refs 变更）不得 upgrade**。仅追加 skillRefs / 日记 skill **不**构成有效 H′ |
+| **H13** | **禁止为改而改**：patches 必须对应 analyze 的 **actionable findings**（或硬失败诊断）；仅 epoch/日记/注释空涨 **不得** upgrade。无诊断 patches 时，有 `loopTreeId` 的 H **跳过** revise |
+| **H14** | **空转是工艺故障**：连续多轮无 Lean 落地、空 LLM、或 lake 拒稿被绿 build 盖掉 **必须** 进入 analyze→`harnessLoopPatch`。这不是证明失败本身，而是 loop **反馈/重试**坏了。有可落地 patches 则 revise；证不出 3n+1 **仍不得**冒充任务成功 |
 
 ---
 
@@ -238,7 +243,8 @@ interface HarnessPatch {
 | **P5** | **Loop-Source RSI**：`harnessLoopTree` + revise **patches 全量 loop 代码** + gateChecks + H10–H12；消费方从 active tree 加载 | ✅（Collatz E 验证；DyFlow runner 深接入可续） |
 
 参考实现范型：[`BATTLE-TUNE-LOOP.md`](./BATTLE-TUNE-LOOP.md)（`pstune analyze` → gate → active）。  
-Collatz 试点对齐：[`COLLATZ-LEAN-RSI.md`](./COLLATZ-LEAN-RSI.md) §6 **E**（revise 改 `assault-loop` / 门控脚本，而非只写 Exploration）。
+Collatz 试点对齐：[`COLLATZ-LEAN-RSI.md`](./COLLATZ-LEAN-RSI.md)（revise 改 `assault-loop` / 门控脚本，而非只写 Exploration）。  
+**长跑复盘与路线对比**见该文 §6（100 轮：43 轮只改计划、RSI 从未收到失败信号、计划断言未核验）与 §7（同余枚举不闭合；重写+SAT 等替代路线）。
 
 ---
 
@@ -256,6 +262,8 @@ Collatz 试点对齐：[`COLLATZ-LEAN-RSI.md`](./COLLATZ-LEAN-RSI.md) §6 **E**�
 | upgrade 后 `loopTreeId` 不变，仅 `skillRefs` 变长 | **P4 空转**；违 H12 |
 | upgrade 后下一轮仍执行 packages 原文件 / 非 tree 入口 | 违 H10；进化未生效 |
 | patches 写出 `loopRoots` 外或改了 `packages/**` 原地 | 违 H11 / §2.2 |
+| 每轮只涨 epoch / lastNote / 无 finding 仍 upgrade | **为改而改**；违 H13 |
+| 连续空转（空 LLM / 只改计划 / 拒稿日志被绿 lake 盖掉）仍 `h13_need_diagnosis_patches` 且无 stall finding | **触发过窄**；违 H14 |
 
 ---
 
@@ -290,8 +298,10 @@ Collatz 试点对齐：[`COLLATZ-LEAN-RSI.md`](./COLLATZ-LEAN-RSI.md) §6 **E**�
 | 2026-09-15 | follow-up ✅ 成功 RUN 自动 held-out；revise 优先失败节点 skillRefs |
 | 2026-09-15 | **P4 ADL+实现**：主触发改为周期 analyze（范型 pstune）；失败为辅；`harnessAnalyze` + H9 |
 | 2026-09-15 | 试点开搞：[`COLLATZ-LEAN-RSI.md`](./COLLATZ-LEAN-RSI.md) Collatz + Lean 最小 loop |
-| 2026-09-16 | Collatz C 冲击暴露：仅 skillRefs 账本 **无行为增益** → 驱动 **P5 Loop-Source** |
 | 2026-09-16 | **P5 ADL**：loop source tree；revise=patches 全量代码；H10–H12；禁止 skillRefs-only upgrade |
+| 2026-09-16 | **H13**：patches 须诊断驱动；禁止 cosmetic epoch 空涨；`harnessLoopPatch` 提案器 |
+| 2026-09-16 | Collatz **目标重标定**：任务=证明 3n+1；RSI 为正交旁路（见 COLLATZ-LEAN-RSI.md） |
+| 2026-09-16 | **H14**：证明轨空转须诊断 loop 工艺（拒稿日志、空 LLM 重试）；仍禁止把 upgrade 当证明 |
 
 ---
 

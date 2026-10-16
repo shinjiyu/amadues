@@ -1,5 +1,7 @@
 # IM 入站意图分流（ADL 权威）
 
+> **⚠️ 2026-10-16**：派活改为 [`WORKSHOP.md`](./WORKSHOP.md)。入站不再装配 active KPI，也不再提供 `set_kpi` / `advance_kpi`。用户的话交给外脑拆成可执行任务。`kpi_create` / `kpi_update` 待删除。状态快指令去掉 KPI 活动口径（**改写**）。
+
 > **English (方案一, 2026-06-24 — authoritative):** The inbound pre-pass **no longer dispatches anything**. It is reduced to a **read-only context assembler**: it gathers active KPIs + in-flight bursts for this origin and injects them as an **advisory block** into the conversation loop. The **conversation-loop LLM is the sole decider** of create/dispatch/follow-up, using its existing tools (`set_goal` one-shot · `set_kpi` create · `advance_kpi` · `send_directive`). It already runs with full context, so it reads "介绍一下自己" and just answers; it only calls a tool when genuinely needed. No extra LLM call, no regex hard-gate, no irrecoverable misclassification. Safety guards (KPI spawn capacity, R7 failure circuit, dispatch guard, KPI reuse/dedup) stay at the **tool-execution layer**, independent of who triggers them.
 
 > **只读状态快指令（2026-07-21）：** `状态` / `进度` 与 `密度` / `今天` 是确定性的只读查询，可在对话 LLM 前短路回复。它们不分类业务意图、不建 KPI、不派 burst；只读取 `innerBrainRegistry`、`kpiRegistry`、autonomy policy，避免调用昂贵的 `brain-inspector` / 全量日志。详见 §4.1。

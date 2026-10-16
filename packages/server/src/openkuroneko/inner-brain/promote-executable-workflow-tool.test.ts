@@ -86,7 +86,6 @@ describe('Attributor promote_executable_workflow', () => {
       memory,
       workDir,
       localStore: createLocalNodeStore(workDir),
-      kpiId: 'kpi-novel',
     });
     expect(res.ok).toBe(true);
     expect(res.toolCalls).toBe(1);
@@ -94,6 +93,5 @@ describe('Attributor promote_executable_workflow', () => {
     const store = new ExecutableWorkflowStore({ dataRoot: root });
     const wf = store.getLatest('ew-publish');
     expect(wf?.kind).toBe('frozen_dag');
-    expect(wf?.tags).toContain('kpi:kpi-novel');
   });
 });
