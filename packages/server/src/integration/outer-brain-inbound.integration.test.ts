@@ -1,5 +1,5 @@
 /**
- * F 装配：OuterBrain.handleInbound（无 LLM → IM 降级回复）。
+ * F 装配：OuterBrain.handleInbound（无 LLM → subjectThink 平局选 defer，发状态回执）。
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -39,7 +39,7 @@ describe('integration: outer brain inbound assembly', () => {
     delete process.env['UTLRA_AGENT_IM_SID'];
   });
 
-  it('DM 入站、无 LLM key → FakeIm 收到降级提示', async () => {
+  it('DM 入站、无 LLM key → 状态回执，不走强制回复', async () => {
     const threadId = `thread:dm:assembly-${Date.now()}`;
     await fx.brain.handleInbound({
       threadId,
@@ -50,9 +50,10 @@ describe('integration: outer brain inbound assembly', () => {
       },
     });
 
-    const out = fx.im.messagesMatching(/外脑未配置 LLM|无法生成回复/, threadId);
-    expect(out.length).toBeGreaterThan(0);
-    expect(out[0]!.body.text).toMatch(/外脑未配置 LLM/);
+    const out = fx.im.messagesMatching(/〔状态〕先搁下，4 小时后再看。/, threadId);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.body.disposition).toBe('status');
+    expect(fx.im.messagesMatching(/外脑未配置 LLM|无法生成回复|不允许静默结束/, threadId)).toHaveLength(0);
   });
 
   it('状态/密度快指令无 LLM 也能直接回复，且不落入 LLM 降级', async () => {

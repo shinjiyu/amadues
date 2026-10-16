@@ -1,0 +1,52 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L3 内脑 — DyFlow Phases (DESIGN/RUN/AWAITING/DONE)"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      subgraph 80 ["Inner Brain Worker"]
+        style 80 fill:#ffffff,stroke:#2e6295,color:#2e6295
+
+        103["<div style='font-weight: bold'>Designer Tool Registry</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>Designer<br />专用工具集：list_local_nodes /<br />read_local_node / read_memory<br />/ read_trace /<br />search_and_instance /<br />commit_local_dag /<br />report_done</div>"]
+        style 103 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        108["<div style='font-weight: bold'>Brain FS</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>File-as-State：.brain/*<br />读写（DyFlow 主用 localNodeStore +<br />memoryStore；brainFs 仅余<br />tail/通用文件工具供 completionReport<br />/ getSkillContent）</div>"]
+        style 108 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        109["<div style='font-weight: bold'>Archive Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>会话归档与 KPI/reflexion meta</div>"]
+        style 109 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        110["<div style='font-weight: bold'>Workdir Guard</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>路径 allowlist；peer<br />只读；`.inbox/` 不可写</div>"]
+        style 110 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        111["<div style='font-weight: bold'>Inner File Tools</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>read_file / search_files /<br />write_file /<br />edit_file；peer：read_peer_file<br />/ list_peer_files</div>"]
+        style 111 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        112["<div style='font-weight: bold'>Describe Image Tool</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>describe_image：栅格图 →<br />visionModel 文字摘要</div>"]
+        style 112 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        113["<div style='font-weight: bold'>Browser Session Registry</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>进程内 Playwright<br />会话：open/act/close + node 结束清理</div>"]
+        style 113 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        114["<div style='font-weight: bold'>Browser Tools</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>browser_open / browser_act /<br />browser_close / browser_list</div>"]
+        style 114 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        81["<div style='font-weight: bold'>Worker Host</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>子进程入口、status.json、tick 循环</div>"]
+        style 81 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        82["<div style='font-weight: bold'>Pi-mono Scheduler</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>run-tick：驱动 DyFlow<br />Controller.tick</div>"]
+        style 82 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        83["<div style='font-weight: bold'>Controller FSM</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>DyFlow mode<br />切换：DESIGN|RUN|AWAITING|DONE</div>"]
+        style 83 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        84["<div style='font-weight: bold'>Designer (DyFlow)</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>DESIGN 阶段：LLM 编排 local_dag；读<br />memory + last_failure +<br />LocalNode index；调 Designer<br />Tools</div>"]
+        style 84 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        85["<div style='font-weight: bold'>Runner (DyFlow)</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>RUN 阶段：解析 local_dag，按<br />NodeInst 派发 baseNode /<br />graph；写 memory.node_results &<br />last_failure</div>"]
+        style 85 fill:#85bbf0,stroke:#5d82a8,color:#000000
+      end
+
+    end
+
+    81-. "<div>run-tick</div><div style='font-size: 70%'>[in-process]</div>" .->82
+    82-. "<div>setWorkDirGuard +<br />setPeerWorkspaces</div><div style='font-size: 70%'>[in-process]</div>" .->110
+    111-. "<div>path security check</div><div style='font-size: 70%'>[in-process]</div>" .->110
+    82-. "<div>tick()</div><div style='font-size: 70%'>[in-process]</div>" .->83
+    83-. "<div>mode=DESIGN</div><div style='font-size: 70%'>[in-process]</div>" .->84
+    83-. "<div>mode=RUN</div><div style='font-size: 70%'>[in-process]</div>" .->85
+    84-. "<div>tools allowlist</div><div style='font-size: 70%'>[in-process]</div>" .->103
+    83-. "<div>archive(kpiId)</div><div style='font-size: 70%'>[in-process]</div>" .->109
+
+  end

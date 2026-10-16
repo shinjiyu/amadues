@@ -1741,6 +1741,21 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     getEngine,
   };
 
+  const dispatchSubjectProposal = async (proposal: {
+    kind: 'kpi_advance' | 'ad_hoc';
+    kpiId?: string;
+    goalText: string;
+    expectedOutcome: string;
+    drive: 'curiosity' | 'completion';
+  }) => {
+    const result = await digitalEmployeeRuntime?.trigger('drive_threshold', { subjectProposal: proposal });
+    const row = result as { subjectProposalDispatched?: boolean; reason?: string } | undefined;
+    return {
+      dispatched: Boolean(row?.subjectProposalDispatched),
+      reason: row?.reason ?? 'no_runtime',
+    };
+  };
+
   outerBrain = new OuterBrain({
     imClient: fanInChannel,
     seenTracker,
@@ -1766,6 +1781,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     executableWorkflowStore,
     workflowDrive9Store,
     getEmployeeCalendar: () => digitalEmployeeRuntime?.getCalendar(),
+    dispatchSubjectProposal,
   });
 
   httpOuterBrainDeps = {
@@ -1793,6 +1809,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     executableWorkflowStore,
     workflowDrive9Store,
     getEmployeeCalendar: () => digitalEmployeeRuntime?.getCalendar(),
+    dispatchSubjectProposal,
   };
 
   // Push Loop：轮询内脑输出，主动推送 BLOCK/COMPLETE/PROGRESS 事件
@@ -1875,6 +1892,7 @@ if (process.env['UTLRA_SKIP_AGENT_BOOTSTRAP'] === '1') {
     identityRegistry: registry,
     triggerDigitalEmployee: () =>
       digitalEmployeeRuntime?.trigger('heartbeat_fallback') ?? Promise.resolve(),
+    dispatchSubjectProposal,
     getEmployeeCalendar: () => digitalEmployeeRuntime?.getCalendar(),
   });
   heartbeat.start();

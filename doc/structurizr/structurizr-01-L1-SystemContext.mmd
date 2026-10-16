@@ -1,0 +1,45 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["System Context View: Kuroneko (utlra)"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>用户</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>仅经 IM 渠道对话与派任务；不直连 Agent API</div>"]
+    style 1 fill:#ffffff,stroke:#444444,color:#444444
+    10["<div style='font-weight: bold'>drive9</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>技能 / 知识 Markdown + grep</div>"]
+    style 10 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    11["<div style='font-weight: bold'>Kuroneko (utlra)</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>多通道 Agent：外脑编排、内脑子进程、技能与记忆</div>"]
+    style 11 fill:#1168bd,stroke:#0b4884,color:#ffffff
+    2["<div style='font-weight: bold'>运维/观察者</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>ops-console、performance<br />dashboard；查看内外脑与 KPI</div>"]
+    style 2 fill:#ffffff,stroke:#444444,color:#444444
+    3["<div style='font-weight: bold'>Discord</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>外部 IM（Gateway + REST）</div>"]
+    style 3 fill:#8e44ad,stroke:#632f79,color:#ffffff
+    4["<div style='font-weight: bold'>飞书 / Lark</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>外部 IM：企业自建应用机器人；一 agent 可 N<br />条连接（非单例）</div>"]
+    style 4 fill:#8e44ad,stroke:#632f79,color:#ffffff
+    6["<div style='font-weight: bold'>本地 WebChat IM</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>apps/chat-server REST/WS 枢纽 +<br />web-chat 浏览器；自建对话入口</div>"]
+    style 6 fill:#8e44ad,stroke:#632f79,color:#ffffff
+    7["<div style='font-weight: bold'>内外脑监控</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>ops-console 启停与 KPI 调试 +<br />dashboard 性能/目标面板</div>"]
+    style 7 fill:#16a085,stroke:#0f705d,color:#ffffff
+    8["<div style='font-weight: bold'>LLM 提供商</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Zhipu / LocalModule 等</div>"]
+    style 8 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    9["<div style='font-weight: bold'>mem9</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>对话与任务云记忆</div>"]
+    style 9 fill:#999999,stroke:#6b6b6b,color:#ffffff
+
+    1-. "<div>使用 Discord 客户端</div><div style='font-size: 70%'>[Discord 桌面/移动客户端]</div>" .->3
+    1-. "<div>使用飞书客户端</div><div style='font-size: 70%'>[飞书桌面/移动客户端]</div>" .->4
+    1-. "<div>使用 Web Chat 浏览器</div><div style='font-size: 70%'>[HTTPS/WSS]</div>" .->6
+    3-. "<div>入站消息 / Gateway</div><div style='font-size: 70%'>[WSS + REST]</div>" .->11
+    11-. "<div>出站回复</div><div style='font-size: 70%'>[REST]</div>" .->3
+    4-. "<div>入站消息 / 事件（多连接）</div><div style='font-size: 70%'>[长连接/Webhook]</div>" .->11
+    11-. "<div>出站回复 / reaction Typing</div><div style='font-size: 70%'>[HTTPS]</div>" .->4
+    6-. "<div>ChatIR 入站、StructuredReply 出站</div><div style='font-size: 70%'>[HTTP/WS]</div>" .->11
+    11-. "<div>经 bridge 推送回复</div><div style='font-size: 70%'>[HTTP/WS]</div>" .->6
+    2-. "<div>查看 KPI、内外脑、性能</div><div style='font-size: 70%'>[HTTPS]</div>" .->7
+    7-. "<div>拉取<br />/api/kpis、inner-brains、performance</div><div style='font-size: 70%'>[HTTPS]</div>" .->11
+    11-. "<div>推理与 tool calls</div><div style='font-size: 70%'>[HTTPS]</div>" .->8
+    11-. "<div>记忆 store/search</div><div style='font-size: 70%'>[HTTPS]</div>" .->9
+    11-. "<div>技能读写</div><div style='font-size: 70%'>[HTTPS]</div>" .->10
+    1-. "<div>浏览输入</div><div style='font-size: 70%'>[HTTPS]</div>" .->11
+    2-. "<div>运维操作</div><div style='font-size: 70%'>[HTTPS]</div>" .->11
+
+  end

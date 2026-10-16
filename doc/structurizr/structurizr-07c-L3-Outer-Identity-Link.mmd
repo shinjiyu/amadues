@@ -1,0 +1,33 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L3 Outer — 跨渠道身份认同 + 通道注册"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      subgraph 15 ["Agent Server"]
+        style 15 fill:#ffffff,stroke:#2e6295,color:#2e6295
+
+        18["<div style='font-weight: bold'>Outer Brain Facade</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【唯一外脑入口】Discord/WebChat/HTTP<br />入站 → 检索 → 是否说话 → subjectThink</div>"]
+        style 18 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        22["<div style='font-weight: bold'>Memory Block Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【结构化长期记忆】Block+Strategy<br />CRUD；keychain=kv_secret；bind→.brain/secrets</div>"]
+        style 22 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        25["<div style='font-weight: bold'>Outer Tool Executor</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【工具执行】reply_to_user /<br />set_goal（KPI 单实例复用 + peer<br />catalog）/ list_brains /<br />read_inner_status / KPI 等</div>"]
+        style 25 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        73["<div style='font-weight: bold'>Identity Link Service</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【跨渠道同人】双边确认状态机；唯一日常 commit<br />映射的入口；Agent 不裁决</div>"]
+        style 73 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        74["<div style='font-weight: bold'>Channel Connection Registry</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【IM 连接表】N 条飞书等连接；运行时热插；secret<br />仅 keychain ref</div>"]
+        style 74 fill:#85bbf0,stroke:#5d82a8,color:#000000
+      end
+
+    end
+
+    25-. "<div>memory_block_* list/put/bind</div><div style='font-size: 70%'>[in-process]</div>" .->22
+    25-. "<div>identity_link_request /<br />status（不直接改映射）</div><div style='font-size: 70%'>[in-process]</div>" .->73
+    25-. "<div>feishu_channel_add/list/remove</div><div style='font-size: 70%'>[in-process]</div>" .->74
+    73-. "<div>投递确认消息（经 imClient Fan-in）</div><div style='font-size: 70%'>[in-process]</div>" .->18
+    74-. "<div>secret_ref → keychain</div><div style='font-size: 70%'>[in-process]</div>" .->22
+
+  end

@@ -1,0 +1,91 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L3 外脑 — 数字员工自主工作（容量+日程+创造性提案；心跳 watchdog）"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      subgraph 15 ["Agent Server"]
+        style 15 fill:#ffffff,stroke:#2e6295,color:#2e6295
+
+        16["<div style='font-weight: bold'>Participation Policy</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【是否回复】规则过滤 + 群聊@判定 +<br />SPEAK/SILENT LLM；入站第一道闸门</div>"]
+        style 16 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        17["<div style='font-weight: bold'>Thread Orchestrator</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【线程编排】jitter/debounce + 同<br />thread FIFO 串行 +<br />freshCheck（仅触发上被一并@的 agent<br />算抢答；独占@本 agent 不因他人插话放弃）</div>"]
+        style 17 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        25["<div style='font-weight: bold'>Outer Tool Executor</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【工具执行】reply_to_user /<br />set_goal（KPI 单实例复用 + peer<br />catalog）/ list_brains /<br />read_inner_status / KPI 等</div>"]
+        style 25 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        26["<div style='font-weight: bold'>LLM Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【模型网关】参与判别、外脑对话、复盘、roundtrip<br />草稿；Zhipu/Kimi/LocalModule</div>"]
+        style 26 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        27["<div style='font-weight: bold'>Inner Brain Registry</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【内脑任务表】instanceId、RUNNING/DONE/AWAITING、workDir；boot<br />markStale 不 auto-resume</div>"]
+        style 27 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        43["<div style='font-weight: bold'>KPI Registry</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【KPI<br />元数据】set_kpi、bursts、charter、burstRunHistory</div>"]
+        style 43 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        47["<div style='font-weight: bold'>KPI Completion Judge</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【KPI 完成判定】心跳 sweep +<br />digest；suggestKpiAction=achieved<br />→ markAchieved</div>"]
+        style 47 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        48["<div style='font-weight: bold'>Outer Heartbeat</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【Watchdog】质控+完成判定+死亡/失约检测+自主循环补漏；非正常续派主时钟</div>"]
+        style 48 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        49["<div style='font-weight: bold'>Digital Employee Loop</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【容量驱动主循环】多触发 coalesce → 可用容量<br />→ 到期日程优先 → 自主提案 → set_goal</div>"]
+        style 49 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        50["<div style='font-weight: bold'>Employee Calendar</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【数字员工日程表】once/interval/cron<br />持久化承诺；due/missed；到期不占等待<br />worker</div>"]
+        style 50 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        51["<div style='font-weight: bold'>Self Work Policy</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【可测试创造性】4 策略角度轮询 +<br />llm_reflective + AbTest 灰度 +<br />提案校验（去重/依赖/冲突/路线熔断）+ 指标 JSONL</div>"]
+        style 51 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        52["<div style='font-weight: bold'>Performance Goal Engine</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【长期绩效目标】审阅 scorecard；心跳注入<br />performanceBlock</div>"]
+        style 52 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        53["<div style='font-weight: bold'>LLM Usage Tracker</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【LLM 计量】in-flight 计数 + usage<br />滚动窗口（prompt/completion<br />tokens）</div>"]
+        style 53 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        55["<div style='font-weight: bold'>Resource Probe</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【资源感知 P0 简版】扁平<br />ResourceSnapshot；P1 起被<br />environmentSensorRegistry 替代</div>"]
+        style 55 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        69["<div style='font-weight: bold'>Autonomy Policy Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【闲忙规则】policy.json +<br />policy-rubric.md；聊天 tools 可改</div>"]
+        style 69 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        70["<div style='font-weight: bold'>Autonomy Judge</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【容量判定】hard gates →<br />hasAvailableCapacity；等待依赖不等于<br />RUNNING</div>"]
+        style 70 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        71["<div style='font-weight: bold'>Agent Personality</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【性格参数】personality.json：idleChatProbability<br />等；与 soul.md 并列</div>"]
+        style 71 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        72["<div style='font-weight: bold'>Casual Chat Dispatcher</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【idle 闲聊】性格概率 proactive<br />IM；KPI spawn 由 kpiManager 负责</div>"]
+        style 72 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        79["<div style='font-weight: bold'>Subject Think</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【一次主体<br />reducer】user=主体模板，assistant=无工具<br />JSON；不聊天时仍发固定状态回执</div>"]
+        style 79 fill:#85bbf0,stroke:#5d82a8,color:#000000
+      end
+
+    end
+
+    16-. "<div>SPEAK/SILENT / topic check</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    25-. "<div>register / list / stop</div><div style='font-size: 70%'>[in-process]</div>" .->27
+    25-. "<div>set_kpi / view_kpi</div><div style='font-size: 70%'>[in-process]</div>" .->43
+    48-. "<div>tick sweepKpiCompletions +<br />digest</div><div style='font-size: 70%'>[in-process]</div>" .->47
+    47-. "<div>markAchieved / list active</div><div style='font-size: 70%'>[in-process]</div>" .->43
+    47-. "<div>buildKpiBurstLinks / live<br />burst</div><div style='font-size: 70%'>[in-process]</div>" .->27
+    48-. "<div>collect ResourceSnapshot</div><div style='font-size: 70%'>[in-process]</div>" .->55
+    48-. "<div>load policy + rubric</div><div style='font-size: 70%'>[in-process]</div>" .->69
+    48-. "<div>evaluate idle|busy</div><div style='font-size: 70%'>[in-process]</div>" .->70
+    48-. "<div>reviewGoalsForHeartbeat</div><div style='font-size: 70%'>[in-process]</div>" .->52
+    55-. "<div>count<br />RUNNING/AWAITING/BLOCKED</div><div style='font-size: 70%'>[in-process]</div>" .->27
+    55-. "<div>tokens + inFlight</div><div style='font-size: 70%'>[in-process]</div>" .->53
+    55-. "<div>orchestrator queue depth</div><div style='font-size: 70%'>[in-process]</div>" .->17
+    53-. "<div>wrap chat/completions</div><div style='font-size: 70%'>[in-process]</div>" .->26
+    70-. "<div>hardGates</div><div style='font-size: 70%'>[in-process]</div>" .->69
+    48-. "<div>verdict=idle → 性格概率闲聊</div><div style='font-size: 70%'>[in-process]</div>" .->72
+    72-. "<div>idleChatProbability</div><div style='font-size: 70%'>[in-process]</div>" .->71
+    72-. "<div>post_to_im</div><div style='font-size: 70%'>[in-process]</div>" .->25
+    72-. "<div>casual_chat 频控</div><div style='font-size: 70%'>[in-process]</div>" .->16
+    72-. "<div>defer when active KPI + can<br />spawn</div><div style='font-size: 70%'>[in-process]</div>" .->43
+    25-. "<div>read_autonomy_policy /<br />update_*</div><div style='font-size: 70%'>[in-process]</div>" .->69
+    25-. "<div>read/update_personality</div><div style='font-size: 70%'>[in-process]</div>" .->71
+    50-. "<div>calendar_due → trigger；due<br />保留至有容量</div><div style='font-size: 70%'>[in-process]</div>" .->49
+    48-. "<div>heartbeat_fallback（watchdog<br />补漏）</div><div style='font-size: 70%'>[in-process]</div>" .->49
+    49-. "<div>hasAvailableCapacity</div><div style='font-size: 70%'>[in-process]</div>" .->70
+    49-. "<div>read due commitments first</div><div style='font-size: 70%'>[in-process]</div>" .->50
+    49-. "<div>无 due 且有容量 → propose</div><div style='font-size: 70%'>[in-process]</div>" .->51
+    51-. "<div>active KPI + momentum/history</div><div style='font-size: 70%'>[in-process]</div>" .->43
+    51-. "<div>pending dependencies +<br />running conflicts</div><div style='font-size: 70%'>[in-process]</div>" .->27
+    49-. "<div>合法日程/提案 → 唯一 set_goal</div><div style='font-size: 70%'>[in-process]</div>" .->25
+    16-. "<div>SPEAK=可以想；SILENT=只入 inbox</div><div style='font-size: 70%'>[in-process]</div>" .->79
+    79-. "<div>user=主体模板；assistant=JSON；tools<br />空</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    79-. "<div>对话回复，或非聊天终态的固定状态回执</div><div style='font-size: 70%'>[in-process]</div>" .->25
+    79-. "<div>propose_self_work →<br />drive_threshold</div><div style='font-size: 70%'>[in-process]</div>" .->49
+    48-. "<div>监督步骤之后的尾步；不改 0–6 顺序</div><div style='font-size: 70%'>[in-process]</div>" .->79
+
+  end

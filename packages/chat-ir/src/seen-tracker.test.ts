@@ -166,6 +166,27 @@ describe('ChatIRSeenTracker.track', () => {
     expect(t.countConsecutiveAgentMessages('th1')).toBe(3);
   });
 
+  it('disposition=status 不计入连续 agent 发言，也不算抢答', () => {
+    const t = makeTracker();
+    t.track('th1', { message_id: 'human', sender_sid: HUMAN });
+    t.track('th1', { message_id: 'a1', sender_sid: SELF });
+    t.track('th1', {
+      message_id: 'status',
+      sender_sid: SELF,
+      disposition: 'status',
+    });
+    t.track('th1', { message_id: 'other', sender_sid: 'agent:other' });
+    expect(t.countConsecutiveAgentMessages('th1')).toBe(2);
+    t.reset();
+    t.track('th1', { message_id: 'trigger', sender_sid: HUMAN });
+    t.track('th1', {
+      message_id: 'status',
+      sender_sid: 'agent:other',
+      disposition: 'status',
+    });
+    expect(t.hasAnotherAgentRepliedAfter('th1', 'trigger')).toBe(false);
+  });
+
   it('reset() 清空所有缓存', () => {
     const t = makeTracker();
     t.track('th1', { message_id: 'a1', sender_sid: SELF });

@@ -225,8 +225,13 @@ interface SelfWorkProposal {
 | `inbound_drained` | 用户前台队列处理完且释放容量 |
 | `policy_changed` | autonomy / budget / slot policy 变化 |
 | `heartbeat_fallback` | 周期补漏与监督 |
+| `drive_threshold` | 主体已选出 `propose_self_work` 时由 `subjectThink` 发出。无旗标。见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §9.3 |
 
 触发必须 coalesce + single-flight，避免同一时刻多次事件重复派发。
+
+### 5.1.1 与自主主体的优先级
+
+所有人类入站（含主人自己的 sid）都只是信号。主体可以 `no_reply`、`defer` 或 `decline`，不再自动压过主体决策。`no_reply` / `defer` / `wait` 在同一线程发固定状态回执（SUBJECT-CORE §8.1），这不是服从。主人 sid 不是例外（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md) SC-10）。没有把旧入站工具环留作回退的旗标。`participationPolicy` 仍是想不想的前门，不是命令权。到期日程仍然优先于 `drive_threshold` 带来的提案。该提案不能新建 KPI（只 advance 已有的，或 ad_hoc）。校验失败**不**回落成另一次 `SelfWorkPolicy`。纯驱动力尾步有 4 小时冷却，见 SUBJECT-CORE §9.2 与 §17。§5.2 第 5 条「用户明确请求优先」只表示到期承诺与明确事项先于自主找活，不表示必须回复或必须派活。
 
 ### 5.2 调度顺序
 
@@ -243,6 +248,8 @@ trigger
   → dispatch 成功后重新采集容量
   → 仍有容量可继续填槽，但受单次 trigger 派发上限保护
 ```
+
+`drive_threshold` 在「无到期日程」之后不调用 `SelfWorkPolicy.propose`，只校验主体已经给出的那一份提案（§5.1.1）。上图其余 reason 不变。
 
 优先级：
 
@@ -435,3 +442,6 @@ Heartbeat 不再是连续推进的唯一主时钟，也不直接决定下一份�
 | 2026-07-22 | 名词统一：执行轮次一律称 **burst**；见 [`TERMINOLOGY.md`](./TERMINOLOGY.md)。 |
 | 2026-07-25 | **W15**：EW 自优化——质检失败 → `ew_revision` explore（穿透日历硬闸）→ 同 id promote；日常 collect 仍只跟日历 |
 | 2026-07-21 | DE-4 彻底化：从 schema 删除概念而非归一化——`kpi_inner_goal` 仅剩 `enabled`，`hardGates` 删除 `minMsSinceLastAutonomousAction`；policy 工具不再暴露/打印这些旋钮；load 时删除旧字段并回写。 |
+| 2026-10-12 | 触发源 `drive_threshold`（[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)，未实现）。无旗标；入站 SPEAK 只走主体。 |
+| 2026-10-12 | 旗标开时主人 sid 同样只是信号：`no_reply` / `defer` / `decline` 无例外（SUBJECT-CORE SC-10）。 |
+| 2026-10-12 | 主体提案不新建 KPI；纯驱动力尾步 4 小时冷却。常数以 SUBJECT-CORE §17 为准。 |

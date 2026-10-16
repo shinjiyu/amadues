@@ -24,8 +24,10 @@
 | **身份 link pending** | 本地 JSON | `DATA_ROOT/identity/link-pending/` | `identityLinkService` | confirm/reject/expire |
 | **IM 通道连接表** | 本地 JSON | `DATA_ROOT/channels/connections.json` | `channelConnectionRegistry` | boot + 热插；`secret_ref` → keychain |
 | **数字员工日程** | 本地 JSON（复用 Scheduler） | `DATA_ROOT/scheduled-tasks/`（或等价 TaskStore） | `employeeCalendar` | `digitalEmployeeLoop` due/missed；见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) |
+| **主体控制状态（⏳）** | 本地 JSON | `DATA_ROOT/subject/state.json` + `inbox.json` | **仅** `subjectStateStore` | `subjectThink` / `subjectDrive`；见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) |
+| **主体审计（⏳）** | 本地 JSONL | `DATA_ROOT/subject/think-log.jsonl` | `subjectThink` 追加 | 人读。不存完整 prompt；单槽 2000 码位，整行 65536 字节。**不回注** prompt。见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §7.3 / §17 |
 
-专篇：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md) · [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) · [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) · [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)
+专篇：[`MEMORY-BLOCKS.md`](./MEMORY-BLOCKS.md) · [`INNER-BRAIN-AWAITING-LIFECYCLE.md`](./INNER-BRAIN-AWAITING-LIFECYCLE.md) · [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) · [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) · [`SUBJECT-CORE.md`](./SUBJECT-CORE.md)
 
 ## 分工原则
 
@@ -35,6 +37,7 @@
    - 任务/对话摘要：`outerMemory` → mem9  
    - 结构化长期 KV：**`memoryBlockStore`**（Cookie 等 **不进** mem9）
    - **跨渠道同人**：`identityBindingIndex` + `identityLinkService`（双边确认）；**禁止** LLM 直接改映射
+   - **主体控制状态（⏳，无旗标）**：`DATA_ROOT/subject/`（驱动力、目标、defer、inbox）。与 burst `.brain/`、mem9、Memory Block 都不是同一层。见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md)
    - **按人跨会话记忆**：`personMessageRecall`（chat-ir）——入站 sender 的 sid 别名集（bindingIndex 派生）→ 其它 thread 近期发言注入「关于此人」块；只读 Chat IR，不新增存储；见 [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) §6.5
 
 2. **内脑 burst（legacy 三件套）**  
@@ -62,6 +65,7 @@
    - **DyFlow**：baseNode / Designer prompt **直读 NodeDef 正文**（应只通过 Assembler 装配后再 ref LocalNode）  
    - **DyFlow**：任何模块**绕过 `nodeDefDrive9Store`** 直访 drive9 `/nodes/shared/`
    - **Executable Workflow**：execute 模式**静默改** EW 正文或绕过 `expect`；用「再 seed skill」代替逐步法令（见 [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) W1–W4）
+   - **主体**：模型、对话工具或 mem9 写入 `DATA_ROOT/subject/state.json` 的驱动力 / 白名单结果（只许 `subjectStateStore`）
 
 ## 代码入口
 

@@ -1,0 +1,24 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L2 DyFlow — LocalNode → NodeDef（drive9）共享 + eviction 治理"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    10["<div style='font-weight: bold'>drive9</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>技能 / 知识 Markdown + grep</div>"]
+    style 10 fill:#999999,stroke:#6b6b6b,color:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      15["<div style='font-weight: bold'>Agent Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/server]</div><div style='font-size: 80%; margin-top:10px'>外脑 + spawn + Hono API</div>"]
+      style 15 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      80["<div style='font-weight: bold'>Inner Brain Worker</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js child_process]</div><div style='font-size: 80%; margin-top:10px'>子进程：openkuroneko 阶段机 + 反思</div>"]
+      style 80 fill:#438dd5,stroke:#2e6295,color:#ffffff
+    end
+
+    15-. "<div>SkillDrive9 + KnowledgeDrive9<br />+ AgentPool</div><div style='font-size: 70%'>[HTTPS]</div>" .->10
+    15-. "<div>spawn + env</div><div style='font-size: 70%'>[child_process]</div>" .->80
+    80-. "<div>DONE/BLOCK/status</div><div style='font-size: 70%'>[stdio + file]</div>" .->15
+    80-. "<div>query_available_skills</div><div style='font-size: 70%'>[HTTPS]</div>" .->10
+
+  end

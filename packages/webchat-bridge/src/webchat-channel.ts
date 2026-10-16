@@ -176,7 +176,7 @@ export class WebChatChannel implements ChatIRChannel {
       });
       const sent = res.message;
       this.outboundEchoSet.add(sent.id);
-      this.persistOutboundMessage(threadId, sent, body.sender_sid);
+      this.persistOutboundMessage(threadId, sent, body.sender_sid, body.disposition);
       console.log(
         `[webchat-channel] → webchat ${webChatThreadId} msg ${sent.id} (ir thread ${threadId})`,
       );
@@ -410,6 +410,7 @@ export class WebChatChannel implements ChatIRChannel {
     irThreadId: string,
     sent: WebChatMessage,
     senderSid: string,
+    disposition?: 'status' | 'speech',
   ): void {
     const store = this.opts.loadThreads();
     let threadRecord = findThreadInStore(store, irThreadId);
@@ -468,6 +469,7 @@ export class WebChatChannel implements ChatIRChannel {
       message_id: messageRecord.message_id,
       sender_sid: senderSid,
       mention_target_sids: mentionTargetSidsFromParts(parts),
+      ...(disposition === 'status' ? { disposition: 'status' as const } : {}),
     });
   }
 }

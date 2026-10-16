@@ -28,7 +28,7 @@
 | knowledgeRetrieval | 知识检索（含按人跨会话记忆注入） | `outer/knowledge-retrieval.ts` | query+senderSid → K/S/P + 本线程 + 跨线程 + 关于此人 片段 |
 | **personMessageRecall** | **按人跨会话召回（chat-ir）**：sid 别名集（bindingIndex 派生）→ 其它 thread 近期发言 | `chat-ir/src/runtime/person-message-recall.ts` | store+sid → PersonMessageHit[]；见 IDENTITY-CROSS-CHANNEL §6.5 |
 | threadOrchestrator | 线程串行 + mention 感知 freshCheck + FIFO 排队 | `outer/thread-orchestrator.ts`; `chat-ir/seen-tracker.ts` | thread ops |
-| outerConversationLoop | 外脑多轮 LLM | `outer/outer-conversation-loop.ts` | context → tool_calls；结束后可跑 emptyPromiseReconcile |
+| outerConversationLoop | **入站 SPEAK 已退役**（强制回复 / 空口对账不再是生产路径；实现时删调用，不留旗标） | `outer/outer-conversation-loop.ts` | 现码仍是 context → tool_calls；生产入站改走 subjectThink |
 | **emptyPromiseReconcile** | **空口承诺对账（post-loop）** | `outer/empty-promise-reconcile.ts` | 用户祈使 + 口头承诺 + 无成功派活 → 纠偏轮；见 IM-INBOUND-INTENT-ROUTING.md §4.2 |
 | outerToolExecutor | 外脑工具执行 | `outer/outer-tools.ts` | tool_call → reply/spawn |
 | **workspaceInbox** | **同 KPI peer 互读 + `.inbox/` 目录** | `outer/workspace-inbox.ts` | peer ids → catalog（名字/摘要） |
@@ -72,6 +72,12 @@
 | **autonomyJudge** | **容量判定（hard gates）** | `outer/environment/autonomy-judge.ts` | snapshot+policy → hasAvailableCapacity（兼容 idle/busy） |
 | **agentPersonality** | **性格参数（闲聊概率）** | `outer/personality.ts` | personality.json → idleChatProbability |
 | **casualChatDispatcher** | **idle proactive IM 闲聊（KPI 找活由 digitalEmployeeLoop / SelfWorkPolicy）** | `outer/casual-chat-dispatcher.ts` | capacity + personality → post_to_im |
+| **subjectSignalSlot** | **⏳ 主体模板：外部原文只进转义 observation 槽** | `outer/subject/signal-slot.ts` | raw → SignalParse + user 模板；见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) |
+| **subjectStateStore** | **⏳ 主体控制状态（目标 / 驱动力 / defer / inbox）** | `outer/subject/state-store.ts` | DATA_ROOT/subject → SubjectState；不进 mem9 |
+| **subjectDrive** | **⏳ 墙钟 accrue（0.10/0.06/0.08 每小时，阈值严格大于 0.60）+ 4 小时纯驱动力冷却** | `outer/subject/drive.ts` | state+now → shouldThink |
+| **subjectDecide** | **白名单决策：顾问标量分数加驱动力权重；代码选择；拒绝名单记审计。无主人 sid 特权** | `outer/subject/decide.ts` | candidates+scores → chosen / rejected |
+| **subjectWorkObject** | **self_work 之后的工作对象空间：主体根（身份 / 北极星 / 承诺 / 好奇）× 顾问岔开 × 有趣度；可重访旧题目。替人收尾不进。代码投影执行种类；goalText 带着选中对象，expectedOutcome 是短的可做动作，不必抄对象全名。分析与探讨不派出** | `outer/subject/work-object.ts` | 根 + proposals → execution；顾问写 goalText 与短的 expectedOutcome |
+| **subjectThink** | **入站 SPEAK 的唯一路径（无旗标）。user=主体，assistant=无工具 JSON；no_reply / defer / wait 对所有人类 sid（含主人）合法，并在同一线程发固定状态回执。propose_self_work 派发前用主体根选工作对象，再请顾问写产物说明** | `outer/subject/think.ts` | inbound 或心跳尾步 → think-log；可选对话回复或状态回执；可选 `drive_threshold` |
 | **identityLinkService** | **跨渠道同人双边确认（Agent 不裁决）** | `outer/identity-link-service.ts` | request/confirm → linkMerge；[`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md) |
 | **channelConnectionRegistry** | **IM 多连接 + 飞书热插** | `outer/channel-connection-registry.ts` | connections.json + keychain；N 条 feishu（connector 已注册） |
 | **qrTools** | **URL/文本 → 二维码 PNG 发当前 thread** | `outer/qr-tools.ts` | `qr_generate` 工具；`generateQrPng` 供扫码流（P4a/P4b）附图复用 |
@@ -102,8 +108,8 @@
 | 视图 | 内容 |
 |------|------|
 | `06-L3-Outer-AllModules` | 全部外脑组件 + 所有 L3 边 |
-| `07-L3-Outer-Inbound-IM` | IM 入站：Facade → **awaitingInboundResolver** → 检索/记忆/是否说话 → 对话环 → 工具 |
-| `07b-L3-Outer-Inbound-HTTP` | HTTP 入站：Facade（与 IM 同路径）→ policy → conversationLoop |
+| `07-L3-Outer-Inbound-IM` | IM 入站：Facade → **awaitingInboundResolver** → 检索/记忆/是否说话 → **subjectThink**（对话环已退役） |
+| `07b-L3-Outer-Inbound-HTTP` | HTTP 入站：Facade（与 IM 同路径）→ policy → **subjectThink** |
 | `08-L3-Outer-Inner-Lifecycle` | spawn、registry markStale、changeWatcher、pushLoop、completionNotify、innerBurstExit、KPI |
 | `10-L2-KPI-Closed-Loop` | L2：agentServer ↔ innerWorker |
 | `10b-L3-Outer-KPI` / `10c-L3-Inner-Reflexion` | L3 外脑调度 / 内脑反思分图 |
@@ -111,12 +117,14 @@
 | **`14-L3-Digital-Employee-Loop`** | **数字员工主循环：事件触发 → 容量 → Calendar / SelfWorkPolicy → set_goal；heartbeat watchdog** |
 | **`12-L3-Outer-Environment`** | **环境模型：sensor registry / journal / change detector / 消费方** |
 | **`13-L3-Outer-Strategy`** | **【历史视图名】** 战略层已删除；现行见 `14-L3-Digital-Employee-Loop` |
+| **`15-L3-Outer-Subject`** | **自主主体（唯一入站 SPEAK，无旗标）：Facade / 模板 / 状态 / 驱动力 / 白名单决策 / think / 状态回执出口；细节不并进视图 07** |
 
 **KPI 闭环**（实现与 ADL）：见 [`KPI-CLOSED-LOOP.md`](./KPI-CLOSED-LOOP.md)。
 
 **KPI 完成判定**：见 [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md)。  
 **心跳内脑质控**（验收效果 + 卡死/restart 把控）：见 [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md)。  
 **资源感知与心跳自主调度**（P0 历史 ADL，勿按文实现；现行为 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)）：见 [`RESOURCE-AWARENESS-AUTONOMY.md`](./RESOURCE-AWARENESS-AUTONOMY.md)。  
+**自主主体**（外部输入只是信号；设计未实现；无旗标，SPEAK 只走 subjectThink）：见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md)。  
 **环境模型**（P1 起替代 resourceProbe）：见 [`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)。  
 **战略规划层**（P1 心跳重构）：见 [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md)。
 
@@ -282,3 +290,12 @@ DESIGN → RUN → AWAITING → DONE
 | 2026-07-24 | Dashboard 内脑 burst 执行 graph：inspector edges/status + EW workflow_run |
 | 2026-07-25 | Dashboard 主 Tab 精简：Burst/EW/用量/空转/日志/记忆块；旧面进高级 |
 | 2026-07-28 | 内脑 workspace 保留：[`INNER-WORKSPACE-RETENTION.md`](./INNER-WORKSPACE-RETENTION.md)；`innerWorkspaceRetention` + `read_inner_status` historyCap |
+| 2026-10-12 | 自主主体 ADL（未实现）：[`SUBJECT-CORE.md`](./SUBJECT-CORE.md)；模块 `subjectSignalSlot` / `subjectStateStore` / `subjectDrive` / `subjectDecide` / `subjectThink`（⏳）；视图 `15-L3-Outer-Subject` |
+| 2026-10-12 | SC-10：主人 sid 与其他人类一样只是信号；`no_reply` / `defer` / `decline` 无例外 |
+| 2026-10-12 | 主体层常数关闭：驱动力速率与 4 小时冷却、不新建 KPI、回复只取候选、participation 前门保留、defer 4 小时、think-log 64KiB。见 SUBJECT-CORE §17 |
+| 2026-10-12 | 去掉主体旗标。入站 SPEAK 只走 `subjectThink`；视图 07/07b/11/15 不再把对话环当作该路径 |
+| 2026-10-12 | SC-11：非聊天终态在同一线程发固定 `〔状态〕` 回执。视图 15 画出到 outerToolExecutor 的这条边 |
+| 2026-10-12 | 去掉抽象行动类型空间。`subjectWorkObject` 是 self_work 之后的工作对象空间（SUBJECT-CORE §7A） |
+| 2026-10-12 | 不再按操作派发固定的 expectedOutcome。选点之后 `[TASK:DESCRIBE]` 由顾问写产物说明 |
+| 2026-10-12 | 产物说明改为可做的一步。拆开来想、开放式探讨不派出 |
+| 2026-10-12 | expectedOutcome 不必抄对象全名。短动作可以派出 |

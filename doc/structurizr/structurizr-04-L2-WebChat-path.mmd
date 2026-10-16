@@ -1,0 +1,47 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Container View: Kuroneko (utlra)"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>用户</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>仅经 IM 渠道对话与派任务；不直连 Agent API</div>"]
+    style 1 fill:#ffffff,stroke:#444444,color:#444444
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      116["<div style='font-weight: bold'>WebChat Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/webchat-bridge]</div><div style='font-size: 80%; margin-top:10px'>chat-server ↔ agent；出站 asset:<br />→ POST /uploads</div>"]
+      style 116 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      119["<div style='font-weight: bold'>Chat Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js apps/chat-server]</div><div style='font-size: 80%; margin-top:10px'>本地 IM 服务：REST + WS<br />消息枢纽（大群/私聊）</div>"]
+      style 119 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      12["<div style='font-weight: bold'>Chat IR</div><div style='font-size: 70%; margin-top: 0px'>[Container: npm @utlra/chat-ir]</div><div style='font-size: 80%; margin-top:10px'>消息/线程<br />schema、ChatIRChannel、FanInChatIRChannel（多连接合流/路由）、ChatIRSeenTracker、identityBindingIndex（channel_key→sid）、StructuredReply</div>"]
+      style 12 fill:#5d6d7e,stroke:#414c58,color:#ffffff
+      120["<div style='font-weight: bold'>Web Chat UI</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript apps/web-chat]</div><div style='font-size: 80%; margin-top:10px'>Vite React 客户端</div>"]
+      style 120 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      13["<div style='font-weight: bold'>Workspace Kit</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript packages/server/src/workspace-kit]</div><div style='font-size: 80%; margin-top:10px'>外脑侧 workDir<br />工具：路径安全读写、manifest、InnerBrainEngine<br />生命周期门面（内联于 @utlra/server）</div>"]
+      style 13 fill:#7f8c8d,stroke:#586262,color:#ffffff
+      14["<div style='font-weight: bold'>WebChat Protocol</div><div style='font-size: 70%; margin-top: 0px'>[Container: npm @utlra/webchat-protocol]</div><div style='font-size: 80%; margin-top:10px'>chat-server 与 agent 共享协议类型</div>"]
+      style 14 fill:#5d6d7e,stroke:#414c58,color:#ffffff
+      15["<div style='font-weight: bold'>Agent Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js @utlra/server]</div><div style='font-size: 80%; margin-top:10px'>外脑 + spawn + Hono API</div>"]
+      style 15 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      80["<div style='font-weight: bold'>Inner Brain Worker</div><div style='font-size: 70%; margin-top: 0px'>[Container: Node.js child_process]</div><div style='font-size: 80%; margin-top:10px'>子进程：openkuroneko 阶段机 + 反思</div>"]
+      style 80 fill:#438dd5,stroke:#2e6295,color:#ffffff
+    end
+
+    116-. "<div>ChatIR 映射 +<br />seenTracker.track(mention)</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    116-. "<div>共享 DTO</div><div style='font-size: 70%'>[npm import]</div>" .->14
+    119-. "<div>REST/WS 类型</div><div style='font-size: 70%'>[npm import]</div>" .->14
+    120-. "<div>客户端类型</div><div style='font-size: 70%'>[npm import]</div>" .->14
+    15-. "<div>外脑 ChatIR</div><div style='font-size: 70%'>[npm import]</div>" .->12
+    15-. "<div>InnerBrainEngine /<br />workspaceStore</div><div style='font-size: 70%'>[npm import]</div>" .->13
+    80-. "<div>共享 workDir（.brain / .run<br />文件契约）</div><div style='font-size: 70%'>[同盘读写]</div>" .->13
+    13-. "<div>goal.md /<br />controller-state（外脑经 engine 写<br />.brain）</div><div style='font-size: 70%'>[同盘读写]</div>" .->80
+    1-. "<div>浏览输入</div><div style='font-size: 70%'>[HTTPS]</div>" .->120
+    120-. "<div>REST + WS</div><div style='font-size: 70%'>[HTTPS/WSS]</div>" .->119
+    119-. "<div>线程与消息</div><div style='font-size: 70%'>[HTTP/WS]</div>" .->116
+    116-. "<div>入站/出站映射</div><div style='font-size: 70%'>[HTTP + bridge]</div>" .->15
+    15-. "<div>agent 回复</div><div style='font-size: 70%'>[HTTP + bridge]</div>" .->116
+    15-. "<div>spawn + env</div><div style='font-size: 70%'>[child_process]</div>" .->80
+    80-. "<div>DONE/BLOCK/status</div><div style='font-size: 70%'>[stdio + file]</div>" .->15
+
+  end

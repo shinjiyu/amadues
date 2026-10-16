@@ -1,0 +1,79 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L3 外脑 — 环境模型（sensor registry / journal / change detector / 消费方）"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      subgraph 15 ["Agent Server"]
+        style 15 fill:#ffffff,stroke:#2e6295,color:#2e6295
+
+        17["<div style='font-weight: bold'>Thread Orchestrator</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【线程编排】jitter/debounce + 同<br />thread FIFO 串行 +<br />freshCheck（仅触发上被一并@的 agent<br />算抢答；独占@本 agent 不因他人插话放弃）</div>"]
+        style 17 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        27["<div style='font-weight: bold'>Inner Brain Registry</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【内脑任务表】instanceId、RUNNING/DONE/AWAITING、workDir；boot<br />markStale 不 auto-resume</div>"]
+        style 27 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        44["<div style='font-weight: bold'>KPI Manager</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【KPI 治理】KPI 真相 + R3–R7 +<br />burst 卫生；心跳 advance 降为兼容<br />fallback</div>"]
+        style 44 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        45["<div style='font-weight: bold'>KPI Advancer</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【KPI burst 执行】advance_kpi /<br />IM / Ops →<br />set_goal(kpi_id)；心跳改由<br />kpiManager 调用</div>"]
+        style 45 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        48["<div style='font-weight: bold'>Outer Heartbeat</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【Watchdog】质控+完成判定+死亡/失约检测+自主循环补漏；非正常续派主时钟</div>"]
+        style 48 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        49["<div style='font-weight: bold'>Digital Employee Loop</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【容量驱动主循环】多触发 coalesce → 可用容量<br />→ 到期日程优先 → 自主提案 → set_goal</div>"]
+        style 49 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        50["<div style='font-weight: bold'>Employee Calendar</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【数字员工日程表】once/interval/cron<br />持久化承诺；due/missed；到期不占等待<br />worker</div>"]
+        style 50 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        51["<div style='font-weight: bold'>Self Work Policy</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【可测试创造性】4 策略角度轮询 +<br />llm_reflective + AbTest 灰度 +<br />提案校验（去重/依赖/冲突/路线熔断）+ 指标 JSONL</div>"]
+        style 51 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        54["<div style='font-weight: bold'>LLM Usage Journal</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【Token<br />统计】usage/llm-usage.jsonl 持久化<br />+ 按 source/model 聚合</div>"]
+        style 54 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        56["<div style='font-weight: bold'>Environment Sensor Registry</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【传感器注册表】tick 调度 + 扇入 facets →<br />EnvironmentSnapshot；同<br />outerToolExecutor / autonomy<br />handler 模式</div>"]
+        style 56 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        57["<div style='font-weight: bold'>Environment Journal</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【环境日志】内存 ring buffer +<br />current.json 覆盖 +<br />events.jsonl +<br />hourly.jsonl（按月/年轮转）</div>"]
+        style 57 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        58["<div style='font-weight: bold'>Environment Change Detector</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【派生指标 + 显著事件】hysteresis /<br />warmUp / rate / streak /<br />zScore；deterministic</div>"]
+        style 58 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        59["<div style='font-weight: bold'>Environment Model Facade</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【环境模型门面】collectEnvironmentSnapshot<br />/ toResourceSnapshot /<br />getSharedEnvironment</div>"]
+        style 59 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        60["<div style='font-weight: bold'>KPI Spawn Capacity</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【执行容量】读<br />EnvironmentSnapshot.facets +<br />hardGates → canSpawn /<br />hasAvailableCapacity（自适应前台预留）</div>"]
+        style 60 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        69["<div style='font-weight: bold'>Autonomy Policy Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【闲忙规则】policy.json +<br />policy-rubric.md；聊天 tools 可改</div>"]
+        style 69 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        70["<div style='font-weight: bold'>Autonomy Judge</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【容量判定】hard gates →<br />hasAvailableCapacity；等待依赖不等于<br />RUNNING</div>"]
+        style 70 fill:#85bbf0,stroke:#5d82a8,color:#000000
+      end
+
+    end
+
+    48-. "<div>load policy + rubric</div><div style='font-size: 70%'>[in-process]</div>" .->69
+    48-. "<div>evaluate idle|busy</div><div style='font-size: 70%'>[in-process]</div>" .->70
+    70-. "<div>hardGates</div><div style='font-size: 70%'>[in-process]</div>" .->69
+    56-. "<div>innerBrains sensor read</div><div style='font-size: 70%'>[in-process]</div>" .->27
+    56-. "<div>llmUsage sensor read</div><div style='font-size: 70%'>[in-process]</div>" .->54
+    56-. "<div>inbound sensor read</div><div style='font-size: 70%'>[in-process]</div>" .->17
+    56-. "<div>diff + derive + detectEvents</div><div style='font-size: 70%'>[in-process]</div>" .->58
+    58-. "<div>ring + events + hourly</div><div style='font-size: 70%'>[in-process]</div>" .->57
+    57-. "<div>rotate events.jsonl /<br />hourly.jsonl</div><div style='font-size: 70%'>[file]</div>" .->57
+    48-. "<div>P1 collect<br />EnvironmentSnapshot</div><div style='font-size: 70%'>[in-process]</div>" .->56
+    48-. "<div>collectEnvironmentSnapshot +<br />journal</div><div style='font-size: 70%'>[in-process]</div>" .->59
+    59-. "<div>registry.collect()</div><div style='font-size: 70%'>[in-process]</div>" .->56
+    59-. "<div>snapshot + events persist</div><div style='font-size: 70%'>[in-process]</div>" .->57
+    70-. "<div>toResourceSnapshot →<br />hardGates</div><div style='font-size: 70%'>[in-process]</div>" .->59
+    48-. "<div>watchdog tick：R3–R7/reap + 兼容<br />advance fallback</div><div style='font-size: 70%'>[in-process]</div>" .->44
+    44-. "<div>evaluateKpiSpawnCapacity(facets)</div><div style='font-size: 70%'>[in-process]</div>" .->60
+    44-. "<div>hardGates + kpi_inner_goal<br />task policy</div><div style='font-size: 70%'>[in-process]</div>" .->69
+    45-. "<div>resolveSystemCapacity(facets,<br />R2 parallel)</div><div style='font-size: 70%'>[in-process]</div>" .->60
+    60-. "<div>hardGates.maxRunningInnerBrains<br />/ maxLlmInFlight …</div><div style='font-size: 70%'>[in-process]</div>" .->69
+    44-. "<div>reap ABORTED + burst states</div><div style='font-size: 70%'>[in-process]</div>" .->27
+    44-. "<div>EnvironmentSnapshot + policy<br />→ advanceKpi</div><div style='font-size: 70%'>[in-process]</div>" .->45
+    50-. "<div>calendar_due → trigger；due<br />保留至有容量</div><div style='font-size: 70%'>[in-process]</div>" .->49
+    48-. "<div>heartbeat_fallback（watchdog<br />补漏）</div><div style='font-size: 70%'>[in-process]</div>" .->49
+    49-. "<div>collect EnvironmentSnapshot</div><div style='font-size: 70%'>[in-process]</div>" .->59
+    49-. "<div>hasAvailableCapacity</div><div style='font-size: 70%'>[in-process]</div>" .->70
+    49-. "<div>read due commitments first</div><div style='font-size: 70%'>[in-process]</div>" .->50
+    49-. "<div>无 due 且有容量 → propose</div><div style='font-size: 70%'>[in-process]</div>" .->51
+    51-. "<div>pending dependencies +<br />running conflicts</div><div style='font-size: 70%'>[in-process]</div>" .->27
+    56-. "<div>calendar sensor 只读 due/missed</div><div style='font-size: 70%'>[in-process]</div>" .->50
+
+  end

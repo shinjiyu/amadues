@@ -118,7 +118,7 @@ foreach record in registry where status in (AWAITING, BLOCKED):
 | **In** | `ChatIRInboundEvent`（人发、非 agent）+ `innerBrainRegistry` |
 | **Out** | `resolvePending` on matched `workDir`；可选短 ack 经 `imClient` |
 | **计划路径** | `packages/server/src/outer/awaiting-inbound-resolver.ts` |
-| **挂载点** | `outerBrainFacade` 在 `participationPolicy` 之后、**进入** `outerConversationLoop` **之前** |
+| **挂载点** | `outerBrainFacade` 在 `participationPolicy` / `subjectThink` **之前**（原「进入 `outerConversationLoop` 之前」；该环不再承接入站 SPEAK） |
 
 **匹配规则**（MVP）：
 
@@ -184,7 +184,7 @@ agentServer load
   → awaitingInboundResolver
         match AWAITING instance on thread T
         resolvePending(ask_user, reply=text)
-  → (可选) participationPolicy + outerConversationLoop
+  → participationPolicy；SPEAK → subjectThink（不再进入 outerConversationLoop）
   → changeWatcher.tick (≤1s)
         unconsumed resolved > 0
         spawnAndAttachWorker → RUNNING
@@ -226,3 +226,4 @@ agentServer load
 | 日期 | 说明 |
 |------|------|
 | 2026-05-27 | 初版：补 registry reconcile、IM 必达 resolver、changeWatcher bootstrap；修正宪法/ADL 漂移 |
+| 2026-10-12 | 用户回复之后的可选对话环改为 `subjectThink`。resolver 仍在 think 之前。 |

@@ -1,0 +1,48 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["L3 外脑 — 自主主体（唯一入站 SPEAK；user=主体，assistant=顾问）"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 11 ["Kuroneko (utlra)"]
+      style 11 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      subgraph 15 ["Agent Server"]
+        style 15 fill:#ffffff,stroke:#2e6295,color:#2e6295
+
+        18["<div style='font-weight: bold'>Outer Brain Facade</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【唯一外脑入口】Discord/WebChat/HTTP<br />入站 → 检索 → 是否说话 → subjectThink</div>"]
+        style 18 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        25["<div style='font-weight: bold'>Outer Tool Executor</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【工具执行】reply_to_user /<br />set_goal（KPI 单实例复用 + peer<br />catalog）/ list_brains /<br />read_inner_status / KPI 等</div>"]
+        style 25 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        26["<div style='font-weight: bold'>LLM Gateway</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【模型网关】参与判别、外脑对话、复盘、roundtrip<br />草稿；Zhipu/Kimi/LocalModule</div>"]
+        style 26 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        49["<div style='font-weight: bold'>Digital Employee Loop</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【容量驱动主循环】多触发 coalesce → 可用容量<br />→ 到期日程优先 → 自主提案 → set_goal</div>"]
+        style 49 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        75["<div style='font-weight: bold'>Subject Signal Slot</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【主体模板】外部原文只进转义后的 observation<br />数据槽；解析器无权限</div>"]
+        style 75 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        76["<div style='font-weight: bold'>Subject State Store</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【主体状态】DATA_ROOT/subject<br />的目标、驱动力、defer、inbox；仅本模块写入</div>"]
+        style 76 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        77["<div style='font-weight: bold'>Subject Drive</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【驱动力】墙钟 accrue<br />与阈值判断；超过阈值只表示可以想一次</div>"]
+        style 77 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        78["<div style='font-weight: bold'>Subject Decide</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【白名单决策】顾问分数加驱动力权重；<br />代码选择；拒绝名单记审计</div>"]
+        style 78 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        80["<div style='font-weight: bold'>Subject Work Object</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【工作对象空间】主体根 × 岔开 ×<br />有趣度；产物说明是可做的一步</div>"]
+        style 80 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        79["<div style='font-weight: bold'>Subject Think</div><div style='font-size: 70%; margin-top: 0px'>[Component: TypeScript]</div><div style='font-size: 80%; margin-top:10px'>【一次主体<br />reducer】user=主体模板，assistant=无工具<br />JSON；不聊天时仍发固定状态回执</div>"]
+        style 79 fill:#85bbf0,stroke:#5d82a8,color:#000000
+      end
+
+    end
+
+    49-. "<div>合法日程/提案 → 唯一 set_goal</div><div style='font-size: 70%'>[in-process]</div>" .->25
+    18-. "<div>SPEAK：一次 think，不进工具环</div><div style='font-size: 70%'>[in-process]</div>" .->79
+    79-. "<div>固定模板 + observation 槽</div><div style='font-size: 70%'>[in-process]</div>" .->75
+    79-. "<div>读写真相与 defer/inbox</div><div style='font-size: 70%'>[in-process]</div>" .->76
+    79-. "<div>accrue + shouldThink</div><div style='font-size: 70%'>[in-process]</div>" .->77
+    79-. "<div>白名单最终选择</div><div style='font-size: 70%'>[in-process]</div>" .->78
+    79-. "<div>self_work 之后选工作对象</div><div style='font-size: 70%'>[in-process]</div>" .->80
+    79-. "<div>user=主体模板；assistant=JSON；tools<br />空</div><div style='font-size: 70%'>[HTTPS]</div>" .->26
+    79-. "<div>对话回复，或非聊天终态的固定状态回执</div><div style='font-size: 70%'>[in-process]</div>" .->25
+    79-. "<div>propose_self_work →<br />drive_threshold</div><div style='font-size: 70%'>[in-process]</div>" .->49
+
+  end

@@ -44,6 +44,8 @@ export interface AutonomyPipelineDeps {
   identityRegistry?: IdentityRegistry;
   /** Disable legacy heartbeat KPI advance when digitalEmployeeLoop is wired. */
   digitalEmployeeMode?: boolean;
+  /** Subject heartbeat tail will think this tick, so do not also send casual chat. */
+  skipCasualChat?: boolean;
 }
 
 export interface AutonomyPipelineResult {
@@ -158,7 +160,9 @@ export async function runAutonomyPipeline(deps: AutonomyPipelineDeps): Promise<A
     identityRegistry: deps.identityRegistry,
   };
 
-  const dispatch = await dispatchCasualChat(dispatchDeps, snapshot, verdict);
+  const dispatch = deps.skipCasualChat
+    ? { dispatched: false, reason: 'subject_think_same_tick', taskType: 'casual_chat' as const }
+    : await dispatchCasualChat(dispatchDeps, snapshot, verdict);
 
   if (verdict.level === 'busy') {
     console.log(

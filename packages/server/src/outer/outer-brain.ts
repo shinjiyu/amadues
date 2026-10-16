@@ -5,7 +5,7 @@
  *   1. 规则过滤（DM/群聊 @ / 内容占位符 → 快速决策）
  *   2. 全面知识检索（执行轨 K/S/P + 当前线程历史 + 跨线程历史）
  *   3. 必要时 LLM SPEAK/SILENT 判断（非 think 模式，快速）
- *   4. 外脑对话循环（LLM + 工具：reply_to_user / set_goal / read_inner_status）
+ *   4. SPEAK → subjectThink（唯一入站路径；对话环已退役）
  */
 import type {
   FilesystemRepositoryStore,
@@ -24,6 +24,7 @@ import {
 } from '@utlra/chat-ir';
 import type { InnerBrainRegistry } from './inner-brain-registry.js';
 import type { KpiRegistry } from './kpi-registry.js';
+import { llmChatCompletion } from '../llm/client.js';
 import { loadInnerLlmEnvFromProcess } from '../llm/inner-llm-step.js';
 import {
   isHumanSender,
@@ -43,8 +44,10 @@ import {
   type OuterInboundMeta,
 } from './inbound-policy.js';
 import { retrieveComprehensiveKnowledge } from './knowledge-retrieval.js';
-import { runOuterConversationLoop } from './outer-conversation-loop.js';
-import { assembleInboundContext, renderInboundHint } from './inbound/inbound-kpi-router.js';
+import { HISTORY_CODE_POINTS, HISTORY_LIMIT } from './subject/constants.js';
+import { rememberInbound, runSubjectThink, type SubjectProposalDispatch, type SubjectDispatchResult } from './subject/think.js';
+import type { SubjectSignal } from './subject/types.js';
+import { truncateCodePoints } from './subject/text.js';
 import { tryHandleAgentStatusChatCommand } from './inbound/agent-status-chat-command.js';
 import { loadAutonomyPolicy } from './environment/autonomy-policy-store.js';
 import { resolveAgentSid, resolveWorkspaceId } from './outer-tools.js';
@@ -52,7 +55,7 @@ import type { EmployeeCalendarPort } from '../scheduler/employee-calendar.js';
 import { MessageRecordSchema } from '@utlra/chat-ir';
 import { ThreadOrchestrator, makeFreshCheck } from './thread-orchestrator.js';
 import { loadSoul, ensureSoulFile } from './soul.js';
-import { loadOuterGoal, ensureOuterGoalFile } from './outer-goal.js';
+import { ensureOuterGoalFile } from './outer-goal.js';
 import { OuterMemoryStore } from './outer-memory.js';
 import type { SkillMemoryStore } from '../mem9/skill-memory-store.js';
 import type { SkillDrive9Store } from '../drive9/skill-drive9-store.js';
@@ -175,6 +178,15 @@ export interface OuterBrainDeps {
    * 与 DigitalEmployeeRuntime 同一实例，否则工具会 calendar_unavailable。
    */
   getEmployeeCalendar?: () => EmployeeCalendarPort | undefined;
+  /** propose_self_work → digitalEmployeeLoop drive_threshold. */
+  dispatchSubjectProposal?: (proposal: SubjectProposalDispatch) => Promise<SubjectDispatchResult>;
+}
+
+let inboundTurns = 0;
+
+/** True while an outer inbound turn is inside _processInbound. Heartbeat tail waits. */
+export function outerInboundTurnActive(): boolean {
+  return inboundTurns > 0;
 }
 
 const MAX_AGENT_CHAIN = Number(process.env['UTLRA_OUTER_MAX_AGENT_CHAIN'] ?? '20');
@@ -198,27 +210,55 @@ function extractTextFromParts(parts: Array<{ type: string; text?: string }>): st
     .trim();
 }
 
-/**
- * 动态扫描 thread 历史消息，收集所有出现过的 sender_sid。
- * 始终包含当前发送者（消息可能尚未落库）。结果去重，自身 agentSid 排到最前。
- */
-function resolveThreadSids(
+function parkSilentSignal(
+  dataRoot: string,
+  senderSid: string,
   threadId: string,
-  currentSenderSid: string,
+  content: string,
+  messageId: string,
+): void {
+  const text = content.trim();
+  if (!text) return;
+  rememberInbound(dataRoot, {
+    id: `in-${messageId}`,
+    source: senderSid,
+    kind: 'message',
+    threadId,
+    raw: text,
+    at: new Date().toISOString(),
+    messageId,
+  });
+}
+
+/** Recent thread lines as observations. The current message is passed separately. */
+function collectHistorySignals(
   loadThreads: () => LooseThreadStore,
-): string[] {
-  const seen = new Set<string>();
-  seen.add(currentSenderSid);
+  threadId: string,
+  skipMessageId: string,
+): SubjectSignal[] {
+  const out: SubjectSignal[] = [];
   try {
     const data = loadThreads();
-    for (const m of data.messages[threadId] ?? []) {
-      const parsed = MessageRecordSchema.safeParse(m);
-      if (parsed.success) seen.add(parsed.data.sender_sid);
+    for (const raw of data.messages[threadId] ?? []) {
+      const parsed = MessageRecordSchema.safeParse(raw);
+      if (!parsed.success) continue;
+      if (parsed.data.message_id === skipMessageId) continue;
+      const text = extractTextFromParts(parsed.data.parts as Array<{ type: string; text?: string }>);
+      if (!text) continue;
+      out.push({
+        source: parsed.data.sender_sid,
+        kind: text.startsWith('〔状态〕') ? 'status' : 'message',
+        raw: truncateCodePoints(text, HISTORY_CODE_POINTS),
+        threadId,
+        at: parsed.data.sent_at,
+        messageId: parsed.data.message_id,
+        historical: true,
+      });
     }
   } catch {
-    // 文件不存在时忽略
+    return [];
   }
-  return Array.from(seen);
+  return out.slice(-HISTORY_LIMIT);
 }
 
 /**
@@ -392,6 +432,15 @@ export class OuterBrain {
   }
 
   private async _processInbound(ev: ImInboundEvent): Promise<void> {
+    inboundTurns += 1;
+    try {
+      await this._processInboundBody(ev);
+    } finally {
+      inboundTurns -= 1;
+    }
+  }
+
+  private async _processInboundBody(ev: ImInboundEvent): Promise<void> {
     const threadId = ev.threadId;
     const senderSid = canonicalizeInboundSenderSid(this.deps.bindingIndex, ev.senderSid);
     const message =
@@ -586,59 +635,15 @@ export class OuterBrain {
     });
 
     console.log(`[utlra][outer-brain] SPEAK decision: ${shouldReply} (${reason})`);
-    if (!shouldReply) return;
-
-    workspaceStore.ensureWorkspace(workspaceId);
     const triggerMessageId = ev.message.message_id;
-    const freshCheck = makeFreshCheck(seenTracker, threadId, triggerMessageId);
-    const toolCtxBase = {
-      threadId,
-      agentSid,
-      workspaceId,
-      repoRoot: this.deps.repoRoot,
-      imClient,
-      assetStore: this.deps.assetStore,
-      getEngine,
-      workspaceStore,
-      repoStore,
-      dataRoot,
-      freshCheck,
-      actionLogStore: this.deps.actionLogStore,
-      innerBrainRegistry,
-      kpiRegistry: this.deps.kpiRegistry,
-      loadThreads,
-      memoryStore: this.deps.memoryStore,
-      skillStore: this.deps.skillStore,
-      skillDrive9Store: this.deps.skillDrive9Store,
-      knowledgeDrive9Store: this.deps.knowledgeDrive9Store,
-      executableWorkflowStore: this.deps.executableWorkflowStore,
-      workflowDrive9Store: this.deps.workflowDrive9Store,
-      memoryBlockStore: this.deps.memoryBlockStore,
-      identityLinkService: this.deps.identityLinkService,
-      bindingIndex: this.deps.bindingIndex,
-      channelConnectionRegistry: this.deps.channelConnectionRegistry,
-      channelAdminSids: this.deps.channelAdminSids,
-      inboundHumanSid: isHumanSender(senderSid) ? senderSid : undefined,
-      employeeCalendar: this.deps.getEmployeeCalendar?.(),
-    };
-
-    // ── Step 3.4: IM 入站上下文（只读；方案一：前置层不派发，派发交对话环 LLM 工具）──
-    // ADL IM-INBOUND-INTENT-ROUTING.md §4：装配本人 active KPI + 在跑 burst → inboundHint 注入对话环。
-    // 不再短路 / 不再 dispatchAdHocBurst·kpiRegistry.create·advanceKpi（副作用全部移交 set_goal/set_kpi/advance_kpi/send_directive 工具）。
-    let inboundHint = '';
-    if (isHumanSender(senderSid) && this.deps.kpiRegistry) {
-      const inboundCtx = assembleInboundContext({
-        kpiRegistry: this.deps.kpiRegistry,
-        innerBrainRegistry: toolCtxBase.innerBrainRegistry,
-        defaultThreadId: threadId,
-        originUser: senderSid,
-      });
-      inboundHint = renderInboundHint(inboundCtx);
+    if (!shouldReply) {
+      parkSilentSignal(dataRoot, senderSid, threadId, content, triggerMessageId);
+      return;
     }
 
+    workspaceStore.ensureWorkspace(workspaceId);
+
     // ── Step 3.5: agent 链话题自然结束检查 ──────────────────────────────────
-    // 当消息来自另一个 agent 且链已有一定深度时，用 LLM 判断话题是否已充分讨论。
-    // 复用现有的 participationSpeakLlm，在 innerStatusSummary 中注入链上下文作为提示。
     if (senderIsAgent && chainLen >= AGENT_CHAIN_TOPIC_CHECK_THRESHOLD && llmEnv && resolveParticipationUseLlm()) {
       const chainContext =
         `【当前为 agent 对话链，已有 ${chainLen} 条连续 agent 消息】` +
@@ -657,81 +662,72 @@ export class OuterBrain {
           console.log(
             `[utlra][outer-brain] skip: agent chain topic concluded (chain=${chainLen})`,
           );
+          parkSilentSignal(dataRoot, senderSid, threadId, content, triggerMessageId);
           return;
         }
       } catch (e) {
         console.error('[utlra][outer-brain] agent chain topic check failed', e);
-        // 出错时不阻止发送
       }
     }
 
-    // ── Step 4: LLM 无 key 时降级回复 ───────────────────────────────────────
-    if (!llmEnv) {
-      console.warn('[utlra][outer-brain] no LLM API key configured, sending fallback reply');
-      await imClient.postMessage(threadId, {
-        sender_sid: agentSid,
-        text:
-          '（外脑未配置 LLM，无法生成回复。请设置 ZHIPU_API_KEY、KIMI_API_KEY 或 LOCALMODULE_API_KEY；' +
-          '仅 PocketCity 时建议 UTLRA_INNER_LLM_PROVIDER=localmodule 并填写 LOCALMODULE_*）',
-      });
-      return;
-    }
+    const freshCheck = makeFreshCheck(seenTracker, threadId, triggerMessageId);
+    const history = collectHistorySignals(loadThreads, threadId, triggerMessageId);
+    const current: SubjectSignal = {
+      source: senderSid,
+      kind: 'message',
+      raw: content,
+      threadId,
+      at: new Date().toISOString(),
+      messageId: triggerMessageId,
+    };
+    const activeKpiIds = this.deps.kpiRegistry?.list({ status: 'active' }).map((kpi) => kpi.kpiId) ?? [];
+    const callLlm = llmEnv
+      ? async (system: string, user: string) => {
+          const completion = await llmChatCompletion({
+            provider: llmEnv.provider,
+            apiKey: llmEnv.apiKey,
+            baseUrl: llmEnv.baseUrl,
+            model: llmEnv.textModel,
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: user },
+            ],
+            maxTokens: llmEnv.maxTokensText,
+            temperature: 0,
+            thinking: 'disabled',
+            usageMeta: { source: 'subject_think', model: llmEnv.textModel, provider: llmEnv.provider },
+          });
+          return completion.content ?? '';
+        }
+      : undefined;
 
-    // ── Step 5: 外脑对话循环 ─────────────────────────────────────────────────
-    // 动态收集本 thread 出现过的所有 sender_sid，用于 LLM 系统提示中的 sid↔昵称映射
-    const threadSids = resolveThreadSids(threadId, senderSid, loadThreads);
-
-    // 每次处理消息时热加载 soul 和 long-term goal（文件改动立即生效）
-    const soul = loadSoul(dataRoot);
-    const longTermGoal = loadOuterGoal(dataRoot);
-
-    // 记忆注入：将 daily-log 和 tasks 状态附加到知识上下文前面
-    const memory   = memStore ? await memStore.readMemoryContext() : { dailyLog: '', tasks: '', beliefCards: '', hasAny: false };
-    const memBlock = memStore ? memStore.formatMemoryForLlm(memory) : '';
-    const baseContext = memBlock
-      ? memBlock + (knowledgeContext ? '\n\n---\n\n' + knowledgeContext : '')
-      : knowledgeContext;
-    // 方案一：入站只读上下文（active KPI / 在跑 burst）注入对话环，供 LLM 自行决定是否用工具派发
-    const fullContext = inboundHint
-      ? inboundHint + (baseContext ? '\n\n---\n\n' + baseContext : '')
-      : baseContext;
-
-    const result = await withTypingActivity(imClient, threadId, () => runOuterConversationLoop({
-      env: llmEnv,
-      ctx: toolCtxBase,
-      registry,
-      threadSids,
-      userMessage: content,
-      knowledgeContext: fullContext,
-      soul,
-      longTermGoal,
+    const result = await withTypingActivity(imClient, threadId, () => runSubjectThink({
+      dataRoot,
+      trigger: 'inbound',
+      signals: [...history, current],
+      soul: loadSoul(dataRoot),
+      callLlm,
+      imClient,
+      agentSid,
+      activeKpiIds,
+      dispatchProposal: this.deps.dispatchSubjectProposal,
+      freshCheck,
     }));
 
-    const toolsChain = result.toolsUsed.length ? result.toolsUsed.join('→') : '(none)';
-    const lastPreview =
-      result.lastContent?.trim()
-        ? result.lastContent.trim().replace(/\s+/g, ' ').slice(0, 120) +
-          (result.lastContent.trim().length > 120 ? '…' : '')
-        : '(empty)';
     console.log(
-      `[utlra][outer-brain] loop done: replied=${result.replied} rounds=${result.roundsUsed} tools=${toolsChain}${!result.replied ? ` lastContent=${lastPreview}` : ''}`,
+      `[utlra][outer-brain] subject done: action=${result.action} thought=${result.thought} ` +
+        `status=${result.statusPosted} speech=${result.speechPosted} reason=${result.reason}`,
     );
 
-    // ── IP-04: 若 result.replied，写入 communicate 事件 ────────────────────
-    if (result.replied) {
+    if (result.speechPosted) {
       const communicateScope = `thread:${threadId} to:${senderSid}`;
       this._appendLocalLog({ timestamp: Date.now(), operation_type: 'communicate', impact_scope: communicateScope });
       if (this.deps.actionLogStore) {
         writeActionEvent(this.deps.actionLogStore, agentSid, 'communicate', communicateScope).catch((err) => {
-        console.error('[utlra][outer-brain] failed to write communicate event', err);
-      });
+          console.error('[utlra][outer-brain] failed to write communicate event', err);
+        });
       }
-    }
-
-    // set_goal / send_directive 等行为日志由 outer-conversation-loop 对每个 tool 写入（outer-tool-audit）
-    // 对话结束后追加 Daily Log（仅在实际回复了用户时记录）
-    if (result.replied && memStore) {
-      memStore.appendChatLog({
+      memStore?.appendChatLog({
         threadId,
         userSid: senderSid,
         summary: content.slice(0, 100),

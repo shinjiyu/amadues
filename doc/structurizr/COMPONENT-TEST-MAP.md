@@ -22,7 +22,7 @@
 | outerBrainFacade | 🟡 片段 | ✅ `outerBrainFacade.component.integration.test.ts` | — | + `integration/outer-brain-inbound` 全链 |
 | knowledgeRetrieval | ❌ | ✅ `knowledgeRetrieval.component.integration.test.ts`（含 P3 按人跨会话块） | — | |
 | threadOrchestrator | ✅ `chat-ir/seen-tracker.test.ts`（freshCheck @ 语义） | ✅ `threadOrchestrator.component.integration.test.ts`（串行 + FIFO 排队） | — | freshCheck 实现于 `@utlra/chat-ir` |
-| outerConversationLoop | ✅ `outer-conversation-loop.test.ts`（forced reply + empty-promise 纠偏轮） | ✅ `outerConversationLoop.component.integration.test.ts` | — | + `integration/outer-conversation-loop-assembly`；ADL [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.2 |
+| outerConversationLoop | ✅ `outer-conversation-loop.test.ts`（forced reply + empty-promise 纠偏轮；测的是退役前的现码） | ✅ `outerConversationLoop.component.integration.test.ts` | — | 生产入站改走 subjectThink，不留旗标。见 [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §10 |
 | **emptyPromiseReconcile** | ✅ `empty-promise-reconcile.test.ts` | —（经 outerConversationLoop 接线测） | — | 空口答应不派活；软跳过不算成功派活 |
 | outerToolExecutor | 🟡 tools 单测散落 | ✅ `outerToolExecutor.component.integration.test.ts` | — | `normalizeAgentReplyMentionText` |
 | **workspaceInbox** | ✅ `workspace-inbox.test.ts` | ⏳ | — | ADL [`INNER-WORKSPACE-INBOX.md`](./INNER-WORKSPACE-INBOX.md) |
@@ -68,6 +68,12 @@
 | **digitalEmployeeLoop** | ✅ `digital-employee-loop.test.ts`（优先级、single-flight、coalesce、依赖拒绝） | ✅ `digitalEmployeeLoop.component.integration.test.ts`（Calendar 优先 + burst finish 续派） | — | [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §5 |
 | **employeeCalendar** | ✅ `employee-calendar.test.ts` + `calendar-tools.test.ts`（list/schedule/cancel/remind 幂等、白名单、cap） | ✅ loop due 链；remind→send_message / spawn→set_goal | — | ADL [`EMPLOYEE-CALENDAR.md`](./EMPLOYEE-CALENDAR.md)；对话一等工具 C1–C4 ✅ |
 | **selfWorkPolicy** | ✅ `self-work-policy.test.ts`（expectedOutcome、依赖、去重、冲突、route_blocked、null 休眠）+ `self-work-strategies.test.ts`（4 策略同 fixture 可比较、角度轮换、A/B 探索/利用/回退、spec 解析）+ `self-work-metrics.test.ts`（acceptance/duplicate/no-progress/byStrategy）+ `self-work-llm-policy.test.ts`（JSON 契约、sleep、非法/异常 fallback） | ✅ 由 `digitalEmployeeLoop.component.integration.test.ts` 覆盖提案→派发 | — | 只有提案权；✅ P2 多策略 + 指标 JSONL；✅ P3 llm_reflective + AbTest 灰度（`UTLRA_SELF_WORK_STRATEGY`）；⏳ Duty 整单重放拒收见 advance WP |
+| **subjectSignalSlot** | ✅ `subject-signal-slot.test.ts` | — | — | ADL [`SUBJECT-CORE.md`](./SUBJECT-CORE.md) §14.1：转义槽、注入不闭合、system 常量 |
+| **subjectStateStore** | ✅ `subject-state-store.test.ts` | — | — | §14.3 原子写、defer 上限 |
+| **subjectDrive** | ✅ `subject-drive.test.ts` | — | — | §14.3：0.10/时、阈值严格大于 0.60、4 小时纯驱动力冷却、inbox 可打断冷却 |
+| **subjectDecide** | ✅ `subject-decide.test.ts` | — | — | §14.2 白名单、同分字典序；SC-10；`reply` 拒绝；`message` → `text`；`propose_self_work` 字段补全 |
+| **subjectWorkObject** | ✅ `subject-work-object.test.ts` | — | — | §7A / §14.5：抽象操作先于投影、有趣度、工具名拒绝、具体承诺赢过北极星套话、挂承诺的岔开可赢。产物说明必须是可做的一步；空话、替人收尾、套话、拆开来想和开放式探讨不派出 |
+| **subjectThink** | ✅ `subject-think.test.ts` | ✅ `subjectThink.component.integration.test.ts` | ⏳ P3 | §14.4：`no_reply` 不发对话回复，但发一条 §8.1 状态回执，且不进入 `runOuterConversationLoop`；心跳空转 `wait` 不发；主人 sid 的状态句与其他人相同；回复只取候选 text；不新建 KPI；无旗标；`drive_threshold` 不绕过日程；不完整 `propose_self_work` 不派发；空 `schedule_revisit` 让给完整提案；闲时派出主体根；goalText 带着选中对象，expectedOutcome 可以是不抄全名的短动作（如「去对战一场」），不派出套话、收尾句或分析探讨 |
 | **advanceWorkPackageBuilder** | ✅ 感知 facet（日历+内脑+stall+cursor）+ 简单调配规则 | ✅ RUNNING/日历闸门；bootstrap+ensure；stall→repair；盲派/重复日历指标 | — | [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` + `memory-belief-card.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP + mem9 Belief Card supersede（[`MEMORY-BELIEF-CARD.md`](./MEMORY-BELIEF-CARD.md)） |
 | completionNotify | ✅ `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) + ingest R4.7 + scheduled report allowlist + **pending-scheduled-report** | ✅ `completionNotify.component.integration.test.ts` | — | R6.4 + dedup；IM 不 dump seed facts（§4.1）；ingest≠notify；日历 EW 报告附件；微信缺 token 挂起冲刷 |
