@@ -35,7 +35,8 @@ describe('awaiting-notify', () => {
 
     expect(await notifyInnerBrainAwaitingHuman(deps, record)).toBe(true);
     expect(postMessage).toHaveBeenCalledTimes(1);
-    expect(postMessage.mock.calls[0]![1].text).toContain('⏸ 内脑任务等待您的输入');
+    expect(postMessage.mock.calls[0]![1].text).toContain('⏸ 需要你补一句');
+    expect(postMessage.mock.calls[0]![1].text).not.toContain('内脑');
 
     expect(await notifyInnerBrainAwaitingHuman(deps, record)).toBe(false);
     expect(postMessage).toHaveBeenCalledTimes(1);

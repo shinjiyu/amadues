@@ -53,16 +53,7 @@
 | **Out** | `postMessage` 或 skip（dedup / 无 pending） |
 | **挂载** | `index.ts` `spawnAndAttachWorker.onExit`；`outer-tools.ts` `execSetGoal.onExit` |
 
-正文格式（稳定，便于 dedup）：
-
-```text
-⏸ 内脑任务等待您的输入
-
-**任务 ID**：`{instanceId}`
-**问题**：{ask_user.spec.prompt}
-
-请在本线程回复；回复后将自动继续执行。
-```
+正文在进 IM 之前经过 Agent Host 的 `toUserSpeech`（[`AGENT-HOST.md`](./AGENT-HOST.md) §4）。用户看见「需要你补一句」，不看见「内脑」和任务 ID。指纹仍用改写前的问题文本，去重不变。`isHostNotificationEcho` 同时认出旧模板和新说法。
 
 ---
 

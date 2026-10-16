@@ -68,6 +68,20 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
                 }
             }
 
+            agentHostLib = container "Agent Host" "花名册、群成员、状态卡、一跳 A2A、用户可见用词。不决定群里谁说话。任意 AgentAdapter 可接入。" "npm @utlra/agent-host" {
+                tags "Library"
+                properties {
+                    "path" "packages/agent-host"
+                    "horizon.intention" "把多 agent 管理从某一个 agent 实现里拆出来"
+                    "horizon.in" "createAgent / createGroup / deliver / recordGroupMessage"
+                    "horizon.out" "toUserSpeech；PresenceCard；一跳 handoff"
+                    "horizon.deps" "无 server、无 chat-ir"
+                    "horizon.adl" "doc/structurizr/AGENT-HOST.md"
+                    "horizon.not" "群聊发言调度"
+                    "horizon.test.unit" "packages/agent-host/src/host.test.ts"
+                }
+            }
+
             workspaceKit = container "Workspace Kit" "外脑侧 workDir 工具：路径安全读写、manifest、InnerBrainEngine 生命周期门面（内联于 @utlra/server）" "TypeScript packages/server/src/workspace-kit" {
                 tags "Library" "Toolkit"
                 properties {
@@ -266,6 +280,10 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         kuroneko.webChat -> kuroneko.webchatProtocolLib "客户端类型" "npm import" {
             tags "import"
         }
+        kuroneko.agentServer -> kuroneko.agentHostLib "用户可见出口与花名册" "npm import" {
+            tags "import"
+        }
+
         kuroneko.agentServer -> kuroneko.chatIrLib "外脑 ChatIR" "npm import" {
             tags "import"
         }
@@ -833,7 +851,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
 
         container kuroneko "05-L2-Libraries" {
-            include kuroneko.chatIrLib kuroneko.workspaceKit kuroneko.webchatProtocolLib kuroneko.agentServer kuroneko.discordBridge kuroneko.webchatBridge kuroneko.feishuBridge kuroneko.wechatBridge kuroneko.chatServer kuroneko.webChat
+            include kuroneko.chatIrLib kuroneko.agentHostLib kuroneko.workspaceKit kuroneko.webchatProtocolLib kuroneko.agentServer kuroneko.discordBridge kuroneko.webchatBridge kuroneko.feishuBridge kuroneko.wechatBridge kuroneko.chatServer kuroneko.webChat
             autolayout lr
         }
 

@@ -5,6 +5,7 @@
  *
  * 工具优先级：reply_to_user → set_goal → read_inner_status
  */
+import { USER_SPEECH_PROMPT } from '@utlra/agent-host';
 import type { IdentityRegistry } from '@utlra/chat-ir';
 import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
 import { llmRawChatCompletion } from '../llm/raw.js';
@@ -191,7 +192,7 @@ ${participantsBlock}
   4. **聊天预约 / 提醒 / 到点派活**：用 **schedule_commitment**（remind 或 spawn_goal）；查日程用 **list_calendar**；取消/暂停用 cancel/pause_commitment
   4a. **一天 N 次报告**：优先一条多小时 cron（如 0 9,13,21 * * * + timezone=Asia/Shanghai），不要连建三条默认 kpi_increment（默认键会互相覆盖）；若建多条必须显式不同 calendar_key
   5. **禁止**内脑 wait_timer 长睡做周期检查；每个 burst 做完本轮即结束
-  6. 一句话告诉用户："已建 KPI（id），首轮已开跑；日常增量走日程，紧急可再催"
+  6. 一句话告诉用户：「我会接着做；到点再做一轮，急的话再催我」
   7. burst 结束后用 view_kpi；用户确认完成 → achieve_kpi；勿把已完成 KPI 仍当「活跃」
   8. 健康 RUNNING / 未到期日历：**不要**聊天里反复派发；用户问进度用 list_inner_brains / view_kpi / list_calendar
   9. async.is_async_waiting=true：勿抢派，等 ChangeWatcher 或 send_directive
@@ -207,7 +208,8 @@ ${OUTER_ASYNC_ORCHESTRATION_GUIDE}
 - 必须用 reply_to_user 工具发送消息，不能只输出文本
 - 存 Cookie/Token/账号：keychain_put 入库（独立保管，防长对话丢失）；派内脑前 keychain_get 取明文并**写入 set_goal 的 goal 正文**，勿指望内脑自己去 vault 挖
 - 禁止只口头说「已存入 keychain」而不调用工具；写入成功时工具返回含「已写入并校验」
-- 用户祈使要做事时：必须先成功调用 set_goal / advance_kpi / workflow_run / workflow_promote / set_kpi / schedule_commitment / send_directive 之一，再 reply；禁止只口头说「我去办 / 这就开跑 / 已派内脑」
+- 用户祈使要做事时：必须先成功调用 set_goal / advance_kpi / workflow_run / workflow_promote / set_kpi / schedule_commitment / send_directive 之一，再 reply；对用户只说「我去做」，禁止只口头答应
+- ${USER_SPEECH_PROMPT}
 - 禁止编造未知信息
 - 禁止在 reply_to_user 的 text 里写 Markdown 链接（例如 \`[昵称](@sid:…)\`）；@人只用「@昵称」或「@显示名」纯文本，不要带 sid URI
 - 每轮最多调用工具 ${MAX_TOOL_ROUNDS} 次`;
@@ -248,6 +250,7 @@ ${humanRoster}
 - 推进自己的目标：set_goal / advance_kpi / set_kpi / workflow_run 等。
 - 要对人说话时用 reply_to_user；不想说就不说。
 - 诚实：不要声称做了其实没做的事。可以拒绝，但不要欺骗。
+- ${USER_SPEECH_PROMPT}
 - 每轮最多调用工具 ${MAX_TOOL_ROUNDS} 次。`;
 }
 

@@ -276,7 +276,8 @@ describe('notifyInnerBrainTaskFailed', () => {
         reason: 'Designer LLM 调用失败：503',
       },
     );
-    expect(im.lastText('t1')).toContain('内脑任务失败');
+    expect(im.lastText('t1')).toContain('这件没做成');
+    expect(im.lastText('t1')).not.toContain('内脑');
     expect(im.lastText('t1')).toContain('503');
     expect(im.lastText('t1')).not.toContain('## 结果');
   });
@@ -338,7 +339,8 @@ describe('notifyInnerBrainTaskPartial', () => {
     );
 
     const text = im.lastText('t-partial');
-    expect(text).toMatch(/^⚠️ 内脑任务部分完成/);
+    expect(text).toMatch(/^⚠️ 做了一部分，还没完成/);
+    expect(text).not.toContain('内脑');
     expect(text).not.toMatch(/^✅/);
     expect(text).toContain('未远程部署');
     expect(text).toContain('（附件里有产出）');

@@ -707,7 +707,7 @@ export class OuterBrain {
     const runningInner = toolCtxBase.innerBrainRegistry
       ? toolCtxBase.innerBrainRegistry.list().filter((t) => t.status === 'RUNNING').length
       : 0;
-    const statusLine = subjectMode ? `在途内脑 ${runningInner}` : undefined;
+    const statusLine = subjectMode ? `手头还有 ${runningInner} 件在做` : undefined;
 
     // subject 模式：原始线程历史（含人类祈使原话）不进决策输入，避免服从性从历史侧门漏回。
     // 只保留 agent 自己写的记忆（belief/daily-log）与 KPI/burst 状态；当前这条消息已由 signal-appraiser 改写。

@@ -6,6 +6,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { isHostNotificationEcho } from '@utlra/agent-host';
+
 import {
   listActivePendings,
   resolvePending,
@@ -44,15 +46,9 @@ function agentMirrorSids(): Set<string> {
   return new Set([...DEFAULT_AGENT_MIRROR_SIDS, ...extra]);
 }
 
-/** 外脑/内脑 IM 通知模板 — 不得当人类回复 resolve pending */
+/** 系统通知模板 — 不得当人类回复 resolve pending。新旧说法都认。 */
 export function isAgentNotificationEcho(text: string): boolean {
-  const t = text.trim();
-  if (/^✅/.test(t)) return true;
-  if (/^❌\s*内脑任务失败/.test(t)) return true;
-  if (/^⚠️\s*内脑任务部分完成/.test(t)) return true;
-  if (/^⚠️\s*内脑任务被阻塞/.test(t)) return true;
-  if (/^⏸\s*内脑任务等待您的输入/.test(t)) return true;
-  return false;
+  return isHostNotificationEcho(text);
 }
 
 export function isAgentMirrorSender(senderSid: string): boolean {

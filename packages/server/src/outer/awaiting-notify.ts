@@ -14,6 +14,8 @@ import {
   recordImNotifySent,
   shouldSendImNotify,
 } from './im-notify-dedup.js';
+import { toUserSpeech } from '@utlra/agent-host';
+
 import type { TaskRecord } from './inner-brain-registry.js';
 
 export interface AwaitingNotifyDeps {
@@ -47,11 +49,12 @@ export async function notifyInnerBrainAwaitingHuman(
     return false;
   }
 
-  const text =
+  const text = toUserSpeech(
     `⏸ 内脑任务等待您的输入\n\n` +
-    `**任务 ID**：\`${record.instanceId}\`\n` +
-    `**问题**：${prompt}\n\n` +
-    `请在本线程回复；回复后将自动继续执行。`;
+      `**任务 ID**：\`${record.instanceId}\`\n` +
+      `**问题**：${prompt}\n\n` +
+      `请在本线程回复；回复后将自动继续执行。`,
+  );
 
   await deps.imClient.postMessage(threadId, {
     sender_sid: deps.agentSid,

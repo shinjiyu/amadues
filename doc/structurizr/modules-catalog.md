@@ -218,6 +218,7 @@ DESIGN → RUN → AWAITING → DONE
 | 库 | path |
 |----|------|
 | chatIrLib | `packages/chat-ir`（含 **identityBindingIndex**，见 IDENTITY-CROSS-CHANNEL） |
+| agentHostLib | `packages/agent-host`（花名册 / 群成员 / 状态卡 / 一跳 A2A / 用户用词；见 AGENT-HOST。不含群调度） |
 | **workspaceKit** | `packages/server/src/workspace-kit` — **外脑专用**（P3a 内联，原 `@utlra/core`）。内脑经 **file** 共享 `workDir`，不 import |
 | webchatProtocolLib | `packages/webchat-protocol` |
 | webchatBridge | `packages/webchat-bridge` — 出站 `asset:` → chat-server `/uploads` |

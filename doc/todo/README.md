@@ -4,6 +4,7 @@
 
 | 文档 | 状态 | 说明 |
 |------|------|------|
+| [`../structurizr/AGENT-HOST.md`](../structurizr/AGENT-HOST.md) | **P0 进行中** | 可接入的 agent 主机：花名册、群成员、状态卡、一跳 A2A、用户用词。群调度延后 |
 | [`memory-belief-reconciliation.md`](./memory-belief-reconciliation.md) | **MVP 已完成** | 用户取消/完成 → belief 对账 + tasks/mem9 降权 |
 | [`inner-brain-awaiting-lifecycle.md`](./inner-brain-awaiting-lifecycle.md) | **P0+P1 已完成** | AWAITING：reconcile、IM resolver、bootstrap、周期对账、组件测 |
 | [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md) | **已完成** | resolved pending spill（去掉 600 字硬截断） |

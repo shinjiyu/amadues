@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { toUserSpeech } from '@utlra/agent-host';
 import type { ChatAssetStore, ChatIRChannel } from '@utlra/chat-ir';
 import type { DeliverableAsset, InnerBrainEngine } from '../workspace-kit/index.js';
 
@@ -441,7 +442,9 @@ async function postCompletionIm(
 
   const gap = opts.gapSummary?.trim() ?? '';
   // 白话短结论：✅ 摘要 + 可选补充；不重复贴同一段正文，不带 instanceId
-  const completionText = formatCompletionImText(opts.headerLine, message, fileNote, gap);
+  const completionText = toUserSpeech(
+    formatCompletionImText(opts.headerLine, message, fileNote, gap),
+  );
 
   const attachmentParts: AttachmentPart[] = assets.map((d) => ({
     type: 'attachment',
@@ -523,11 +526,12 @@ export async function notifyInnerBrainTaskFailed(
     reason: string;
   },
 ): Promise<void> {
-  const reason = opts.reason.trim() || '内脑未能完成任务';
-  const text =
+  const reason = opts.reason.trim() || '没做成';
+  const text = toUserSpeech(
     `❌ 内脑任务失败（\`${opts.instanceId}\`）\n\n` +
-    `${reason.slice(0, 600)}` +
-    (reason.length > 600 ? '…' : '');
+      `${reason.slice(0, 600)}` +
+      (reason.length > 600 ? '…' : ''),
+  );
   await deps.imClient.postMessage(opts.originThread, {
     sender_sid: deps.agentSid,
     text,
