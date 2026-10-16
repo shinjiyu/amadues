@@ -2,7 +2,7 @@
 
 > **English:** The PC terminal manages agents through a host framework. Roster, groups, user-visible speech, presence, and agent-to-agent delivery are a library. Any process that implements `AgentAdapter` can join. Amadeus outer/inner brain is one adapter, not the host. Group turn-taking is deferred.
 
-> **状态**：P0 定稿（2026-10-15）。实现：`packages/agent-host`。群聊「谁先说话」**不在本文**。
+> **状态**：P0 定稿（2026-10-15）。实现：`packages/agent-host`。进度见 [`doc/todo/agent-host-progress.md`](../todo/agent-host-progress.md)。群聊「谁先说话」**不在本文**。
 
 > **不做**：群内第一个发言者的必要计算、发言权调度、@ 之外的抢答规则。那一块等真实群聊样本后再开专篇。
 
