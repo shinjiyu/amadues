@@ -6,8 +6,6 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { toUserSpeech } from './speech.js';
-
 export interface AgentProfile {
   id: string;
   name: string;
@@ -47,8 +45,17 @@ export interface HostMessage {
   at: string;
 }
 
+/** Public name of another registered teammate. */
+export interface RosterEntry {
+  id: string;
+  name: string;
+  job: string;
+}
+
 export interface AgentTurn {
   message: HostMessage;
+  /** Other registered teammates. The receiver is not in this list. */
+  roster: RosterEntry[];
   peers: PresenceCard[];
 }
 
@@ -145,7 +152,7 @@ export class AgentHost {
 
   /**
    * Store a group message. Does not call any agent.
-   * Who should speak is a later design.
+   * The terminal decides who speaks, then calls deliver.
    */
   recordGroupMessage(message: HostMessage): GroupPostResult {
     if (message.to.kind !== 'group') throw new Error('not a group message');
@@ -172,8 +179,11 @@ export class AgentHost {
   private async deliverToAgent(message: HostMessage, depth: number): Promise<DeliveredTurn[]> {
     const agent = this.agents.get(message.to.id);
     if (!agent) throw new Error(`unknown agent: ${message.to.id}`);
+    const roster = this.listAgents()
+      .filter((profile) => profile.id !== agent.profile.id)
+      .map((profile) => ({ id: profile.id, name: profile.name, job: profile.job }));
     const peers = this.listPresence().filter((card) => card.agentId !== agent.profile.id);
-    const result = await agent.accept({ message, peers });
+    const result = await agent.accept({ message, roster, peers });
     if (result.presence) {
       this.presence.set(agent.profile.id, {
         agentId: agent.profile.id,
@@ -182,7 +192,7 @@ export class AgentHost {
         updatedAt: nowIso(),
       });
     }
-    const said = result.say == null || result.say.trim() === '' ? null : toUserSpeech(result.say);
+    const said = result.say == null || result.say.trim() === '' ? null : result.say;
     const delivered: DeliveredTurn[] = [{ toAgentId: agent.profile.id, said }];
     if (result.handoff && depth < 1) {
       if (!this.agents.has(result.handoff.toAgentId)) {
@@ -192,7 +202,7 @@ export class AgentHost {
         id: randomUUID(),
         from: { kind: 'agent', id: agent.profile.id },
         to: { kind: 'agent', id: result.handoff.toAgentId },
-        text: toUserSpeech(result.handoff.note),
+        text: result.handoff.note,
         at: nowIso(),
       };
       delivered.push(...(await this.deliverToAgent(next, depth + 1)));

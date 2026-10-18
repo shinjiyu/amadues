@@ -9,7 +9,12 @@ import { USER_SPEECH_PROMPT } from '@utlra/agent-host';
 import type { IdentityRegistry } from '@utlra/chat-ir';
 import type { InnerLlmEnv } from '../llm/inner-llm-step.js';
 import { llmRawChatCompletion } from '../llm/raw.js';
-import { OUTER_REPLY_ONLY_TOOL_DEFS, OUTER_TOOL_DEFS, executeOuterTool } from './outer-tools.js';
+import {
+  HAND_TO_TEAMMATE_TOOL,
+  OUTER_REPLY_ONLY_TOOL_DEFS,
+  OUTER_TOOL_DEFS,
+  executeOuterTool,
+} from './outer-tools.js';
 import type { OuterToolContext, ToolDef } from './outer-tools.js';
 import { OUTER_ASYNC_ORCHESTRATION_GUIDE } from './brain-async-snapshot.js';
 import { OUTER_EXECUTABLE_WORKFLOW_GUIDE } from './executable-workflow-guide.js';
@@ -760,7 +765,11 @@ export async function runOuterConversationLoop(
   let abortedByFreshCheck = false;
 
   // subject 模式额外暴露 human_* 工具（把人当工具调用）
-  const toolDefs = subject ? [...OUTER_TOOL_DEFS, ...HUMAN_TOOL_DEFS] : OUTER_TOOL_DEFS;
+  // 队友终端这一轮才带花名册，此时才出现 hand_to_teammate。
+  const toolDefs = [
+    ...(subject ? [...OUTER_TOOL_DEFS, ...HUMAN_TOOL_DEFS] : OUTER_TOOL_DEFS),
+    ...(ctx.hostRosterIds?.length ? [HAND_TO_TEAMMATE_TOOL] : []),
+  ];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     roundsUsed++;

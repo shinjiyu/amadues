@@ -17,6 +17,7 @@ import {
   type ChatIRChannel,
   type LooseThreadStore,
 } from '@utlra/chat-ir';
+import { recordHostHandoff } from './amadeus-agent-adapter.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runOpenKuronekoPiMonoAuto, writeStopSignal, clearStopSignal } from '../pi-mono/run-tick.js';
@@ -749,6 +750,13 @@ export interface OuterToolContext {
    * 此上下文内 set_goal **不受** maxRunningInnerBrains 槽位限制（用户直派优先）。
    */
   inboundHumanSid?: string;
+  /**
+   * Teammate-terminal turn only. Ids the model may hand a note to.
+   * Absent on WeChat / Feishu turns, so `hand_to_teammate` is not offered.
+   */
+  hostRosterIds?: string[];
+  /** Filled by `hand_to_teammate`. The adapter reads this after the turn. */
+  hostHandoffSink?: { handoff?: { toAgentId: string; note: string } };
   /**
    * 仅 kpiAdvancer 内部续跑时允许 set_goal(kpi_id)；外脑 LLM 须用 advance_kpi。
    * ADL KPI-ADVANCEMENT.md §2
@@ -2539,6 +2547,36 @@ async function execSendFile(
   };
 }
 
+/** Only added to the tool list when `ctx.hostRosterIds` is set. */
+export const HAND_TO_TEAMMATE_TOOL: ToolDef = {
+  type: 'function',
+  function: {
+    name: 'hand_to_teammate',
+    description:
+      '把一张便条交给花名册上的另一名队友。to_agent_id 必须是这一轮名单里的 id。这一步只记下便条，不在这里再投递一次。',
+    parameters: {
+      type: 'object',
+      properties: {
+        to_agent_id: { type: 'string', description: '花名册里那名队友的 id' },
+        note: { type: 'string', description: '交给对方的便条' },
+      },
+      required: ['to_agent_id', 'note'],
+    },
+  },
+};
+
+function execHandToTeammate(
+  args: { to_agent_id?: string; note?: string },
+  ctx: OuterToolContext,
+): ToolCallResult {
+  const output = recordHostHandoff(
+    ctx.hostRosterIds,
+    { toAgentId: args.to_agent_id ?? '', note: args.note ?? '' },
+    ctx.hostHandoffSink,
+  );
+  return { replied: false, output };
+}
+
 // ── 统一分发 ────────────────────────────────────────────────────────────────
 
 export async function executeOuterTool(
@@ -2556,6 +2594,8 @@ export async function executeOuterTool(
   switch (name) {
     case 'reply_to_user':
       return execReplyToUser(args as { text?: string; attach_asset_ids?: string }, ctx);
+    case 'hand_to_teammate':
+      return execHandToTeammate(args as { to_agent_id?: string; note?: string }, ctx);
     case 'human_query':
     case 'human_request':
     case 'human_notify':

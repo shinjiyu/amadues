@@ -3,7 +3,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
     !identifiers hierarchical
 
     model {
-        user = person "用户" "仅经 IM 渠道对话与派任务；不直连 Agent API"
+        user = person "用户" "经队友终端创建队友并在新聊天里说话；也经 IM 找某一个队友。不直连 Agent API"
 
         operator = person "运维/观察者" "ops-console、performance dashboard；查看内外脑与 KPI"
 
@@ -50,7 +50,42 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "External"
         }
 
-        kuroneko = softwareSystem "Kuroneko (utlra)" "多通道 Agent：外脑编排、内脑子进程、技能与记忆" {
+        jev = softwareSystem "JEV" "发言裁决：没点名的群消息交给它，它指定第一轮由哪一名队友答。模型 jev-latest。" {
+            tags "External"
+            properties {
+                "horizon.note" "与 exec-agent 用的是同一个 JEV。这里问的是谁先答，不是产物是否完成。"
+            }
+        }
+
+        agentHost = softwareSystem "Agent Host" "花名册、群成员、状态卡、队友之间的一跳传话。不改写队友的话，不决定群里谁说话。库在 packages/agent-host；运行中的花名册在队友终端进程里。" {
+            tags "Library"
+            properties {
+                "path" "packages/agent-host"
+                "horizon.intention" "任何实现了 AgentAdapter 的队友都能挂上"
+                "horizon.in" "createAgent / createGroup / deliver / recordGroupMessage"
+                "horizon.out" "PresenceCard；一跳 handoff"
+                "horizon.deps" "无某一种 agent 实现、无 chat-ir"
+                "horizon.adl" "doc/structurizr/AGENT-HOST.md; doc/structurizr/AGENT-ADAPTER.md; doc/structurizr/AMADEUS-AGENT-ADAPTER.md"
+                "horizon.not" "发言裁决；改写队友的话"
+                "horizon.test.unit" "packages/agent-host/src/host.test.ts"
+            }
+        }
+
+        agentTerminal = softwareSystem "队友终端" "独立应用：创建队友、建群、看见近况。没点名的群消息由本应用里的 JEV 指定第一轮谁答。" {
+            tags "Terminal"
+            properties {
+                "path" "apps/agent-terminal"
+                "horizon.intention" "面向抽象队友的新聊天。WorkBuddy、DSH、Cursor、Amadeus 都走同一套接口"
+                "horizon.in" "创建队友、对一个队友说话、建群、群消息、看状态卡"
+                "horizon.out" "送给 JEV 指定的那一名，或送给被点名的人；群日志"
+                "horizon.deps" "Agent Host；JEV"
+                "horizon.not" "某一种 agent 的内部结构；改写队友的话；替队友连接微信或飞书"
+                "horizon.adl" "doc/structurizr/AGENT-TERMINAL.md"
+                "horizon.modules" "hostGateway、rosterTalk、groupRoom、speakerJudge、presenceBoard"
+            }
+        }
+
+        kuroneko = softwareSystem "Kuroneko (utlra)" "多通道 Agent：外脑编排、内脑子进程、技能与记忆。一种队友实现，不是队友终端。" {
             !docs docs
             !adrs decisions
 
@@ -65,20 +100,6 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
                     "horizon.deps" "无 kuroneko 业务包"
                     "horizon.adl" "doc/structurizr/IDENTITY-CROSS-CHANNEL.md"
                     "horizon.test.unit" "packages/chat-ir/src/seen-tracker.test.ts；identity-binding-index.test.ts（⏳）"
-                }
-            }
-
-            agentHostLib = container "Agent Host" "花名册、群成员、状态卡、一跳 A2A、用户可见用词。不决定群里谁说话。任意 AgentAdapter 可接入。" "npm @utlra/agent-host" {
-                tags "Library"
-                properties {
-                    "path" "packages/agent-host"
-                    "horizon.intention" "把多 agent 管理从某一个 agent 实现里拆出来"
-                    "horizon.in" "createAgent / createGroup / deliver / recordGroupMessage"
-                    "horizon.out" "toUserSpeech；PresenceCard；一跳 handoff"
-                    "horizon.deps" "无 server、无 chat-ir"
-                    "horizon.adl" "doc/structurizr/AGENT-HOST.md"
-                    "horizon.not" "群聊发言调度"
-                    "horizon.test.unit" "packages/agent-host/src/host.test.ts"
                 }
             }
 
@@ -264,6 +285,20 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "http"
         }
 
+        // ── 队友终端（新聊天）────────────────────────────────────
+        user -> agentTerminal "创建队友、建群、在新聊天里说话" "HTTPS" {
+            tags "http"
+        }
+        agentTerminal -> agentHost "花名册、送达、记群消息、读状态、队友之间传话" "npm import" {
+            tags "import"
+        }
+        agentTerminal -> jev "没点名的群消息，请它指定第一轮谁答" "HTTPS" {
+            tags "http"
+        }
+        agentHost -> kuroneko "HostMessage 按 AgentAdapter 的 accept JSON 交给 Amadeus：POST /agent-adapter/accept" "AgentAdapter" {
+            tags "import"
+        }
+
         // ── L2 库依赖（import 国境雏形）──────────────────────────
         kuroneko.discordBridge -> kuroneko.chatIrLib "ChatIRChannel + seenTracker.track(mention)" "npm import" {
             tags "import"
@@ -278,9 +313,6 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             tags "import"
         }
         kuroneko.webChat -> kuroneko.webchatProtocolLib "客户端类型" "npm import" {
-            tags "import"
-        }
-        kuroneko.agentServer -> kuroneko.agentHostLib "用户可见出口与花名册" "npm import" {
             tags "import"
         }
 
@@ -819,7 +851,13 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
 
     views {
         systemContext kuroneko "01-L1-SystemContext" {
-            include user operator discord feishu localWebChatIm brainMonitoring kuroneko llm mem9 drive9
+            include user operator discord feishu localWebChatIm brainMonitoring kuroneko llm mem9 drive9 agentTerminal agentHost
+            autolayout lr
+        }
+
+        systemContext agentTerminal "15-L1-AgentTerminal" {
+            title "L1 队友终端（新聊天）"
+            include user agentTerminal agentHost jev kuroneko
             autolayout lr
         }
 
@@ -851,7 +889,7 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
         }
 
         container kuroneko "05-L2-Libraries" {
-            include kuroneko.chatIrLib kuroneko.agentHostLib kuroneko.workspaceKit kuroneko.webchatProtocolLib kuroneko.agentServer kuroneko.discordBridge kuroneko.webchatBridge kuroneko.feishuBridge kuroneko.wechatBridge kuroneko.chatServer kuroneko.webChat
+            include kuroneko.chatIrLib kuroneko.workspaceKit kuroneko.webchatProtocolLib kuroneko.agentServer kuroneko.discordBridge kuroneko.webchatBridge kuroneko.feishuBridge kuroneko.wechatBridge kuroneko.chatServer kuroneko.webChat
             autolayout lr
         }
 
@@ -972,6 +1010,10 @@ workspace "Kuroneko" "ADL authority: L1-L2 integration + L3 agentServer modules.
             }
             element "Monitoring" {
                 background #16a085
+                color #ffffff
+            }
+            element "Terminal" {
+                background #1a5276
                 color #ffffff
             }
             relationship "spawn" {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { AgentHost, type AgentTurn, type PresenceCard } from './host.js';
+import { AgentHost, type AgentTurn, type PresenceCard, type RosterEntry } from './host.js';
 import { isHostNotificationEcho, toUserSpeech } from './speech.js';
 
 describe('toUserSpeech', () => {
@@ -34,23 +34,30 @@ describe('isHostNotificationEcho', () => {
 describe('AgentHost', () => {
   it('registers any adapter and shows peers on handoff', async () => {
     const host = new AgentHost();
-    const seen: PresenceCard[][] = [];
+    const seenPeers: PresenceCard[][] = [];
+    const seenRoster: RosterEntry[][] = [];
+    const seenNotes: string[] = [];
     const editor = host.createAgent({
       name: '改稿',
       job: '只改别人交给的稿',
       accept: async (turn: AgentTurn) => {
-        seen.push(turn.peers);
+        seenPeers.push(turn.peers);
+        seenRoster.push(turn.roster);
+        seenNotes.push(turn.message.text);
         return { say: '改完了' };
       },
     });
     const writer = host.createAgent({
       name: '写稿',
       job: '把材料收成一页',
-      accept: async () => ({
-        say: '已派内脑',
-        presence: { doing: '在收材料' },
-        handoff: { toAgentId: editor.id, note: '外脑请你改一版 KPI' },
-      }),
+      accept: async (turn: AgentTurn) => {
+        seenRoster.push(turn.roster);
+        return {
+          say: '已派内脑',
+          presence: { doing: '在收材料' },
+          handoff: { toAgentId: editor.id, note: '外脑请你改一版 KPI' },
+        };
+      },
     });
 
     const turns = await host.deliver({
@@ -61,13 +68,16 @@ describe('AgentHost', () => {
       at: '2026-10-15T00:00:00.000Z',
     });
 
-    expect(turns[0]?.said).toBe('我去做');
+    expect(turns[0]?.said).toBe('已派内脑');
     expect(turns[1]?.toAgentId).toBe(editor.id);
     expect(turns[1]?.said).toBe('改完了');
-    expect(seen[0]?.some((card) => card.agentId === writer.id && card.doing === '在收材料')).toBe(
+    expect(seenNotes[0]).toBe('外脑请你改一版 KPI');
+    expect(seenRoster[0]).toEqual([{ id: editor.id, name: '改稿', job: '只改别人交给的稿' }]);
+    expect(seenRoster[1]).toEqual([{ id: writer.id, name: '写稿', job: '把材料收成一页' }]);
+    expect(seenPeers[0]?.some((card) => card.agentId === writer.id && card.doing === '在收材料')).toBe(
       true,
     );
-    expect(seen[0]?.every((card) => card.agentId !== editor.id)).toBe(true);
+    expect(seenPeers[0]?.every((card) => card.agentId !== editor.id)).toBe(true);
   });
 
   it('stores a group message and does not wake agents', async () => {

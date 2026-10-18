@@ -11,8 +11,10 @@
 
 **L1 约定（系统上下文）**：
 
-- **用户**只经 **IM 接口**（`discord`、`feishu`、`localWebChatIm`）使用系统，**不**直连 `kuroneko` Agent API。
-- **本地 IM** 在 L1 为 `localWebChatIm`，L2 由 `chatServer` + `webChat` 实现。
+- **用户**经 **队友终端**（`agentTerminal`）创建队友并在新聊天里说话，也经 **IM 接口**（`discord`、`feishu`、`localWebChatIm`）找某一个队友。不直连 `kuroneko` Agent API。
+- **队友终端** 在 L1 为软件系统 `agentTerminal`（`apps/agent-terminal`，未实现）。对话是 `HostMessage`。内部四块见 [`AGENT-TERMINAL.md`](./AGENT-TERMINAL.md) §3。
+- **Agent Host** 在 L1 为软件系统 `agentHost`。库仍在 `packages/agent-host`；运行中的花名册在队友终端进程里。见 [`AGENT-HOST.md`](./AGENT-HOST.md)。
+- **本地 IM** 在 L1 为 `localWebChatIm`，L2 由 `chatServer` + `webChat` 实现。这是某一个队友的渠道，不是队友终端。
 - **飞书** 在 L1 为 `feishu`，L2 由 `feishuBridge` + `channelConnectionRegistry`（N 连接/热插）实现；身份经 `identityBindingIndex.resolve`。见 [`IDENTITY-CROSS-CHANNEL.md`](./IDENTITY-CROSS-CHANNEL.md)。
 - **内外脑监控** 在 L1 为 `brainMonitoring`，L2 由 `opsConsole` + `performanceDashboard` 实现；**运维/观察者** 与终端用户分离。
 
@@ -218,7 +220,7 @@ DESIGN → RUN → AWAITING → DONE
 | 库 | path |
 |----|------|
 | chatIrLib | `packages/chat-ir`（含 **identityBindingIndex**，见 IDENTITY-CROSS-CHANNEL） |
-| agentHostLib | `packages/agent-host`（花名册 / 群成员 / 状态卡 / 一跳 A2A / 用户用词；见 AGENT-HOST。不含群调度） |
+| agentHostLib | `packages/agent-host`（花名册 / 群成员 / 状态卡 / 一跳传话 / 远程 accept；见 AGENT-HOST、AGENT-ADAPTER。不含群调度） |
 | **workspaceKit** | `packages/server/src/workspace-kit` — **外脑专用**（P3a 内联，原 `@utlra/core`）。内脑经 **file** 共享 `workDir`，不 import |
 | webchatProtocolLib | `packages/webchat-protocol` |
 | webchatBridge | `packages/webchat-bridge` — 出站 `asset:` → chat-server `/uploads` |

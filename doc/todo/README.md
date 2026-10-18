@@ -6,6 +6,7 @@
 |------|------|------|
 | [`agent-host-progress.md`](./agent-host-progress.md) | **进度说明** | Agent Host：已落地的框架和出口，以及还没做的终端、适配器、群调度 |
 | [`../structurizr/AGENT-HOST.md`](../structurizr/AGENT-HOST.md) | **P0 进行中** | 可接入的 agent 主机：花名册、群成员、状态卡、一跳 A2A、用户用词。群调度延后 |
+| [`../structurizr/AGENT-TERMINAL.md`](../structurizr/AGENT-TERMINAL.md) | **ADL 已定** | 队友终端：独立应用，一种新的聊天。实现未做 |
 | [`memory-belief-reconciliation.md`](./memory-belief-reconciliation.md) | **MVP 已完成** | 用户取消/完成 → belief 对账 + tasks/mem9 降权 |
 | [`inner-brain-awaiting-lifecycle.md`](./inner-brain-awaiting-lifecycle.md) | **P0+P1 已完成** | AWAITING：reconcile、IM resolver、bootstrap、周期对账、组件测 |
 | [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md) | **已完成** | resolved pending spill（去掉 600 字硬截断） |

@@ -197,6 +197,17 @@
 | brainFs | ✅ `parse-milestones.test.ts` | ✅ `brainFs.component.integration.test.ts` | — | DyFlow 后仅余通用文件读写（tail 等） |
 | archiveStore | ✅ `fs-store.test.ts` | ✅ `archiveStore.component.integration.test.ts` | — | |
 
+## 队友终端（`agentTerminal`，未实现）
+
+ADL：[`AGENT-TERMINAL.md`](./AGENT-TERMINAL.md) §3。预定路径 `apps/agent-terminal`。DSL 里目前是 L1 软件系统，下面四块实现时再落成组件。
+
+| ADL 模块 ID | 单元测 | 模块测 | Prompt 测 | 备注 |
+|-------------|--------|--------|-----------|------|
+| hostGateway | ⏳ | ⏳ | — | 唯一调用 AgentHost 的地方 |
+| rosterTalk | ⏳ | ⏳ | — | 创建队友；对一个队友说话 |
+| groupRoom | ⏳ | ⏳ | — | 建群与记群消息；不 deliver |
+| presenceBoard | ⏳ | ⏳ | — | 只读状态卡 |
+
 ## 实施阶段（testing-strategy §7）
 
 | 阶段 | 状态 | 与「每组件测试」关系 |

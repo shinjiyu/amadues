@@ -56,6 +56,7 @@ import { OuterBrain, type OuterBrainDeps } from './outer/outer-brain.js';
 import { IdentityLinkService } from './outer/identity-link-service.js';
 import { ChannelConnectionRegistry } from './outer/channel-connection-registry.js';
 import { dispatchOuterHttpInbound } from './outer/outer-http-inbound.js';
+import { acceptAmadeusTurn } from './outer/amadeus-agent-adapter.js';
 import { createMemoryStore, type OuterMemoryStore } from './outer/outer-memory.js';
 import { createMemoryBlockStore } from './outer/memory-block-store.js';
 import { initSkillMemoryStore, type SkillMemoryStore } from './mem9/skill-memory-store.js';
@@ -1184,6 +1185,33 @@ app.post('/api/outer/inbound', async (c) => {
     return c.json({ ok: true, ...result });
   } catch (e) {
     return c.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
+/**
+ * 队友终端的一轮。回复收进 say，不发进微信或飞书。
+ * body: { message, roster, peers } — 见 AGENT-ADAPTER.md
+ */
+app.post('/agent-adapter/accept', async (c) => {
+  if (!httpOuterBrainDeps) {
+    return c.json({ error: 'agent not ready (bootstrap still running)' }, 503);
+  }
+  const body = await c.req.json().catch(() => null);
+  try {
+    const result = await acceptAmadeusTurn(body, {
+      dispatch: (params) =>
+        dispatchOuterHttpInbound(
+          httpOuterBrainDeps!,
+          { loadThreads, saveThreads },
+          params,
+        ),
+      tasks: () => innerBrainRegistry.list(),
+    });
+    return c.json(result);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const status = message.startsWith('bad accept') ? 400 : 500;
+    return c.json({ error: message }, status);
   }
 });
 

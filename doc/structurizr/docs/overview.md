@@ -2,7 +2,7 @@
 
 本软件系统的 **ADL 权威** 为同目录上一级的 [`workspace.dsl`](../workspace.dsl)。
 
-- **L1**：用户仅经 IM（Discord、本地 WebChat）；运维经监控台观察内外脑与 KPI。
+- **L1**：用户经队友终端（新聊天，见 [`AGENT-TERMINAL.md`](../AGENT-TERMINAL.md)）管理花名册；也经 IM（Discord、飞书、微信、本地 WebChat）找某一个队友。运维经监控台观察内外脑与 KPI。Kuroneko 是一种队友实现。
 - **L2**：`agentServer` 外脑进程 + `innerWorker` 子进程 + 共享库（Chat IR、Workspace Kit）。
 - **L3**：外脑模块见 [`modules-catalog.md`](../modules-catalog.md)；**数字员工自主工作**见 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](../DIGITAL-EMPLOYEE-AUTONOMY.md)；**确定性工作流（Executable Workflow ⊃ Skills）**见 [`EXECUTABLE-WORKFLOW.md`](../EXECUTABLE-WORKFLOW.md)；KPI 治理见 [`KPI-MANAGER-LAYER.md`](../KPI-MANAGER-LAYER.md)；KPI 闭环见 [`KPI-CLOSED-LOOP.md`](../KPI-CLOSED-LOOP.md)；记忆边界见 [`MEMORY-STORAGE-BOUNDARY.md`](../MEMORY-STORAGE-BOUNDARY.md)；测试对照见 [`COMPONENT-TEST-MAP.md`](../COMPONENT-TEST-MAP.md)。
 

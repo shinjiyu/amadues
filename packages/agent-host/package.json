@@ -2,7 +2,7 @@
   "name": "@utlra/agent-host",
   "version": "0.1.0",
   "type": "module",
-  "description": "Agent host: roster, groups, presence, one-hop A2A, and user-visible speech. No inner/outer brain.",
+  "description": "Agent host: roster, groups, presence, one-hop handoff, and the remote accept JSON. No inner/outer brain.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

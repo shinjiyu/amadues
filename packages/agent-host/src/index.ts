@@ -14,6 +14,8 @@ export {
   type GroupProfile,
   type HostMessage,
   type HostParty,
+  type RosterEntry,
   type HostTarget,
   type PresenceCard,
 } from './host.js';
+export { createRemoteAccept } from './remote-adapter.js';

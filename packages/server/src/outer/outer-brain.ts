@@ -178,6 +178,9 @@ export interface OuterBrainDeps {
    * 与 DigitalEmployeeRuntime 同一实例，否则工具会 calendar_unavailable。
    */
   getEmployeeCalendar?: () => EmployeeCalendarPort | undefined;
+  /** 仅队友终端这一轮：可交接的队友 id。微信 / 飞书入站不设置。 */
+  hostRosterIds?: string[];
+  hostHandoffSink?: { handoff?: { toAgentId: string; note: string } };
 }
 
 const MAX_AGENT_CHAIN = Number(process.env['UTLRA_OUTER_MAX_AGENT_CHAIN'] ?? '20');
@@ -626,6 +629,8 @@ export class OuterBrain {
       channelAdminSids: this.deps.channelAdminSids,
       inboundHumanSid: isHumanSender(senderSid) ? senderSid : undefined,
       employeeCalendar: this.deps.getEmployeeCalendar?.(),
+      hostRosterIds: this.deps.hostRosterIds,
+      hostHandoffSink: this.deps.hostHandoffSink,
     };
 
     // ── Step 3.4: IM 入站上下文（只读；方案一：前置层不派发，派发交对话环 LLM 工具）──

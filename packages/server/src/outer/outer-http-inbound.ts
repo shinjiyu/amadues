@@ -36,6 +36,9 @@ export interface OuterHttpInboundParams {
   /** IM 已写入本条时可 true，与 text/parts 二选一 */
   userMessagePersisted?: boolean;
   participantSids?: string[];
+  /** 队友终端这一轮可交接的队友 id。缺省时不出现 hand_to_teammate。 */
+  hostRosterIds?: string[];
+  hostHandoffSink?: { handoff?: { toAgentId: string; note: string } };
 }
 
 export interface OuterHttpOutboundReply {
@@ -150,7 +153,12 @@ export async function dispatchOuterHttpInbound(
   }
 
   const im = new CaptureImChannel();
-  const brain = new OuterBrain({ ...deps, imClient: im });
+  const brain = new OuterBrain({
+    ...deps,
+    imClient: im,
+    hostRosterIds: params.hostRosterIds,
+    hostHandoffSink: params.hostHandoffSink,
+  });
   await brain.handleInbound({
     threadId: params.threadId,
     senderSid: params.senderSid,
