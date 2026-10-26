@@ -19,6 +19,10 @@ const ENV_KEYS = [
   'LOCALMODULE_VISION_MODEL',
   'LOCALMODULE_MAX_TOKENS',
   'LOCALMODULE_MULTIMODAL_MAX_TOKENS',
+  'DEEPSEEK_API_KEY',
+  'DEEPSEEK_BASE_URL',
+  'DEEPSEEK_MODEL',
+  'DEEPSEEK_VISION_MODEL',
 ] as const;
 
 const prevEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -86,5 +90,22 @@ describe('loadInnerLlmEnvFromProcess', () => {
     expect(env?.provider).toBe('kimi');
     expect(env?.textModel).toBe('kimi-k2.6');
     expect(env?.visionModel).toBe('kimi-k2.6');
+  });
+
+  it('loads deepseek-flash when provider is deepseek', () => {
+    process.env.UTLRA_INNER_LLM_PROVIDER = 'deepseek';
+    process.env.DEEPSEEK_API_KEY = 'dk';
+    delete process.env.DEEPSEEK_MODEL;
+    delete process.env.DEEPSEEK_VISION_MODEL;
+
+    const env = loadInnerLlmEnvFromProcess();
+    expect(env).toMatchObject({
+      provider: 'deepseek',
+      apiKey: 'dk',
+      baseUrl: 'https://api.deepseek.com/v1',
+      textModel: 'deepseek-flash',
+      visionModel: 'deepseek-flash',
+      thinking: 'disabled',
+    });
   });
 });

@@ -11,6 +11,7 @@ import path from 'node:path';
 import { createDyflowController } from '../openkuroneko/inner-brain/index.js';
 import { projectDyflowStatus } from '../openkuroneko/inner-brain/status-projection.js';
 import { createInnerRuntime } from './inner-runtime.js';
+import { runPlayAuto } from './play-loop.js';
 
 let gate: Promise<void> = Promise.resolve();
 
@@ -74,6 +75,11 @@ export async function runOpenKuronekoPiMonoTick(params: {
 }): Promise<PiMonoTickResult> {
   return withPiMonoLock(async () => {
     try {
+      if (isPlayMode()) {
+        const played = await runPlayAuto({ ...params, maxTicks: 1 });
+        if (!played.ok) return { ok: false, error: played.error, dist: PI_MONO_RUNTIME_LABEL };
+        return { ok: true, hadWork: played.stoppedBy !== 'idle', dist: PI_MONO_RUNTIME_LABEL };
+      }
       const { controller } = await createPiMonoController(params);
       const { hadWork } = await controller.tick();
       return { ok: true, hadWork, dist: PI_MONO_RUNTIME_LABEL };
@@ -110,6 +116,11 @@ function isStopSignalSet(workDir: string): boolean {
   return fs.existsSync(path.join(workDir, '.stop-signal'));
 }
 
+function isPlayMode(): boolean {
+  const v = process.env['INNER_PLAY_MODE']?.trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
 /**
  * 连续 tick，直到本轮「无活」（hadWork=false）、达到 maxTicks 或收到停止信号。
  * @param onTick 每次 tick 完成后的回调，参数为当前 tick 计数和时间戳，可用于写 lastTickAt 到注册表
@@ -124,6 +135,7 @@ export async function runOpenKuronekoPiMonoAuto(params: {
 
   return withPiMonoLock(async () => {
     try {
+      if (isPlayMode()) return runPlayAuto(params);
       const { controller } = await createPiMonoController(params);
       let ticks = 0;
 

@@ -1,4 +1,5 @@
 import type { LlmChatOptions, LlmChatResult } from './types.js';
+import { deepseekProviderChatCompletion } from './providers/deepseek.js';
 import { kimiProviderChatCompletion } from './providers/kimi.js';
 import { localmoduleProviderChatCompletion } from './providers/localmodule.js';
 import { zhipuProviderChatCompletion } from './providers/zhipu.js';
@@ -15,6 +16,8 @@ export async function llmChatCompletion(opts: LlmChatOptions): Promise<LlmChatRe
       return zhipuProviderChatCompletion(stripProvider(opts));
     case 'kimi':
       return kimiProviderChatCompletion(stripProvider(opts));
+    case 'deepseek':
+      return deepseekProviderChatCompletion(stripProvider(opts));
     case 'localmodule':
       return localmoduleProviderChatCompletion(stripProvider(opts));
     default: {

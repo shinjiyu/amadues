@@ -109,6 +109,7 @@ export function normalizeProviderRequestBody(
 
 function displayProviderName(provider: LlmProvider): string {
   if (provider === 'kimi') return 'Kimi';
+  if (provider === 'deepseek') return 'DeepSeek';
   if (provider === 'localmodule') return 'LocalModule';
   return 'Zhipu';
 }

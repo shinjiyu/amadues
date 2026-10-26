@@ -16,7 +16,7 @@ export interface InnerToolAuditEntry {
   log_id: string;
   ts: string;
   workspace_id: string;
-  module: 'base-node' | 'designer' | 'node-creator';
+  module: 'base-node' | 'designer' | 'node-creator' | 'play';
   event: 'tool.call' | 'tool.result';
   data: Record<string, unknown>;
 }

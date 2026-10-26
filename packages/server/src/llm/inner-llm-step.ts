@@ -76,7 +76,7 @@ export async function runInnerLlmStep(env: LlmEnv, input: InnerLlmStepInput): Pr
  * 保持现有设计：全链路共用一套主模型配置，只区分 think / no-think。
  *
  * provider 选择：
- * - 若 `UTLRA_INNER_LLM_PROVIDER` 为 `zhipu` | `kimi` | `localmodule` 且对应 Key 已配置，则使用该 provider。
+ * - 若 `UTLRA_INNER_LLM_PROVIDER` 为 `zhipu` | `kimi` | `localmodule` | `deepseek` 且对应 Key 已配置，则使用该 provider。
  * - 否则自动：ZHIPU_API_KEY → zhipu；KIMI_API_KEY → kimi；LOCALMODULE_API_KEY → localmodule。
  */
 export function loadInnerLlmEnvFromProcess(): LlmEnv | null {
@@ -123,6 +123,23 @@ export function loadInnerLlmEnvFromProcess(): LlmEnv | null {
     };
   }
 
+  if (provider === 'deepseek') {
+    return {
+      provider,
+      apiKey: readRequiredEnv('DEEPSEEK_API_KEY'),
+      baseUrl: readEnvTrimmed('DEEPSEEK_BASE_URL') ?? 'https://api.deepseek.com/v1',
+      // `deepseek-flash` is the live id for DeepSeek-V4.1-Flash-1017.
+      textModel: readEnvTrimmed('DEEPSEEK_MODEL') ?? 'deepseek-flash',
+      visionModel: readEnvTrimmed('DEEPSEEK_VISION_MODEL') ?? readEnvTrimmed('DEEPSEEK_MODEL') ?? 'deepseek-flash',
+      maxTokensText: Math.min(65536, Math.max(256, Number(readEnvTrimmed('DEEPSEEK_MAX_TOKENS') ?? 4096))),
+      maxTokensMultimodal: Math.min(
+        65536,
+        Math.max(512, Number(readEnvTrimmed('DEEPSEEK_MULTIMODAL_MAX_TOKENS') ?? 8192)),
+      ),
+      thinking: 'disabled',
+    };
+  }
+
   return {
     provider: 'kimi',
     apiKey: readRequiredEnv('KIMI_API_KEY'),
@@ -150,6 +167,7 @@ function resolveProviderFromProcess(): LlmProvider | null {
     if (wan === 'localmodule' && readEnvTrimmed('LOCALMODULE_API_KEY')) return 'localmodule';
     if (wan === 'zhipu' && readEnvTrimmed('ZHIPU_API_KEY')) return 'zhipu';
     if (wan === 'kimi' && readEnvTrimmed('KIMI_API_KEY')) return 'kimi';
+    if (wan === 'deepseek' && readEnvTrimmed('DEEPSEEK_API_KEY')) return 'deepseek';
   }
   if (readEnvTrimmed('ZHIPU_API_KEY')) return 'zhipu';
   if (readEnvTrimmed('KIMI_API_KEY')) return 'kimi';

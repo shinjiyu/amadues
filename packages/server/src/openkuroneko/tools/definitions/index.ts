@@ -38,3 +38,12 @@ export {
   brainDirFromWorkDir,
 } from './async-wait.js';
 export { verifySelfUpdateTool, rollbackSelfUpdateTool, readSelfUpdatePlanTool } from './self-update.js';
+export {
+  PLAY_BODY_TOOLS,
+  armFeedbackTool,
+  armStreamTool,
+  armStopTool,
+  eyeLookTool,
+  screenShowTool,
+  mouthSayTool,
+} from './play/body-tools.js';

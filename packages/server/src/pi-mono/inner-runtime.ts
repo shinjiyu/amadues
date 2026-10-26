@@ -95,6 +95,18 @@ export function createInnerRuntime(params: { workspaceId: string; workDir: strin
   const model = primaryLlm?.textModel ?? readEnvTrimmed('OPENAI_MODEL') ?? 'glm-5.1';
   const thinkingEnabled = (primaryLlm?.thinking ?? 'disabled') === 'enabled';
 
+  // Kimi/OpenAI 需要 openai 线格式（assistant.tool_calls + tool.tool_call_id）；
+  // GLM coding 走 minimal。硬编码 minimal 会让 Kimi 报 tool_call_id is not found。
+  const deepseekWire =
+    primaryLlm?.provider === 'deepseek' || baseUrl.includes('deepseek.com');
+  const wireFormat =
+    primaryLlm?.provider === 'kimi' ||
+    deepseekWire ||
+    baseUrl.includes('moonshot') ||
+    baseUrl.includes('openai.com')
+      ? ('openai' as const)
+      : ('minimal' as const);
+
   const llm =
     primaryLlm?.provider === 'localmodule'
       ? createLocalModuleAdapter({
@@ -106,12 +118,17 @@ export function createInnerRuntime(params: { workspaceId: string; workDir: strin
           apiKey,
           baseUrl,
           model,
-          toolWireFormat: 'minimal',
-          extraBody: { thinking: { type: thinkingEnabled ? 'enabled' : 'disabled' } },
+          toolWireFormat: wireFormat,
+          extraBody: deepseekWire
+            ? {}
+            : { thinking: { type: thinkingEnabled ? 'enabled' : 'disabled' } },
         });
 
-  // drive9 优先（vector+BM25 语义搜索），本地关键词兜底
-  const drive9Config = resolveDrive9Config();
+  // OnlyClaws Play：白名单工具 + 强制本地（不连 Drive9）。见 mcp_guard/doc/experiments/onlyclaws-play.md
+  const playMode = readEnvFlag('INNER_PLAY_MODE', false);
+
+  // drive9 优先（vector+BM25 语义搜索），本地关键词兜底；play 模式强制跳过
+  const drive9Config = playMode ? null : resolveDrive9Config();
   const localSkillDir = process.env['OPENKURONEKO_OB_SKILL_POOL']
     ? `${process.env['OPENKURONEKO_OB_SKILL_POOL']}/skills`
     : undefined;
@@ -119,42 +136,52 @@ export function createInnerRuntime(params: { workspaceId: string; workDir: strin
     ? new Drive9SkillProvider(drive9Config.apiKey, drive9Config.apiUrl, localSkillDir)
     : createObSkillProvider(process.env['OPENKURONEKO_OB_SKILL_POOL']);
 
-  const toolRegistry = createToolRegistry([
-    toolsDefs.describeImageTool,
-    toolsDefs.readFileTool,
-    toolsDefs.writeFileTool,
-    toolsDefs.editFileTool,
-    toolsDefs.searchFilesTool,
-    toolsDefs.listPeerWorkspacesTool,
-    toolsDefs.readPeerFileTool,
-    toolsDefs.listPeerFilesTool,
-    toolsDefs.searchPeerFilesTool,
-    toolsDefs.shellExecTool,
-    toolsDefs.shellProbeTool,
-    toolsDefs.shellExecBgTool,
-    toolsDefs.shellReadOutputTool,
-    toolsDefs.shellKillTool,
-    toolsDefs.browserOpenTool,
-    toolsDefs.browserActTool,
-    toolsDefs.browserCloseTool,
-    toolsDefs.browserListTool,
-    toolsDefs.browserRunStepsTool,
-    toolsDefs.webSearchTool,
-    toolsDefs.getTimeTool,
-    toolsDefs.runAgentTool,
-    toolsDefs.capabilityGapTool,
-    toolsDefs.createQueryAvailableSkillsTool(skillProvider),
-    toolsDefs.getSkillContentTool,
-    toolsDefs.registerDeliverableTool,
-    toolsDefs.askUserTool,
-    toolsDefs.waitTimerTool,
-    toolsDefs.waitSignalTool,
-    toolsDefs.readSelfUpdatePlanTool,
-    toolsDefs.verifySelfUpdateTool,
-    toolsDefs.rollbackSelfUpdateTool,
-    toolsDefs.listAgentsTool,
-    toolsDefs.stopAgentTool,
-  ]);
+  const toolRegistry = createToolRegistry(
+    playMode
+      ? [
+          toolsDefs.readFileTool,
+          toolsDefs.writeFileTool,
+          toolsDefs.editFileTool,
+          toolsDefs.getTimeTool,
+          ...toolsDefs.PLAY_BODY_TOOLS,
+        ]
+      : [
+          toolsDefs.describeImageTool,
+          toolsDefs.readFileTool,
+          toolsDefs.writeFileTool,
+          toolsDefs.editFileTool,
+          toolsDefs.searchFilesTool,
+          toolsDefs.listPeerWorkspacesTool,
+          toolsDefs.readPeerFileTool,
+          toolsDefs.listPeerFilesTool,
+          toolsDefs.searchPeerFilesTool,
+          toolsDefs.shellExecTool,
+          toolsDefs.shellProbeTool,
+          toolsDefs.shellExecBgTool,
+          toolsDefs.shellReadOutputTool,
+          toolsDefs.shellKillTool,
+          toolsDefs.browserOpenTool,
+          toolsDefs.browserActTool,
+          toolsDefs.browserCloseTool,
+          toolsDefs.browserListTool,
+          toolsDefs.browserRunStepsTool,
+          toolsDefs.webSearchTool,
+          toolsDefs.getTimeTool,
+          toolsDefs.runAgentTool,
+          toolsDefs.capabilityGapTool,
+          toolsDefs.createQueryAvailableSkillsTool(skillProvider),
+          toolsDefs.getSkillContentTool,
+          toolsDefs.registerDeliverableTool,
+          toolsDefs.askUserTool,
+          toolsDefs.waitTimerTool,
+          toolsDefs.waitSignalTool,
+          toolsDefs.readSelfUpdatePlanTool,
+          toolsDefs.verifySelfUpdateTool,
+          toolsDefs.rollbackSelfUpdateTool,
+          toolsDefs.listAgentsTool,
+          toolsDefs.stopAgentTool,
+        ],
+  );
 
   const kpiId = process.env['INNER_KPI_ID']?.trim() || undefined;
   const burstId = process.env['INNER_BURST_ID']?.trim() || kpiId || params.workspaceId;
@@ -218,4 +245,12 @@ export function createInnerRuntime(params: { workspaceId: string; workDir: strin
 function readEnvTrimmed(name: string): string | undefined {
   const v = process.env[name]?.trim();
   return v ? v : undefined;
+}
+
+function readEnvFlag(name: string, defaultValue: boolean): boolean {
+  const v = process.env[name]?.trim().toLowerCase();
+  if (v == null || v === '') return defaultValue;
+  if (['1', 'true', 'yes', 'on'].includes(v)) return true;
+  if (['0', 'false', 'no', 'off'].includes(v)) return false;
+  return defaultValue;
 }

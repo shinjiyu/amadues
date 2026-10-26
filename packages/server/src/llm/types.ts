@@ -2,7 +2,7 @@
 
 import type { LlmUsageRecordMeta } from '../outer/llm-usage-types.js';
 
-export type LlmProvider = 'zhipu' | 'kimi' | 'localmodule';
+export type LlmProvider = 'zhipu' | 'kimi' | 'localmodule' | 'deepseek';
 
 export type TextPart = { type: 'text'; text: string };
 export type ImagePart = { type: 'image_url'; image_url: { url: string } };
