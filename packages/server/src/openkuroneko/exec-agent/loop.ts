@@ -17,6 +17,7 @@ import {
   type Tool,
   type ToolResultMessage,
 } from '@earendil-works/pi-ai';
+import { deepseekProvider } from '@earendil-works/pi-ai/providers/deepseek';
 import { zaiCodingCnProvider } from '@earendil-works/pi-ai/providers/zai-coding-cn';
 
 import { askJev, type JevVerdict } from './jev.js';
@@ -121,6 +122,7 @@ function pi() {
   if (!piModels) {
     piModels = createModels();
     piModels.setProvider(zaiCodingCnProvider());
+    piModels.setProvider(deepseekProvider());
   }
   return piModels;
 }
@@ -132,8 +134,54 @@ export function glm53(): Model<any> {
   return model;
 }
 
+/**
+ * DeepSeek V4.1 Flash（pi-ai catalog id: deepseek-flash）。
+ * 需要 DEEPSEEK_API_KEY；官方 base https://api.deepseek.com。
+ */
+export function deepseekFlash(): Model<any> {
+  const model = pi().getModel('deepseek', 'deepseek-flash');
+  if (!model) throw new Error('deepseek-flash is not in the pi-ai deepseek catalog');
+  return model;
+}
+
+/** 汇总 assistant 消息里的 usage（input=未命中缓存；cacheRead=缓存命中）。 */
+export function sumMessageUsage(messages: Message[]): {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  calls: number;
+} {
+  let input = 0;
+  let output = 0;
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  let totalTokens = 0;
+  let calls = 0;
+  for (const message of messages) {
+    if (message.role !== 'assistant') continue;
+    const usage = (message as { usage?: {
+      input?: number;
+      output?: number;
+      cacheRead?: number;
+      cacheWrite?: number;
+      totalTokens?: number;
+    } }).usage;
+    if (!usage) continue;
+    calls += 1;
+    input += usage.input ?? 0;
+    output += usage.output ?? 0;
+    cacheRead += usage.cacheRead ?? 0;
+    cacheWrite += usage.cacheWrite ?? 0;
+    totalTokens += usage.totalTokens ?? ((usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0));
+  }
+  return { input, output, cacheRead, cacheWrite, totalTokens, calls };
+}
+
 function defaultComplete(model: Model<any>, context: Context): Promise<AssistantMessage> {
-  return pi().completeSimple(model, context, { reasoning: 'off' });
+  // 1.4 的请求档没有 off。不传 reasoning 时，智谱这条线的 thinking 是关掉的。
+  return pi().completeSimple(model, context);
 }
 
 export type ExecAgentPhase = 'act' | 'reflect' | 'judge';

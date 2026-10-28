@@ -4,7 +4,7 @@
 
 | 文档 | 状态 | 说明 |
 |------|------|------|
-| [`../structurizr/WORKSHOP.md`](../structurizr/WORKSHOP.md) | **实现中** | 定时派工、上班读日志、留台等待、交付不发固定句已接线。资源余量账本还没有 |
+| [`../structurizr/WORKSHOP.md`](../structurizr/WORKSHOP.md) | **实现中** | 定时派工、上班读日志、留台等待、交付不发固定句、浏览器余量账本已接线 |
 | [`memory-belief-reconciliation.md`](./memory-belief-reconciliation.md) | **MVP 已完成** | 用户取消/完成 → belief 对账 + tasks/mem9 降权 |
 | [`inner-brain-awaiting-lifecycle.md`](./inner-brain-awaiting-lifecycle.md) | **P0+P1 已完成** | AWAITING：reconcile、IM resolver、bootstrap、周期对账、组件测 |
 | [`executor-resolved-pendings-truncation.md`](./executor-resolved-pendings-truncation.md) | **已完成** | resolved pending spill（去掉 600 字硬截断） |

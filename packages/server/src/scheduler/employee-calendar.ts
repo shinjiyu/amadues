@@ -33,15 +33,11 @@ export const MIN_CALENDAR_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
  * 日历 due 时可自动执行的外脑工具白名单（C4）。
- * 不含 set_goal / advance_kpi / 发消息等高副作用；spawn 走 prompt action。
+ * 不含 set_goal 和发消息；到点派工走 prompt action。
  */
 export const CALENDAR_DUE_TOOL_CALL_ALLOWLIST = new Set<string>([
-  'list_kpis',
   'list_calendar',
-  'view_kpi',
   'get_time',
-  'read_autonomy_policy',
-  'read_performance_goals',
   'list_inner_brains',
   'read_memory',
 ]);

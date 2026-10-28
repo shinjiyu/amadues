@@ -1,5 +1,5 @@
 /**
- * Agent 栈测试夹具：dataRoot + KpiRegistry + InnerBrainRegistry + FakeIm。
+ * Agent 栈测试夹具：dataRoot + InnerBrainRegistry + FakeIm。
  */
 import path from 'node:path';
 

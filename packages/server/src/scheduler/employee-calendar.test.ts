@@ -241,7 +241,8 @@ describe('EmployeeCalendar', () => {
 
   it('rejects non-allowlisted tool_call and too-frequent schedules', () => {
     expect(() => assertToolCallAllowlisted('set_goal')).toThrow(/not_allowlisted/);
-    expect(() => assertToolCallAllowlisted('list_kpis')).not.toThrow();
+    expect(() => assertToolCallAllowlisted('list_kpis')).toThrow(/not_allowlisted/);
+    expect(() => assertToolCallAllowlisted('list_calendar')).not.toThrow();
     expect(CALENDAR_DUE_TOOL_CALL_ALLOWLIST.has('list_calendar')).toBe(true);
     expect(() =>
       assertScheduleFloor({ type: 'interval', intervalMs: 60_000 }),

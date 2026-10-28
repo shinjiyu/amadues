@@ -1,0 +1,6 @@
+2026-10-17T01:02:03Z GET /login?token=abc123&next=/home user=ada@ex.com 200
+2026-10-17T01:02:04Z GET /health 200
+2026-10-17T01:02:05Z POST /pay?api_key=sekret user=bob@ex.com 201
+2026-10-17T01:02:06Z POST /reset?password=p@ss,word user=cy@ex.com 204
+Authorization: Bearer xyz.abc.123
+2026-10-17T01:02:07Z GET /cb?token=ada@ex.com&ok=1 302

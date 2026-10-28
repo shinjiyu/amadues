@@ -1,0 +1,19 @@
+[
+  {"sku": "SKU-001", "name": "bolt"},
+  {"sku": "SKU-002", "name": "nut"},
+  {"sku": "SKU-003", "name": "washer"},
+  {"sku": "SKU-004", "name": "bracket"},
+  {"sku": "SKU-005", "name": "hinge"},
+  {"sku": "SKU-006", "name": "latch"},
+  {"sku": "SKU-007", "name": "rail"},
+  {"sku": "SKU-008", "name": "panel"},
+  {"sku": "SKU-009", "name": "gasket"},
+  {"sku": "SKU-010", "name": "clamp"},
+  {"sku": "SKU-011", "name": "spacer"},
+  {"sku": "SKU-012", "name": "sleeve"},
+  {"sku": "SKU-013", "name": "pin"},
+  {"sku": "SKU-014", "name": "clip"},
+  {"sku": "SKU-015", "name": "hook"},
+  {"sku": "SKU-016", "name": "stud"},
+  {"sku": "SKU-017", "name": "cap"}
+]

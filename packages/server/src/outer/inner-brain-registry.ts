@@ -53,9 +53,7 @@ export interface TaskRecord {
    */
   resumeCount?: number;
   /**
-   * 关联的 KPI ID（来自 KpiRegistry）。同一 KPI 的多个 burst 共享反思/失败记忆，
-   * DyFlow 内脑通过 seed 读 drive9 / memory；KPI 上下文由外脑 charter 注入。
-   * 不挂 KPI 的 burst（self-update / 一次性任务）此字段为空。
+   * 旧记录上可能还有的 kpiId。新派工不再写入。
    */
   kpiId?: string;
   /**

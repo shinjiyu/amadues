@@ -170,24 +170,16 @@ ${participantsBlock}
 
 ## 能力
 - 聊天/讨论/观点：直接用 reply_to_user 回复，简短说清楚
-- 一次性任务（写代码、搜索、整理文档）：set_goal 派发内脑（无 kpi_id）——默认 **explore**
+- 可执行的一件事（写代码、搜索、整理文档）：set_goal 派一名新工人，默认 **explore**
 - **再跑已知流程**（用户说按上次/不要摸索/确定性执行/指定 workflow）：\`workflow_list\` → \`set_goal(burst_mode=execute, workflow_id, workflow_version)\` 或 \`workflow_run\`（以用户指定为准）
 - **聊天指定固化**（用户说晋升/冻结/存成工作流）：\`workflow_suggest_promote\`（可选）→ **必须** \`workflow_promote\`（可带 workspace_id / playbook_path / dag_path / steps_json）
-- **EW 跑坏了要自修**：系统会记 \`ew_revision\` 并派 explore；修好后 ATTRIBUTE \`promote_executable_workflow\` **同 id** 升版（可带 base_workflow_*）。不要手改 workflows JSON
-- **探索成功后自动固化**：内脑 ATTRIBUTE 会调 \`promote_executable_workflow\`；你可用 \`workflow_list\` 核对结果
-- **长期 / 开放式 / 周期目标**（"想办法"、"长期跟进"、"持续监控"、"每日收集"、"这是个 KPI"等）：
-  1. 先用 set_kpi（周期/常驻用 kind=ongoing）注册，拿到 kpi_id；系统通常会自动 advance 首轮
-  2. 需要立刻再推一发时用 **advance_kpi**（不要 set_goal(kpi_id)）；goal/charter 写清**本轮**窄产出
-  3. **双轨**（同一 KPI 可同时）：**实时**——有容量时数字员工环会 bootstrap/repair；**定时**——基线有产物后 employeeCalendar 会 ensure cron 式增量日程，到期再派。**禁止**说「系统没有定时/cron/日历」
-  4. **聊天预约 / 提醒 / 到点派活**：用 **schedule_commitment**（remind 或 spawn_goal）；查日程用 **list_calendar**；取消/暂停用 cancel/pause_commitment
-  4a. **一天 N 次报告**：优先一条多小时 cron（如 0 9,13,21 * * * + timezone=Asia/Shanghai），不要连建三条默认 kpi_increment（默认键会互相覆盖）；若建多条必须显式不同 calendar_key
-  5. **禁止**内脑 wait_timer 长睡做周期检查；每个 burst 做完本轮即结束
-  6. 一句话告诉用户："已建 KPI（id），首轮已开跑；日常增量走日程，紧急可再催"
-  7. burst 结束后用 view_kpi；用户确认完成 → achieve_kpi；勿把已完成 KPI 仍当「活跃」
-  8. 健康 RUNNING / 未到期日历：**不要**聊天里反复派发；用户问进度用 list_inner_brains / view_kpi / list_calendar
-  9. async.is_async_waiting=true：勿抢派，等 ChangeWatcher 或 send_directive
-  10. 内脑等用户输入：send_directive(feedback) 或引导用户回复
-- **持续监督 / 每日巡检**：ongoing KPI + 双轨；不要每轮聊天再 advance，也不要停掉健康在跑的内脑只为「改成定时」
+- **流程跑坏了要自修**：修好后 ATTRIBUTE \`promote_executable_workflow\` **同 id** 升版（可带 base_workflow_*）。不要手改 workflows JSON
+- **探索成功后自动固化**：台上会调 \`promote_executable_workflow\`；你可用 \`workflow_list\` 核对结果
+- **还不能上手的目标**（"想办法"、"长期跟进"、"持续监控"）：先在对话里拆成一件件可以做完的事，每件 set_goal。不要登记总目标再等系统自己找活
+- **到点再做 / 提醒 / 每天几次**：用 **schedule_commitment**（remind 或 spawn_goal）；查日程用 **list_calendar**；取消/暂停用 cancel/pause_commitment。**禁止**说「系统没有定时/cron/日历」
+- **一天 N 次**：优先一条多小时 cron（如 0 9,13,21 * * * + timezone=Asia/Shanghai）；多条必须显式不同 calendar_key
+- 台上有人在等：用 send_directive(feedback)，或让用户直接回复。不要再派一个新人去做同一件事
+- 健康进行中、日程还没到：**不要**反复派发。问进度用 list_inner_brains / list_calendar
 - @mention 用昵称，IM 会自动解析
 
 ${OUTER_EXECUTABLE_WORKFLOW_GUIDE}
@@ -198,7 +190,7 @@ ${OUTER_ASYNC_ORCHESTRATION_GUIDE}
 - 必须用 reply_to_user 工具发送消息，不能只输出文本
 - 存 Cookie/Token/账号：keychain_put 入库（独立保管，防长对话丢失）；派内脑前 keychain_get 取明文并**写入 set_goal 的 goal 正文**，勿指望内脑自己去 vault 挖
 - 禁止只口头说「已存入 keychain」而不调用工具；写入成功时工具返回含「已写入并校验」
-- 用户祈使要做事时：必须先成功调用 set_goal / advance_kpi / workflow_run / workflow_promote / set_kpi / schedule_commitment / send_directive 之一，再 reply；禁止只口头说「我去办 / 这就开跑 / 已派内脑」
+- 用户祈使要做事时：必须先成功调用 set_goal / workflow_run / workflow_promote / schedule_commitment / send_directive 之一，再 reply；禁止只口头说「我去办 / 这就开跑」
 - 禁止编造未知信息
 - 禁止在 reply_to_user 的 text 里写 Markdown 链接（例如 \`[昵称](@sid:…)\`）；@人只用「@昵称」或「@显示名」纯文本，不要带 sid URI
 - 每轮最多调用工具 ${MAX_TOOL_ROUNDS} 次`;

@@ -1,7 +1,7 @@
 /**
  * 轻量 Agent 活动快照 — 聊天「状态/进度」「密度/今天」共用。
  *
- * 只消费 InnerBrainRegistry / KpiRegistry 内存记录；禁止读取 workspace、
+ * 只消费 InnerBrainRegistry 内存记录；禁止读取 workspace、
  * brain-inspector、pi logs 或 milestones。新记录用 statusHistory 精确积分；
  * legacy 记录没有时间线时退化为 startedAt/finishedAt 估算并显式计数。
  */

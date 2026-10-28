@@ -113,13 +113,12 @@ describe('brain-async-snapshot', () => {
 });
 
 describe('OUTER_ASYNC_ORCHESTRATION_GUIDE', () => {
-  it('teaches dual-track realtime + calendar and forbids denying cron', async () => {
+  it('teaches set_goal plus calendar and forbids denying cron', async () => {
     const { OUTER_ASYNC_ORCHESTRATION_GUIDE } = await import('./brain-async-snapshot.js');
-    expect(OUTER_ASYNC_ORCHESTRATION_GUIDE).toMatch(/双轨/);
-    expect(OUTER_ASYNC_ORCHESTRATION_GUIDE).toMatch(/employeeCalendar/);
+    expect(OUTER_ASYNC_ORCHESTRATION_GUIDE).toMatch(/set_goal/);
     expect(OUTER_ASYNC_ORCHESTRATION_GUIDE).toMatch(/list_calendar/);
     expect(OUTER_ASYNC_ORCHESTRATION_GUIDE).toMatch(/schedule_commitment/);
     expect(OUTER_ASYNC_ORCHESTRATION_GUIDE).toMatch(/禁止.*没有/);
-    expect(OUTER_ASYNC_ORCHESTRATION_GUIDE).not.toMatch(/KPI 推进器/);
+    expect(OUTER_ASYNC_ORCHESTRATION_GUIDE).not.toMatch(/set_kpi|advance_kpi|digitalEmployeeLoop/);
   });
 });

@@ -1,0 +1,7 @@
+{
+  "mon-am": ["ann", "dan"],
+  "mon-mid": ["eve"],
+  "mon-pm": ["ben", "cy"],
+  "tue-am": ["ann", "ben"],
+  "tue-pm": ["eve"]
+}

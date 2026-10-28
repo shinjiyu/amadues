@@ -33,6 +33,7 @@ import {
   resolveDesignerBudget,
   upsertLiveBudgetMessage,
 } from './resource-budget.js';
+import { upsertWorkshopRemainderMessage } from '../../workshop/resource-ledger.js';
 
 export const DESIGNER_SYSTEM = `你是 DyFlow 内脑的 Designer（编排者）。每个 DESIGN tick，你阅读全局 memory 与 LocalNode 库，
 输出一张「本轮执行图」（local_dag），或在目标已达成时宣告完成。
@@ -206,6 +207,7 @@ export async function runDesigner(deps: DesignerDeps): Promise<DesignerOutcome> 
         toolCalls,
       }),
     );
+    messages = upsertWorkshopRemainderMessage(messages, workDir);
     let result;
     try {
       result = await llm.chat(systemPrompt, messages, registry.schema());

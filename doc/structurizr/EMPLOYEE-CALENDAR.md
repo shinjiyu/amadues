@@ -162,7 +162,7 @@ interface CalendarCommitment {
 
 ## 3. 对话环工具（一等公民）
 
-挂在 `outerToolExecutor` / `OUTER_TOOL_DEFS`，与 `set_kpi` 同级。
+挂在 `outerToolExecutor` / `OUTER_TOOL_DEFS`，和 `set_goal` 一起给外脑调用。
 
 | 工具 | 职责 | 硬约束 |
 |------|------|--------|

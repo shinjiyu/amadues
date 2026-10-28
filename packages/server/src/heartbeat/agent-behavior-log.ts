@@ -88,8 +88,6 @@ const TOOL_NAME_TO_OPERATION_TYPE: Record<string, string> = {
   read_inner_status: 'status_read',
   read_memory: 'memory_read',
   update_tasks: 'tasks_update',
-  read_performance_goals: 'performance_goals_read',
-  manage_performance_goal: 'performance_goal_manage',
   post_to_im: 'message_send',
   keychain_put: 'credential_write',
   keychain_get: 'credential_read',

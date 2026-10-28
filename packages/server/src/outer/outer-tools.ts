@@ -88,20 +88,6 @@ import type { IdentityBindingIndex } from '@utlra/chat-ir';
 import type { IActionLogStore } from '../heartbeat/types.js';
 import { formatAgentLocalDateTime, formatAgentIsoLocal } from '../agent-time.js';
 
-const REMOVED_OUTER_TOOLS = new Set([
-  'set_kpi',
-  'advance_kpi',
-  'list_kpis',
-  'view_kpi',
-  'abandon_kpi',
-  'achieve_kpi',
-  'read_performance_goals',
-  'read_autonomy_policy',
-  'update_autonomy_policy',
-  'update_personality',
-  'manage_performance_goal',
-]);
-
 function benchLiveness(record: TaskRecord): 'active' | 'stuck' | 'dead' | null {
   if (record.status !== 'RUNNING') return null;
   if (record.pid != null && !isPidAlive(record.pid)) return 'dead';
@@ -196,14 +182,10 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
             type: 'string',
             description: '下达任务时所在的 thread_id，群聊时必须填写',
           },
-          kpi_id: {
-            type: 'string',
-            description: '（已废弃）请改用 advance_kpi；本工具勿传 kpi_id。',
-          },
           peer_workspace_ids: {
             type: 'string',
             description:
-              '（可选）额外 peer workspace_id。挂 kpi_id 时默认同 KPI 全部 sibling workspace 互读；spawn 时只写 `.inbox/` 名字+摘要目录，正文用 read_peer_file 按需读取。',
+              '（可选）额外 peer workspace_id。上班时会读车间里其他工作台的日志；这里只追加名字。正文用 read_peer_file 按需读取。',
           },
           burst_mode: {
             type: 'string',
@@ -220,141 +202,6 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           },
         },
         required: ['goal'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'set_kpi',
-      description:
-        '创建长期目标（KPI = 绩效目标，同一概念）——给你一个总目标，让你用一切手段去达成。' +
-        '与 set_goal 区别：set_goal 派一个一次性 burst；KPI 是长期挂着的目标身份，' +
-        '本身不直接执行，但会作为多个 burst 的共同身份（共享反思 / 失败记忆）。\n\n' +
-        '典型用法：先 set_kpi，再 **advance_kpi**（或创建后自动首派）。\n\n' +
-        '【双轨】ongoing/周期 KPI 同时支持：① 有容量时实时 bootstrap/repair（digitalEmployeeLoop）；' +
-        '② 基线有产物后 employeeCalendar 写入 cron 式周期承诺，到期再派增量。' +
-        '聊天预约请用 schedule_commitment；查询用 list_calendar。' +
-        '**禁止**告诉用户「系统没有定时调度 / 没有日历」。\n\n' +
-        '连续 3 个 burst idle 无产出会触发反思 burst。\n\n' +
-        '【类型 kind】delivery（默认）=一次性交付，达成后自动结案；ongoing=常驻/周期/监督类' +
-        '（如"每日收集 X 并汇报"），**永不**自动结案。' +
-        '【勿用】read_performance_goals / manage_performance_goal（已废弃）。',
-      parameters: {
-        type: 'object',
-        properties: {
-          description: {
-            type: 'string',
-            description: 'KPI 自然语言描述，例如："通过任意手段查到 X 的手机号"',
-          },
-          created_by: {
-            type: 'string',
-            description: '（可选）创建者 SID，默认 agent 自身',
-          },
-          notes: {
-            type: 'string',
-            description: '（可选）附加约束或提示，会进入后续 burst 的 constraints',
-          },
-          kind: {
-            type: 'string',
-            enum: ['delivery', 'ongoing'],
-            description:
-              '（可选，默认 delivery）KPI 类型。delivery=一次性交付，达成后自动结案；' +
-              'ongoing=常驻/周期/监督类（如"每日收集并汇报"），**永不**自动结案；' +
-              '交付物是节拍产出，且走「实时推进 + Calendar 定时」双轨，需用户判断后才 achieve_kpi。',
-          },
-        },
-        required: ['description'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'advance_kpi',
-      description:
-        '立即推进 KPI 一发内脑 burst（绑定 kpi_id、**新 workspace**）。' +
-        '若该 KPI 已挂 Executable Workflow（tag kpi:{id}），**自动 burst_mode=execute** 跑最新版，不再 explore。' +
-        '用于首派、用户催办、换路线。日常周期增量优先靠 **employeeCalendar 到期**；' +
-        '有容量时数字员工环也会实时找活——二者并存。健康 RUNNING 或未到期日历时勿盲目再 advance。',
-      parameters: {
-        type: 'object',
-        properties: {
-          kpi_id: { type: 'string', description: 'KPI ID' },
-          charter: {
-            type: 'string',
-            description: '（可选）本轮 burst 章程；缺省用 KPI 描述与执行史',
-          },
-        },
-        required: ['kpi_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'list_kpis',
-      description:
-        '列出当前 agent 的所有 KPI，可按 status 过滤（active/paused/achieved/abandoned）。' +
-        '用户问「有没有定时」时：结合本列表 + list_inner_brains 说明双轨；' +
-        '不要断言系统无 cron（日历由数字员工环在基线后 ensure）。',
-      parameters: {
-        type: 'object',
-        properties: {
-          status: {
-            type: 'string',
-            description: '可选状态过滤：active / paused / achieved / abandoned',
-          },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'view_kpi',
-      description: '查看 KPI 详情：描述、状态、关联 burst 列表、反思链路。',
-      parameters: {
-        type: 'object',
-        properties: {
-          kpi_id: { type: 'string', description: 'KPI ID' },
-        },
-        required: ['kpi_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'abandon_kpi',
-      description:
-        '放弃一个 KPI（标记为 abandoned）。仅在确实判定不可达 / 用户撤销时调用。' +
-        '反思 burst 经常会建议放弃 KPI——如果你在反思 burst 中执行，应该用这个工具。',
-      parameters: {
-        type: 'object',
-        properties: {
-          kpi_id: { type: 'string', description: 'KPI ID' },
-          reason: { type: 'string', description: '放弃原因（写给未来的自己看）' },
-        },
-        required: ['kpi_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'achieve_kpi',
-      description:
-        '标记 KPI 已达成。需要附带证据（evidence）说明为什么算达成。' +
-        '只有真正拿到目标产物 / 信息时才调用。',
-      parameters: {
-        type: 'object',
-        properties: {
-          kpi_id: { type: 'string', description: 'KPI ID' },
-          evidence: { type: 'string', description: '达成证据' },
-        },
-        required: ['kpi_id', 'evidence'],
       },
     },
   },
@@ -540,7 +387,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
       name: 'update_tasks',
       description:
         '更新当前任务状态（自由形式 Markdown）。' +
-        '用于记录正在进行的任务、计划事项、已完成事项。下次心跳和对话会自动读取。' +
+        '用于记录正在进行的任务、计划事项、已完成事项。下次对话会自动读取。' +
         '内容会覆盖旧状态，建议保留完整的任务列表。',
       parameters: {
         type: 'object',
@@ -551,101 +398,6 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
           },
         },
         required: ['tasks_markdown'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'read_performance_goals',
-      description:
-        '【已废弃】绩效目标 = KPI，请改用 list_kpis / view_kpi。本工具仅返回迁移提示与当前 KPI 摘要。',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'manage_performance_goal',
-      description:
-        '【已废弃】绩效目标 = KPI，请改用 set_kpi / achieve_kpi / abandon_kpi。' +
-        '调用本工具不会再创建/修改 performance/goals.json。',
-      parameters: {
-        type: 'object',
-        properties: {
-          action: {
-            type: 'string',
-            description: '任意；将被拒绝并提示改用 KPI 工具',
-          },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'read_autonomy_policy',
-      description:
-        '读取外脑自主调度策略（hardGates、任务类型开关）与性格概率 idleChatProbability。' +
-        '数字员工模型：KPI 找活只有 enabled 开关，不存在冷却/日配额概念（产能只看容量槽位）；' +
-        'casual_chat 的 cooldown/maxPerDay 仅用于防 IM 刷屏。',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'update_autonomy_policy',
-      description:
-        '部分更新自主调度策略。可改 enabled、hardGates 槽位阈值、casual_chat 频控、kpi_inner_goal.enabled。' +
-        '例：「内脑超过 2 个就别自主行动」→ max_running_inner_brains=2。' +
-        'KPI 找活没有冷却/日配额参数（数字员工模型只看容量槽位）。',
-      parameters: {
-        type: 'object',
-        properties: {
-          enabled: { type: 'string', description: 'true | false；是否启用自主 dispatch' },
-          max_running_inner_brains: { type: 'string', description: 'hardGates.maxRunningInnerBrains' },
-          max_awaiting_inner_brains: { type: 'string', description: 'hardGates.maxAwaitingInnerBrains' },
-          max_llm_in_flight: { type: 'string', description: 'hardGates.maxLlmInFlight' },
-          block_if_orchestrator_queued_above: {
-            type: 'string',
-            description: 'hardGates.blockIfOrchestratorQueuedAbove',
-          },
-          block_if_outer_loop_active: {
-            type: 'string',
-            description:
-              'true | false；兼容闸，默认 false。数字员工前台优先靠 foreground_reserve_slots 预留，不全停',
-          },
-          foreground_reserve_slots: {
-            type: 'string',
-            description: '前台活跃时为对话预留的内脑槽数（默认 1）',
-          },
-          casual_chat_enabled: { type: 'string', description: 'true | false' },
-          casual_chat_cooldown_ms: { type: 'string', description: 'casual_chat cooldownMs' },
-          casual_chat_max_per_day: { type: 'string', description: 'casual_chat maxPerDay' },
-          kpi_inner_goal_enabled: { type: 'string', description: 'true | false' },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'update_personality',
-      description:
-        '更新结构化性格配置（与 soul.md 并列）。idle_chat_probability 控制心跳闲聊分支掷骰概率 p∈[0,1]。' +
-        '例：「闲时可以多聊点」→ idle_chat_probability=0.35。',
-      parameters: {
-        type: 'object',
-        properties: {
-          idle_chat_probability: {
-            type: 'string',
-            description: '0~1 的小数；仅影响 autonomy casual_chat 分支',
-          },
-        },
-        required: ['idle_chat_probability'],
       },
     },
   },
@@ -687,7 +439,7 @@ export const OUTER_TOOL_DEFS: ToolDef[] = [
   ...QR_TOOL_DEFS,
   ...VISION_TOOL_DEFS,
   ...CALENDAR_TOOL_DEFS,
-].filter((tool) => !REMOVED_OUTER_TOOLS.has(tool.function.name)) as ToolDef[];
+];
 
 // ── 工具执行上下文 ──────────────────────────────────────────────────────────
 
@@ -858,7 +610,6 @@ async function execSetGoal(
     workspace_id?: string;
     origin_user?: string;
     origin_thread?: string;
-    kpi_id?: string;
     peer_workspace_ids?: string;
     burst_mode?: string;
     workflow_id?: string;
@@ -1569,7 +1320,7 @@ function execSendDirective(
   }
 
   const suffix = resolvedPendingId ? `，并 resolve 了 pending=${resolvedPendingId}` : '';
-  return { replied: false, output: `指令已写入（type=${type}）${suffix}。ChangeWatcher 将在 1s 内 spawn 新 burst。` };
+  return { replied: false, output: `指令已写入（type=${type}）${suffix}。台上的工人会在本轮读到。` };
 }
 
 function execReadInnerStatus(
@@ -1989,7 +1740,6 @@ export async function executeOuterTool(
           workspace_id?: string;
           origin_user?: string;
           origin_thread?: string;
-          kpi_id?: string;
           peer_workspace_ids?: string;
           burst_mode?: string;
           workflow_id?: string;

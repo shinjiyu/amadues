@@ -30,6 +30,7 @@ import {
   resolveAttributorBudget,
   upsertLiveBudgetMessage,
 } from './resource-budget.js';
+import { upsertWorkshopRemainderMessage } from '../../workshop/resource-ledger.js';
 
 export const ATTRIBUTOR_SYSTEM = `你是 DyFlow 强制归因器（Mandatory Attributor）。每轮 RUN 结束后，
 你必须从执行日志中蒸馏**可跨轮复用**的知识，写入全局 memory；路径已稳定时晋升 **Executable Workflow（层 C）**。
@@ -166,6 +167,7 @@ export async function runDyflowAttributor(
           toolCalls,
         }),
       );
+      messages = upsertWorkshopRemainderMessage(messages, workDir);
       const result = await llm.chat(systemPrompt, messages, registry.schema());
       lastContent = result.content ?? '';
 

@@ -580,7 +580,7 @@ while (未到 stop_reason):
 - 评估由 burst onExit → `processBurstExitForKpi` 驱动（程序化，非内脑 reflexion）
 - 续跑是同一 canonical instance 换 charter，非 meta reflexion burst
 
-~~`packages/server/docs/kpi-reflexion-design.md`~~ 已标历史参考。
+~~`packages/server/docs/kpi-reflexion-design.md`~~ 已删除。派活见 `doc/structurizr/WORKSHOP.md`。
 
 ### 9.2 内外脑协议
 

@@ -19,7 +19,7 @@ import { copyDir, freePort, hashFiles, killPortListeners } from './lib/fs-util.t
 import { collectRunMetrics } from './lib/metrics.ts';
 import { buildReport, renderMarkdown, type RunRecord } from './lib/report.ts';
 import { BLOCKED_KILL_LOG, cleanupHostResidue, prepareSandboxBin } from './lib/sandbox.ts';
-import { REAL_TASKS, SMOKE_TASKS, findTask } from './tasks/index.ts';
+import { REAL_TASKS, ROUND1_TASKS, ROUND2_TASKS, ROUND3_TASKS, ROUND4_TASKS, SMOKE_TASKS, findTask } from './tasks/index.ts';
 import { ARM_IDS, type AblationTask, type ArmId } from './types.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -270,7 +270,15 @@ function parseArgs(argv: string[]): AblationOptions {
   const list = (k: string) => flags.get(k)?.split(',').map(s => s.trim()).filter(Boolean);
   const arms = (list('arms') ?? [...ARM_IDS]) as ArmId[];
   for (const a of arms) if (!ARM_IDS.includes(a)) throw new Error(`unknown arm ${a}`);
-  const tasks = list('tasks')?.map(findTask) ?? [...(fake ? SMOKE_TASKS : REAL_TASKS)];
+  const round = flags.get('round');
+  const tasks = list('tasks')?.map(findTask)
+    ?? (fake ? [...SMOKE_TASKS]
+      : round === '1' ? [...ROUND1_TASKS]
+      : round === '2' ? [...ROUND2_TASKS]
+      : round === '3' ? [...ROUND3_TASKS]
+      : round === '4' ? [...ROUND4_TASKS]
+      : [...REAL_TASKS]);
+  if (round && !['1', '2', '3', '4'].includes(round)) throw new Error(`unknown round ${round}（可选 1、2、3 或 4）`);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   return {
     arms,

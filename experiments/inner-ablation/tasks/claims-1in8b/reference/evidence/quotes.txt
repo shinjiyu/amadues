@@ -1,0 +1,5 @@
+<meta name="description" content="The official 1 in 8 Billion, a free life simulation game: be born at random as one of today's babies and live one life in real data from 172 countries. No sign-up. Where will you be born?">
+<p class="fine" id="heavyNote">Death, illness, war, poverty, drinking and gambling, drug dependence, violence at home, sexual violence and suicide happen here as often as the real statistics say, never shown in detail and always with where to find help, and a past world tells of real history such as wars and mass killings. It is made for ages 15 and up.</p>
+<p class="fine" id="aiNote">A life simulation the operator makes with AI (Claude); the numbers are public statistics from the UN, the World Bank and others.</p>
+<div class="kicker"><span class="nw"><span id="verTag">v0.7.54 beta</span> ·</span> <span class="nw">Free life simulation ·</span> <span class="nw">Real statistics from 172 countries</span></div>
+<link rel="alternate" hreflang="zh-Hant" href="https://1in8b.life/zh/">

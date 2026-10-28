@@ -98,7 +98,7 @@ export interface SchedulerConfig {
   defaultHeartbeatMs?: number;
   /** Enable verbose logging */
   verbose?: boolean;
-  /** Preserve missed tasks as due for digitalEmployeeLoop recovery. */
+  /** 错过的任务保持 due，交给定时管理器。 */
   deferMissedExecution?: boolean;
 }
 

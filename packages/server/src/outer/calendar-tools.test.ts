@@ -60,8 +60,8 @@ describe('calendar-tools', () => {
       /^chat:t1:/,
     );
     expect(defaultCalendarKey('one_shot_task', {})).toMatch(/^once:/);
-    expect(defaultCalendarKey('tool_call', { toolName: 'list_kpis', title: 'poll' })).toMatch(
-      /^tool:list_kpis:/,
+    expect(defaultCalendarKey('tool_call', { toolName: 'list_inner_brains', title: 'poll' })).toMatch(
+      /^tool:list_inner_brains:/,
     );
   });
 

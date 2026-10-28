@@ -32,6 +32,7 @@ import {
   resolveBaseNodeBudget,
   upsertLiveBudgetMessage,
 } from './resource-budget.js';
+import { upsertWorkshopRemainderMessage } from '../../workshop/resource-ledger.js';
 import { closeBrowserSessionsForNode } from '../browser/session-registry.js';
 import {
   clearBrowserSessionScope,
@@ -270,6 +271,7 @@ export async function runBaseNode(
         failFastStreak: budgetCfg.failFastStreak,
       }),
     );
+    messages = upsertWorkshopRemainderMessage(messages, ctx.workDir);
     let result;
     try {
       result = await llm.chat(systemPrompt, messages, schema);

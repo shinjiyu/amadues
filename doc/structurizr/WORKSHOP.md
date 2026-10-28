@@ -2,7 +2,7 @@
 
 > **English:** Executable tasks enter a shared workshop. Each task is a new worker at an empty bench. Abstract work is split by the outer brain before entry. A worker who must wait stays at the bench. A separate timer only dispatches a worker when time is due. OKR, KPI, and idle work-finding are marked for deletion.
 >
-> **状态**：2026-10-16 实现中。派活改为两路：外脑 `set_goal` 派工人，定时管理器到点再派一名工人。工人在台上等待，上班时读一次各台日志，交付只登记、不发固定句。KPI、闲时找活、离台再唤醒已从启动和工具里拆掉。车间资源余量账本还没有。本文是派活权威，取代 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)、[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 和闲时找活。那些专篇文首已标待删除或改写，正文留下对照，**不要再按那些正文实现**。
+> **状态**：2026-10-17 实现中。派活改为两路：外脑 `set_goal` 派工人，定时管理器到点再派一名工人。工人在台上等待，上班时读一次各台日志，交付只登记、不发固定句。KPI、闲时找活、离台再唤醒已从启动和工具里拆掉。车间余量第一笔记的是浏览器实例：每轮读给工人，打开时领取或拒绝，不拿余量决定能否派工。本文是派活权威，取代 [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md)、[`KPI-MANAGER-LAYER.md`](./KPI-MANAGER-LAYER.md) 和闲时找活。那些专篇文首已标待删除或改写，正文留下对照，**不要再按那些正文实现**。
 
 ---
 
@@ -53,6 +53,8 @@
 
 工作日志只在上班时读一次。余量每个决策轮都输入，并随领取、释放、被别人领走而更新。
 
+第一笔资源是浏览器实例。账本在 `UTLRA_DATA_ROOT/workshop/resource-ledger.json`，容量由 `WORKSHOP_BROWSER_CAPACITY` 决定，默认 4。Designer、baseNode、Attributor 的每一轮都读当前余量。`browser_open` 成功占一个名额之前先领取；名额没有了就拒绝，不启动浏览器。`browser_close`、工人进程退出、服务启动时把对应名额还回去。`set_goal` 不读这本账。
+
 这取代「环境模型决定还有没有容量、要不要再找一件活」。
 
 ---
@@ -102,7 +104,7 @@
 
 ## 9. 待删除
 
-代码和测试都还在。标了待删除的模块**不要再加功能**。删代码时连同测试一起删。
+这些模块已从服务端删掉。下表是删除记录，**不要再加回来**。
 
 | 模块 | 现在干什么 | 为什么删 |
 |------|------------|----------|
@@ -143,7 +145,7 @@
 
 已经删掉、不要复活：`subKpiDecomposer`、`kpiCadence`、`burstReuse`、`strategyPlanner`、`strategyStore`、`dispatchByStrategy`、`scheduleNextKpiBurst`。
 
-视图 `10-L2-KPI-Closed-Loop`、`10b-L3-Outer-KPI`、`11-L3-Outer-Autonomy`、`12-L3-Outer-Environment`、`13-L3-Outer-KPI-Manager`、`14-L3-Digital-Employee-Loop` 标为待删除。组件还在图里，是因为代码还在。
+视图 `10-L2-KPI-Closed-Loop`、`10b-L3-Outer-KPI`、`11-L3-Outer-Autonomy`、`12-L3-Outer-Environment`、`13-L3-Outer-KPI-Manager`、`14-L3-Digital-Employee-Loop` 已从 `workspace.dsl` 去掉。对照专篇还在，不要按那些正文实现。
 
 ---
 
@@ -159,7 +161,7 @@
 | **outerToolExecutor** | `set_goal` 只接收可执行任务并派新工人 | KPI 工具；按 KPI 复用工作台 |
 | **agentStatusChatCommand** | 可以回答台上谁在干活 | KPI 活动、槽位利用率找活口径 |
 
-台上等待的超时记在这名工人自己的等待里，不新建第二份计时器。车间资源账本（余量、领取、拒绝）还没有代码，实现时单独成模块，不复活 `kpiSpawnCapacity` 或环境模型。
+台上等待的超时记在这名工人自己的等待里，不新建第二份计时器。余量账本是 `workshopLedger`，不复活 `kpiSpawnCapacity` 或环境模型。
 
 ---
 

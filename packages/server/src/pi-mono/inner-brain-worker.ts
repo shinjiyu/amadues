@@ -43,6 +43,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { configureLlmUsageTracker } from '../outer/llm-usage-tracker.js';
+import { useWorkshopLedger } from '../workshop/resource-ledger.js';
 import { runOpenKuronekoPiMonoAuto } from './run-tick.js';
 
 const instanceId  = process.env['INNER_INSTANCE_ID']  ?? '';
@@ -71,6 +72,7 @@ if (!instanceId || !workspaceId || !workDir) {
 
 const dataRoot = process.env['UTLRA_DATA_ROOT']?.trim();
 if (dataRoot) {
+  useWorkshopLedger(dataRoot);
   const agentId =
     process.env['UTLRA_AGENT_NAME']?.trim() ||
     process.env['UTLRA_AGENT_IM_SID']?.trim() ||

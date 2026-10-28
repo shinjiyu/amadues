@@ -16,7 +16,7 @@
 
 ## 外脑 L3（`agentServer`）
 
-> **2026-10-16**：备注里的 **【待删除】** / **【改写】** 以 [`WORKSHOP.md`](./WORKSHOP.md) 为准。这些测试还在；删模块时连测试一起删。不要为待删除模块补新测试。
+> **2026-10-17**：已删模块的测试行已去掉。改写中的模块以 [`WORKSHOP.md`](./WORKSHOP.md) 为准。
 
 | ADL 模块 ID | 单元测 | 模块测 | Prompt 测 | 备注 |
 |-------------|--------|--------|-----------|------|
@@ -31,7 +31,8 @@
 | **innerFileTools** | ✅ `read-file-lines.test.ts` | — | — | ADL [`INNER-FILE-ACCESS.md`](./INNER-FILE-ACCESS.md) |
 | **describeImageTool** | ✅ `describe-image.test.ts` | — | — | ADL [`INNER-VISION-TOOL.md`](./INNER-VISION-TOOL.md) |
 | **shellProbe** | ✅ `shell-probe.test.ts` | — | — | ADL [`DYFLOW-INNER-EXECUTOR.md`](./DYFLOW-INNER-EXECUTOR.md) §6.6 |
-| **browserSessionRegistry** | ✅ `session-registry.test.ts` | — | — | ADL [`BROWSER-SESSION-TOOL.md`](./BROWSER-SESSION-TOOL.md) |
+| **workshopLedger** | ✅ `resource-ledger.test.ts` | — | — | ADL [`WORKSHOP.md`](./WORKSHOP.md) §4；领取、拒绝、释放、每轮文本；不挡派工 |
+| **browserSessionRegistry** | ✅ `session-registry.test.ts` | — | — | ADL [`BROWSER-SESSION-TOOL.md`](./BROWSER-SESSION-TOOL.md)；账本未启用时行为不变 |
 | **browserTools** | ✅ `browser-tools.test.ts` | — | — | P0 goto/click/snapshot；P1 run_steps + playbook + from_step |
 | **browserPlaybook** | ✅ `browser-playbook.test.ts` | — | — | ADL §2.5 步骤解析 |
 | **reactToolCallSlim** | ✅ `react-tool-call-slim.test.ts` | — | — | ADL §6.5 P2.5；`__SLIM_REF__` 格式 |
@@ -42,61 +43,34 @@
 | **factConflict** | ✅ `fact-conflict.test.ts` | — | — | ADL §5.3 polarity · stale status |
 | **factDrive9Eviction** | ⏳ | ⏳ | — | P2 drive9 sweep |
 | structuredReplyParts | 🟡 parse | ✅ `structuredReplyParts.component.integration.test.ts` | — | `structured-reply-parts.test.ts` |
-| innerBrainKpiReuse | ✅ `inner-brain-kpi-reuse.test.ts` | — | — | **【待删除】** 仅 `isSetGoalDispatched` |
 | innerBrainRegistry | 🟡 `inner-brain-registry.test.ts` | ✅ `innerBrainRegistry.component.integration.test.ts` | — | boot markStale + `remove`；见 [`INNER-BRAIN-STARTUP-RESUME-REMOVED.md`](./INNER-BRAIN-STARTUP-RESUME-REMOVED.md) |
 | **innerWorkspaceRetention** | ✅ `inner-workspace-retention.test.ts` | — | — | cold/quota；不碰 live；见 [`INNER-WORKSPACE-RETENTION.md`](./INNER-WORKSPACE-RETENTION.md) |
 | **readInnerStatusHistoryCap** | ✅ `read-inner-status-history-cap.test.ts` | — | — | `include_history` 截断；同篇 §2A |
 | innerSpawner | ❌ | ✅ `innerSpawner.component.integration.test.ts` | — | + 可选 `spawn-inner-worker-live`（`UTLRA_TEST_SPAWN_INNER=1`） |
-| kpiRegistry | 🟡 `kpi-registry.test.ts` | ✅ `kpiRegistry.component.integration.test.ts` | — | **【待删除】**  |
 | innerBurstExit | ✅ via `kpi-scenario.harness.test.ts` + spawn onExit | — | — | 见 [`KPI-BURST-LIFECYCLE-REMOVED.md`](./KPI-BURST-LIFECYCLE-REMOVED.md) |
 | imIntentClassifier | ✅ `im-intent-classifier.test.ts`（默认 chat / followup / 收窄正则 / 去重降级 / ongoing-only）+ `kpi-description-similarity.test.ts` | ⏳ inbound IM fixture | — | **【改写】** ADL [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §3/§6/§9 |
 | **agentStatusChatCommand** | ✅ `agent-activity-snapshot.test.ts`（当前进度、24h 槽位密度、状态区间、legacy 估算）+ `agent-status-chat-command.test.ts`（整句命令/格式化）+ `inner-brain-registry.test.ts`（statusHistory 持久化） | ✅ `outer-brain-inbound.integration.test.ts`（命令短路且无 LLM 可用；普通聊天仍走原降级路径） | — | **【改写】** 微信/聊天只读快指令；见 [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4.1 |
 | subKpiDecomposer | ❌ 已删除 | — | — | 扁平 KPI；见 KPI-MANAGER-LAYER.md §2.1 |
-| kpiBurstState | ✅ `kpi-burst-state.test.ts` + slot-idle/advancer | — | — | **【待删除】** R1/R2 + parallel cap + R7 熔断 gate |
-| kpiFailureCircuit | ✅ `kpi-failure-circuit.test.ts`（路线级：单路线 routeBlocked / 多路线 tripped / 无 goal 兜底）+ `kpi-burst-state.test.ts`（路线分析） | — | — | **【待删除】** ✅ P2 路线级熔断；blockedRoutes → SelfWork `route_blocked`（[`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §6.3） |
-| kpiAwaitingReview | ✅ `kpi-awaiting-review.test.ts`；⏳ 依赖粒度红测 | — | — | **【待删除】** R3/R4；合法等待释放容量，ask_user 不阻塞同 KPI 独立工作 |
 | kpiCadence | ❌ 已删除 | — | — | 不复活；业务定时归 employeeCalendar |
-| kpiSlotIdle | ✅ `kpi-slot-idle.test.ts` | — | — | **【待删除】** §5 ongoing 槽位；ask_user 不占槽（依赖级收窄，deprecated shim） |
 | burstReuse | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md §2.2 |
-| burstRunHistory | 🟡 `burst-run-history.test.ts` | — | — | **【待删除】** §6 执行史；✅ index.ts burst onExit 统一写入（SelfWork 去重 + R7 路线分析数据源） |
-| kpiManager | ✅ `kpi-manager.test.ts` + `kpi-spawn-capacity.test.ts` | ⏳ `kpiManager.component.integration.test.ts` | — | **【待删除】** KPI 治理 R3–R7；心跳 R1 advance 仅兼容 fallback |
-| kpiAdvancer | ✅ `kpi-advancer.test.ts`（含 **有 EW tag → set_goal execute**） | ✅ `autonomy-heartbeat` | — | **【待删除】** IM/Ops advance；有 EW 时与日历 due 同走 execute |
-| adHocBurstAllocator | ✅ `ad-hoc-burst-allocator.test.ts` | — | — | **【待删除】** §8 一次性任务 |
-| inboundContextAssembler | — | ✅ `inbound-kpi-router.component.integration.test.ts`（只读上下文 + hint + 零副作用）+ `outer-brain-inbound-kpi-router.integration.test.ts`（前置不派发→流入对话环） | — | **【待删除】** [`IM-INBOUND-INTENT-ROUTING.md`](./IM-INBOUND-INTENT-ROUTING.md) §4（方案一） |
-| outerToolsKpiAdvancement | ✅ `outer-tools-kpi-advancement.test.ts` | — | — | **【待删除】** `set_goal(kpi_id)` 封禁 |
-| kpiCompletionJudge | ✅ `kpi-completion-judge.test.ts` | — | — | **【待删除】** ADL [`KPI-COMPLETION-JUDGE.md`](./KPI-COMPLETION-JUDGE.md) §3b ongoing 不结案 |
-| kpiFeedback | ✅ `kpi-feedback.test.ts` | — | — | **【待删除】** ADL [`STRATEGY-PLANNING-LAYER.md`](./STRATEGY-PLANNING-LAYER.md) §16 多巴胺回路 |
-| outerHeartbeat | ✅ death-detect + watchdog/fallback；接数字员工后治理-only、LLM 无 set_goal | ✅ `outer-heartbeat.integration.test.ts` + `autonomy-heartbeat.component.integration.test.ts` + `outerHeartbeatDigitalEmployee.component.integration.test.ts` | — | **【待删除】** watchdog；非正常续派主时钟；ADL [`OUTER-HEARTBEAT-OVERSIGHT.md`](./OUTER-HEARTBEAT-OVERSIGHT.md) |
-| **digitalEmployeeLoop** | ✅ `digital-employee-loop.test.ts`（优先级、single-flight、coalesce、依赖拒绝） | ✅ `digitalEmployeeLoop.component.integration.test.ts`（Calendar 优先 + burst finish 续派） | — | **【待删除】** [`DIGITAL-EMPLOYEE-AUTONOMY.md`](./DIGITAL-EMPLOYEE-AUTONOMY.md) §5 |
 | **employeeCalendar** | ✅ `employee-calendar.test.ts` + `calendar-tools.test.ts`（list/schedule/cancel/remind 幂等、白名单、cap） | ✅ loop due 链；remind→send_message / spawn→set_goal | — | **【改写】** ADL [`EMPLOYEE-CALENDAR.md`](./EMPLOYEE-CALENDAR.md)；对话一等工具 C1–C4 ✅ |
-| **selfWorkPolicy** | ✅ `self-work-policy.test.ts`（expectedOutcome、依赖、去重、冲突、route_blocked、null 休眠）+ `self-work-strategies.test.ts`（4 策略同 fixture 可比较、角度轮换、A/B 探索/利用/回退、spec 解析）+ `self-work-metrics.test.ts`（acceptance/duplicate/no-progress/byStrategy）+ `self-work-llm-policy.test.ts`（JSON 契约、sleep、非法/异常 fallback） | ✅ 由 `digitalEmployeeLoop.component.integration.test.ts` 覆盖提案→派发 | — | **【待删除】** 只有提案权；✅ P2 多策略 + 指标 JSONL；✅ P3 llm_reflective + AbTest 灰度（`UTLRA_SELF_WORK_STRATEGY`）；⏳ Duty 整单重放拒收见 advance WP |
-| **advanceWorkPackageBuilder** | ✅ 感知 facet（日历+内脑+stall+cursor）+ 简单调配规则 | ✅ RUNNING/日历闸门；bootstrap+ensure；stall→repair；盲派/重复日历指标 | — | **【待删除】** [`KPI-ADVANCE-WORK-PACKAGE.md`](./KPI-ADVANCE-WORK-PACKAGE.md) |
 | outerMemory | ✅ `memory-belief-reconcile.test.ts` + `memory-belief-card.test.ts` | ✅ `outerMemory.component.integration.test.ts` | — | Belief MVP + mem9 Belief Card supersede（[`MEMORY-BELIEF-CARD.md`](./MEMORY-BELIEF-CARD.md)） |
 | completionNotify | ✅ `completion-notify.test.ts` + `completion-report.test.ts` (im/verbose) + ingest R4.7 + scheduled report allowlist + **pending-scheduled-report** | ✅ `completionNotify.component.integration.test.ts` | — | **【改写】** R6.4 + dedup；IM 不 dump seed facts（§4.1）；ingest≠notify；日历 EW 报告附件；微信缺 token 挂起冲刷 |
 | **deliverableIngestOnExit** | ✅ KPI DONE：ingest 且无 IM（`ingestInnerBrainDeliverablesOnExit`） | — | — | [`DELIVERABLE-PIPELINE-GAPS.md`](./DELIVERABLE-PIPELINE-GAPS.md) Gap A · 协议 R4.7 |
 | innerBurstExit | 🟡 `inner-burst-exit.test.ts` | — | — | `detectBurstGoalGaps` → partial ERROR |
-| imNotifyDedup | ✅ `im-notify-dedup.test.ts` | — | — | **【待删除】** ADL [`INNER-BRAIN-IM-NOTIFY-BOUNDARY.md`](./INNER-BRAIN-IM-NOTIFY-BOUNDARY.md) §2 |
-| awaitingNotify | ✅ `awaiting-notify.test.ts` | — | — | **【待删除】** onExit AWAITING + ask_user |
 | pushLoop | ✅ `push-loop.test.ts` | ✅ `pushLoop.component.integration.test.ts` | — | BLOCK **不**推 IM；PROGRESS 可选 |
-| changeWatcher | ✅ `change-watcher.test.ts` + `change-watcher.bootstrap.test.ts` | ✅ `changeWatcher.component.integration.test.ts`（含 dependency_resolved callback） | — | **【待删除】** spawn 前 markConsumed；短等待恢复；业务长定时归 Calendar |
 | brainAsyncSnapshot | ✅ `brain-async-snapshot.test.ts`（含 OUTER_ASYNC 双轨措辞） | — | — | DE §3.4 对话/心跳共用 guide |
 | awaitingInboundResolver | ✅ `awaiting-inbound-resolver.test.ts` | ✅ `awaitingInboundResolver.component.integration.test.ts` | — | **【改写】** IM→resolve；B2 凭证→credential_ref |
 | memoryBlockStore | ✅ `memory-block-store.test.ts` + `memory-block-tools.test.ts` | ✅ `memoryBlockStore.component.integration.test.ts` | — | B1 工具已接 outerToolExecutor |
 | llmGateway | ✅ `raw.test.ts` 等 | ✅ `llmGateway.component.integration.test.ts` | — | |
 | llmUsageTracker | ✅ `llm-usage-tracker.test.ts` | — | — | 内存滚动窗口 |
 | llmUsageJournal | ✅ `llm-usage-journal.test.ts` | ✅ `llmUsageJournal.component.integration.test.ts` | — | ADL [`LLM-USAGE-JOURNAL.md`](./LLM-USAGE-JOURNAL.md) |
-| environmentSensorRegistry | ✅ `environment-sensor-registry.test.ts` | ⏳ `environmentSensorRegistry.component.integration.test.ts` | — | **【待删除】** ADL [`ENVIRONMENT-MODEL.md`](./ENVIRONMENT-MODEL.md)；P0 已实现，pipeline 经 toResourceSnapshot 适配（行为等价） |
-| environmentJournal | ✅ `environment-journal.test.ts` | ⏳ `environmentJournal.component.integration.test.ts` | — | **【待删除】** ring trim + current.json + events 月轮转 + 未消费查询 + markConsumed |
-| environmentChangeDetector | ✅ `environment-change-detector.test.ts` | — | — | **【待删除】** hysteresis / warmUp / rate·delta·streak derive |
-| autonomyJudge / capacity | ✅ `autonomy-judge.test.ts` + `kpi-spawn-capacity.test.ts`（AWAITING 不占槽、前台预留/归零、foreground_reserved、inbound_pressure、reserve=0 关闭）+ `autonomy-policy-store.test.ts`（DE-4 剥 KPI 日配额/冷却/minMs） | ⏳ `autonomyJudge.component.integration.test.ts` | — | **【待删除】** ✅ P3 自适应前台预留；DE-4 时间配额非产能闸；`blockIfOuterLoopActive` 仅兼容 advance 路径 |
 | strategyStore | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
 | strategyTrigger | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
 | strategyArtifact | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
 | strategyPlanner | ❌ 已删除 | — | — | 见 DIGITAL-EMPLOYEE-AUTONOMY.md（SelfWorkPolicy 取代宏观战略神） |
 | dispatchByStrategy | ❌ 已删除 | — | — | digitalEmployeeLoop + Calendar / SelfWorkPolicy |
-| staleBurstReaper | ✅ `kpi/stale-burst-reaper.test.ts` | — | — | **【待删除】** R5；自 strategy/ 迁入 |
 | strategyLiveAdapter | ❌ 已删除 | — | — | 见 KPI-MANAGER-LAYER.md |
-| kpiAwaitingReviewLlm | ✅ `kpi-awaiting-review-llm.test.ts` | — | — | **【待删除】** P3 LLM JSON 解析 |
 | **frameworkBenchmarkHarness** | ✅ `token-estimate.test.ts` | ✅ `framework-benchmark.component.integration.test.ts` | — | ADL [`FRAMEWORK-BENCHMARK.md`](./FRAMEWORK-BENCHMARK.md) · S1/S2 + `baseline.json` |
 | **nodeDefDrive9Store** | ✅ `node-def-drive9-store.test.ts`（put/get/index/dedupe/search/tombstone + **grep 空不回退全库**） | — | — | ADL [`INNER-NODE-LIFECYCLE.md`](./INNER-NODE-LIFECYCLE.md) §4/§5.4（P1，注入 Drive9Fs） |
 | **nodeDefEviction** | ✅ `node-def-eviction.test.ts`（score + cold + quota） | — | — | dedupe + quota + cold tombstone（P2） |
@@ -155,8 +129,8 @@
 |-------------|--------|--------|-----------|------|
 | workerHost | ❌ | ✅ `workerHost.component.integration.test.ts` | — | status.json 契约 |
 | piMonoScheduler | ❌ | ✅ `piMonoScheduler.component.integration.test.ts` | — | stop 信号 + runtime 标签 |
+| **playSession** | ✅ `play-loop.test.ts` | — | — | `INNER_PLAY_MODE` 的工具循环，跑在 pi-agent-core |
 | controllerFsm | — | ✅ `controllerFsm.component.integration.test.ts` | — | DyFlow DESIGN/RUN/AWAITING/DONE |
-| completionReport | ✅ `completion-report.test.ts`（im/verbose） | — | — | **【待删除】** burst DONE 完成报告正文 |
 | **designer** | ✅ `designer.test.ts`（run/done/empty + ref 校验） | ✅ `controller.component.integration.test.ts`（DESIGN↔RUN↔DONE 全链） | ⏳ `designer.prompt.test.ts` | P0；DESIGN ↔ RUN 切换 + last_failure 决策表 |
 | **runner** | ✅ `runner.test.ts`（顺序图 + terminal stop + 缺 ref + compound 展开） | ✅ `controller.component.integration.test.ts` | — | P0；顺序图 + dispatch + memory 写入 |
 | **baseNodeExecutor** | ✅ `base-node-executor.test.ts`（render/terminal/allowlist/fail-fast + acceptance + shell-evidence + runtime + **P-prompt deliverable 注入**） | — | — | P0；ReAct + §6.7 验票；DYFLOW §6.7a P-prompt |
@@ -181,7 +155,6 @@
 | **nodeSkillLoader** | ✅ `node-skill-loader.test.ts` | — | — | 执行前加载绑定+全局技能 |
 | **executableWorkflowStore** | ✅ `executable-workflow-store.test.ts` | — | — | ADL [`EXECUTABLE-WORKFLOW.md`](./EXECUTABLE-WORKFLOW.md) P0 |
 | **workflowPromote** | ✅ `workflow-promote.test.ts`（W3/W5–W13 + pauseInvalid） | — | — | 拒收空壳/路径/跨步$VAR/明文凭证；hoist secretRefs；打包 `.run/ew` 脚本 |
-| **workflowForKpi** | ✅ `workflow-for-kpi.test.ts`（tag + role 优先 + SelfWork execute） | — | — | **【待删除】** `role:primary`/`collect` 优先于 repair |
 | **workflowRunner** | ✅ `workflow-runner.test.ts`（含 browser/frozen 注入 + async shell） | ✅ `designer-execute-gate.test.ts` | — | async 逐步 expect；禁 spawnSync |
 | **harnessSpecStore** | ✅ `harness-spec-store.test.ts` | — | — | ADL [`HARNESS-RSI.md`](./HARNESS-RSI.md) P0 |
 | **harnessPointer** | ✅ `harness-pointer.test.ts` | — | — | upgrade/rollback/history |
@@ -218,7 +191,6 @@
 | **workflowFailureCircuit** | ✅ `workflow-failure-circuit.test.ts` | ✅ `kpi-manager.test.ts`（tick pause EW） | — | execute 连败 → pause EW |
 | **workflowPromoteSuggest** | ✅ `workflow-promote-suggest.test.ts` | — | — | 建议不写 store |
 | **workflowOutcomeEvaluator** | ✅ `workflow-outcome-evaluator.test.ts` | — | — | W15 质检 |
-| **workflowEvolutionPolicy** | ✅ `workflow-evolution-policy.test.ts` | — | — | **【待删除】** pending + SelfWork 优先 + 日历穿透 |
 | **burstModeGate** | ✅ `burst-mode-gate.test.ts` + `set-goal-execute.test.ts` | — | — | explore\|execute 收权 |
 | **dyflowAttributor** | ✅ `attributor.test.ts`（record_fact + record_skill） | ✅ `controller.component.integration.test.ts` | — | RUN→ATTRIBUTE |
 | **nodeAssembler** | ✅ `node-assembler.test.ts`（applyBinding 无残留/幂等/缺 required） | — | ⏳ `node-assembler.prompt.test.ts` | P1；binding 推断 + 失败包容 |

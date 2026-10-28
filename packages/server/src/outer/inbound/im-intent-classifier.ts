@@ -1,15 +1,11 @@
 /**
- * IM 入站意图分类 — ADL IM-INBOUND-INTENT-ROUTING.md §2/§3/§6
+ * IM 入站意图分类。
  *
- * 设计要点（取代旧 KPI-ADVANCEMENT §2）：
- *  - **默认 chat_only**：模糊消息交对话环，不在前置层替 LLM 决定建 KPI。
- *  - **收窄 KPI 正则**：去掉裸 `启动/设定/新增`，仅显式长期/周期才高置信 create。
- *  - **task_followup**：指向既有任务/KPI 的追问，绝不新建。
- *  - **去重降级**：显式 KPI 但已有近似 active KPI → kpi_update。
- *  - **一次性即 ad-hoc**：IM 不铸 delivery KPI；kpi_create 只产 ongoing。
+ * 默认 chat_only。长期或周期说法也留在对话里，由外脑拆成可执行任务。
+ * 指向正在做的事时记 task_followup。短的一次性请求记 ad_hoc_task。
  */
 export interface ExistingWorkRef {
-  kind: 'burst' | 'kpi';
+  kind: 'burst';
   id: string;
   matchReason: 'recent_thread' | 'deictic_followup' | 'explicit_id' | 'in_flight';
 }
@@ -19,11 +15,9 @@ export type ImInboundIntent =
   | { kind: 'task_followup'; ref: ExistingWorkRef; note: string }
   | { kind: 'ad_hoc_task'; goal: string };
 
-/** 分类上下文（由 inboundKpiRouter 按 origin 过滤后注入）；纯函数靠它感知既有任务 */
+/** 分类上下文。纯函数靠它感知既有任务。 */
 export interface ImClassifyContext {
-  /** 本 origin 的 active KPI（去重 + kpi_update 目标） */
-  activeKpis?: { kpiId: string; description: string }[];
-  /** 本 thread 在跑/等待的既有任务引用（追问转 task_followup） */
+  /** 本 thread 在跑或等待的任务（追问转 task_followup） */
   followupRef?: ExistingWorkRef;
 }
 
@@ -101,6 +95,6 @@ export function classifyImInboundIntent(
     return { kind: 'ad_hoc_task', goal: text.trim() };
   }
 
-  // 6. 默认：交对话环（LLM 可自行用工具建 KPI / 派 ad-hoc）
+  // 6. 默认：交对话环拆开再派工
   return { kind: 'chat_only' };
 }

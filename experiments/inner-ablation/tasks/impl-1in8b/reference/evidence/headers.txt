@@ -1,0 +1,2 @@
+server: cloudflare
+connect-src 'self'

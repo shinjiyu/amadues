@@ -87,6 +87,6 @@ export function shouldReconcileEmptyPromise(opts: {
 
 export const EMPTY_PROMISE_RECOVERY_SYSTEM = (
   '【系统空口对账】你刚才口头答应做事，但本轮没有成功调用派活工具' +
-  '（set_goal / advance_kpi / workflow_run / workflow_promote / set_kpi / schedule_commitment / send_directive）。' +
+  '（set_goal / workflow_run / workflow_promote / schedule_commitment / send_directive）。' +
   '现在必须二选一：① 立刻调用相应工具真正开跑/登记；② 用 reply_to_user 改口说明「还没派，要我现在开跑吗？」——禁止再空口承诺已开跑。'
 );

@@ -37,9 +37,7 @@ export const OUTER_EXECUTABLE_WORKFLOW_GUIDE = `
 ### 硬规则
 - 禁止对「已知可机跑流程」反复 explore
 - 禁止用户已点名固化/再跑时只回复「好的」而不调工具
-- KPI 仍走 \`set_kpi\` / \`advance_kpi\`；execute 是 burst 自由度，不是 KPI 替代物
 - promote 契约须可移植：相对路径 + 步间落盘（W8/W9）+ 凭据走 keychain/secretRefs（W11）
-- 同 KPI 多 EW：主路径 \`role:primary|collect\`，repair/verify 勿抢日常 SelfWork（W12）
 - shell 依赖的 \`.run/ew/*.py\` 等须随 promote 打进 \`assets\`（W13；有 workDir 时自动收集）
 - 长 EW **禁止**在对话环里同步死等；结果用 \`list_inner_brains\` / \`.run/workflow_run.json\`（W14）
 `.trim();

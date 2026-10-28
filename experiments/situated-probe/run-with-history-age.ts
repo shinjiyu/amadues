@@ -322,7 +322,7 @@ function ensureModel() {
   models.setProvider(zaiCodingCnProvider());
   const model = models.getModel('zai-coding-cn', 'glm-5.3');
   if (!model) throw new Error('glm-5.3 missing from zai-coding-cn catalog');
-  return { model, complete: (m: typeof model, ctx: Context) => models.completeSimple(m, ctx, { reasoning: 'off' }) };
+  return { model, complete: (m: typeof model, ctx: Context) => models.completeSimple(m, ctx) };
 }
 
 async function oneRun(runIndex: number, age: AgeKind, maxSteps: number): Promise<RunTrace> {

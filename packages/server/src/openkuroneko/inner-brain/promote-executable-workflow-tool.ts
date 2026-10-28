@@ -97,7 +97,7 @@ export function createPromoteExecutableWorkflowTool(
       const revisionReason = String(args['revision_reason'] ?? '').trim();
       const store = new ExecutableWorkflowStore({ dataRoot: opts.dataRoot });
 
-      // 修订时继承 base EW 的 role/kpi tags，避免 SelfWork 丢 role:collect
+      // 修订时继承 base EW 的 role tags
       if (baseId && baseVer) {
         const base = store.get({ id: baseId, version: baseVer });
         if (base?.tags?.length) {

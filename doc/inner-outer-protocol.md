@@ -204,4 +204,4 @@ body：
 | 2026-04-04 | §7：IM/多模态/观察内脑完备性核对；roundtrip 支持 `parts` + 图片落盘 |
 | 2026-04-05 | §2.1：引用 `im-outer-adapter-protocol.md`（IM 与外脑对接契约） |
 | 2026-05-11 | §3.4：新增产物回传子协议（`inner-brain-deliverables.v1`）；废弃 `listDeliverables` 全扫与 `send_file` 旧签名；收紧 `attach_asset_ids` 语义 |
-| 2026-05-16 | §3.5：BLOCK（HITL）与 KPI / reflexion 关系；链至 `kpi-reflexion-design.md` |
+| 2026-05-16 | §3.5：BLOCK（HITL）。旧 KPI / reflexion 设计已删除，派活见 WORKSHOP.md |

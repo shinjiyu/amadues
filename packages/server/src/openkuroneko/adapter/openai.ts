@@ -169,7 +169,9 @@ export function createOpenAIAdapter(options?: {
   const explicitWire = options?.toolWireFormat ?? (process.env['OPENAI_TOOL_WIRE_FORMAT'] as ToolWireFormat | undefined);
   const toolWireFormat: ToolWireFormat =
     explicitWire ??
-    (baseUrl.includes('moonshot') || baseUrl.includes('openai.com') ? 'openai' : 'minimal');
+    (baseUrl.includes('moonshot') || baseUrl.includes('openai.com') || baseUrl.includes('deepseek.com')
+      ? 'openai'
+      : 'minimal');
   if (process.env['DEBUG_LLM'] === '1') {
     console.warn('[DEBUG_LLM] adapter toolWireFormat=', toolWireFormat, 'baseUrl=', baseUrl);
   }

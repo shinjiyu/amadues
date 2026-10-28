@@ -1,0 +1,19 @@
+olite" hidden></div>
+<script>
+window.LANG = 'en';
+const LANGS = ['en', 'ko', 'ja', 'zh', 'vi', 'fr'];
+const LANG = (type
+---
+ pxBitmap(r, k) {
+  const c = document.createElement('canvas'); c.width = r.w * k; c.height = r.h * k;
+  const small = d
+---
+turn 'TWD';
+  try { const v = localStorage.getItem(ZH_CUR_KEY); if (Object.prototype.hasOwnProperty.call(ZH_CURS, v)) re
+---
+;
+  const r = await keepPost('/api/home/me', { tok });
+  if (!r.ok) { if (r.why === 'tok') keepPut({ tok: null }); if (r
+---
+;
+  const r = await keepPost('/api/memorial', { tok: keepTok(), v: CONFIG.version, d: v.D, lk: String(life.lifeAt || '')

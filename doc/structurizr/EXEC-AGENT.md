@@ -5,7 +5,7 @@
 ## 循环
 
 1. 消息从一条 user（任务）开始。
-2. 用 `@earendil-works/pi-ai` 的 `completeSimple` 把消息和工具定义交给模型。只用这一调用，不用会话、OAuth、流式。包名已从 `@mariozechner/pi-ai` 改过来，能力集不变。
+2. 用 `@earendil-works/pi-ai`（1.4）的 `completeSimple` 把消息和工具定义交给模型。只用这一调用，不用会话、OAuth、流式。请求不传 `reasoning`：这一版的请求档没有 `off`，不传时智谱这条线的 thinking 是关掉的。
 3. 模型调用 `exec`，或调用**已种子化**的工具：执行命令，把结果追加进消息，再问一次。命令失败也是一条普通输出，循环不因此停止。
 4. 一次 act 失败，或 act 连续成功 10 次：插入一次 reflect。见下一节。
 5. 模型调用本身返回 error：把 `errorMessage` 追加成一条 user 消息，再问一次。不因此停，也不因此去问 JEV，也不因此进入 reflect。

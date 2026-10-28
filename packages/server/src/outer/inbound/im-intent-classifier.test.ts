@@ -54,11 +54,8 @@ describe('im-intent-classifier', () => {
     if (r.kind === 'task_followup') expect(r.ref.id).toBe('ib-x');
   });
 
-  it('长期请求即使带上下文也留在对话里', () => {
-    const ctx = {
-      activeKpis: [{ kpiId: 'kpi-tw', description: '台湾情报常态收集，每天中午晚上汇报' }],
-    };
-    const r = classifyImInboundIntent('继续做台湾情报常态收集，每天汇报', ctx);
+  it('长期请求留在对话里', () => {
+    const r = classifyImInboundIntent('继续做台湾情报常态收集，每天汇报');
     expect(r.kind).toBe('chat_only');
   });
 

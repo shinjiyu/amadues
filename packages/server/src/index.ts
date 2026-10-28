@@ -85,6 +85,7 @@ import {
 } from './outer/completion-notify.js';
 import { PushLoop } from './outer/push-loop.js';
 import { TimerManager } from './outer/timer-manager.js';
+import { releaseWorkshopHolder, resetWorkshopLedger } from './workshop/resource-ledger.js';
 import {
   loadRetentionOptionsFromEnv,
   runInnerWorkspaceRetention,
@@ -268,6 +269,7 @@ function spawnAndAttachWorker(
       peerWorkspaceIds,
       workspacesRoot,
       onExit: (exitCode, signal) => {
+        releaseWorkshopHolder(DATA_ROOT, record.workDir);
         const workerStatus = readWorkerStatus(record.workDir);
         const ticks = workerStatus?.ticks ?? 0;
         const stoppedBy = workerStatus?.stoppedBy ?? (signal ? 'stop_signal' : 'idle');
@@ -351,6 +353,7 @@ function spawnAndAttachWorker(
  * 工人进程随服务一起消失，留台等待不能跨重启续上。
  */
 function markStaleInnerBrainsOnBoot(): void {
+  resetWorkshopLedger(DATA_ROOT);
   const stale = innerBrainRegistry.markStaleRunningAsStopped();
   const parked = innerBrainRegistry
     .list()
@@ -399,7 +402,7 @@ app.use(
       'http://127.0.0.1:5174',
       'http://localhost:5175',
       'http://127.0.0.1:5175',
-      // ops-console（KPI 面板需要跨 origin 调多个 agent 实例的 /api/kpis）
+      // ops-console 跨 origin
       'http://localhost:7777',
       'http://127.0.0.1:7777',
     ],

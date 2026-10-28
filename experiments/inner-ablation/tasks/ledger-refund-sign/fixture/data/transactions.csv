@@ -1,0 +1,9 @@
+id,note,kind,amount_cents
+s1,opening,sale,15000
+r1,"customer said ""no"", thanks",refund,2000
+s2,"bundle, extra",sale,8000
+f1,card fee,fee,300
+r2,partial,refund,500
+s3,plain,sale,4200
+f2,"fx, wire",fee,150
+s4,"",sale,1000

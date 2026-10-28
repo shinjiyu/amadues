@@ -57,8 +57,7 @@ export interface TaskSchedulerConfig {
   /** Callback: send notification to user */
   notifyUser?: (taskId: string, message: string) => Promise<void>;
   /**
-   * Calendar mode: keep missed tasks due for the unified digitalEmployeeLoop
-   * instead of executing or pausing them during scheduler initialization.
+   * 错过的任务保持 due，交给定时管理器，不在启动时补跑。
    */
   deferMissedExecution?: boolean;
   /** Injected TaskStore instance (optional, creates new if omitted) */

@@ -8,11 +8,22 @@
                     }
                 }
 
-                piMonoScheduler = component "Pi-mono Scheduler" "run-tick：驱动 DyFlow Controller.tick" "TypeScript" {
+                piMonoScheduler = component "Pi-mono Scheduler" "run-tick：DyFlow Controller.tick；INNER_PLAY_MODE 时改走 playSession" "TypeScript" {
                     tags "Inner-Module"
                     properties {
                         "path" "packages/server/src/pi-mono/run-tick.ts"
                         "horizon.test.integration" "piMonoScheduler.component.integration.test.ts"
+                    }
+                }
+
+                playSession = component "Play Session" "玩耍模式的一条工具循环，跑在 @earendil-works/pi-agent-core。不经过 Designer" "TypeScript" {
+                    tags "Inner-Module"
+                    properties {
+                        "path" "packages/server/src/pi-mono/play-loop.ts"
+                        "horizon.in" "workspaceId + workDir + INNER_PLAY_MODE"
+                        "horizon.out" ".run/pi-mono/play.jsonl; .brain/play-context.md"
+                        "horizon.deps" "pi-agent-core; innerRuntimeFactory; memoryStore"
+                        "horizon.test.unit" "play-loop.test.ts"
                     }
                 }
 
@@ -415,7 +426,7 @@
                     }
                 }
 
-                memoryStore = component "Memory Store" ".brain/memory.json：global memory（goal/constraints/facts/last_failure/node_results/kpi_progress）" "TypeScript" {
+                memoryStore = component "Memory Store" ".brain/memory.json：goal / constraints / facts / last_failure / node_results" "TypeScript" {
                     tags "Inner-Module" "Inner-State" "DyFlow-State" "Planned"
                     properties {
                         "path" "packages/server/src/openkuroneko/inner-brain/memory-store.ts"
@@ -499,7 +510,7 @@
                     }
                 }
 
-                archiveStore = component "Archive Store" "会话归档与 KPI/reflexion meta" "TypeScript" {
+                archiveStore = component "Archive Store" "会话归档" "TypeScript" {
                     tags "Inner-Module"
                     properties {
                         "path" "packages/server/src/openkuroneko/archive/fs-store.ts"

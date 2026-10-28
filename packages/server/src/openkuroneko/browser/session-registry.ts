@@ -16,6 +16,11 @@ import {
   getBrowserSessionWorkDir,
 } from './session-scope.js';
 import { getWorkDir, isPathReadable, isPathWritable, pathSecurityError } from '../tools/definitions/workdir-guard.js';
+import {
+  releaseWorkshopResource,
+  tryGrantWorkshopResource,
+  workshopLedgerRoot,
+} from '../../workshop/resource-ledger.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PwPage = any;
@@ -34,6 +39,7 @@ export interface BrowserSessionRecord {
   page: PwPage;
   createdAt: number;
   lastUsedAt: number;
+  grantId?: string;
 }
 
 export interface BrowserOpenOptions {
@@ -191,6 +197,17 @@ export async function openBrowserSession(opts: BrowserOpenOptions = {}): Promise
     };
   }
 
+  const sessionId = generateBrowserSessionId();
+  const ledgerOn = workshopLedgerRoot() != null;
+  if (ledgerOn) {
+    const grant = tryGrantWorkshopResource({
+      kind: 'browser',
+      holder: workDir,
+      grantId: sessionId,
+    });
+    if (!grant.ok) return { ok: false, output: grant.reason };
+  }
+
   const pw = await loadPlaywright();
   const headless = opts.headless ?? defaultHeadless();
   const viewport = {
@@ -202,15 +219,22 @@ export async function openBrowserSession(opts: BrowserOpenOptions = {}): Promise
   if (opts.storageState?.trim()) {
     const abs = resolveReadablePath(opts.storageState, workDir);
     if (!abs) {
+      if (ledgerOn) releaseWorkshopResource(sessionId);
       return { ok: false, output: `storage_state not readable: ${opts.storageState}` };
     }
     storageStatePath = abs;
   }
 
-  const browser = await pw.chromium.launch({
-    headless,
-    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
-  });
+  let browser: PwBrowser;
+  try {
+    browser = await pw.chromium.launch({
+      headless,
+      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+    });
+  } catch (error) {
+    if (ledgerOn) releaseWorkshopResource(sessionId);
+    return { ok: false, output: `browser launch failed: ${String(error)}` };
+  }
 
   const contextOpts: Record<string, unknown> = { viewport };
   if (opts.userAgent?.trim()) contextOpts['userAgent'] = opts.userAgent.trim();
@@ -225,6 +249,7 @@ export async function openBrowserSession(opts: BrowserOpenOptions = {}): Promise
     const abs = resolveReadablePath(opts.cookiesFile, workDir);
     if (!abs) {
       await browser.close();
+      if (ledgerOn) releaseWorkshopResource(sessionId);
       return { ok: false, output: `cookies_file not readable: ${opts.cookiesFile}` };
     }
     try {
@@ -232,12 +257,13 @@ export async function openBrowserSession(opts: BrowserOpenOptions = {}): Promise
       if (cookies.length) await context.addCookies(cookies);
     } catch (e) {
       await browser.close();
+      if (ledgerOn) releaseWorkshopResource(sessionId);
       return { ok: false, output: `cookies_file parse failed: ${String(e)}` };
     }
   }
 
   const page = await context.newPage();
-  const id = generateBrowserSessionId();
+  const id = sessionId;
   const now = Date.now();
   const rec: BrowserSessionRecord = {
     id,
@@ -249,6 +275,7 @@ export async function openBrowserSession(opts: BrowserOpenOptions = {}): Promise
     page,
     createdAt: now,
     lastUsedAt: now,
+    grantId: ledgerOn ? sessionId : undefined,
   };
   sessions.set(id, rec);
 
@@ -538,6 +565,7 @@ export async function runBrowserSteps(
 
 async function disposeSession(rec: BrowserSessionRecord): Promise<void> {
   sessions.delete(rec.id);
+  if (rec.grantId) releaseWorkshopResource(rec.grantId);
   try {
     await rec.context?.close?.();
   } catch {

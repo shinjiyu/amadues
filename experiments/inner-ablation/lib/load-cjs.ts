@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import path from 'node:path';
 import vm from 'node:vm';
 
 /** 在隔离上下文里加载工作目录里的 CommonJS 文件（不走 require 缓存，每次都读最新内容） */
@@ -10,10 +11,16 @@ export function loadCjs<T>(file: string, timeoutMs = 2000): T {
     module: mod,
     exports: mod.exports,
     require: createRequire(file),
+    __dirname: path.dirname(file),
+    __filename: file,
     console,
     Math,
     JSON,
     Number,
+    Date,
+    RegExp,
+    String,
+    Error,
     Array,
     Object,
     globalThis: {} as Record<string, unknown>,

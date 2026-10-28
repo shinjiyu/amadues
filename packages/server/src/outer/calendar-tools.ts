@@ -46,15 +46,15 @@ export const CALENDAR_TOOL_DEFS: ToolDef[] = [
     function: {
       name: 'schedule_commitment',
       description:
-        '创建或幂等更新一条日历承诺（聊天预约 / 一次性到点派活 / KPI 周期 / 白名单 tool_call）。' +
-        '业务定时与「明天下午提醒我」一律用本工具，**禁止**用内脑 wait_timer 长睡，也**禁止**说没有日历。\n' +
-        'action_kind: remind=到期发 IM；spawn_goal=到期 set_goal；tool_call=到期调白名单外脑工具。',
+        '创建或幂等更新一条日历承诺（聊天预约 / 到点派工 / 白名单 tool_call）。' +
+        '业务定时与「明天下午提醒我」一律用本工具，**禁止**用台上的 wait_timer 长睡，也**禁止**说没有日历。\n' +
+        'action_kind: remind=到期发 IM；spawn_goal=到期派一名工人；tool_call=到期调白名单工具。',
       parameters: {
         type: 'object',
         properties: {
           purpose: {
             type: 'string',
-            enum: ['chat_appointment', 'one_shot_task', 'kpi_increment', 'tool_call'],
+            enum: ['chat_appointment', 'one_shot_task', 'tool_call'],
             description: '承诺类型',
           },
           title: { type: 'string', description: '短标题' },
@@ -62,9 +62,8 @@ export const CALENDAR_TOOL_DEFS: ToolDef[] = [
             type: 'string',
             description:
               '何时执行：ISO8601 | 5 段 cron | 分钟数 | JSON {"in_minutes":n}。' +
-              '一天多次用**一条** cron 写多小时，例如 Asia/Shanghai 下 `0 9,13,21 * * *`（早/午/晚），' +
-              '不要连调三次同 kpi_increment 默认键（默认键是 `{kpiId}:increment`，会互相覆盖）。' +
-              '若必须多条，须显式不同 calendar_key（如 `{kpiId}:increment:morning`）。',
+              '一天多次用**一条** cron 写多小时，例如 Asia/Shanghai 下 `0 9,13,21 * * *`（早/午/晚）。' +
+              '若必须多条，须显式不同 calendar_key。',
           },
           action_kind: {
             type: 'string',
@@ -78,7 +77,7 @@ export const CALENDAR_TOOL_DEFS: ToolDef[] = [
           },
           goal: {
             type: 'string',
-            description: 'spawn_goal 时写入 set_goal 的 prompt',
+            description: 'spawn_goal 时写入派工目标',
           },
           tool_name: {
             type: 'string',
@@ -88,13 +87,9 @@ export const CALENDAR_TOOL_DEFS: ToolDef[] = [
             type: 'string',
             description: '可选；tool_call 参数 JSON 对象字符串',
           },
-          kpi_id: { type: 'string', description: 'kpi_increment 必填' },
           calendar_key: {
             type: 'string',
-            description:
-              '可选幂等键；缺省按 purpose 自动生成。' +
-              'kpi_increment 缺省为 `{kpiId}:increment`（同 KPI 只会保留一条）。' +
-              '多条并行须显式不同键，或改用单条多时刻 cron。',
+            description: '可选幂等键；缺省按 purpose 自动生成。多条并行须显式不同键，或改用单条多时刻 cron。',
           },
           origin_thread: {
             type: 'string',
@@ -239,6 +234,12 @@ export async function execScheduleCommitment(
       return { replied: false, output: '日历 Port 未实现 upsertCommitment' };
     }
     const purposeRaw = (args.purpose ?? '').trim();
+    if (purposeRaw === 'kpi_increment') {
+      return {
+        replied: false,
+        output: '不再接受 kpi_increment。到点做一件事请用 one_shot_task 或 tool_call，提醒用 chat_appointment。',
+      };
+    }
     assertValidPurpose(purposeRaw);
     const title = (args.title ?? '').trim();
     const whenRaw = (args.when ?? '').trim();

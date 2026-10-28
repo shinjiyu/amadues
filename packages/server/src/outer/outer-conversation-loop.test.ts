@@ -108,7 +108,7 @@ describe('runOuterConversationLoop forced reply recovery', () => {
               id: `tc-research-${callCount}`,
               type: 'function',
               function: {
-                name: 'list_kpis',
+                name: 'list_calendar',
                 arguments: '{}',
               },
             },
